@@ -1,6 +1,19 @@
 #!/usr/bin/env python3
 """
-tests/r_ledger.py  v1.3
+tests/r_ledger.py  v1.4
+v1.4  2026-09-07  r297 — ENTER MEANS THE WHOLE RECORD, AND A BAD DATE IS
+REFUSED. Operator: *"The report doesn't follow the same start date, end date
+format as the other reports. And I want it to default to ENTER=all time."*
+  🔴 THE FORMAT MISMATCH HID A LIE. The menu asked for `A..B` while report 46
+  asks START then END, so a space-separated pair went into `--date` and was
+  returned VERBATIM — `dates_of` never parsed that path. The prefix could not
+  exist, and the SOURCE banner then printed *"0 object(s) listed (a real,
+  empty result — not a missing path)"*. It could not know that. `_valid()`
+  now raises and names the string.
+  ⚠️ DEFAULT IS DAY ONE ONWARD, NOT LITERALLY ALL TIME, matching report 41.
+  The bucket reaches back to 2026-07-06 and r187 exists because pooling the v3
+  engines already produced one wrong conclusion quoted as evidence.
+  `--all-history` is the explicit override.
 v1.3  2026-09-07  r296 — IT FITS ON ONE LINE, AND `THIN` IS GONE. Operator, on
 a one-day run: *"Part of it bleeds over to multi-line. I want it to fit on one
 line & get rid of the THIN here, once more. No shit it's thin — it's one
@@ -457,6 +470,9 @@ def main(argv=None) -> int:
     ap.add_argument("--date")
     ap.add_argument("--from", dest="frm")
     ap.add_argument("--to", dest="to")
+    ap.add_argument("--all-history", action="store_true",
+                    help="reach back through the v3 engines; the default "
+                         "stops at the 2026-08-25 epoch (r187)")
     ap.add_argument("--include-relaxed", action="store_true")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)

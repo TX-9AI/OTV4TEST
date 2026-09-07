@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/stop_sweep.py  v1.1
+tests/stop_sweep.py  v1.2
+v1.2  2026-09-07  r297 - --all-history added: `_r_tool` is shared and now passes it. The default
+window also moves from TODAY to DAY ONE ONWARD via warehouse_source.
 v1.1  2026-08-23  S3 default source (control-side, boxes untouched); --db is
 the explicit local escape hatch. SOURCE line always printed.
 v1.0  2026-08-23
@@ -176,6 +178,12 @@ def main(argv=None) -> int:
     ap.add_argument("--from", dest="frm")
     ap.add_argument("--to", dest="to")
     ap.add_argument("--strategy", default=None)
+    ap.add_argument("--all-history", action="store_true",
+                    help="reach back through the v3 engines; the default "
+                         "stops at the 2026-08-25 epoch (r187). Added at r297 "
+                         "because `_r_tool` is SHARED by three items and now "
+                         "passes this flag - without it argparse would refuse "
+                         "and two working menu items would break.")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)
     if a.selftest:

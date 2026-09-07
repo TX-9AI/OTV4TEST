@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """
-tests/warehouse_source.py  v1.0
+tests/warehouse_source.py  v1.1
+v1.1  2026-09-07  r297 - DATES ARE VALIDATED, AND THE DEFAULT IS DAY ONE.
+`--date` was returned VERBATIM and never parsed, so the menu passing
+"2026-08-31 2026-09-04" became an S3 prefix that cannot exist - and the SOURCE
+banner then called it "a real, empty result - not a missing path". It could not
+know that. `_valid()` raises and names the string; `_et_today()` replaces a
+naive `date.today()` that rolled at 20:00 ET on UTC boxes; the default window
+is DAY ONE ONWARD rather than today, matching report 41.
+v1.0  (original)
 THE R SUITE'S S3 SOURCE. Control reads the bucket; boxes are never touched.
 
 v1.0  2026-08-23  Operator's baseline requirement, verbatim in effect: reports
@@ -136,23 +144,87 @@ def load_derived(table, dates, s3=None):
     return [r for _s, r in best.values()], meta
 
 
+# 🔴 r297 — THE ENGINE EPOCH. r187 established it for report 41: anything
+# before this is the OLD engines, and pooling two systems in one table has
+# already produced one wrong conclusion quoted as evidence. The bucket holds
+# trades back to 2026-07-06, so an unqualified "everything" is contaminated by
+# construction.
+DAY_ONE = "2026-08-25"
+
+
+def _valid(d: str) -> str:
+    """Return an ISO date, or RAISE naming what was passed.
+
+    🔴 r297 — THIS DID NOT EXIST AND THE COST WAS A LIE IN THE PROVENANCE LINE.
+    `--date` was returned VERBATIM, unparsed, so the menu passing
+    `"2026-08-31 2026-09-04"` (two dates, one field) became an S3 prefix that
+    cannot exist — and `Meta.banner` then printed *"0 object(s) listed  (a real,
+    empty result — not a missing path)"*. It could not know that. A malformed
+    date and a genuinely quiet session are different facts, and the banner
+    asserted the harmless one with no way to tell them apart.
+    ⚠️ RAISES rather than falling back to today or to the epoch: a silent
+    substitution is how you end up reading the wrong window and believing it.
+    """
+    from datetime import datetime
+    t = str(d).strip()
+    try:
+        return datetime.strptime(t, "%Y-%m-%d").date().isoformat()
+    except ValueError:
+        raise SystemExit(
+            f"  🔴 NOT A DATE: {t!r}\n"
+            f"     Expected YYYY-MM-DD. A range is two separate values "
+            f"(--from A --to B), never one field holding both.\n"
+            f"     Refusing rather than reporting an empty window, which "
+            f"would read as a quiet session.")
+
+
+def _et_today() -> str:
+    """Today as the EXCHANGE sees it. The boxes and control run UTC, so a
+    naive `date.today()` rolls at 20:00 ET — the operator's long-standing
+    symptom that a report for 'today' run after the close comes back empty."""
+    from datetime import datetime, timezone
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("US/Eastern")).date().isoformat()
+    except Exception:                                            # noqa: BLE001
+        return datetime.now(timezone.utc).date().isoformat()
+
+
+def _span(d0: str, d1: str) -> list:
+    from datetime import datetime, timedelta
+    a = datetime.strptime(d0, "%Y-%m-%d").date()
+    b = datetime.strptime(d1, "%Y-%m-%d").date()
+    if b < a:
+        a, b = b, a
+    out, d = [], a
+    while d <= b:
+        out.append(d.isoformat())
+        d += timedelta(days=1)
+    return out
+
+
 def dates_of(argns) -> list:
-    """--date / --from/--to -> ISO list; default today."""
-    from datetime import date as _d, datetime, timedelta
+    """--date / --from/--to / --all-history -> ISO list.
+
+    ⚠️ DEFAULT IS DAY ONE ONWARD, NOT TODAY (r297, operator's instruction that
+    ENTER should mean the whole record rather than one session). It matches
+    report 41's default exactly, which is the point — the R suite and the trade
+    breakdown should not disagree about what an unqualified run covers.
+    ⚠️ AND IT IS NOT LITERALLY ALL TIME. `--all-history` is the explicit
+    override and reaches back through the v3 engines; the default stops at the
+    epoch, because that is the boundary r187 exists to hold.
+    """
     if getattr(argns, "date", None):
-        return [argns.date]
+        return [_valid(argns.date)]
     frm, to = getattr(argns, "frm", None), getattr(argns, "to", None)
-    if frm and to:
-        d0 = datetime.strptime(frm, "%Y-%m-%d").date()
-        d1 = datetime.strptime(to, "%Y-%m-%d").date()
-        if d1 < d0:
-            d0, d1 = d1, d0
-        out, d = [], d0
-        while d <= d1:
-            out.append(d.isoformat())
-            d += timedelta(days=1)
-        return out
-    return [_d.today().isoformat()]
+    if frm or to:
+        # ⚠️ ONE END IS ENOUGH. A half-specified range used to fall through to
+        # "today" silently, which is the substitution this function now refuses.
+        return _span(_valid(frm) if frm else DAY_ONE,
+                     _valid(to) if to else _et_today())
+    if getattr(argns, "all_history", False):
+        return _span("2026-07-06", _et_today())
+    return _span(DAY_ONE, _et_today())
 
 
 # ── selftest ────────────────────────────────────────────────────────────

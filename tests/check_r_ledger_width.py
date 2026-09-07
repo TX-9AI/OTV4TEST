@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_r_ledger_width.py  v1.0
+tests/check_r_ledger_width.py  v1.1
+v1.1  2026-09-07  r297 — W6/W7 added: the ENTER default and the refusal of a
+malformed date, both EXECUTED against `warehouse_source.dates_of`.
 v1.0  2026-09-07  r296 — THE LAND GATE FOR THE 78-CHARACTER RULE.
 
 🔴 WHY A CHECK AND NOT A CAREFUL EDIT. The first cut of r296 picked field
@@ -81,6 +83,24 @@ def main() -> int:
           r_ledger._col("+$1,234,567", 6) == "+$1,23"
           and r_ledger._col("2.0", 6) == "   2.0",
           f"{r_ledger._col('+$1,234,567', 6)!r}")
+
+    # W6/W7 — r297. The date path, EXECUTED. A malformed value must RAISE,
+    # not resolve to an empty window that the banner then calls real.
+    import warehouse_source as ws
+    class _A:
+        def __init__(self, **k):
+            self.date = k.get("date"); self.frm = k.get("frm")
+            self.to = k.get("to"); self.all_history = k.get("all", False)
+    d = ws.dates_of(_A())
+    check("W6  ENTER defaults to DAY ONE onward, not today",
+          d[0] == ws.DAY_ONE and len(d) > 1, f"{d[0]}..{d[-1]} ({len(d)}d)")
+    try:
+        ws.dates_of(_A(date="2026-08-31 2026-09-04"))
+        check("W7  a malformed date RAISES rather than reading empty", False,
+              "it returned a date list")
+    except SystemExit as e:
+        check("W7  a malformed date RAISES rather than reading empty",
+              "NOT A DATE" in str(e), str(e).splitlines()[0].strip())
 
     print()
     if F:

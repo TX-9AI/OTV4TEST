@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/exit_replay.py  v1.1
+tests/exit_replay.py  v1.2
+v1.2  2026-09-07  r297 - --all-history added: `_r_tool` is shared and now passes it. The default
+window also moves from TODAY to DAY ONE ONWARD via warehouse_source.
 v1.1  2026-08-23  S3 DEFAULT SOURCE: trades from raw/trades, quote paths from
 the raw/quote_series batches (push_series, r86) — loaded once per run and
 indexed per streamer symbol, so control replays without touching a box.
@@ -300,6 +302,12 @@ def main(argv=None) -> int:
     ap.add_argument("--date")
     ap.add_argument("--from", dest="frm")
     ap.add_argument("--to", dest="to")
+    ap.add_argument("--all-history", action="store_true",
+                    help="reach back through the v3 engines; the default "
+                         "stops at the 2026-08-25 epoch (r187). Added at r297 "
+                         "because `_r_tool` is SHARED by three items and now "
+                         "passes this flag - without it argparse would refuse "
+                         "and two working menu items would break.")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)
     if a.selftest:
