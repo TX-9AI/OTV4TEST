@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tests/exit_replay.py  v1.2
+tests/exit_replay.py  v1.3
+v1.3  2026-09-07  r299 - relaxed rows kept (operator ruling: it is all paper, and paper vs live is the split that matters).
 v1.2  2026-09-07  r297 - --all-history added: `_r_tool` is shared and now passes it. The default
 window also moves from TODAY to DAY ONE ONWARD via warehouse_source.
 v1.1  2026-08-23  S3 DEFAULT SOURCE: trades from raw/trades, quote paths from
@@ -248,7 +249,7 @@ def run_s3(a) -> int:
     if m1.error:
         return 1
     rows = [t for t in trades if (t.get("status") or "").lower() == "closed"
-            and not t.get("relaxed_entry")]
+]
     # ⚠️ ONE LIST CALL, NOT ONE PER TRADE. The quote batches for the window
     # are loaded once and indexed per symbol; per-trade fetches against S3
     # would be the expensive path the handoff warns this tool already is.
@@ -323,7 +324,7 @@ def main(argv=None) -> int:
         tcon.row_factory = sqlite3.Row
         rows = [dict(r) for r in tcon.execute(
             "SELECT * FROM trades WHERE status='closed'"
-            " AND COALESCE(relaxed_entry,0)=0")]
+            )]  # r299 — relaxed rows kept
         fcon = sqlite3.connect(f"file:{feed}?mode=ro", uri=True)
         return run(rows, _sqlite_fetch(fcon))
     return run_s3(a)

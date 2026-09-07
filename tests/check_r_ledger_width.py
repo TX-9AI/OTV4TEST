@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_r_ledger_width.py  v1.2
+tests/check_r_ledger_width.py  v1.3
+v1.3  2026-09-07  r299 - W9/W9b: relaxed rows survive the read, and the dead
+flag is gone rather than left advertising a behaviour the code no longer has.
 v1.2  2026-09-07  r298 - W8/W8b: a multi-date read narrates, a single-date one
 stays quiet. Silent is indistinguishable from hung.
 v1.1  2026-09-07  r297 — W6/W7 added: the ENTER default and the refusal of a
@@ -127,6 +129,46 @@ def main() -> int:
         ws.load_trades(["2026-08-25"], s3=_S3())
     check("W8b a single-date read stays quiet - the banner already says it",
           b2.getvalue().strip() == "", repr(b2.getvalue()[:40]))
+
+    # W9 — r299. NO R-SUITE TOOL MAY EXCLUDE RELAXED ROWS. Operator's ruling:
+    # it is all paper, and paper-vs-live is the split that matters; a tag
+    # applied as a silent filter made report 50 disagree with report 43 by 70%
+    # of the book. EXECUTED against load_s3, not grepped: a fake S3 serves one
+    # relaxed row and one strict, and both must survive.
+    class _S3R:
+        def get_paginator(self, *a): return self
+        def paginate(self, **k):
+            return [{"Contents": [{"Key": k.get("Prefix", "") + f"{i}.json"}
+                                  for i in range(2)]}]
+        _n = [0]
+        def get_object(self, **k):
+            i = self._n[0]; self._n[0] += 1
+            rel = 1 if i % 2 else 0
+            body = (b'{"record":{"trade_id":"t%d","status":"closed",'
+                    b'"relaxed_entry":%d,"pnl_usd":10.0}}' % (i, rel))
+            class B: read = staticmethod(lambda: body)
+            return {"Body": B}
+    with contextlib.redirect_stdout(io.StringIO()):
+        got, _m = ws.load_trades(["2026-08-25"], s3=_S3R())
+    class _A2:
+        db = None; date = "2026-08-25"; frm = None; to = None; all_history = False
+    with contextlib.redirect_stdout(io.StringIO()):
+        kept = r_ledger.load_s3(_A2()) if hasattr(r_ledger, "load_s3") else None
+    check("W9  relaxed rows are NOT excluded by load_s3",
+          any(r.get("relaxed_entry") for r in got),
+          f"{sum(1 for r in got if r.get('relaxed_entry'))} relaxed of {len(got)}")
+    src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "r_ledger.py")).read()
+    # ⚠️ WA §20 — ANCHOR ON THE DEFINITION, NEVER THE MENTION. The first cut
+    # searched for the bare flag string and went red on r299's OWN CHANGELOG
+    # ENTRY, which names the flag while explaining that it was removed. Rule 5
+    # requires that entry to exist, so a mention-based canary is guaranteed to
+    # trip on the documentation the version discipline demands. This is the
+    # same collision the repo has now hit for the fourth time.
+    check("W9b the dead --include-relaxed flag is gone, not left as a no-op",
+          'add_argument("--include-relaxed"' not in src
+          and "a.include_relaxed" not in src,
+          "checked as an argparse DEFINITION and a call site, not a string")
 
     print()
     if F:

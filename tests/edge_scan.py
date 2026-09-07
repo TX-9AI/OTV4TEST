@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tests/edge_scan.py  v1.1
+tests/edge_scan.py  v1.2
+v1.2  2026-09-07  r299 - relaxed rows kept (operator ruling: it is all paper, and paper vs live is the split that matters).
 v1.1  2026-08-23  S3 default source: trades from raw/trades, fire snapshots
 and plans from raw/derived_* (s3_push v4.3, latest-per-rid). --db/--derived
 remain the explicit local escape hatch. The bar is unchanged and will not be
@@ -138,7 +139,7 @@ def load_joined(db, derived):
     tcon = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     tcon.row_factory = sqlite3.Row
     trades = {r["trade_id"]: dict(r) for r in tcon.execute(
-        "SELECT * FROM trades WHERE status='closed' AND COALESCE(relaxed_entry,0)=0")}
+        "SELECT * FROM trades WHERE status='closed'")}  # r299 — relaxed kept
     tcon.close()
     snaps = {}
     if os.path.exists(derived):
@@ -283,7 +284,7 @@ def load_joined_s3(a):
     rows = []
     joined = 0
     closed = [t for t in trades if (t.get("status") or "").lower() == "closed"
-              and not t.get("relaxed_entry")]
+]
     for t in closed:
         pnl = _f(t.get("pnl_usd"))
         if pnl is None:

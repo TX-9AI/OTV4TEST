@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/stop_sweep.py  v1.2
+tests/stop_sweep.py  v1.3
+v1.3  2026-09-07  r299 - relaxed rows kept (operator ruling); the dead
+`include_relaxed` assignment goes with the filter it fed.
 v1.2  2026-09-07  r297 - --all-history added: `_r_tool` is shared and now passes it. The default
 window also moves from TODAY to DAY ONE ONWARD via warehouse_source.
 v1.1  2026-08-23  S3 default source (control-side, boxes untouched); --db is
@@ -196,10 +198,10 @@ def main(argv=None) -> int:
         con = sqlite3.connect(f"file:{a.db}?mode=ro", uri=True)
         con.row_factory = sqlite3.Row
         rows = [dict(r) for r in con.execute(
-            "SELECT * FROM trades WHERE status='closed' AND COALESCE(relaxed_entry,0)=0")]
+            "SELECT * FROM trades WHERE status='closed'")]  # r299 — relaxed kept
         con.close()
     else:
-        a.include_relaxed = False
+        # r299 - relaxed rows are kept; the attribute is gone with the filter.
         rows = load_s3(a)
         if rows is None:
             return 1

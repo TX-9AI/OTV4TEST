@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/r_ledger.py  v1.4
+tests/r_ledger.py  v1.5
+v1.5  2026-09-07  r299 - RELAXED ROWS ARE NO LONGER EXCLUDED, and the header
+that documented the opposite is corrected rather than left to rot. Operator's
+ruling; the `--include-relaxed` flag is DELETED rather than left as a no-op,
+because a flag that advertises a behaviour the code no longer has is worse
+than no flag. Also corrects the stale THIN sentence r296 orphaned.
 v1.4  2026-09-07  r297 — ENTER MEANS THE WHOLE RECORD, AND A BAD DATE IS
 REFUSED. Operator: *"The report doesn't follow the same start date, end date
 format as the other reports. And I want it to default to ENTER=all time."*
@@ -84,12 +89,24 @@ DEFINITIONS — one place, so every later tool agrees:
   never favourable = fav_frac <= cut. At cut 0.00 the trade never once
                    traded better than entry.
 
-⚠️ RELAXED ROWS ARE EXCLUDED BY DEFAULT (`relaxed_entry=1` is deliberately
-junk traffic; fitting anything to it is the exact failure §1.1 of the audit
-handoff predicted). `--include-relaxed` exists for plumbing checks only.
+🔴 RELAXED ROWS ARE INCLUDED (r299). Operator, 2026-09-07: *"I don't want
+relaxed entry trades treated any differently from strict. It's all paper.
+Leaving it would add a 3rd category that convolutes the totals. I would have
+paper, live and relaxed."* The split that matters is PAPER vs LIVE;
+`relaxed_entry` is an entry-criteria tag inside paper, not a third book.
+⚠️ THIS REVERSES THE LINE THAT STOOD HERE, and the old reasoning is kept
+rather than deleted because it is still true of the thing it was about:
+*"fitting anything to junk traffic is the exact failure §1.1 predicted."*
+That is an argument about FITTING, and this tool fits nothing — it describes.
+Applying the tag as a silent filter made report 50 disagree with report 43 by
+213 trades and $15,793 on the same window, 70% of the book, with nothing on
+the page saying so. The `relaxed_entry` COLUMN is untouched: separable is not
+the same as excluded, so the split can be re-made the day a threshold is
+actually fitted. RPT.19 carries that.
 ⚠️ CALLS AND PUTS SEPARATE — 34.2% put accuracy is the sharpest signature in
 the inherited data and pooling blunts it.
-⚠️ n < 10 rows print with a THIN tag and no R claim. Thin samples find
+⚠️ n < MIN_N rows print no R claim (the TAG itself went at r296; the `n`
+column says the same thing). Thin samples find
 mechanisms, not conclusions (WA §12).
 
 Run:  python3 tests/r_ledger.py                          # ~/options-trader/trades.db
@@ -149,12 +166,11 @@ def position_dollars(row: dict):
     return mfe, mae
 
 
-def load(db: str, include_relaxed: bool) -> list:
+def load(db: str) -> list:
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     con.row_factory = sqlite3.Row
     q = "SELECT * FROM trades WHERE status='closed'"
-    if not include_relaxed:
-        q += " AND COALESCE(relaxed_entry,0)=0"
+    # r299 — relaxed rows are kept; see load_s3.
     rows = [dict(r) for r in con.execute(q)]
     con.close()
     return rows
@@ -458,8 +474,24 @@ def load_s3(a):
     if meta.error:
         return None
     out = [r for r in rows if (r.get("status") or "").lower() == "closed"]
-    if not a.include_relaxed:
-        out = [r for r in out if not r.get("relaxed_entry")]
+    # 🔴 r299 — RELAXED ROWS ARE NO LONGER EXCLUDED. Operator,
+    # 2026-09-07: *"I don't want relaxed entry trades treated any
+    # differently from strict. It's all paper. Leaving it would add a
+    # 3rd category that convolutes the totals. I would have paper,
+    # live and relaxed."*
+    # 🔑 THE SPLIT THAT MATTERS IS PAPER vs LIVE. `relaxed_entry` is an
+    # entry-criteria tag INSIDE paper, not a third book, and applying a
+    # tag as a silent filter made report 50 disagree with report 43 by
+    # 213 trades and $15,793 on the same window — 70%% of the book,
+    # with nothing on the page saying so.
+    # ⚠️ THIS SUPERSEDES THE 2026-08-25 REASONING AND DOES NOT DELETE
+    # IT: *"a threshold fitted to a book half of which was knowingly
+    # junk is worse than no threshold."* That argument is about
+    # FITTING, and none of these tools fits anything today. The
+    # `relaxed_entry` COLUMN is untouched — separable is not the same
+    # as excluded — so the split can be re-made the day it is needed.
+    # Filed as RPT.19 for when a threshold is actually fitted.
+
     return out
 
 
@@ -473,7 +505,6 @@ def main(argv=None) -> int:
     ap.add_argument("--all-history", action="store_true",
                     help="reach back through the v3 engines; the default "
                          "stops at the 2026-08-25 epoch (r187)")
-    ap.add_argument("--include-relaxed", action="store_true")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)
     if a.selftest:
@@ -484,7 +515,7 @@ def main(argv=None) -> int:
                   f"tool fault, not an empty day)")
             return 1
         print(f"  SOURCE: local sqlite {a.db}")
-        rows = load(a.db, a.include_relaxed)
+        rows = load(a.db)
     else:
         rows = load_s3(a)
         if rows is None:
