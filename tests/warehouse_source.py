@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """
-tests/warehouse_source.py  v1.1
+tests/warehouse_source.py  v1.2
+v1.2  2026-09-07  r298 - IT SAYS WHAT IT IS DOING. r297 widened the default
+window from one day to day-one-onward and this reader printed NOTHING until
+every date was done - ~3,700 sequential get_object calls and minutes of dead
+terminal, which the operator killed with ^C because it looked hung. A line per
+date now, worded exactly as report 46 words it. WIDENING A DEFAULT IS A CHANGE
+TO WHAT THE OPERATOR WAITS THROUGH, not only to what it covers, and I changed
+one without the other.
 v1.1  2026-09-07  r297 - DATES ARE VALIDATED, AND THE DEFAULT IS DAY ONE.
 `--date` was returned VERBATIM and never parsed, so the menu passing
 "2026-08-31 2026-09-04" became an S3 prefix that cannot exist - and the SOURCE
@@ -80,12 +87,33 @@ def _iter(s3, prefix, meta):
 
 
 def _envelopes(s3, datatype, dates, meta, symbols=None):
+    # 🔴 r298 — IT SAYS WHAT IT IS DOING. r297 widened the default window from
+    # ONE day to day-one-onward without asking what that costs: this reads one
+    # object per key, sequentially, and printed NOTHING until every date was
+    # done. At ~264 objects and ~11s per session that is ~3,700 calls and
+    # minutes of dead terminal, and the operator correctly killed it with ^C
+    # because it looked hung.
+    # ⚠️ THE STANDING RULE WAS ALREADY WRITTEN: any operation running more than
+    # a few seconds must say what it is doing. `pnl_s3` obeys it through a
+    # different reader and prints a line per date; this path never did, and
+    # nobody noticed while the default was a single day. WIDENING A DEFAULT IS
+    # A CHANGE TO WHAT THE OPERATOR WAITS THROUGH, not just to what it covers.
+    # ⚠️ Wording matches report 46's deliberately, so the two readers do not
+    # describe the same work differently.
+    import sys as _sys, time as _time
+    _multi = len(dates) > 1
     for d in dates:
+        _t0 = _time.monotonic()
         try:
             keys = list(_iter(s3, f"{PREFIX}/{datatype}/dt={d}/", meta))
         except Exception as exc:                                # noqa: BLE001
             meta.error = f"{type(exc).__name__}: {exc}"
             return
+        if _multi:
+            # Printed BEFORE the reads, so a slow date is visible WHILE it is
+            # slow rather than after it finishes. A progress line that only
+            # appears on completion is a receipt, not progress.
+            print(f"  {datatype} {d}: {len(keys)} object(s)", end="", flush=True)
         for k in keys:
             if symbols:
                 sym = next((p[4:] for p in k.split("/") if p.startswith("sym=")), "")
@@ -97,6 +125,8 @@ def _envelopes(s3, datatype, dates, meta, symbols=None):
                 yield json.loads(body)
             except Exception:                                   # noqa: BLE001
                 meta.bad += 1
+        if _multi:
+            print(f"  in {_time.monotonic() - _t0:.0f}s", flush=True)
 
 
 def load_trades(dates, s3=None):

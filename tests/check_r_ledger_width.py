@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_r_ledger_width.py  v1.1
+tests/check_r_ledger_width.py  v1.2
+v1.2  2026-09-07  r298 - W8/W8b: a multi-date read narrates, a single-date one
+stays quiet. Silent is indistinguishable from hung.
 v1.1  2026-09-07  r297 — W6/W7 added: the ENTER default and the refusal of a
 malformed date, both EXECUTED against `warehouse_source.dates_of`.
 v1.0  2026-09-07  r296 — THE LAND GATE FOR THE 78-CHARACTER RULE.
@@ -86,7 +88,7 @@ def main() -> int:
 
     # W6/W7 — r297. The date path, EXECUTED. A malformed value must RAISE,
     # not resolve to an empty window that the banner then calls real.
-    import warehouse_source as ws
+    import warehouse_source as ws  # noqa: E402  (used by W6-W8)
     class _A:
         def __init__(self, **k):
             self.date = k.get("date"); self.frm = k.get("frm")
@@ -101,6 +103,30 @@ def main() -> int:
     except SystemExit as e:
         check("W7  a malformed date RAISES rather than reading empty",
               "NOT A DATE" in str(e), str(e).splitlines()[0].strip())
+
+    # W8 — r298. A MULTI-DATE READ MUST NARRATE. The default window is now 14
+    # days of sequential get_object calls; silent is indistinguishable from
+    # hung, and the operator killed a run with ^C for exactly that reason.
+    import time as _t
+    class _S3:
+        def get_paginator(self, *a): return self
+        def paginate(self, **k):
+            return [{"Contents": [{"Key": k.get("Prefix", "") + "o.json"}]}]
+        def get_object(self, **k):
+            class B: read = staticmethod(
+                lambda: b'{"record":{"trade_id":"t","status":"closed"}}')
+            return {"Body": B}
+    b = io.StringIO()
+    with contextlib.redirect_stdout(b):
+        ws.load_trades(["2026-08-25", "2026-08-26", "2026-08-27"], s3=_S3())
+    multi = b.getvalue()
+    check("W8  a multi-date read prints a line per date",
+          multi.count("2026-08-2") == 3, repr(multi.splitlines()[:1]))
+    b2 = io.StringIO()
+    with contextlib.redirect_stdout(b2):
+        ws.load_trades(["2026-08-25"], s3=_S3())
+    check("W8b a single-date read stays quiet - the banner already says it",
+          b2.getvalue().strip() == "", repr(b2.getvalue()[:40]))
 
     print()
     if F:
