@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
-utils/market_calendar.py  v1.1
+utils/market_calendar.py  v1.2
+v1.2  2026-09-07  r310 - THE HORIZON GOES TO 2050. Operator's call once the
+2035 boundary was named as the arbitrary prior it was: the list is GENERATED
+and the oracle verifies every date, so extending it costs bytes and nothing
+else. 250 closures. The only exposure is a RULES change - Juneteenth was added
+in 2022 - making later years wrong, and that fails toward TRADING. D3's
+five-years-ahead assertion stops being something anyone has to think about.
 v1.1  2026-09-07  r307 / DEP.13 - THE STANDARD CLOSURES ARE HARDCODED THROUGH
 2035 AND VERIFIED AGAINST THE RULES THAT PRODUCE THEM. The list previously ran
 to 2027, so 2028 was a cliff: every unlisted weekday reads as a session, which
@@ -61,7 +67,7 @@ from zoneinfo import ZoneInfo
 ET = ZoneInfo("America/New_York")
 
 # NYSE full-day closes (observed dates). Refresh each year — see coverage().
-# ── THE STANDARD CLOSURES, HARDCODED THROUGH 2035 ───────────────────────────
+# ── THE STANDARD CLOSURES, HARDCODED THROUGH 2050 ───────────────────────────
 # Operator, 2026-09-07: *"If we know the standard days, then hard code them. I
 # can manually account for 1-offs."*
 #
@@ -85,7 +91,7 @@ ET = ZoneInfo("America/New_York")
 # funerals (Carter 2025-01-09, Bush 2018-12-05), 9/11, Hurricane Sandy. They
 # are announced days or weeks ahead. Add them to AD_HOC_CLOSURES below by hand;
 # that is the operator's job by his own ruling, and it is the only part of this
-# file that will ever need touching before 2036.
+# file that will ever need touching before 2051.
 US_MARKET_HOLIDAYS = {
     # 2026
     "2026-01-01",  # New Year's Day
@@ -94,7 +100,7 @@ US_MARKET_HOLIDAYS = {
     "2026-04-03",  # Good Friday
     "2026-05-25",  # Memorial Day
     "2026-06-19",  # Juneteenth
-    "2026-07-03",  # Independence Day (observed; Jul 4 is Sat)
+    "2026-07-03",  # Independence Day (observed)
     "2026-09-07",  # Labor Day
     "2026-11-26",  # Thanksgiving
     "2026-12-25",  # Christmas
@@ -104,13 +110,13 @@ US_MARKET_HOLIDAYS = {
     "2027-02-15",  # Presidents' Day
     "2027-03-26",  # Good Friday
     "2027-05-31",  # Memorial Day
-    "2027-06-18",  # Juneteenth (observed; Jun 19 is Sat)
-    "2027-07-05",  # Independence Day (observed; Jul 4 is Sun)
+    "2027-06-18",  # Juneteenth (observed)
+    "2027-07-05",  # Independence Day (observed)
     "2027-09-06",  # Labor Day
     "2027-11-25",  # Thanksgiving
-    "2027-12-24",  # Christmas (observed; Dec 25 is Sat)
+    "2027-12-24",  # Christmas (observed)
     # 2028
-    "2027-12-31",  # New Year's Day (observed; Jan 1 is Sat)
+    "2027-12-31",  # New Year's Day (observed)
     "2028-01-17",  # MLK Jr. Day
     "2028-02-21",  # Presidents' Day
     "2028-04-14",  # Good Friday
@@ -159,24 +165,24 @@ US_MARKET_HOLIDAYS = {
     "2032-02-16",  # Presidents' Day
     "2032-03-26",  # Good Friday
     "2032-05-31",  # Memorial Day
-    "2032-06-18",  # Juneteenth (observed; Jun 19 is Sat)
-    "2032-07-05",  # Independence Day (observed; Jul 4 is Sun)
+    "2032-06-18",  # Juneteenth (observed)
+    "2032-07-05",  # Independence Day (observed)
     "2032-09-06",  # Labor Day
     "2032-11-25",  # Thanksgiving
-    "2032-12-24",  # Christmas (observed; Dec 25 is Sat)
+    "2032-12-24",  # Christmas (observed)
     # 2033
-    "2032-12-31",  # New Year's Day (observed; Jan 1 is Sat)
+    "2032-12-31",  # New Year's Day (observed)
     "2033-01-17",  # MLK Jr. Day
     "2033-02-21",  # Presidents' Day
     "2033-04-15",  # Good Friday
     "2033-05-30",  # Memorial Day
-    "2033-06-20",  # Juneteenth (observed; Jun 19 is Sun)
+    "2033-06-20",  # Juneteenth (observed)
     "2033-07-04",  # Independence Day
     "2033-09-05",  # Labor Day
     "2033-11-24",  # Thanksgiving
-    "2033-12-26",  # Christmas (observed; Dec 25 is Sun)
+    "2033-12-26",  # Christmas (observed)
     # 2034
-    "2034-01-02",  # New Year's Day (observed; Jan 1 is Sun)
+    "2034-01-02",  # New Year's Day (observed)
     "2034-01-16",  # MLK Jr. Day
     "2034-02-20",  # Presidents' Day
     "2034-04-07",  # Good Friday
@@ -197,8 +203,172 @@ US_MARKET_HOLIDAYS = {
     "2035-09-03",  # Labor Day
     "2035-11-22",  # Thanksgiving
     "2035-12-25",  # Christmas
+    # 2036
+    "2036-01-01",  # New Year's Day
+    "2036-01-21",  # MLK Jr. Day
+    "2036-02-18",  # Presidents' Day
+    "2036-04-11",  # Good Friday
+    "2036-05-26",  # Memorial Day
+    "2036-06-19",  # Juneteenth
+    "2036-07-04",  # Independence Day
+    "2036-09-01",  # Labor Day
+    "2036-11-27",  # Thanksgiving
+    "2036-12-25",  # Christmas
+    # 2037
+    "2037-01-01",  # New Year's Day
+    "2037-01-19",  # MLK Jr. Day
+    "2037-02-16",  # Presidents' Day
+    "2037-04-03",  # Good Friday
+    "2037-05-25",  # Memorial Day
+    "2037-06-19",  # Juneteenth
+    "2037-07-03",  # Independence Day (observed)
+    "2037-09-07",  # Labor Day
+    "2037-11-26",  # Thanksgiving
+    "2037-12-25",  # Christmas
+    # 2038
+    "2038-01-01",  # New Year's Day
+    "2038-01-18",  # MLK Jr. Day
+    "2038-02-15",  # Presidents' Day
+    "2038-04-23",  # Good Friday
+    "2038-05-31",  # Memorial Day
+    "2038-06-18",  # Juneteenth (observed)
+    "2038-07-05",  # Independence Day (observed)
+    "2038-09-06",  # Labor Day
+    "2038-11-25",  # Thanksgiving
+    "2038-12-24",  # Christmas (observed)
+    # 2039
+    "2038-12-31",  # New Year's Day (observed)
+    "2039-01-17",  # MLK Jr. Day
+    "2039-02-21",  # Presidents' Day
+    "2039-04-08",  # Good Friday
+    "2039-05-30",  # Memorial Day
+    "2039-06-20",  # Juneteenth (observed)
+    "2039-07-04",  # Independence Day
+    "2039-09-05",  # Labor Day
+    "2039-11-24",  # Thanksgiving
+    "2039-12-26",  # Christmas (observed)
+    # 2040
+    "2040-01-02",  # New Year's Day (observed)
+    "2040-01-16",  # MLK Jr. Day
+    "2040-02-20",  # Presidents' Day
+    "2040-03-30",  # Good Friday
+    "2040-05-28",  # Memorial Day
+    "2040-06-19",  # Juneteenth
+    "2040-07-04",  # Independence Day
+    "2040-09-03",  # Labor Day
+    "2040-11-22",  # Thanksgiving
+    "2040-12-25",  # Christmas
+    # 2041
+    "2041-01-01",  # New Year's Day
+    "2041-01-21",  # MLK Jr. Day
+    "2041-02-18",  # Presidents' Day
+    "2041-04-19",  # Good Friday
+    "2041-05-27",  # Memorial Day
+    "2041-06-19",  # Juneteenth
+    "2041-07-04",  # Independence Day
+    "2041-09-02",  # Labor Day
+    "2041-11-28",  # Thanksgiving
+    "2041-12-25",  # Christmas
+    # 2042
+    "2042-01-01",  # New Year's Day
+    "2042-01-20",  # MLK Jr. Day
+    "2042-02-17",  # Presidents' Day
+    "2042-04-04",  # Good Friday
+    "2042-05-26",  # Memorial Day
+    "2042-06-19",  # Juneteenth
+    "2042-07-04",  # Independence Day
+    "2042-09-01",  # Labor Day
+    "2042-11-27",  # Thanksgiving
+    "2042-12-25",  # Christmas
+    # 2043
+    "2043-01-01",  # New Year's Day
+    "2043-01-19",  # MLK Jr. Day
+    "2043-02-16",  # Presidents' Day
+    "2043-03-27",  # Good Friday
+    "2043-05-25",  # Memorial Day
+    "2043-06-19",  # Juneteenth
+    "2043-07-03",  # Independence Day (observed)
+    "2043-09-07",  # Labor Day
+    "2043-11-26",  # Thanksgiving
+    "2043-12-25",  # Christmas
+    # 2044
+    "2044-01-01",  # New Year's Day
+    "2044-01-18",  # MLK Jr. Day
+    "2044-02-15",  # Presidents' Day
+    "2044-04-15",  # Good Friday
+    "2044-05-30",  # Memorial Day
+    "2044-06-20",  # Juneteenth (observed)
+    "2044-07-04",  # Independence Day
+    "2044-09-05",  # Labor Day
+    "2044-11-24",  # Thanksgiving
+    "2044-12-26",  # Christmas (observed)
+    # 2045
+    "2045-01-02",  # New Year's Day (observed)
+    "2045-01-16",  # MLK Jr. Day
+    "2045-02-20",  # Presidents' Day
+    "2045-04-07",  # Good Friday
+    "2045-05-29",  # Memorial Day
+    "2045-06-19",  # Juneteenth
+    "2045-07-04",  # Independence Day
+    "2045-09-04",  # Labor Day
+    "2045-11-23",  # Thanksgiving
+    "2045-12-25",  # Christmas
+    # 2046
+    "2046-01-01",  # New Year's Day
+    "2046-01-15",  # MLK Jr. Day
+    "2046-02-19",  # Presidents' Day
+    "2046-03-23",  # Good Friday
+    "2046-05-28",  # Memorial Day
+    "2046-06-19",  # Juneteenth
+    "2046-07-04",  # Independence Day
+    "2046-09-03",  # Labor Day
+    "2046-11-22",  # Thanksgiving
+    "2046-12-25",  # Christmas
+    # 2047
+    "2047-01-01",  # New Year's Day
+    "2047-01-21",  # MLK Jr. Day
+    "2047-02-18",  # Presidents' Day
+    "2047-04-12",  # Good Friday
+    "2047-05-27",  # Memorial Day
+    "2047-06-19",  # Juneteenth
+    "2047-07-04",  # Independence Day
+    "2047-09-02",  # Labor Day
+    "2047-11-28",  # Thanksgiving
+    "2047-12-25",  # Christmas
+    # 2048
+    "2048-01-01",  # New Year's Day
+    "2048-01-20",  # MLK Jr. Day
+    "2048-02-17",  # Presidents' Day
+    "2048-04-03",  # Good Friday
+    "2048-05-25",  # Memorial Day
+    "2048-06-19",  # Juneteenth
+    "2048-07-03",  # Independence Day (observed)
+    "2048-09-07",  # Labor Day
+    "2048-11-26",  # Thanksgiving
+    "2048-12-25",  # Christmas
+    # 2049
+    "2049-01-01",  # New Year's Day
+    "2049-01-18",  # MLK Jr. Day
+    "2049-02-15",  # Presidents' Day
+    "2049-04-16",  # Good Friday
+    "2049-05-31",  # Memorial Day
+    "2049-06-18",  # Juneteenth (observed)
+    "2049-07-05",  # Independence Day (observed)
+    "2049-09-06",  # Labor Day
+    "2049-11-25",  # Thanksgiving
+    "2049-12-24",  # Christmas (observed)
+    # 2050
+    "2049-12-31",  # New Year's Day (observed)
+    "2050-01-17",  # MLK Jr. Day
+    "2050-02-21",  # Presidents' Day
+    "2050-04-08",  # Good Friday
+    "2050-05-30",  # Memorial Day
+    "2050-06-20",  # Juneteenth (observed)
+    "2050-07-04",  # Independence Day
+    "2050-09-05",  # Labor Day
+    "2050-11-24",  # Thanksgiving
+    "2050-12-26",  # Christmas (observed)
 }
-
 # One-off exchange closures. Hand-maintained, by operator ruling.
 # ⚠️ ADDING A DATE HERE CLOSES THE MARKET FOR THE FLEET. A wrong entry means
 # the fleet does not trade that day - silent, and it looks exactly like a quiet
@@ -252,15 +422,15 @@ def _selftest() -> int:
     ck("M3  Saturday is not", not is_trading_day(D(2026, 9, 5)))
     # 🔴 M4 IS THE ONE THAT MATTERS. A date past the list must be TRADING.
     ck("M4  a date BEYOND coverage is a TRADING day — fails toward trading",
-       is_trading_day(D(2040, 3, 14)) and not is_covered(D(2040, 3, 14)),
+       is_trading_day(D(2055, 3, 15)) and not is_covered(D(2055, 3, 15)),
        "a forgotten refresh costs armed mornings, never a dark fleet")
     ck("M4b and a weekend beyond coverage is still closed",
-       not is_trading_day(D(2040, 3, 17)))
+       not is_trading_day(D(2055, 3, 13)))
     ck("M7  2027-12-31 is closed — NYD 2028 is a Saturday, observed in the "
        "PREVIOUS year", not is_trading_day(D(2027, 12, 31)))
     ck("M8  2028 is covered — the old cliff", is_trading_day(D(2028, 1, 3))
        and not is_trading_day(D(2028, 1, 17)), "MLK 2028")
-    ck("M5  coverage() now reaches 2035", coverage() == (2026, 2035),
+    ck("M5  coverage() now reaches 2050", coverage() == (2026, 2050),
        str(coverage()))
     ck("M6  a half day is a TRADING day (sessions are not modelled)",
        is_trading_day(D(2026, 11, 27)), "DEP.12")
