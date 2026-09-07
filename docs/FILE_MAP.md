@@ -248,7 +248,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `derived/__init__.py`
 - **calls:** `derived/base.py`
-- **called by:** (not imported) — referenced in `check_versions.sh`
+- **called by:** (not imported) — referenced in `check_versions.sh`, `docs/BACKLOG.md`, `install.sh`
 
 ### `derived/base.py`
 - **calls:** (none)
@@ -356,7 +356,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `notifications/__init__.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `check_versions.sh`
+- **called by:** (not imported) — referenced in `check_versions.sh`, `docs/BACKLOG.md`, `install.sh`
 
 ### `notifications/alert_manager.py`
 - **calls:** `config.py`, `notifications/telegram_sender.py`, `utils/time_utils.py`
@@ -372,7 +372,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `risk/__init__.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `check_versions.sh`
+- **called by:** (not imported) — referenced in `check_versions.sh`, `docs/BACKLOG.md`, `install.sh`
 
 ### `risk/risk_manager.py`
 - **calls:** `config.py`, `database/trade_logger.py`, `notifications/alert_manager.py`, `utils/math_utils.py`, `utils/time_utils.py`
@@ -904,7 +904,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/gen_file_map.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/HANDOFF.md`, `docs/PORT_STATE.md`, `docs/TRADES.md` +1
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/HANDOFF.md`, `docs/PORT_STATE.md`, `docs/TRADES.md` +2
 
 ### `tests/gen_write_map.py`
 - **calls:** (none)
