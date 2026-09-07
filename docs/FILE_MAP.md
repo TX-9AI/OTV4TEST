@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-246 Python modules across 13 local packages.
+247 Python modules across 13 local packages.
 
-**Reached by:** 100 imported · 9 declared entry points · 74 referenced from a script, unit or doc but never imported · **63 by nothing here**.
+**Reached by:** 100 imported · 9 declared entry points · 75 referenced from a script, unit or doc but never imported · **63 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -662,6 +662,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** `tools/manifold_health.py`, `utils/time_utils.py`
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
+### `tests/check_market_calendar.py`
+- **calls:** `utils/__init__.py`, `utils/market_calendar.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
 ### `tests/check_midnight_halt.py`
 - **calls:** (none)
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
@@ -1004,7 +1008,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `utils/__init__.py`
 - **calls:** (none)
-- **called by:** `main.py`, `tests/check_holiday_aware.py`, `utils/time_utils.py`
+- **called by:** `main.py`, `tests/check_holiday_aware.py`, `tests/check_market_calendar.py`, `utils/time_utils.py`
 
 ### `utils/blindness_latch.py`
 - **calls:** (none)
@@ -1016,7 +1020,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `utils/market_calendar.py`
 - **calls:** (none)
-- **called by:** `shadow/trading_day.py`, `tests/check_holiday_aware.py`, `utils/time_utils.py`
+- **called by:** `shadow/trading_day.py`, `tests/check_holiday_aware.py`, `tests/check_market_calendar.py`, `utils/time_utils.py`
 
 ### `utils/math_utils.py`
 - **calls:** (none)

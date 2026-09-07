@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_holiday_aware.py  v1.0
+tests/check_holiday_aware.py  v1.1
+v1.1  2026-09-07  r307 - H4 DERIVES ITS out-of-coverage YEAR from coverage()
+instead of hardcoding 2035. It went red the moment the list was extended to
+2035 - a second copy of a constant, the same failure this session hit in a menu
+prompt and a help string. Now it survives every future extension.
 v1.0  2026-09-07  r304 / DEP.9 — THE TRADING CLOCK CONSULTS THE CALENDAR, AND
 IT FAILS TOWARD TRADING.
 
@@ -58,13 +62,23 @@ def main() -> int:
     check("H3  a weekend is still not RTH", not is_rth(at(2026, 9, 5)))
 
     # 🔴 THE ONE THAT MATTERS.
-    far = at(2035, 3, 14)
+    # ⚠️ DERIVED FROM coverage(), NOT A HARDCODED YEAR. The first version used
+    # 2035 and went red the moment r307 extended the list to 2035 — a second
+    # copy of a constant, which is the failure this session has now hit in a
+    # menu prompt, a help string and here. Pick the first weekday after the
+    # last covered year and the check survives every future extension.
+    _far_year = mc.coverage()[1] + 5
+    far = at(_far_year, 3, 14)
+    while far.weekday() >= 5:
+        far += _dt.timedelta(days=1)
     check("H4  a weekday BEYOND the list's coverage IS RTH — fails toward "
           "trading",
           is_rth(far) and not mc.is_covered(far.date()),
           "a forgotten refresh must cost armed mornings, never a dark fleet")
-    check("H4b a weekend beyond coverage is still closed",
-          not is_rth(at(2035, 3, 17)))
+    _sat = far
+    while _sat.weekday() != 5:
+        _sat += _dt.timedelta(days=1)
+    check("H4b a weekend beyond coverage is still closed", not is_rth(_sat))
 
     # H5 — one list, not three. shadow must not carry its own copy back.
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
