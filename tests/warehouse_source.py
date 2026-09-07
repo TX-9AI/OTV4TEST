@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/warehouse_source.py  v1.2
+tests/warehouse_source.py  v1.3
+v1.3  2026-09-07  r301 - DAY_ONE 2026-08-25 -> 2026-09-01, epoch 3. Moves in
+lockstep with day_trader_pro's ENGINE_EPOCH: two constants in two repos meaning
+one thing is the drift this codebase keeps finding, so they ship together.
 v1.2  2026-09-07  r298 - IT SAYS WHAT IT IS DOING. r297 widened the default
 window from one day to day-one-onward and this reader printed NOTHING until
 every date was done - ~3,700 sequential get_object calls and minutes of dead
@@ -179,7 +182,7 @@ def load_derived(table, dates, s3=None):
 # already produced one wrong conclusion quoted as evidence. The bucket holds
 # trades back to 2026-07-06, so an unqualified "everything" is contaminated by
 # construction.
-DAY_ONE = "2026-08-25"
+DAY_ONE = "2026-09-01"   # epoch 3 (r301) — see trade_report.ENGINE_EPOCH
 
 
 def _valid(d: str) -> str:

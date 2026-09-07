@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/r_ledger.py  v1.5
+tests/r_ledger.py  v1.6
+v1.6  2026-09-07  r301 - the --all-history help no longer HARDCODES the epoch
+date. A second copy of a constant in a help string is a copy that goes stale
+silently, which is exactly what the epoch move exposed.
 v1.5  2026-09-07  r299 - RELAXED ROWS ARE NO LONGER EXCLUDED, and the header
 that documented the opposite is corrected rather than left to rot. Operator's
 ruling; the `--include-relaxed` flag is DELETED rather than left as a no-op,
@@ -504,7 +507,8 @@ def main(argv=None) -> int:
     ap.add_argument("--to", dest="to")
     ap.add_argument("--all-history", action="store_true",
                     help="reach back through the v3 engines; the default "
-                         "stops at the 2026-08-25 epoch (r187)")
+                         "stops at the engine epoch (r187); see "
+                         "warehouse_source.DAY_ONE for the date")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)
     if a.selftest:
