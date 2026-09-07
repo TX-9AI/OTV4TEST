@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-247 Python modules across 13 local packages.
+248 Python modules across 13 local packages.
 
-**Reached by:** 100 imported · 9 declared entry points · 75 referenced from a script, unit or doc but never imported · **63 by nothing here**.
+**Reached by:** 100 imported · 9 declared entry points · 72 referenced from a script, unit or doc but never imported · **67 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -248,7 +248,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `derived/__init__.py`
 - **calls:** `derived/base.py`
-- **called by:** (not imported) — referenced in `check_versions.sh`, `docs/BACKLOG.md`, `install.sh`
+- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
 ### `derived/base.py`
 - **calls:** (none)
@@ -356,7 +356,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `notifications/__init__.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `check_versions.sh`, `docs/BACKLOG.md`, `install.sh`
+- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
 ### `notifications/alert_manager.py`
 - **calls:** `config.py`, `notifications/telegram_sender.py`, `utils/time_utils.py`
@@ -372,7 +372,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `risk/__init__.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `check_versions.sh`, `docs/BACKLOG.md`, `install.sh`
+- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
 ### `risk/risk_manager.py`
 - **calls:** `config.py`, `database/trade_logger.py`, `notifications/alert_manager.py`, `utils/math_utils.py`, `utils/time_utils.py`
@@ -596,6 +596,10 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_entry_gate.py`
 - **calls:** `config.py`, `data/options_chain.py`, `execution/entry_engine.py`, `risk/session_guard.py`, `strategy/base_strategy.py`, `utils/time_utils.py`
+- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+
+### `tests/check_entry_point_paths.py`
+- **calls:** (none)
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
 ### `tests/check_entry_windows.py`

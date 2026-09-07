@@ -1,6 +1,18 @@
 #!/usr/bin/env python3
 """
-tests/gen_file_map.py  v4.2
+tests/gen_file_map.py  v4.3
+v4.3  2026-09-07  r312 / DEP.10 - AN ENTRY POINT IS MATCHED ON PATH, AND AN
+AMBIGUOUS BASENAME IS NOT EVIDENCE. Two halves, and the first alone did nothing
+visible. (1) ENTRY_POINTS fell back to os.path.basename, so ANY file anywhere
+named main.py read as a declared entry point - which is how the r288 stray
+data/main.py rendered as "(entry point)" for a day on fifteen boxes. (2)
+Removing that only MOVED it: _mentions matches basename AND stem, so the stray
+inherited every mention of the real main.py and reported "referenced in
+check_versions.sh, configure.sh +21" - none of which name it. The basename
+match STAYS, because prose cites check_exit_executes and not its path; only the
+AMBIGUOUS case changed, where two modules share a filename and a bare mention
+cannot say which is meant, so the full path is required. That is exactly the
+r288 shape.
 v4.2  2026-09-05  r277 — "NEVER IMPORTED" AND "NEVER USED" WERE ONE BUCKET, AND
       IT HELD 130 OF 237 MODULES — 55% OF THE REPO. Operator: *"we have a file
       map for a reason. Try reading it. And if it's not useful, we might want to
@@ -73,6 +85,18 @@ SKIP_DIRS = {".git", "__pycache__", "deploy", "reports", "blind_tapes", "venv"}
 # is not suppression: an orphan report that flags every service teaches the
 # operator to skim it, and then a genuinely unwired module hides in the noise.
 # Each of these was verified to be launched by a unit file or run by hand.
+# 🔴 r312 / DEP.10 — MATCHED ON PATH ONLY. This used to fall back to
+# `os.path.basename(p) in ENTRY_POINTS`, so ANY file anywhere in the tree named
+# `main.py` read as a declared entry point. That is exactly how the r288 stray
+# `data/main.py` rendered as `called by: (entry point)` for a day, sitting on
+# fifteen boxes, indistinguishable from the real one.
+# 🔑 r33 RECORDS THE INVERSE FAILURE — the first orphan run flagged 12 modules
+# of which only 2 were real — and this is the SAME checker failing the other
+# way. A false orphan wastes an investigation; a HIDDEN one wastes nothing and
+# costs everything, because nobody investigates a green.
+# ⚠️ EVERY ENTRY MUST THEREFORE BE A REPO-RELATIVE PATH. A bare `main.py` here
+# means the ROOT main.py and nothing else; a module under a package needs its
+# full path, as `shadow/observer.py` and `data/candle_feed.py` already do.
 ENTRY_POINTS = {
     # operator / CLI
     "main.py", "query.py", "status.py", "debug_status.py",
@@ -124,6 +148,25 @@ def _mentions(root: str, names: set) -> dict:
     orphan report was always meant to surface, and it could not.
     """
     hits = {n: set() for n in names}
+    # 🔴 r312 / DEP.10, SECOND HALF. A BARE BASENAME IS ONLY EVIDENCE WHEN IT
+    # IS UNIQUE. Removing the ENTRY_POINTS basename fallback alone did NOT
+    # surface the r288 stray: `data/main.py` simply moved from "(entry point)"
+    # to "referenced in check_versions.sh, configure.sh, +21" — none of which
+    # name `data/main.py`. They name `main.py`, and this matcher takes the
+    # BASENAME and the STEM, so the stray inherited every mention of the real
+    # file. The stem `main` is worse still: it matches `__main__` and `main()`.
+    # ⚠️ THE BASENAME MATCH IS NOT A BUG AND IS NOT BEING REMOVED — prose cites
+    # `check_exit_executes`, not `tests/check_exit_executes.py`, and this
+    # comment's own history records a stricter matcher reporting absence where
+    # there was none. What changes is only the AMBIGUOUS case: when two files
+    # share a basename, a bare mention cannot say which is meant, so it is
+    # evidence for NEITHER and the full path is required.
+    # 🔑 That is precisely the r288 shape — a duplicate appearing beside a real
+    # file — and it is the only case where the loose match hides something.
+    _by_base: dict = {}
+    for n in names:
+        _by_base.setdefault(os.path.basename(n), []).append(n)
+    _ambiguous = {b for b, v in _by_base.items() if len(v) > 1}
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in MENTION_SKIP_DIRS]
         for fn in filenames:
@@ -158,7 +201,12 @@ def _mentions(root: str, names: set) -> dict:
                 # recur, in the unreferenced bucket while two documents named
                 # it. A matcher stricter than the way people write is a
                 # matcher that reports absence where there is none.
-                if base in text or stem in text:
+                if base in _ambiguous:
+                    # Two or more modules share this filename: only a mention
+                    # of the FULL path can be evidence for either of them.
+                    if n in text:
+                        hits[n].add(rel)
+                elif base in text or stem in text:
                     hits[n].add(rel)
     return hits
 
@@ -245,9 +293,9 @@ def render(root, files, calls, called_by, broken, unparsed, absent_block):
     # ── r277 — THE THREE WAYS A MODULE IS REACHED ──────────────────────────
     _imp = sum(1 for p in files if called_by.get(p))
     _ep = sum(1 for p in files if not called_by.get(p)
-              and (p in ENTRY_POINTS or os.path.basename(p) in ENTRY_POINTS))
+              and (p in ENTRY_POINTS))
     _ref = sum(1 for p in files if not called_by.get(p)
-               and not (p in ENTRY_POINTS or os.path.basename(p) in ENTRY_POINTS)
+               and not (p in ENTRY_POINTS)
                and MENTIONS.get(p))
     _none = len(files) - _imp - _ep - _ref
     L.append(f"**Reached by:** {_imp} imported · {_ep} declared entry points · "
@@ -317,7 +365,7 @@ def render(root, files, calls, called_by, broken, unparsed, absent_block):
         L.append(f"- **calls:** {', '.join('`'+x+'`' for x in c) if c else '(none)'}")
         if b:
             L.append(f"- **called by:** {', '.join('`'+x+'`' for x in b)}")
-        elif p in ENTRY_POINTS or os.path.basename(p) in ENTRY_POINTS:
+        elif p in ENTRY_POINTS:
             L.append("- **called by:** (entry point)")
         elif MENTIONS.get(p):
             # 🔑 REFERENCED WITHOUT BEING IMPORTED — a check the lander runs, a
