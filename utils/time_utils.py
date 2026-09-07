@@ -1,5 +1,6 @@
 """
-utils/time_utils.py  v4.3
+utils/time_utils.py  v4.4
+v4.4  2026-09-07  r304 / DEP.9 - is_rth consults utils/market_calendar; a market holiday is no longer RTH. It failed toward TRADING on holidays, and entries_open wraps it.
 v4.3  2026-08-24  r102: entries_open() defers to is_orb_complete() — the floor
       session_guard has enforced since v3 — instead of carrying a rival
       constant, and now carries the RTH test (a bare time floor is True all
@@ -58,6 +59,9 @@ ORB_END     = dtime(9, 35)   # ORB defined by 9:30–9:35 candle
 # FLATTEN_WINDOW_OPEN (15:40 ET), five minutes before the 15:45 cross, so the
 # mark-limit phase has time to fill before the order is forced marketable.
 
+from utils import market_calendar   # r304 — the ONE holiday source
+
+
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -92,7 +96,19 @@ def is_rth(now: Optional[datetime] = None) -> bool:
     specific moment. No argument = now, which is every existing call site.
     """
     now = now or now_et()
-    if now.weekday() >= 5:   # Saturday=5, Sunday=6
+    # 🔴 r304 / DEP.9 — THE CALENDAR, NOT JUST THE WEEKDAY. Until now this
+    # tested `weekday() >= 5` and nothing else, so on a market holiday it
+    # returned True and `entries_open()` — the universal floor every order site
+    # sits behind (r102) — said the market was open. Surfaced 2026-09-07,
+    # Labor Day, when the orchestrator correctly kept the bots down while
+    # devtools 35 refused a bake as "inside RTH".
+    # ⚠️ ONE CALENDAR, NOT A SECOND IMPLEMENTATION. Adding a holiday set here
+    # would have been a THIRD copy beside shadow/trading_day.py and
+    # day_trader_pro's market_calendar.
+    # ⚠️ IT FAILS TOWARD TRADING: an unlisted date is a session, including one
+    # past the list's coverage. A wrong holiday costs a silent dark fleet; a
+    # missed one costs an armed morning on a dead tape.
+    if not market_calendar.is_trading_day(now.date()):
         return False
     t = now.time()
     return RTH_OPEN <= t < RTH_CLOSE

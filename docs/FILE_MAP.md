@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-244 Python modules across 13 local packages.
+246 Python modules across 13 local packages.
 
-**Reached by:** 99 imported · 9 declared entry points · 74 referenced from a script, unit or doc but never imported · **62 by nothing here**.
+**Reached by:** 100 imported · 9 declared entry points · 74 referenced from a script, unit or doc but never imported · **63 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -52,7 +52,7 @@ Change these with the most care; a break here reaches everything downstream.
 | module | imported by | some of the importers |
 |---|---|---|
 | `config.py` | 67 | alert_manager.py, broker_reconcile.py, candle_feed.py, candle_logger.py |
-| `utils/time_utils.py` | 37 | alert_manager.py, broker_reconcile.py, check_butterfly_foundational.py, check_butterfly_legs.py |
+| `utils/time_utils.py` | 38 | alert_manager.py, broker_reconcile.py, check_butterfly_foundational.py, check_butterfly_legs.py |
 | `strategy/__init__.py` | 31 | check_age_gate_gone.py, check_audit_20260823.py, check_butterfly_foundational.py, check_butterfly_legs.py |
 | `strategy/plan.py` | 27 | check_butterfly_foundational.py, check_butterfly_legs.py, check_butterfly_wing_grid.py, check_chain_ordering.py |
 | `utils/math_utils.py` | 16 | credit_vertical.py, entry_ladder.py, exit_engine.py, gex_pin_butterfly.py |
@@ -403,7 +403,7 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** `shadow/observer.py`
 
 ### `shadow/trading_day.py`
-- **calls:** (none)
+- **calls:** `utils/market_calendar.py`
 - **called by:** (entry point)
 
 ### `status.py`
@@ -625,6 +625,10 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tests/check_gates.py`
 - **calls:** (none)
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/HANDOFF.md`, `docs/PORT_STATE.md`, `docs/TRADES.md` +1
+
+### `tests/check_holiday_aware.py`
+- **calls:** `utils/__init__.py`, `utils/market_calendar.py`, `utils/time_utils.py`
+- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
 ### `tests/check_imports.py`
 - **calls:** (none)
@@ -1000,7 +1004,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `utils/__init__.py`
 - **calls:** (none)
-- **called by:** `main.py`
+- **called by:** `main.py`, `tests/check_holiday_aware.py`, `utils/time_utils.py`
 
 ### `utils/blindness_latch.py`
 - **calls:** (none)
@@ -1009,6 +1013,10 @@ Change these with the most care; a break here reaches everything downstream.
 ### `utils/check_sdk.py`
 - **calls:** (none)
 - **called by:** (entry point)
+
+### `utils/market_calendar.py`
+- **calls:** (none)
+- **called by:** `shadow/trading_day.py`, `tests/check_holiday_aware.py`, `utils/time_utils.py`
 
 ### `utils/math_utils.py`
 - **calls:** (none)
@@ -1019,8 +1027,8 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** `main.py`
 
 ### `utils/time_utils.py`
-- **calls:** `config.py`
-- **called by:** `analysis/entry_snapshot.py`, `analysis/orb_engine.py`, `analysis/tenor_publish.py`, `analysis/tenor_select.py`, `analysis/trade_readiness.py`, `analysis/trend_engine.py`, `analysis/volatility_measures.py`, `data/macro_data.py`, `data/market_data.py`, `data/options_chain.py`, `database/trade_logger.py`, `execution/broker_reconcile.py`, `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `main.py`, `notifications/alert_manager.py`, `risk/risk_manager.py`, `risk/session_guard.py`, `strategy/condor_roll.py`, `strategy/gex_pin_butterfly.py`, `tests/check_butterfly_foundational.py`, `tests/check_butterfly_legs.py`, `tests/check_butterfly_wing_grid.py`, `tests/check_condor_spec.py`, `tests/check_entry_gate.py`, `tests/check_exit_executes.py`, `tests/check_manage_call.py`, `tests/check_manifold_windows.py`, `tests/check_orb_resume.py`, `tests/check_plan_prepares.py`, `tests/check_rehearsal_toggle.py`, `tests/check_standing_offer.py`, `tests/check_tcs_fifty.py`, `tests/check_tcs_parked.py`, `tools/manifold_health.py`
+- **calls:** `config.py`, `utils/__init__.py`, `utils/market_calendar.py`
+- **called by:** `analysis/entry_snapshot.py`, `analysis/orb_engine.py`, `analysis/tenor_publish.py`, `analysis/tenor_select.py`, `analysis/trade_readiness.py`, `analysis/trend_engine.py`, `analysis/volatility_measures.py`, `data/macro_data.py`, `data/market_data.py`, `data/options_chain.py`, `database/trade_logger.py`, `execution/broker_reconcile.py`, `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `main.py`, `notifications/alert_manager.py`, `risk/risk_manager.py`, `risk/session_guard.py`, `strategy/condor_roll.py`, `strategy/gex_pin_butterfly.py`, `tests/check_butterfly_foundational.py`, `tests/check_butterfly_legs.py`, `tests/check_butterfly_wing_grid.py`, `tests/check_condor_spec.py`, `tests/check_entry_gate.py`, `tests/check_exit_executes.py`, `tests/check_holiday_aware.py`, `tests/check_manage_call.py`, `tests/check_manifold_windows.py`, `tests/check_orb_resume.py`, `tests/check_plan_prepares.py`, `tests/check_rehearsal_toggle.py`, `tests/check_standing_offer.py`, `tests/check_tcs_fifty.py`, `tests/check_tcs_parked.py`, `tools/manifold_health.py`
 
 ### `warehouse/__init__.py`
 - **calls:** (none)

@@ -1,5 +1,6 @@
 """
-shadow/trading_day.py  v4.0
+shadow/trading_day.py  v4.1
+v4.1  2026-09-07  r304 / DEP.9 - the holiday list moved to utils/market_calendar and is imported, not copied. Semantics and the 0/1 ExecCondition exit are unchanged.
 Session-boundary helper for the observer.
 
 v4.0  2026-08-19  Ported from options_trader_v3 at the OTV4 split.
@@ -27,38 +28,15 @@ from zoneinfo import ZoneInfo
 ET = ZoneInfo("America/New_York")
 
 # NYSE full-day closes (observed dates). Refresh each year.
-US_MARKET_HOLIDAYS = {
-    # 2026
-    "2026-01-01",  # New Year's Day
-    "2026-01-19",  # MLK Jr. Day
-    "2026-02-16",  # Presidents' Day
-    "2026-04-03",  # Good Friday
-    "2026-05-25",  # Memorial Day
-    "2026-06-19",  # Juneteenth
-    "2026-07-03",  # Independence Day (observed; Jul 4 is Sat)
-    "2026-09-07",  # Labor Day
-    "2026-11-26",  # Thanksgiving
-    "2026-12-25",  # Christmas
-    # 2027
-    "2027-01-01",  # New Year's Day
-    "2027-01-18",  # MLK Jr. Day
-    "2027-02-15",  # Presidents' Day
-    "2027-03-26",  # Good Friday
-    "2027-05-31",  # Memorial Day
-    "2027-06-18",  # Juneteenth (observed; Jun 19 is Sat)
-    "2027-07-05",  # Independence Day (observed; Jul 4 is Sun)
-    "2027-09-06",  # Labor Day
-    "2027-11-25",  # Thanksgiving
-    "2027-12-24",  # Christmas (observed; Dec 25 is Sat)
-}
+# 🔴 r304 / DEP.9 — THE LIST MOVED TO utils/market_calendar.py AND IS NOT
+# COPIED BACK. It lived here first and was the only holiday awareness in otv4;
+# the trading clock now needs it too, and two lists meaning one thing is the
+# drift this repo keeps finding. This module keeps its OWN semantics (it is the
+# shadow-start ExecCondition and exits 0/1) and only the DATES are shared.
+from utils.market_calendar import US_MARKET_HOLIDAYS, is_trading_day  # noqa: F401
 
 
-def is_trading_day(d: datetime.date | None = None) -> bool:
-    if d is None:
-        d = datetime.datetime.now(ET).date()
-    if d.weekday() >= 5:          # Sat/Sun
-        return False
-    return d.isoformat() not in US_MARKET_HOLIDAYS
+# is_trading_day is imported above — one implementation, one list.
 
 
 if __name__ == "__main__":
