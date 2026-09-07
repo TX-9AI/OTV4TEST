@@ -1,6 +1,6 @@
 # WORKING_AGREEMENT.md — how we operate (read this first, every new thread)
 
-**`WORKING_AGREEMENT.md` v4.6 · 2026-09-06 — §0 plus 39 sections. See the CHANGELOG at the foot.**
+**`WORKING_AGREEMENT.md` v4.7 · 2026-09-07 — §0 plus 39 sections. See the CHANGELOG at the foot.**
 
 > 🔴 **§0 IS THE FLOOR — AN ATTESTATION, NOT A TIP. Read it first, every thread.**
 > The operator ordered it once before and was told it existed. It did not.
@@ -379,8 +379,9 @@ per half**, which is the thing no generic tool can supply. The spec carries
 `REPO` markers so the lander finds the checkout rather than guessing a path
 (§3), `REV` and `DESC` — one string that becomes both the GENESIS row and the
 commit subject (§35) — `ORDER` when a two-repo delivery's second half depends
-on its first, `POS`/`NEG` content assertions, and `CHECK` lines naming what
-must be EXECUTED. **The generic half is mechanics; the specific half is the
+on its first, `POS`/`NEG` content assertions, `CHECK` lines naming what
+must be EXECUTED, and **`BASE <sha>` — the commit the payload was built
+against**. **The generic half is mechanics; the specific half is the
 gate, and only the author of the change can write it.**
 
 ⚠️ **A HALF THAT SHIPS CODE AND DECLARES NO `CHECK` IS REFUSED.** Detected
@@ -389,13 +390,51 @@ a forgotten check rather than a broken one — and *nothing was executed* must
 never read like *everything passed*. A docs-only half legitimately has nothing
 to run and says so out loud.
 
+🔴 **`BASE` — THE ARCHIVE DECLARES WHAT IT THINKS HEAD IS (dtp r316,
+2026-09-07).** `tar` OVERWRITES and git never merges a payload, so an archive
+built against an old clone **silently reverts every file it carries**. That was
+a near-miss four times: GENESIS r209 records `docs/BACKLOG.md` about to revert
+r207 and r208, and it happened three more times in one day — caught each time
+only by a human noticing a version number.
+
+⚠️ **EVERY EXISTING GATE PASSED, BECAUSE EVERY EXISTING GATE IS
+SELF-CONSISTENT:** the content gate greps for strings a stale file still
+contains; `check_land_discipline` asserts a file's title matches its OWN newest
+changelog entry, which a stale file does; and both maps regenerate AFTER
+extraction, so they document whatever landed. A version-monotonic check would
+not have caught the worst case either — two copies of `BACKLOG.md` both
+claiming `v2.21`.
+
+**So `BASE` does not enumerate clobber types and never looks at the files.**
+The lander compares it to HEAD **after the pull** and refuses before extracting
+anything. It catches a stale clone, a replayed archive, two archives cut in
+parallel from one base, and a stale copy of a file carrying no version header.
+⚠️ **A MISSING `BASE` IS REFUSED, NOT SKIPPED** — an absent line meaning *no
+check* leaves every archive that forgets it unprotected. ⚠️ **CONSEQUENCE:
+every archive is SINGLE-USE and ORDER-DEPENDENT.** A re-land needs a re-cut,
+and the operator's ruling is that this is the right trade: *"I could care less
+if we have to generate a new number to issue a correction."*
+
+⚠️ **`BASE` DOES NOT CATCH A SUPERSEDED ARCHIVE** built against a repo that has
+not moved. Deleting a replaced tarball from `/home/ubuntu` is still manual.
+
 ⚠️ **ALL HALVES LAND OR NONE REACHES ORIGIN (dtp r279).** Every half is
 verified and committed LOCALLY first, in order; the pushes come last and only
 if every half got there. A failure rolls back every repo the run committed to,
 with `reset --soft` so an unrelated file the operator had mid-edit survives.
-**A pre-flight of every gate would NOT have worked** and the reason is worth
-keeping: a half is allowed to gate on an artifact an earlier half produces, so
-verifying half two before half one lands fails a gate that is not failing.
+**A pre-flight of every gate would NOT have worked** *as originally
+conceived*, and the reason is worth keeping: a half is allowed to gate on an
+artifact an earlier half produces, so verifying half two before half one lands
+fails a gate that is not failing. 🔑 **AMENDED 2026-09-07 (dtp r320):** that
+argues for reproducing the land's sequencing, not for abandoning the rehearsal.
+`tools/preflight.sh` applies halves in `ORDER` into fresh clones that can SEE
+each other, so a cross-repo check reads the extracted sibling rather than
+origin. Rehearsing them in isolation would report SKIP where the real land
+reports FAIL — worse than no rehearsal, because it manufactures confidence.
+⚠️ **THE PRE-FLIGHT IS THE ASSISTANT'S OBLIGATION, NOT THE OPERATOR'S.** Six
+land cycles in one day were spent on failures a rehearsal would have caught
+before the archive was ever handed over. Instructions change the odds; a gate
+changes the outcome (§0.6).
 
 ⚠️ **THE LANDER TRAVELS IN THE TARBALL**, with the repo copy as fallback. A
 delivery that improves the lander must be landed BY the improved copy or the
@@ -1173,6 +1212,25 @@ directions.
 ---
 
 ## CHANGELOG
+
+**v4.7 — 2026-09-07 — dtp r320 — §15: `BASE`, AND THE PRE-FLIGHT IS AN
+OBLIGATION.**
+
+🔴 `BASE <sha>` added to the spec. `tar` overwrites and git never merges a
+payload, so an archive built against an old clone silently reverts every file it
+carries — a near-miss four times, caught each time only by a human reading a
+version number. Every existing gate passed, because every existing gate checks a
+file against ITSELF; a version-monotonic check would not have caught the worst
+case either, where two copies of `BACKLOG.md` both claimed v2.21. `BASE` never
+looks at the files. A missing one is refused, not skipped, and every archive is
+therefore single-use.
+
+🔑 The pre-flight paragraph is AMENDED rather than deleted. Its reasoning was
+right — a half may gate on an artifact an earlier half produces — but that
+argues for reproducing the land's sequencing, not for abandoning the rehearsal.
+`tools/preflight.sh` applies halves in `ORDER` into clones that can see each
+other. Six land cycles in one day were spent on failures it would have caught
+before the archive was handed over.
 
 **v4.6 — 2026-09-06 — r292 — THE DRILL RULE REWRITTEN.**
 It required drills to exercise `tests/blind_alert_selftest.py` — **a file that
