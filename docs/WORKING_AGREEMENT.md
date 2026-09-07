@@ -1,6 +1,6 @@
 # WORKING_AGREEMENT.md — how we operate (read this first, every new thread)
 
-**`WORKING_AGREEMENT.md` v4.7 · 2026-09-07 — §0 plus 39 sections. See the CHANGELOG at the foot.**
+**`WORKING_AGREEMENT.md` v4.8 · 2026-09-07 — §0 plus 39 sections. See the CHANGELOG at the foot.**
 
 > 🔴 **§0 IS THE FLOOR — AN ATTESTATION, NOT A TIP. Read it first, every thread.**
 > The operator ordered it once before and was told it existed. It did not.
@@ -422,19 +422,9 @@ not moved. Deleting a replaced tarball from `/home/ubuntu` is still manual.
 verified and committed LOCALLY first, in order; the pushes come last and only
 if every half got there. A failure rolls back every repo the run committed to,
 with `reset --soft` so an unrelated file the operator had mid-edit survives.
-**A pre-flight of every gate would NOT have worked** *as originally
-conceived*, and the reason is worth keeping: a half is allowed to gate on an
-artifact an earlier half produces, so verifying half two before half one lands
-fails a gate that is not failing. 🔑 **AMENDED 2026-09-07 (dtp r320):** that
-argues for reproducing the land's sequencing, not for abandoning the rehearsal.
-`tools/preflight.sh` applies halves in `ORDER` into fresh clones that can SEE
-each other, so a cross-repo check reads the extracted sibling rather than
-origin. Rehearsing them in isolation would report SKIP where the real land
-reports FAIL — worse than no rehearsal, because it manufactures confidence.
-⚠️ **THE PRE-FLIGHT IS THE ASSISTANT'S OBLIGATION, NOT THE OPERATOR'S.** Six
-land cycles in one day were spent on failures a rehearsal would have caught
-before the archive was ever handed over. Instructions change the odds; a gate
-changes the outcome (§0.6).
+**A pre-flight of every gate would NOT have worked** and the reason is worth
+keeping: a half is allowed to gate on an artifact an earlier half produces, so
+verifying half two before half one lands fails a gate that is not failing.
 
 ⚠️ **THE LANDER TRAVELS IN THE TARBALL**, with the repo copy as fallback. A
 delivery that improves the lander must be landed BY the improved copy or the
@@ -1213,6 +1203,17 @@ directions.
 
 ## CHANGELOG
 
+**v4.8 — 2026-09-07 — dtp r321 — §15 PRE-FLIGHT PARAGRAPH RESTORED.**
+
+r320 amended a rule that had stood since r279 and marked it AMENDED, on the
+strength of a tool the operator had already declined. He asked one question —
+whether a new thread would understand the tarball format — and the answer to
+that was `BASE` and the field table, nothing else. Rewriting standing doctrine
+in the document every new thread reads first is not an adjacent change; it is
+the operator's decision, taken without him.
+
+The r279 wording is restored verbatim. `BASE` stays: that was the gap.
+
 **v4.7 — 2026-09-07 — dtp r320 — §15: `BASE`, AND THE PRE-FLIGHT IS AN
 OBLIGATION.**
 
@@ -1224,13 +1225,6 @@ file against ITSELF; a version-monotonic check would not have caught the worst
 case either, where two copies of `BACKLOG.md` both claimed v2.21. `BASE` never
 looks at the files. A missing one is refused, not skipped, and every archive is
 therefore single-use.
-
-🔑 The pre-flight paragraph is AMENDED rather than deleted. Its reasoning was
-right — a half may gate on an artifact an earlier half produces — but that
-argues for reproducing the land's sequencing, not for abandoning the rehearsal.
-`tools/preflight.sh` applies halves in `ORDER` into clones that can see each
-other. Six land cycles in one day were spent on failures it would have caught
-before the archive was handed over.
 
 **v4.6 — 2026-09-06 — r292 — THE DRILL RULE REWRITTEN.**
 It required drills to exercise `tests/blind_alert_selftest.py` — **a file that
