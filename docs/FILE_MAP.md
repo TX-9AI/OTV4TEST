@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-242 Python modules across 13 local packages.
+244 Python modules across 13 local packages.
 
-**Reached by:** 99 imported · 10 declared entry points · 72 referenced from a script, unit or doc but never imported · **61 by nothing here**.
+**Reached by:** 99 imported · 10 declared entry points · 74 referenced from a script, unit or doc but never imported · **61 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -468,7 +468,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `strategy/structure.py`
 - **calls:** (none)
-- **called by:** `execution/exit_engine.py`, `execution/position_manager.py`, `query.py`, `tests/check_sweep_spread.py`, `tests/check_tent.py`, `tests/check_unrealized_sign.py`
+- **called by:** `execution/exit_engine.py`, `execution/position_manager.py`, `query.py`, `tests/check_sweep_spread.py`, `tests/check_tent.py`, `tests/check_unrealized_sign.py`, `tests/fees.py`
 
 ### `strategy/sweep_credit_spread.py`
 - **calls:** `analysis/gate_report.py`, `config.py`, `strategy/__init__.py`, `strategy/base_strategy.py`, `strategy/credit_vertical.py`, `strategy/criteria.py`, `strategy/plan.py`, `strategy/relaxed.py`, `utils/math_utils.py`
@@ -621,6 +621,10 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tests/check_feed_always_on.py`
 - **calls:** `data/__init__.py`, `data/candle_feed.py`
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+
+### `tests/check_fees.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_fill_basis.py`
 - **calls:** `strategy/credit_vertical.py`
@@ -888,6 +892,10 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/exit_replay.py`
 - **calls:** (none)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
+### `tests/fees.py`
+- **calls:** `strategy/structure.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/fork_respect_study.py`

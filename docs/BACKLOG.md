@@ -1,4 +1,4 @@
-# BACKLOG.md — v2.08
+# BACKLOG.md — v2.10
 
 **The record that survives the thread.** A commit is the change; this is what
 the change was for, what is left, and what was ruled. WORKING_AGREEMENT §18
@@ -70,6 +70,12 @@ feed plumbing and are not warehouse candidates.
 | ID | item | status | notes |
 |---|---|---|---|
 | **RPT.3** | ✅ **NOT A DEFECT — TWO LIVE CALLERS, AND THE SITE ALREADY SAYS SO.** | r272 | ✅ **CLOSED.** It read *"`excursion_report.py` is retired from the menu but NOT deleted."* That is the CORRECT state and `menu_registry.sh:55` already documents it: *"THE SCRIPT ITSELF IS NOT DELETED — it still has one caller, `tools/report_parity.py`, and the nightly `eod_analysis` phase."* The `_excursion` phase shelled it in tonight's chain. ⚠️ **AND `report_parity.py`'s FATE IS NOT OPEN EITHER:** it is WH.11's gate — its own output says *"OT_EOD_PULL=0 is now defensible"* — and `OT_EOD_PULL` still defaults to 1, so dual-write is live and the tool that decides when to sever it stays until it is severed. 🔑 **Retiring a menu item is not retiring a script**, and this row conflated them. |
+| **FEE.1** | 🔴 **EVERY P&L NUMBER THIS SYSTEM HAS EVER PRINTED IS GROSS.** | r293 | ◐ **BUILT — not yet wired to any report.** Read at source, not assumed: `exit_engine` computes `pnl_usd = (current_premium - entry_prem) * contracts * CONTRACT_MULTIPLIER` at all eight sites and `position_manager:655` does the same. A grep for *fee* and *commission* across every `.py` in both repos returns only the word *feed*. New `tests/fees.py` v1.0 — control-only, pure, imports nothing that trades — computes per-trade fees from the operator's tastytrade card (2026-07-30). ⚠️ **CLASSIFICATION DEFERS TO `strategy.structure.of()`**, the engine's own, never a strategy-name list (§r35) and never a second copy (C.23). ⚠️ **ABSENCE IS NEVER ZERO:** an unpriceable row returns `Unpriced` with a NAMED reason and `total_fees_usd` reports `unpriced` alongside the sum, always, including when it is zero. 21 checks, six mutations proven red. |
+| **FEE.2** | 🔴 **SPX COSTS ~5.5x WHAT AN EQUITY COSTS FOR THE SAME CONTRACT COUNT, AND ORB'S BUDGET CANNOT SEE IT.** | r293 | ⬜ **MEASURED, NO CHANGE MADE.** The $10/leg commission cap **excludes broad-based index options** — the card says so twice — and SPX carries a **$0.60/contract exchange fee on every side**. Modelled on r201's own example (SPX PUT 7665 x50): **$122.93 round trip against $22.27** for 50 lots of an equity name. 🔑 **ORB SIZES ON GEOMETRY (r181/r192) AND ITS BUDGET (r201) IS DENOMINATED IN PREMIUM**, so nothing in the sizing path knows that the same dollar of premium buys five times the fee load on the one symbol that reaches the largest geometry counts. ⚠️ **Filed as a measurement, NOT a proposed gate** — whether this should touch `ORB_BUDGET_USD` per underlying is the operator's call, and the r201 clamps already ride on `SizingResult` as `geometry_wanted`/`budget_allowed`, so it is a query against banked data rather than a guess. |
+| **FEE.3** | 🎯 **CLOSED BY MEASUREMENT — EVERY STRUCTURAL CLAIM IN THE MODEL IS CONFIRMED AGAINST REAL CHARGES.** | r293 | ✅ **CLOSED.** The operator supplied statement 5WZ-19645-13 for **MAY 2025**, which carries 52 usable option lines including **OPENING trades**, SPXW at up to 45 contracts, an ASSIGNMENT, an EXERCISE and two EXPIRIES. 🔑 **THE $1.00 OPEN COMMISSION IS REAL AND THE CLOSE IS FREE:** SPX charged **$1.78/ct open vs $0.78/ct close**, equity **$1.13 vs $0.13** — the difference is EXACTLY $1.00 in both instruments across 31 lines. 🔴 **SPX IS NOT CAPPED — 45 contracts cost $80.08**, where a $10/leg cap would give ~$45. That is the single most consequential branch in the file and it is now measured rather than read off a card. 🔴 **THE EQUITY CAP BINDS:** SPY 20 contracts cost $12.59 against $22.58 uncapped. ⚠️ **AND THE RESIDUAL IS NOW LOCATED, which is the real advance:** it is **NOT in the commission**, which matches to the cent — it is entirely in the pass-through fees (equity $0.13/ct vs a carded $0.12, SPX $0.78 vs $0.72, so SPX-minus-equity $0.65 against the card's $0.60). Both statements agree on the equity figure, so it is a stable 2025 rate, not noise. **The component that moved still cannot be named** — the card is 2026 and no rate history was supplied — but it moves nothing structural and is +5% of fees on equity, +8% on SPX. **The model stays on the 2026 card**; `--reconcile` prints both statements so the gap is visible every run. 🔑 **A THIRD MEASUREMENT THAT THE SALES TERMS ARE NOT LEVIED**, and it fell out of a check FAILING: the model's open-minus-close is $0.955 not $1.00, because its close is a sale carrying TAF and the SEC fee — and the statement's is exactly $1.00 at every quantity. F11c pins it. |
+| **LAND.6** | 🔴 **THE LANDER'S DOCUMENTED REPO-COPY FALLBACK CANNOT WORK.** | ⬜ | `deploy.sh` picks `$STAGE/land.sh` from the archive and falls back to the checkout's copy, with a comment saying the fallback *"keeps archives cut before r278 landing through this item unchanged."* But `land.sh:205` sets `STAGE` from **its own directory** (`dirname $BASH_SOURCE`), and `deploy.sh` passes only `LAND_ARCHIVE`, never the staging path. So the fallback resolves halves against `day_trader_pro/tools/` and every archive taking that path dies with *"no such half in the archive"*. ⚠️ **OBSERVED, NOT REASONED:** otv4 r293_r2 failed exactly this way on 2026-09-07. 🔑 **The fix is one line — honour `LAND_STAGE`, and have `deploy.sh` export it** — but it is a dtp half and lands through the same mechanism, so it is filed rather than folded into an otv4 delivery. ⚠️ **Meanwhile every archive MUST carry `land.sh` at its root**, which WA §15 already requires and r293 omitted. |
+| **FEE.5** | ⬜ **ASSIGNMENT COSTS $5.00 PER EVENT AND NOTHING IN `trades` RECORDS THAT ONE HAPPENED.** | r293 | ⬜ **MEASURED, EXPOSED, DELIBERATELY NOT CHARGED.** Both A/E lines on the May statement moved **30 contracts and were charged $5.00 exactly** — per EVENT, not per contract ($150 would be per-contract). **And expiring worthless is FREE:** two EXPIRED lines, 30 and -30 contracts, no charge. 🔑 **THAT DISTINCTION IS LIVE FOR THE CREDIT BOOK:** r105 rules that the credit hard close *"takes the nickel or takes ASSIGNMENT"*, and those two dispositions cost **$0.00 and $5.00**, not the same. `ASSIGNMENT_FEE_PER_EVENT` and `EXPIRY_FEE` are exposed as constants and **`fees_for()` does not apply them** — F13b pins that — because no column distinguishes a closed trade from an assigned one, and charging it would be **inventing an event**. Needs an exit_reason or a column before it can be modelled. |
+| **FEE.4** | ⬜ **THE BUTTERFLY'S ROUND-TRIP FEES CAN EXCEED ITS OWN STOP.** | ⬜ | A fly is **four contract-sides per unit** (1/2/1, verified at `entry_engine.py:811-819`), so a 1-lot round trip is 8 contract-sides. On the 2026-09-01 flies (META debit $0.17) the modelled cost is **$4.97 against a 25% floor of $4.25**. ⚠️ **`stop_survivable` (r154, wired to the butterfly at r208) MEASURES THE STOP AGAINST THE BID-ASK AND DOES NOT KNOW FEES EXIST** — so the r208 bracket that keeps the wing wide enough to survive quote noise says nothing about whether the structure survives its own commission. Filed as a QUESTION, not a proposed gate: it may be that the r208 search already excludes these by other means, and that is a count against banked rows rather than an argument. |
 | **RPT.1** | **Evaluate every remaining trade report on its merits, one by one, and rewrite for v4 where the INTENT is worth keeping.** Operator's direction, 2026-08-29: *"not necessarily salvaging the code but preserving the intent behind the report."* | ⬜ | Queue: **Re-run consolidation** (= S3.7, duplicates what `eod_analysis` already does from S3) — **Excursion report** (= S3.4 above) — **Trade breakdown** (done, r187) — **Fit readiness** (done, r184) — **Exit replay** and **Stop / TP sweep** (v4-native, no work known). The test for each is not "does it run" but **"is the question it asks still a v4 question, and is anything else already answering it?"** |
 | **S3.1** | Three derived series had no push stage — and a purge that deletes them. | r191 | ◐ **BUILT + PUSHED, AWAITING BAKE.** `fork_series`, `indicator_series`, `surface_series` now ship via a second `push_series` call against `DERIVED_DB`, own ledger (`dseries_ledger.json`, namespace `dseries|`) because sharing the candle or CDC ledger is the r82 two-meanings-one-dict class. Key layout unchanged (`raw/<table>/dt=/sym=/`) so `warehouse_source.load_series` reads them with no reader change. 🔴 **THE FIND: `retention_purge` DELETES ALL THREE AT 20 DAYS AND HAS BEEN ARMED SINCE r162** — the same unwarehoused loss v4.2 fixed for the feed series, one store over. ⚠️ **AND `check_purge_pushed` COULD NOT SEE IT**, because that purge list was a HARDCODED TUPLE inside `purge()` while the checker imports `ARTIFACT_DAYS`. Promoted to `DERIVED_ARTIFACT_DAYS`; C9/C10 now cover it by execution, born red 2/2 at `54e72a4`. Purge policy itself UNCHANGED — same tables, same 20 days. |
 | **ORB.7** | %s **NO WAY TO SEE WHAT EACH BOX WILL SIZE AN ORB WITH.** | r206 / dtp r234 | %s **PUSHED.** `tests/orb_budget_fleet.py` plus a devtools item beside the credentials audit: spot, ORB budget and budget/spot for every running box, with `(DEFAULT - not set)` on any box nobody configured. %s **v1.0 READ THE WRONG ENV LAYER** — it imported `config` over ssh and got its DEFAULTS, so INSTRUMENT read QQQ on all fifteen boxes and the budget read 200 instead of 1050. The spots were right (those are on disk), which made the table look plausible while every env-derived column was fiction. Fixed by reading the unit's `Environment=` lines the way `configure.sh:97` and `rotate_env_remote.sh:65` do, injecting them, and THEN importing config so config's own precedence applies rather than being reimplemented. The menu item CALLS the script rather than inlining a second copy. |
@@ -365,6 +371,99 @@ not rediscovered the expensive way.
 ---
 
 ## PART 4 — CHANGELOG
+
+**v2.10 — 2026-09-07 — otv4 r293 (re-cut, not landed) — FEE.3 CLOSED BY
+MEASUREMENT; FEE.5 OPENED.**
+
+The operator supplied the MAY 2025 statement, which carries what June's could
+not: **opening trades**, SPXW at 45 contracts, an assignment, an exercise and
+two expiries.
+
+🎯 **EVERY STRUCTURAL CLAIM IN THE MODEL IS NOW CONFIRMED AGAINST REAL
+CHARGES.** The $1.00 open commission is real and the close is free — SPX $1.78
+vs $0.78, equity $1.13 vs $0.13, a difference of exactly $1.00 in both
+instruments. **SPX is not capped**: 45 contracts cost $80.08 where a $10/leg
+cap would give ~$45. **The equity cap binds**: SPY 20 contracts cost $12.59
+against $22.58 uncapped.
+
+⚠️ **AND THE RESIDUAL IS LOCATED RATHER THAN MERELY NOTED.** It is not in the
+commission, which matches to the cent; it is entirely in the pass-through fees,
+and it moves nothing structural.
+
+🔑 **A CHECK FAILING PRODUCED THE BEST FINDING.** F11 asserted open-minus-close
+equals $1.00 and went red at $0.955 — because the model's close is a sale and
+carries TAF and the SEC fee, while the statement's difference is exactly $1.00
+at every quantity. That is a third independent measurement, after June's
+proceeds-independence pairs and May's identical 45-lot charges at 4.6x
+different proceeds, that no proceeds-proportional term is being levied. F11c
+pins it rather than acting on it.
+
+🔴 **AND THE FIRST TWO ATTEMPTS TO LAND THIS REVISION FAILED, BOTH MY
+ERROR, BOTH FOUND BY THE OPERATOR RUNNING THE MENU.** (1) The archive carried
+**no `land.sh`**, and WA §15 says the lander travels in the tarball.
+`deploy.sh` fell back to the repo copy, whose `STAGE` is derived from **its own
+directory** — so it looked for the half in `day_trader_pro/tools/` and said
+*"no such half in the archive"*. ⚠️ **The documented repo-copy fallback
+therefore cannot work as written** — filed as **LAND.6**. (2) `CHECK` takes a
+**script path**, not a command line: `land.sh` runs `python3 "$chk"` with one
+quoted argument, so `CHECK python3 tests/fees.py --selftest` became
+`python3 "python3 tests/fees.py --selftest"`. 🔑 **I HAD "VERIFIED" THOSE
+THREE CHECKS BY RUNNING THEM IN A SHELL** — which is what land.sh *documents*
+and not what it *does*. WA §21 one level up. New **`tests/check_fees.py`**, a
+plain script with an exit code, is the gate — and it pins that a bare
+`fees.py` exits 0 while testing nothing, because `CHECK tests/fees.py` was the
+tempting shortcut and would have been a laundered green.
+
+⚠️ **AND MY OWN SUMMARY HAD THE C.23 DEFECT BEFORE IT SHIPPED:** the equity
+open rate was derived with `min()` over a group containing the CAPPED SPY
+20-lot, so it reported $0.63/ct and a $0.50 open/close difference — then
+compared *"uncapped would be"* against that same capped figure. Circular. Only
+lines the cap cannot bind on may set a rate.
+
+**v2.09 — 2026-09-07 — otv4 r293 — FEE.1-FEE.4: THE FEE MODEL. EVERY P&L
+NUMBER THIS SYSTEM HAS EVER PRINTED IS GROSS.**
+
+Read at source rather than assumed: `exit_engine` computes
+`pnl_usd = (current_premium - entry_prem) * contracts * CONTRACT_MULTIPLIER`
+at all eight sites, `position_manager:655` does the same, and a grep for *fee*
+and *commission* across every `.py` in both repos returns only the word *feed*.
+FRC.1 already recorded that *"commission is absent from the data entirely"*;
+this is the instrument that ends it.
+
+`tests/fees.py` v1.0 — **control-only, pure, and it touches nothing that
+trades**: no chain, no network, no clock, no writes, imported by reports and
+by nothing in the trading path.
+
+🔑 **THREE THINGS MAKE FEES VARY BY MORE THAN CONTRACT COUNT, AND ALL THREE
+BITE THIS FLEET SPECIFICALLY.** The open costs $1.00/contract and the close
+costs nothing, so a round trip is asymmetric. The $10/leg cap **excludes
+broad-based index options**, so SPX is uncapped AND carries $0.60/contract on
+every side. And leg count is a property of the STRUCTURE, not the row — one
+`trades` row is one to three legs and one to four contract-sides per unit.
+
+⚠️ **THE CLASSIFIER IS `strategy.structure.of()`**, the engine's own — not a
+strategy-name list (§r35: an allow-list rots permissively) and not a second
+copy (C.23: a tool that re-implements the thing it measures tests itself and
+stays green over the bug).
+
+⚠️ **ABSENCE IS NEVER ZERO.** An unpriceable row returns `Unpriced` with a
+named reason, `net_of_fees` returns `None` rather than falling back to the
+gross, and `total_fees_usd` reports `unpriced` alongside the sum **including
+when it is zero**. A fee of zero and a row that could not be priced are
+different facts, and a total that folds them understates itself silently.
+
+⚠️ **AND ITS OWN F1 CAUGHT A DEFECT OF MINE BEFORE IT SHIPPED.** The first cut
+rounded inside the rollup properties, so the check could not assert the
+arithmetic it exists to assert — and worse, TAF is $0.00329 and the SEC fee is
+$0.0000206 per dollar, so rounding every trade before summing throws away most
+of both terms and a 500-trade rollup drifts by more than the components it
+dropped. Rounding now happens once, at the display boundary.
+
+**21 checks, six mutations proven red** (cap applied to index options,
+butterfly modelled 1/1/1, an unpriceable row silently priced, an open position
+charged the close side, `net_of_fees` falling back to gross, TAF/SEC charged on
+buys). ⚠️ **NOT WIRED TO ANY REPORT IN THIS REVISION** — where it populates is
+the operator's call and the candidates are named in FEE.1.
 
 **v2.08 — 2026-09-06 — otv4 r292 / dtp r310 — DEV.10: A REHEARSAL FOR SOMETHING
 ALREADY PROVEN.**
