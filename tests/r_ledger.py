@@ -1,6 +1,18 @@
 #!/usr/bin/env python3
 """
-tests/r_ledger.py  v1.2
+tests/r_ledger.py  v1.3
+v1.3  2026-09-07  r296 — IT FITS ON ONE LINE, AND `THIN` IS GONE. Operator, on
+a one-day run: *"Part of it bleeds over to multi-line. I want it to fit on one
+line & get rid of the THIN here, once more. No shit it's thin — it's one
+day."* The BOOK line ran ~93 chars and the strategy rows 90 (96 with THIN)
+against this file's own 78-char rule, so both wrapped and the tail of each
+landed under the next label.
+  ⚠️ THE MARKER GOES, THE THRESHOLD STAYS. `MIN_N` still suppresses R on a
+  thin bucket, which is a REFUSAL TO COMPUTE rather than a label — an R of
+  1.57 off two trades is worse than no R at all — and the `n` column already
+  carries what the word said.
+  ⚠️ NO FEES HERE, BY RULING. The fee columns landed in reports 43 and 46;
+  the operator ruled this report keeps its shape.
 v1.2  2026-08-29  r189 — THE TWO-POPULATION SPLIT MOVES HERE, AND THE
 EXCURSION REPORT IS RETIRED. Operator, 2026-08-29, on whether the v3 reports
 are relevant to v4: *"keep the one best suited for otv4 ... preserving the
@@ -225,10 +237,12 @@ def render_two_population(rows: list) -> None:
     for cut in NEVER_FAVORABLE_CUTS:
         d = two_population(rows, cut)
         nv, wa = d["never"], d["was"]
-        mark = "  <- base" if abs(cut - BASE_CUT) < 1e-9 else ""
-        print(f"  {cut:>5.0%}  n={nv['n']:<4} net={_fmt(nv['net'], True):<9} "
+        mark = " <-base" if abs(cut - BASE_CUT) < 1e-9 else ""
+        # r296 — same fix as the strategy table: `:<9` on a variable-width
+        # money string padded without truncating and this line ran 80.
+        print(f"  {cut:>5.0%}  n={nv['n']:<4} net={_col(_fmt(nv['net'], True), 8)} "
               f"win={_pct(nv['win_rate']):<5}  "
-              f"n={wa['n']:<4} net={_fmt(wa['net'], True):<9} "
+              f"n={wa['n']:<4} net={_col(_fmt(wa['net'], True), 8)} "
               f"win={_pct(wa['win_rate']):<5}{mark}")
     base = two_population(rows, BASE_CUT)
     un = base["unmeasured"]
@@ -246,9 +260,12 @@ def render_two_population(rows: list) -> None:
         ext = base["was"]["net"]
         give = base["was"].get("giveback") or 0.0
         worse = "SELECTION" if sel <= ext else "EXTENSION"
-        print(f"\n  AT THE {BASE_CUT:.0%} CUT: selection population "
-              f"{_fmt(sel, True)}, extension population {_fmt(ext, True)} "
-              f"(giveback on its winners {_fmt(give, True)}).")
+        # ⚠️ SPLIT ON PURPOSE, not left to wrap. A deliberate second line reads
+        # as a sentence; a wrapped one puts the tail under the next label.
+        print(f"\n  AT THE {BASE_CUT:.0%} CUT")
+        print(f"     selection {_fmt(sel, True).strip()}   "
+              f"extension {_fmt(ext, True).strip()}   "
+              f"giveback on winners {_fmt(give, True).strip()}")
         print(f"     The larger drag is {worse}.")
     print("     ⚠️ Descriptive. This sizes and gates nothing (WA §31).".replace("⚠️", "⚠️"))
 
@@ -257,6 +274,20 @@ def _fmt(v, money=False):
     if v is None:
         return "      —"
     return f"{'-' if v < 0 else '+' if money else ''}${abs(v):,.0f}" if money else f"{v:7.2f}"
+
+
+def _col(v, w: int) -> str:
+    """Right-align to EXACTLY w characters, truncating if need be.
+
+    🔴 r296 — `{x:>5}` PADS BUT DOES NOT TRUNCATE, and `_fmt` returns a fixed
+    SEVEN characters, so a field declared 5 wide rendered 7 and every strategy
+    row came out 80 against a 78-char rule. The bug was not the number I
+    picked; it was that the row width DEPENDED ON THE DATA. A layout that
+    holds only while the values stay small is one that breaks on the first
+    big day — which is exactly the day you most want to read it.
+    """
+    t = str(v).strip()
+    return t[:w].rjust(w) if len(t) > w else t.rjust(w)
 
 
 def _pct(v):
@@ -276,21 +307,43 @@ def render(rows: list) -> int:
     print("  R LEDGER — dollars only. R = avg win / |avg loss|. breakeven WR = 1/(1+R)")
     print("=" * 78)
     tot = bucket_stats(rows)
-    print(f"  BOOK   n={tot['n']}  net={_fmt(tot['net'], True)}  "
-          f"R={_fmt(tot['R'])}  expectancy/trade={_fmt(tot['expectancy'], True)}  "
-          f"capture={_fmt(tot['capture'])}  giveback={_fmt(tot['giveback'], True)}")
+    # r296 — ONE LINE, MEASURED. The old form ran ~93 chars against a 78-char
+    # rule and wrapped on the operator's phone, so the tail of the BOOK line
+    # landed under the label of the next section. Single spaces and `exp/t`
+    # buy the 15 characters back without dropping a figure.
+    # ⚠️ LABELS SHORTENED RATHER THAN FIGURES TRUNCATED. The width check drove
+    # a six-figure book through here and this line hit 79; truncating a dollar
+    # amount to make a layout fit would be the report lying to save a column.
+    print(f"  BOOK n={tot['n']} net={_fmt(tot['net'], True)} "
+          f"R={_fmt(tot['R']).strip()} e/t={_fmt(tot['expectancy'], True)} "
+          f"c={_fmt(tot['capture']).strip()} "
+          f"gb={_fmt(tot['giveback'], True)}")
     print()
-    print(f"  {'strategy × side':<34}{'n':>4} {'win%':>5} {'R':>7} "
-          f"{'avgW':>8} {'avgL':>8} {'exp':>8} {'capture':>8}")
+    # 🔴 r296 — THE `THIN` MARKER IS GONE AND THE ROW FITS 78. Operator,
+    # 2026-09-07, on a one-day run: *"get rid of the THIN here, once more. No
+    # shit it's thin — it's one day."* Same ruling he made for report 43: at
+    # this sample the marker fires on the ORDINARY case, so it flags nothing
+    # and costs six characters that were pushing the row past the rule.
+    # ⚠️ THE MARKER GOES, THE THRESHOLD STAYS. `MIN_N` still suppresses R on a
+    # thin bucket — that is a REFUSAL TO COMPUTE, not a label, and an R of
+    # 1.57 off two trades would be worse than no R at all. The `n` column
+    # carries the same information the word did.
+    # ⚠️ WIDTHS ARE MEASURED, NOT EYEBALLED: 2 + 26 + 4 + 5 + 6 + 8 + 8 + 8 + 5
+    # plus seven single separators = 78 exactly. `RunawayContinuation · call`
+    # is 26 characters and is the longest label the live panel produces, so
+    # the label field is sized to it rather than to a guess.
+    print(f"  {'strategy × side':<26}{'n':>4} {'win%':>5} {'R':>5} "
+          f"{'avgW':>8} {'avgL':>8} {'exp':>8} {'cap':>6}")
     print("  " + "-" * 76)
     for (strat, side), rs in sorted(groups.items()):
         s = bucket_stats(rs)
         wr = 100.0 * s["wins"] / s["n"] if s["n"] else 0
-        thin = "  THIN" if s["n"] < MIN_N else ""
-        rr = "  —  " if (s["n"] < MIN_N or s["R"] is None) else f"{s['R']:5.2f}"
-        print(f"  {strat[:28] + ' · ' + side:<34}{s['n']:>4} {wr:>4.0f}% {rr:>7} "
-              f"{_fmt(s['avg_win'], True):>8} {_fmt(s['avg_loss'], True):>8} "
-              f"{_fmt(s['expectancy'], True):>8} {_fmt(s['capture']):>8}{thin}")
+        rr = "—" if (s["n"] < MIN_N or s["R"] is None) else f"{s['R']:.2f}"
+        print(f"  {(strat + ' · ' + side)[:26]:<26}{s['n']:>4} {wr:>4.0f}% "
+              f"{_col(rr, 5)} {_col(_fmt(s['avg_win'], True), 8)} "
+              f"{_col(_fmt(s['avg_loss'], True), 8)} "
+              f"{_col(_fmt(s['expectancy'], True), 8)} "
+              f"{_col(_fmt(s['capture']), 6)}")
     print()
     print("  BY EXIT REASON — where the R actually gets made or given back")
     print(f"  {'exit_reason':<30}{'n':>4} {'win%':>5} {'net':>10} {'capture':>8} {'giveback':>10}")
