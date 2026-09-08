@@ -1,6 +1,6 @@
 # WORKING_AGREEMENT.md — how we operate (read this first, every new thread)
 
-**`WORKING_AGREEMENT.md` v4.8 · 2026-09-07 — §0 plus 39 sections. See the CHANGELOG at the foot.**
+**`WORKING_AGREEMENT.md` v4.9 · 2026-09-08 — §0 plus 39 sections. See the CHANGELOG at the foot.**
 
 > 🔴 **§0 IS THE FLOOR — AN ATTESTATION, NOT A TIP. Read it first, every thread.**
 > The operator ordered it once before and was told it existed. It did not.
@@ -1031,12 +1031,40 @@ commit AFTER the one it describes and every entry is permanently off by one.
 That ordering is why the description cannot be derived FROM the commit message:
 the message does not exist yet.
 
-⚠️ **AND `GENESIS.md` IS NEVER IN A TARBALL.** It is append-only on the box, so
-a shipped copy is always stale by however many revisions landed since the sandbox
-last synced — and `cp -r` runs BEFORE the gate, so it clobbers the good file even
-when the gate then fails. That happened twice on 2026-08-20: rows went 32 → 28,
-the gate correctly refused, and the recovery was `git checkout docs/GENESIS.md`.
-**A failed gate does not leave a clean working tree.**
+⚠️ **`GENESIS.md` IS NEVER IN A TARBALL — EXCEPT TO CORRECT THE LEDGER ITSELF.**
+It is append-only on the box, so a shipped copy is always stale by however many
+revisions landed since the sandbox last synced — and `cp -r` runs BEFORE the
+gate, so it clobbers the good file even when the gate then fails. That happened
+twice on 2026-08-20: rows went 32 → 28, the gate correctly refused, and the
+recovery was `git checkout docs/GENESIS.md`. **A failed gate does not leave a
+clean working tree.**
+
+🔴 **AMENDED 2026-09-08 (r320), OPERATOR'S RULING:** *"Genesis can absolutely be
+shipped in a tarball if we need to correct it, otherwise it shouldn't be."*
+Every routine revision still appends and ships nothing; a correction TO THE
+LEDGER may ride the archive.
+
+**WHY THE ORIGINAL OBJECTION HAS EXPIRED, AND IT IS `BASE`.** The staleness
+this rule was written against is exactly what `BASE <sha>` (dtp r316, §15) now
+refuses: the lander compares the declared commit to HEAD after the pull and
+before extracting anything, so a ledger cut from a stale clone cannot reach the
+tree. A copy cut from CURRENT HEAD carries every row that exists, and the
+revision's own row is appended AFTER extraction — so a shipped ledger still
+gets its line. Verified on r318, which shipped a corrected `GENESIS.md`: 308
+rows in, 309 out, two rows edited, one appended, none lost.
+
+⚠️ **THE PRECEDENT WAS THE OTHER WAY AND IT IS WORTH KNOWING WHY.** r194 — the
+nesting repair — says in its own row that it was fixed IN PLACE *"rather than
+shipped as a file, because GENESIS is append-only on the box and a shipped copy
+would clobber every row another thread appended."* That was correct in a world
+without `BASE`. Every GENESIS commit from r28 to r317 is a pure append; the
+only in-place edits are r194, r32 and r27–r31, all hand repairs.
+
+⚠️ **AND THE HAND-EDIT ROUTE IS NOW THE WORSE ONE.** A GENESIS-only commit
+trips the pre-commit hook — *"nothing differs from HEAD except generated or
+append-only files"* — so it needs `--no-verify`, which means the correction
+lands with no gate run at all. Shipping it puts the same edit through the
+content gate, the CHECK lines and `check_land_discipline`.
 
 ⚠️ **ONE RECORD, NOT TWO.** A `docs/SHIPPING_LOG.md` was drafted in the same
 session as GENESIS, abandoned at r26, and rode into the repo inside r26's
@@ -1202,6 +1230,19 @@ directions.
 ---
 
 ## CHANGELOG
+
+**v4.9 — 2026-09-08 — r320 — §35: GENESIS MAY SHIP TO CORRECT ITSELF.**
+
+Operator's ruling, 2026-09-08: *"Genesis can absolutely be shipped in a tarball
+if we need to correct it, otherwise it shouldn't be."* The assistant had quoted
+§35's "NEVER" as absolute and proposed a hand edit with `--no-verify` instead —
+a correction landing with no gate run.
+
+The rule's own reasoning was staleness, and `BASE` (dtp r316) refuses a stale
+clone before anything is extracted, which is precisely that hazard. Proven on
+r318: a corrected ledger shipped, 308 rows in and 309 out, one of them the
+revision's own appended row. The r194 precedent and why it pointed the other
+way are recorded in place rather than deleted.
 
 **v4.8 — 2026-09-07 — dtp r321 — §15 PRE-FLIGHT PARAGRAPH RESTORED.**
 
