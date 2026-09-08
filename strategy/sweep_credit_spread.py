@@ -1,5 +1,14 @@
 """
-strategy/sweep_credit_spread.py  v5.3
+strategy/sweep_credit_spread.py  v5.4
+v5.4  2026-09-08  r321 — 🔴 THE ENTRY WINDOW NO LONGER RELAXES AT EITHER END.
+      Operator: *"The sweep window cannot be relaxed. It needs to remain strict
+      at all times at 11:31."* The END was pinned already; the START fell to
+      `relaxed.window`'s `relaxed_earliest` default of 09:45, so under relaxed
+      this strategy opened 106 minutes before `CREDIT_ENTRY_START_ET` — the
+      SAME unchosen default r196 hardened out of the butterfly, never swept
+      from here. `check_entry_windows` W5 was green throughout because it reads
+      the module constant and never the value `prepare()` computes; W9 now
+      asserts the RELAXED-APPLIED window.
 v5.3  2026-09-04  r241 — 🔴 THE AGE GATE IS REMOVED, NOT RAISED.
       Operator, 2026-09-04: *"I don't give a rat's ass how old the level is,
       it's still a level. Why are we still measuring the age of them?"* Because
@@ -888,7 +897,23 @@ class SweepCreditSpreadStrategy:
         prep = SweepPreparation(t)
 
         # ── the slot: outside it the plan is DORMANT, one row, no narration ─
-        _early, _late = relaxed.window(EARLIEST_ET, LATEST_ET, relaxed_latest=LATEST_ET)
+        # 🔴 r321 — THE WINDOW DOES NOT RELAX, AT EITHER END. Operator,
+        # 2026-09-08: *"The sweep window cannot be relaxed. It needs to remain
+        # strict at all times at 11:31."* The END was already pinned; the START
+        # was left to `relaxed.window`'s `relaxed_earliest` DEFAULT of "09:45"
+        # — a value nobody chose for this strategy, which opened the sweep 106
+        # minutes ahead of `CREDIT_ENTRY_START_ET` and against r242's whole
+        # argument that credit should not even POLL before 11:31.
+        # ⚠️ THIRD INSTANCE OF THE SAME DEFAULT. r196 hardened the butterfly's
+        # noon floor after exactly this: *"That 09:45 is `relaxed.window()`'s
+        # relaxed_earliest DEFAULT, exactly"* — four flies opened at 09:45 on
+        # 08-31 and the fires were the relaxed floor, not a pin forming early.
+        # The butterfly was fixed and the sweep was never swept.
+        # ⚠️ AND check_entry_windows W5 PASSED THROUGHOUT, because it compares
+        # the MODULE CONSTANT to config and never the value `prepare()` computes.
+        _early, _late = relaxed.window(EARLIEST_ET, LATEST_ET,
+                                       relaxed_earliest=EARLIEST_ET,
+                                       relaxed_latest=LATEST_ET)
         in_window = (not now_et) or (_early <= now_et <= _late)
         if not in_window:
             # ⚠️ TIME-INVARIANT reason (check_plan_signal PS7): the dormant row

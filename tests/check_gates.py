@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
 """
-tests/check_gates.py  v4.2
+tests/check_gates.py  v4.3
+v4.3  2026-09-08  r321 — FULLY PINNED IS NOT OPAQUE. v4.2 taught this file to
+      recognise a constant passed as its OWN relaxed value as pinned and drop
+      it from the categorizable names. Pin BOTH ends — the hardest form a
+      window can take, and exactly what the operator ruled for the sweep on
+      2026-09-08 — and the name list empties, so the call fell through to the
+      "nothing to categorize" branch and was REFUSED. The checker rejected the
+      safest possible call for looking like the least safe one, which would
+      have pushed the next author out of the relax API entirely; a gate
+      hardened by leaving the API is a gate this file stops watching.
+      A call with NO Names at all is still opaque and still refused.
 v4.2  2026-08-31  r196 — A CONSTANT PASSED AS ITS OWN RELAXED VALUE IS
       PINNED. The butterfly's noon floor is now FOUNDATIONAL and pinned
       through `relaxed_earliest=EARLIEST_ET`; without this the checker
@@ -153,13 +163,31 @@ def relaxed_calls(tree):
                    for k in node.keywords
                    if isinstance(k.value, ast.Name)
                    and str(k.arg or "").startswith("relaxed_")}
+        _was_pinned = False
         for _pos, _nm in zip(("earliest", "latest"),
                              [a.id if isinstance(a, ast.Name) else None
                               for a in node.args[:2]]):
             if _nm and _pinned.get(_pos) == _nm:
                 names = [x for x in names if x != _nm]
+                _was_pinned = True
         if names:
             out.extend((n, node.lineno) for n in names)
+        elif _was_pinned:
+            # 🔴 r321 — FULLY PINNED IS NOT OPAQUE, AND THIS FILE ALREADY SAID SO
+            # ONE BRANCH UP. The block above recognises a constant passed as its
+            # own relaxed value as PINNED and drops it from `names`. Pin BOTH
+            # ends — which is the HARDEST form, `relaxed.window(A, B,
+            # relaxed_earliest=A, relaxed_latest=B)`, a window that cannot move
+            # in either direction — and `names` empties, so the call fell to the
+            # opaque branch and was REFUSED. The checker was rejecting the
+            # safest possible call for looking like the least safe one.
+            # ⚠️ FOUND BY THE SWEEP'S WINDOW BEING PINNED (SWP.9): the operator
+            # ruled it strict at both ends, the code did exactly that, and the
+            # gate went red. A rule that refuses full hardening pushes the next
+            # author OUT of the relax API — and a gate hardened by leaving the
+            # API is a gate this file stops watching, which is the very cost the
+            # pinned-idiom comment above exists to avoid.
+            pass
         else:
             out.append((None, node.lineno))
     return out

@@ -1,5 +1,17 @@
 """
-strategy/criteria.py  v1.4
+strategy/criteria.py  v1.5
+v1.5  2026-09-08  r321 — `sweep_max_age_bars` REMOVED, the residue r241 meant
+      to take. r241 deleted the age gate from the strategy and shipped a
+      checker for it, but that checker reads ONE module and this file was never
+      in its scope — so the pair sat here claiming a strict/relaxed split for a
+      gate that no longer exists, in the one file whose job is to answer "what
+      does relaxed change?" on one screen.
+      ⚠️ IT NEVER AFFECTED A TRADE, AND THAT IS LUCK RATHER THAN DESIGN:
+      `criteria.get()` has NO production callers at all. The two remaining
+      entries are read by nobody either — the sweep's live pierce-ceiling
+      relaxation reaches the code through `relaxed.widen(..., name=...)`
+      directly, not through this table. Recorded as DOC.22 rather than
+      quietly tidied.
 v1.4  2026-09-03  r234 — THE STOP BASIS. `R_FLOOR_STOP`, plus
       `stop_distance()` and `r_on_stop()` — ONE definition of the stop, read
       from the engine's own `LONE_STOP_PCT_OF_RISK`. R was judged against max
@@ -269,7 +281,6 @@ def r_verdict(r: Optional[float]) -> Tuple[str, str]:
 # been the lie that let a future reader loosen it for the ordinary reason.
 GATES = {
     "R_FLOOR":                "FOUNDATIONAL",
-    "sweep_max_age_bars":     "SELECTION",
     "sweep_pierce_ceiling":   "SELECTION",
     "runaway_cutoff_et":      "SELECTION",
     "butterfly_reach_max":    "SELECTION",
@@ -285,7 +296,11 @@ GATES = {
 #
 #   name                       STRICT          RELAXED
 CRITERIA = {
-    "sweep_max_age_bars":     (8,              24),      # SELECTION
+    # 🔴 r321 — `sweep_max_age_bars` REMOVED. r241 deleted the age gate from
+    # `sweep_credit_spread` — operator, 2026-09-04: *"I do not give a rats ass
+    # how old the level is, its still a level"* — and never touched THIS file,
+    # so a strict/relaxed pair went on advertising a split for a gate that does
+    # not exist. Liveness (`invalidated`) is the test; the clock is not.
     "sweep_pierce_ceiling":   (0.25,           0.75),    # SELECTION
     # r176 — operator 2026-08-29: "Debit entries are finished at 1130,
     # period. Do not extend it for relaxed. We are burning theta."

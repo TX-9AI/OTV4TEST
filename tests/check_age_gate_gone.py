@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """
-tests/check_age_gate_gone.py  v1.0
+tests/check_age_gate_gone.py  v1.1
+v1.1  2026-09-08  r321 — A6/A6b: THE REMOVAL IS ASSERTED TREE-WIDE, NOT IN ONE
+      MODULE. v1.0 read `sweep_credit_spread.__file__` and nothing else, so
+      `criteria.CRITERIA` kept a strict/relaxed pair for the gate r241 had just
+      deleted and this file stayed GREEN beside it for four days. A
+      removal-checker scoped to the file the removal happened in cannot see the
+      copy in the file that DOCUMENTS the removal.
+      ⚠️ ASSERTED ON THE DICT, NOT ON SOURCE TEXT — criteria.py's changelog
+      necessarily NAMES the key while explaining its removal (§20).
 v1.0  2026-09-04  r241 — THE AGE GATE IS REMOVED, NOT RAISED.
 
 🔴 Operator, 2026-09-04: *"I don't give a rat's ass how old the level is, it's
@@ -47,6 +55,20 @@ def main():
     check("A1b and the module does not expose it",
           not hasattr(scs, "MAX_AGE_BARS"))
 
+    # ══ 🔴 A6 — AND IT IS GONE FROM THE CRITERIA TABLE TOO ════════════════
+    # r241 removed the gate from the strategy and shipped THIS FILE to pin it —
+    # scoped to `sweep_credit_spread` alone, so `criteria.CRITERIA` kept a
+    # strict/relaxed pair for a gate that no longer exists and this checker was
+    # green for four days beside it. A removal-checker scoped to the file the
+    # removal happened in cannot see the copy in the file that DOCUMENTS it.
+    # ⚠️ ASSERTED ON THE DICT, NOT ON SOURCE TEXT — criteria.py's changelog
+    # necessarily NAMES the key while explaining its removal (§20).
+    from strategy import criteria as _crit
+    check("A6 'sweep_max_age_bars' is not in criteria.CRITERIA",
+          "sweep_max_age_bars" not in _crit.CRITERIA, str(sorted(_crit.CRITERIA)))
+    check("A6b nor in its GATES declaration",
+          "sweep_max_age_bars" not in _crit.GATES, str(sorted(_crit.GATES)))
+
     # ══ A2 — `age` IS NOT A GATE ══════════════════════════════════════════
     check("A2 'age' is not a declared condition", "age" not in S.CONDITIONS,
           str(sorted(S.CONDITIONS)))
@@ -90,7 +112,7 @@ def main():
     if FAILED:
         print(f"RED — {len(FAILED)} failed: {', '.join(FAILED)}")
         return 1
-    print("GREEN — 9 checks")
+    print("GREEN — 11 checks")
     return 0
 
 

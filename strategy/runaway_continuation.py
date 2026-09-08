@@ -1,5 +1,12 @@
 """
-strategy/runaway_continuation.py  v4.7
+strategy/runaway_continuation.py  v4.8
+v4.8  2026-09-08  r321 — DOCTRINE HEADER CORRECTED, NO BEHAVIOUR CHANGE. The
+      GATE CATEGORIES block still read *"SELECTION — relaxed. cutoff 11:30 ->
+      14:00"*, which r176 removed on 2026-08-29. Code and `criteria.py` were
+      right; the header was stale, and §32 makes that header the thing an
+      editor reads before touching the file — so it was advertising exactly the
+      afternoon extension the operator had forbidden. Also states plainly what
+      IS relaxed here: the R hurdle, muted, and nothing else.
 v4.7  2026-08-29  r176: the 11:30 debit cutoff no longer relaxes to 14:00
       (operator: "Debit entries are finished at 1130, period … We are
       burning theta"). Also removes the afternoon slot starvation the
@@ -157,9 +164,18 @@ GATE CATEGORIES — required by WA §36. Only SELECTION is ever relaxed.
     guess - and a guess is what four independent searches found no basis for.
   · direction comes from the ORB state, never from a prediction.
 
-**SELECTION — relaxed.**
-  · cutoff 11:30 -> 14:00. Later entries carry more theta risk on a 0DTE
-    contract but the setup is still the setup.
+**SELECTION — and NOTHING here relaxes.**
+  · the 11:30 cutoff is the only SELECTION gate this strategy has, and r176
+    removed its relaxation. Operator, 2026-08-29: *"Debit entries are finished
+    at 1130, period. Do not extend it for relaxed. We are burning theta."*
+    🔴 THIS BLOCK SAID `cutoff 11:30 -> 14:00` UNTIL r321 — r176 changed the
+    code and the criteria table and left the doctrine header describing the
+    behaviour it had just removed, so the one document §32 requires an editor
+    to read first was telling them the debit window extends to 14:00.
+  · **THE ONLY THING RELAXED CHANGES ON THIS TRADE IS THE R HURDLE**, which is
+    MUTED: `r_verdict` records the value and does not gate. Everything else —
+    trigger, direction, ATR floor, the ATR→delta map, and both r174 teenie
+    gates — is identical in both modes.
 
 **FEASIBILITY — never relaxed.**
   · the ATR floor. Below **0.05% ATR the required move was reached on 0% of

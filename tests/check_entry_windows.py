@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""check_entry_windows.py — v1.2
+"""check_entry_windows.py — v1.3
+v1.3  2026-09-08  r321: W9 — THE WINDOW A STRATEGY COMPUTES, NOT THE CONSTANT
+      IT DECLARES. W5 asserts `sweep.EARLIEST_ET == CREDIT_ENTRY_START_ET` and
+      was green while the sweep OPENED AT 09:45 under relaxed, because
+      `prepare()` passes its constants through `relaxed.window()` and the
+      `relaxed_earliest` default is "09:45" — a value nobody chose for this
+      strategy. W9 drives the same call the strategy makes, in BOTH modes, and
+      asserts the applied window is identical. Born red at 82d369e.
 v1.2  2026-09-08  r317: W8 — THE END SIDE, WHICH THIS FILE NEVER ASSERTED.
       W1 has pinned ONE credit START across four paths since r146, written
       after the sweep kept 11:11 on a `getattr` default whose key did not
@@ -146,6 +153,64 @@ def main():
               f"sweep_cfg={C.SWEEP_CS_LATEST_ET} sweep_strategy={_sc.LATEST_ET}")
         check("W8b the credit window is bounded the right way round",
               tuple(start) < _end, f"{start} -> {_end}")
+
+    # ── 🔴 W9 — THE APPLIED WINDOW, IN BOTH MODES ────────────────────────
+    # Operator, 2026-09-08: *"The sweep window cannot be relaxed. It needs to
+    # remain strict at all times at 11:31."* W5 above compares the module
+    # CONSTANT to config and cannot see what `prepare()` actually computes;
+    # this drives the identical `relaxed.window()` call under both flags.
+    # 🔴 A FIRST CUT OF W9 CALLED `relaxed.window()` ITSELF, PASSING THE
+    # ARGUMENTS THE FIX ADDS — and it was GREEN at the broken HEAD, because it
+    # tested the assumption instead of the code (§0.4: a fixture built from
+    # your own belief cannot fail). This RUNS `prepare()` and RECORDS what the
+    # strategy actually passes, so the arguments come from the call site.
+    import os as _os
+    from strategy import relaxed as _rx
+
+    class _StubMap:                      # the window gate is the first thing
+        pools = []                       # prepare() reaches; nothing below it
+        def __getattr__(self, _n): return []
+
+    # ⚠️ RELAXED IS PAPER-ONLY AND `is_live()` FAILS CLOSED, so without this
+    # the "relaxed" arm runs STRICT and the check passes on a broken tree —
+    # verified: the first cut was GREEN at 82d369e for exactly that reason.
+    # A checker whose two arms are secretly the same arm cannot fail.
+    _prev = _os.environ.get("OT_RELAXED_ENTRY")
+    _prev_paper = _os.environ.get("OT_PAPER_TRADING")
+    _os.environ["OT_PAPER_TRADING"] = "1"
+    assert _rx.is_live() is False, "relaxed arm would silently run strict"
+    _orig_window, _applied = _rx.window, {}
+    try:
+        for _m in ("0", "1"):
+            _os.environ["OT_RELAXED_ENTRY"] = _m
+            _seen = {}
+            def _rec(_e, _l, __o=_orig_window, __s=_seen, **_kw):
+                __s["out"] = __o(_e, _l, **_kw)
+                return __s["out"]
+            _rx.window = _rec
+            _sc.SweepCreditSpreadStrategy().prepare(
+                liq_map=_StubMap(), price_now=100.0, now_et="10:00",
+                atr_pct=0.5, chain=None)
+            _applied[_m] = _seen.get("out")
+    finally:
+        _rx.window = _orig_window
+        if _prev is None:
+            _os.environ.pop("OT_RELAXED_ENTRY", None)
+        else:
+            _os.environ["OT_RELAXED_ENTRY"] = _prev
+        if _prev_paper is None:
+            _os.environ.pop("OT_PAPER_TRADING", None)
+        else:
+            _os.environ["OT_PAPER_TRADING"] = _prev_paper
+
+    check("W9pre the relaxed arm was genuinely RELAXED (not silently strict)",
+          _applied["1"] is not None, "prepare() never reached the window gate")
+    check("W9 the sweep's APPLIED window is identical in both modes",
+          _applied["0"] is not None and _applied["0"] == _applied["1"],
+          f"strict={_applied['0']} relaxed={_applied['1']}")
+    check("W9b and it starts at the universal credit start under RELAXED",
+          _applied["1"] is not None and _hm(_applied["1"][0]) == tuple(start),
+          f"applied start {_applied['1'] and _applied['1'][0]} vs credit start {start}")
 
     # ── W7 — the PLAN side declares and applies the same window ──────────
     # ⚠️ NO PLAN BUILDER CHECKED THE CLOCK AT ALL until r142. A fork plan read
