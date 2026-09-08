@@ -1,5 +1,18 @@
 """
-execution/entry_ladder.py  v4.1
+execution/entry_ladder.py  v4.2
+v4.2  2026-09-08  r315 — THE WALK BELONGS TO THE INTENT, NOT TO A STRIKE PAIR.
+      `LadderState.next_price` takes an optional `structure` tag. When the tag
+      CHANGES mid-walk — the strategy re-selected its strikes because spot
+      moved — the RUNG carries and the PRICE RATCHET is dropped. War-gamed
+      2026-09-08 on synthetic tape: TCS picks the nearest OTM strike from
+      CURRENT price every tick, so on a tape crossing one strike per tick the
+      old strike-pair key started a fresh walk at rung 1 on every pair and
+      posted rung 1 or 2 five times in eight ticks without ever reaching mark —
+      the "hopeless attempt" the 25% start exists to avoid, repeated per
+      strike. Rung carries because the operator's rule is one increment per
+      tick TOWARD MARK until it fills; the ratchet is dropped because a credit
+      refused on one pair says nothing about the fair credit of another. A
+      call with no `structure` behaves exactly as v4.1.
 v4.1  2026-08-24  r99 — next_price's rule-3 clamp returned the RAW mark; it now
       returns mark snapped to the grid in our favour, like the terminal rung.
 
@@ -243,14 +256,33 @@ class LadderState:
         self.symbol = symbol
         self.rung = 0
         self.best_refused: Optional[float] = None
+        # v4.2 — which STRUCTURE the ratchet was earned on. None until a caller
+        # tags one; a caller that never tags keeps v4.1 behaviour exactly.
+        self.structure: Optional[str] = None
 
-    def next_price(self, bid: float, ask: float) -> Optional[Tuple[float, str]]:
+    def next_price(self, bid: float, ask: float,
+                   structure: Optional[str] = None) -> Optional[Tuple[float, str]]:
         """(price, why) for the next attempt, or None when the quote is unusable.
 
         Call once per attempt. Advancing the rung is `refuse()`'s job, so a
         caller that re-reads the price without refusing gets the same rung -
         repricing to the current mark, which is rule 2.
+
+        `structure` (v4.2) identifies WHAT is being priced — for a vertical,
+        its short/long symbols. When it differs from the structure the ratchet
+        was earned on, the rung index is KEPT (the walk keeps stepping toward
+        mark; it never restarts at the 25% opener) and `best_refused` is
+        DROPPED (a refusal on the old strikes is not evidence about the new
+        ones). Rule 3 still clamps the carried rung to mark on the new table.
         """
+        if structure is not None and self.structure is not None \
+                and structure != self.structure:
+            logger.info("[ladder] %s structure changed %s -> %s: rung %d carries, "
+                        "ratchet %s dropped", self.symbol, self.structure,
+                        structure, self.rung, self.best_refused)
+            self.best_refused = None
+        if structure is not None:
+            self.structure = structure
         table = rungs(bid, ask, self.side, self.symbol)
         if not table:
             return None

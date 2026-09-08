@@ -1,5 +1,10 @@
 """
-execution/ladder_registry.py  v1.1
+execution/ladder_registry.py  v1.2
+v1.2  2026-09-08  r315 — `price_for` takes an optional `structure` tag and
+      passes it to `LadderState.next_price` (entry_ladder v4.2). Callers that
+      key the walk on the INTENT (strategy + side) rather than on the strike
+      pair use it so a re-selected strike inherits the rung and sheds the
+      ratchet. Callers that pass nothing are unchanged.
 v1.1  2026-08-24  r99 — price_for accepts a zero bid (was rejecting the
       header's own example) and the stop escalation returns mark snapped to
       the venue grid in our favour, never a raw half-cent. Still uncalled.
@@ -128,7 +133,8 @@ def reset_all() -> None:
 
 
 def price_for(key: str, side: str, bid: float, ask: float,
-              symbol: str = "", stop_escalation: bool = False):
+              symbol: str = "", stop_escalation: bool = False,
+              structure: Optional[str] = None):
     """(price, why) for THIS attempt, or None when the quote is unusable.
 
     `stop_escalation=True` is the 15% floor and the 15:45 credit close: no walk,
@@ -162,7 +168,7 @@ def price_for(key: str, side: str, bid: float, ask: float,
         px = _snap_mark_in_our_favour(mark, _increment(symbol, mark, b, a), sell)
         return round(px, 4), "mark (stop escalation — no walk)"
 
-    return get(key, side, symbol).next_price(b, a)
+    return get(key, side, symbol).next_price(b, a, structure=structure)
 
 
 def refuse(key: str, price: float) -> None:

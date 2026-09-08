@@ -1,5 +1,13 @@
 """
-database/trade_logger.py  v4.10
+database/trade_logger.py  v4.11
+v4.11  2026-09-08  r315 — `log_accretion`: a credit vertical that PARTIAL-filled
+      and later fills more of the same structure is ONE position, so the row's
+      size and basis move together — contracts, blended entry_premium, and the
+      max_loss / total_cost / stop_premium that are arithmetic on those two.
+      Before this a partial's unfilled remainder was cancelled and never
+      re-offered (main.py 2332 said it "must resume" and nothing did). Written
+      by `execution/credit_remainder.py` only; the exit engine reads the
+      blended row exactly as it reads any other.
 v4.10  2026-09-03  r223 — 🔴 THE ONE-RUNAWAY-PER-BREAK GUARD HAS NEVER FIRED.
       `direction` is a DECLARED COLUMN THAT NOTHING WRITES (line 261; the only
       other reference in this file was the losing-exit hook READING it), so
@@ -817,6 +825,23 @@ class TradeLogger:
             # here means the level re-arms and nobody knows why.
             logger.warning("[sweep_cs] could not mark the level spent for %s: "
                            "%s", trade_id[:8], exc)
+
+    def log_accretion(self, trade_id: str, contracts: int,
+                      entry_premium: float, max_loss: float,
+                      total_cost: float, stop_premium: float) -> None:
+        """v4.11 — a later fill on the SAME credit structure joins the row.
+        The caller (credit_remainder.accrete) does the blending and passes the
+        five fields that follow from it; this method only persists them, so
+        the arithmetic lives in one place and the DB never disagrees with the
+        in-memory record. `entry_premium` here is the BLENDED credit."""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE trades SET contracts=?, entry_premium=?, max_loss=?, "
+                "total_cost=?, stop_premium=? WHERE trade_id=?",
+                (int(contracts), float(entry_premium), float(max_loss),
+                 float(total_cost), float(stop_premium), trade_id))
+        logger.info("Trade accreted: %s now %d contracts @ blended %.4f",
+                    trade_id[:8], int(contracts), float(entry_premium))
 
     def update_trail_stop(self, trade_id: str, new_trail: float):
         """v3.1 — persist the ratcheted trail SEPARATELY from stop_premium.

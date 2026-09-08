@@ -1,5 +1,33 @@
 """
-main.py  v4.38
+main.py  v4.39
+v4.39 2026-09-08  r315 — THE CREDIT LADDER WALKS THE WAY THE OPERATOR SPECIFIED,
+      AND A PARTIAL FINISHES FILLING. War-gamed 2026-09-08 on synthetic tape,
+      real entry_ladder/ladder_registry, driver reproduced from this file at
+      HEAD 0498534. Three defects, one path (`_execute_condor_leg`):
+      (1) `confirm_order_fill` was called with NO `deadline_s`, so every credit
+      rung held the tick loop for the full 20s entry budget plus up to 6s of
+      cancel grace — 4-5x the slice entry_engine gives its own rungs, ~2.5 min
+      of frozen ticks for a six-rung nickel walk and ~10 min on the 24-rung
+      penny table `rungs()` returns for a 0.00/1.00 book. Now the same
+      `_rung_deadline()` slice (max(4, 20/4) = 5s).
+      (2) A PARTIAL booked the filled size, cancelled the rest, refused the
+      rung, and RETURNED; next tick `has_open_position()` sent the box to the
+      manage branch where every credit strategy is `_plan_skip`'d, so the
+      remainder had no order and no caller — the comment at the old 2332
+      ("must resume one rung further in") described an intent nothing could
+      honour. Now `execution/credit_remainder.py` registers the remainder and
+      `_supervise_credit_remainders` posts one rung per tick for it from
+      BEFORE the split (the r195 `_supervise_offers` shape), accreting fills
+      into the existing record — one position, one row, blended basis.
+      (3) The walk was keyed on the STRIKE PAIR while TCS re-selects the
+      nearest OTM strike from CURRENT price every tick, so on a tape crossing
+      a strike per tick every pair started a fresh walk at the 25% opener and
+      never reached mark. Now keyed on the INTENT (`cv:<sym>:<strategy>:<side>`)
+      with the structure passed as a tag: the rung carries across a
+      re-selection, the price ratchet does not (entry_ladder v4.2).
+      🔑 `_post_credit_vertical` is the ONE placer both the entry and the
+      remainder use, so they cannot price differently. Injectable for tests.
+      ⚠️ Paper untouched: mark, 100%, no partials.
 v4.38 2026-09-06  r288 / DEV.11 — THE DISK GUARD LIVES HERE NOW. It was at the
       top of `candle_feed.run()`'s `while True`, which is the RECONNECT loop,
       not a tick loop: an `async with DXLinkStreamer` below it opens the stream
@@ -2154,6 +2182,173 @@ def _capture_entry_snapshot(ctx: dict, record: dict, direction: str) -> bool:
     return False
 
 
+def _credit_window_end(signal) -> tuple:
+    """When this credit structure's ENTRY window closes — the time gate a
+    remainder honours (WORKING_AGREEMENT §37: hunting stops only at the
+    strategy's own time gate). TCS reads its config constant; the sweep reads
+    its module's LATEST_ET; anything else falls to 14:00 and says so."""
+    from config import TCS_ENTRY_END_ET
+    name = getattr(signal, "strategy_name", "") or ""
+    if getattr(signal, "is_trend_credit", False) or name == "TrendCreditSpread":
+        return tuple(TCS_ENTRY_END_ET)
+    if name == "SweepCreditSpread":
+        try:
+            from strategy import sweep_credit_spread as _scs
+            hh, mm = str(_scs.LATEST_ET).split(":")
+            return (int(hh), int(mm))
+        except Exception as exc:                                # noqa: BLE001
+            logger.warning("[remainder] sweep LATEST_ET unreadable (%s) — 14:00", exc)
+    return (14, 0)
+
+
+def _post_credit_vertical(short_contract, long_contract, contracts: int,
+                          lkey: str, structure: str, what: str = "condor-leg entry",
+                          placer=None, confirmer=None, pricer=None,
+                          mark_fallback: float = 0.0):
+    """Post ONE rung of a SELL vertical for `contracts` and confirm it.
+
+    Returns (fill, limit, why). The ladder is refused for the rung on any
+    non-fill or partial (the operator's definition of a refusal) and CLEARED
+    only when the whole requested quantity filled. This is the single placer
+    for a credit vertical — the entry AND the remainder supervisor use it —
+    so the two can never price a rung differently.
+
+    r220's structure quote, kept verbatim: we SELL the spread, so the best
+    credit is `short.ask - long.bid` and the worst is `short.bid - long.ask`;
+    their midpoint is `short.mid - long.mid`, EXACTLY the credit paper books.
+    Live walks DOWN from the best credit and stops at mark.
+
+    `placer(legs, limit) -> response`, `confirmer(placed, basis, deadline_s)
+    -> EntryFill` and `pricer(lkey, side, bid, ask, sym, structure)` default
+    to the SDK and the registry; tests inject all three.
+    """
+    from config import INSTRUMENT
+    from execution.entry_engine import EntryEngine
+    from execution.order_confirm import EntryFill
+
+    _sb = float(getattr(short_contract, "bid", 0.0) or 0.0)
+    _sa = float(getattr(short_contract, "ask", 0.0) or 0.0)
+    _lb = float(getattr(long_contract, "bid", 0.0) or 0.0)
+    _la = float(getattr(long_contract, "ask", 0.0) or 0.0)
+    _st_bid, _st_ask = max(0.0, _sb - _la), max(0.0, _sa - _lb)
+    _mark = (_st_bid + _st_ask) / 2.0
+    # ⚠️ THE FALLBACK IS THE CALLER'S CREDIT, NEVER A BARE MARK. r220 fell back
+    # to `net_credit`; a first cut of this helper fell back to `_mark`, which is
+    # 0.00 on an empty quote, and the war game filled a 0.00-credit sell
+    # instantly. A remainder has no signal credit to fall back to, so with no
+    # usable quote and no positive fallback NOTHING IS POSTED.
+    _limit, _lwhy = float(mark_fallback or 0.0), "static (no usable structure quote)"
+    try:
+        if pricer is None:
+            from execution import ladder_registry as _lr
+            pricer = lambda k, sd, b, a, sym, st: _lr.price_for(   # noqa: E731
+                k, sd, b, a, sym, structure=st)
+        _got = pricer(lkey, "sell", _st_bid, _st_ask, INSTRUMENT, structure)
+        if _got:
+            _limit, _lwhy = float(_got[0]), str(_got[1])
+    except Exception as _lexc:                                  # noqa: BLE001
+        # ⚠️ FALLS BACK TO THE MARK CREDIT, NEVER TO A WORSE PRICE.
+        logger.warning("[ladder] credit-vertical pricing failed (%s) — "
+                       "posting at the mark credit", _lexc)
+    if _limit <= 0.0:
+        logger.warning("[ladder] %s credit vertical x%d: NO ORDER — no usable "
+                       "structure quote (%.2f/%.2f) and no positive fallback",
+                       INSTRUMENT, contracts, _st_bid, _st_ask)
+        return (EntryFill(filled=False, detail="no usable structure quote; nothing posted"),
+                0.0, "not posted")
+    logger.info("[ladder] %s credit vertical x%d: posting %.2f (%s) "
+                "[structure %.2f/%.2f, mark %.2f]",
+                INSTRUMENT, contracts, _limit, _lwhy, _st_bid, _st_ask, _mark)
+
+    # ⚠️ r315 — THE DEADLINE IS PER RUNG, NOT PER ENTRY. This call carried no
+    # deadline_s and took the 20s default: one rung per 20-26s against a 15s
+    # tick, the exact shape entry_engine's own comment warns "would never
+    # reach mark inside a fill window".
+    _deadline = EntryEngine._rung_deadline()
+
+    if placer is None or confirmer is None:
+        from data.tasty_client import get_session, get_account
+        from execution.order_confirm import confirm_order_fill
+        from tastytrade.order import (NewOrder, Leg, OrderAction, OrderType,
+                                      OrderTimeInForce, InstrumentType)
+        from decimal import Decimal
+        session = get_session()
+        account = get_account()
+        if placer is None:
+            def placer(legs, limit):
+                order = NewOrder(time_in_force=OrderTimeInForce.DAY,
+                                 order_type=OrderType.LIMIT,
+                                 price=Decimal(str(round(limit, 2))),  # + = credit
+                                 legs=[Leg(instrument_type=InstrumentType.EQUITY_OPTION,
+                                           symbol=sym, action=act, quantity=q)
+                                       for sym, act, q in legs])
+                return account.place_order(session, order, dry_run=False)
+        if confirmer is None:
+            def confirmer(placed, basis, deadline_s):
+                return confirm_order_fill(session, account, placed, basis,
+                                          what=what, deadline_s=deadline_s)
+        _legs = [(short_contract.symbol, OrderAction.SELL_TO_OPEN, contracts),
+                 (long_contract.symbol,  OrderAction.BUY_TO_OPEN,  contracts)]
+    else:
+        _legs = [(short_contract.symbol, "SELL_TO_OPEN", contracts),
+                 (long_contract.symbol,  "BUY_TO_OPEN",  contracts)]
+
+    response = placer(_legs, _limit)
+    if getattr(response, "errors", None):
+        logger.error(f"Condor leg order failed: {response.errors}")
+        return EntryFill(filled=False, detail=f"rejected: {response.errors}"), _limit, _lwhy
+    basis = [(short_contract.symbol, 1, +1),
+             (long_contract.symbol,  1, -1)]   # net = short − long (credit)
+    fill = confirmer(getattr(response, "order", response), basis, _deadline)
+
+    from execution import ladder_registry as _lr
+    _filled = int(getattr(fill, "quantity", 0) or 0) if getattr(fill, "filled", False) else 0
+    if _filled >= contracts:
+        # A COMPLETE FILL ENDS THE WALK — never leave a walk to rot.
+        try:
+            _lr.clear(lkey)
+        except Exception as _cexc:                              # noqa: BLE001
+            logger.debug("[ladder] clear failed: %s", _cexc)
+    else:
+        # ⚠️ A NON-FILL MUST ADVANCE THE WALK OR THE LADDER IS DECORATION —
+        # and a PARTIAL is a refusal for the remainder (operator's definition:
+        # "didn't completely fill at that price").
+        try:
+            _lr.refuse(lkey, _limit)
+        except Exception as _rexc:                              # noqa: BLE001
+            logger.debug("[ladder] refuse failed: %s", _rexc)
+    return fill, _limit, _lwhy
+
+
+def _supervise_credit_remainders(ctx: dict, state: BotState) -> None:
+    """Post the next rung for every credit vertical still short of its
+    requested size. r315. CALLED FROM BEFORE THE `has_open_position()` SPLIT,
+    beside `_supervise_offers`, for the same reason that one is: the position
+    the remainder belongs to is exactly what puts the box on the manage
+    branch, where no entry code runs. Never raises into the loop."""
+    try:
+        from execution import credit_remainder as _cr
+        if state.paper_trading or not _cr.active():
+            return
+        from config import CONTRACT_MULTIPLIER
+        _tl = get_trade_logger()
+        try:
+            _open = {t.get("trade_id") for t in _tl.get_open_trades()
+                     if t.get("status") == "open"}
+        except Exception as _oexc:                              # noqa: BLE001
+            logger.warning("[remainder] open-trade read failed (%s) — not abandoning on it", _oexc)
+            _open = None
+        _now = now_et()
+        _cr.supervise(chain=ctx.get("chain"), now_hm=(_now.hour, _now.minute),
+                      eod=is_hard_close_time(), paper=state.paper_trading,
+                      open_trade_ids=_open,
+                      place=lambda sc, lc, q, k, st: _post_credit_vertical(
+                          sc, lc, q, k, st, what="credit remainder"),
+                      trade_logger=_tl, multiplier=CONTRACT_MULTIPLIER)
+    except Exception as exc:                                    # noqa: BLE001
+        logger.warning("remainder supervision skipped this tick: %s", exc)
+
+
 def _execute_condor_leg(signal: "OptionsSignal", state: BotState,
                         ctx: dict = None):
     """
@@ -2216,6 +2411,9 @@ def _execute_condor_leg(signal: "OptionsSignal", state: BotState,
         logger.info(f"Condor leg not sized: {sizing.reject_reason}")
         return
     contracts = sizing.contracts
+    _partial_remaining = 0          # r315 — set by a live partial, read at registration
+    _lkey = None
+    _req_contracts = contracts
 
     if not state.paper_trading:
         # ── LIVE 2-leg vertical credit entry — FILL-CONFIRMED (v3.7, defect O) ─
@@ -2227,94 +2425,23 @@ def _execute_condor_leg(signal: "OptionsSignal", state: BotState,
         # SDK NOTE (verified v13.x): NewOrder.price is SIGNED — positive =
         # CREDIT received, which is what a short vertical collects. The old
         # price_effect kwarg is ignored by current SDKs and is gone.
+        # r315 — ONE PLACER, PER-RUNG DEADLINE, INTENT-KEYED WALK. The SDK
+        # order build, the r220 structure quote and the refuse/clear bookkeeping
+        # all live in `_post_credit_vertical` now, shared with the remainder
+        # supervisor. The key is the INTENT — strategy + side — not the strike
+        # pair, so a re-selected strike inherits the rung (entry_ladder v4.2).
+        # ⚠️ CAPTURED BEFORE `contracts` IS REASSIGNED to the filled size.
         try:
-            from data.tasty_client import get_session, get_account
-            from execution.order_confirm import confirm_order_fill
-            from tastytrade.order import (
-                NewOrder, Leg, OrderAction, OrderType, OrderTimeInForce,
-                InstrumentType,
-            )
-            from decimal import Decimal
-
-            session = get_session()
-            account = get_account()
-            legs = [
-                Leg(instrument_type=InstrumentType.EQUITY_OPTION,
-                    symbol=short_contract.symbol,
-                    action=OrderAction.SELL_TO_OPEN, quantity=contracts),
-                Leg(instrument_type=InstrumentType.EQUITY_OPTION,
-                    symbol=long_contract.symbol,
-                    action=OrderAction.BUY_TO_OPEN, quantity=contracts),
-            ]
-            # 🔴 r220 — THIS POSTED A STATIC LIMIT AND NEVER WALKED IT. Every
-            # other live entry path prices through `ladder_registry`:
-            # `_place_single_leg` and `_place_butterfly` both call
-            # `_walk_price`, and only ORB is exempt by design
-            # (`_place_standing_offer`: "ORB only: ONE limit at the mark,
-            # posted once, left to rest"). Credit verticals were not exempt —
-            # they were simply never wired, so a spread that did not fill at
-            # `net_credit` sat there instead of conceding.
-            # ⚠️ OPERATOR, 2026-09-02: "everything but ORB using ladder
-            # entries", and on direction: "the walk for credit spreads is from
-            # the top. Best price that will fill."
-            # 🔑 THE STRUCTURE'S QUOTE, BUILT PER LEG — never the combined mark
-            # plus a guess, which is limit_ladder v1.1's recorded lesson. We
-            # SELL the spread, so the best credit is `short.ask - long.bid` and
-            # the worst is `short.bid - long.ask`; their midpoint is
-            # `short.mid - long.mid`, which is EXACTLY the credit paper books.
-            # So live walks DOWN from the best credit and stops at mark, paper
-            # books mark, and the two share a floor — the ladder's own rule
-            # that it "never posts worse than mark" does the rest.
-            # ⚠️ CAPTURED BEFORE `contracts` IS REASSIGNED to the filled size —
-            # comparing the fill against a variable the fill already overwrote
-            # would make every partial look complete.
             _req_contracts = contracts
-            _sb = float(getattr(short_contract, "bid", 0.0) or 0.0)
-            _sa = float(getattr(short_contract, "ask", 0.0) or 0.0)
-            _lb = float(getattr(long_contract, "bid", 0.0) or 0.0)
-            _la = float(getattr(long_contract, "ask", 0.0) or 0.0)
-            _st_bid, _st_ask = max(0.0, _sb - _la), max(0.0, _sa - _lb)
-            _lkey = f"cv:{INSTRUMENT}:{short_contract.symbol}:{long_contract.symbol}"
-            _limit, _lwhy = net_credit, "static (no usable structure quote)"
-            try:
-                from execution import ladder_registry as _lr
-                _got = _lr.price_for(_lkey, "sell", _st_bid, _st_ask, INSTRUMENT)
-                if _got:
-                    _limit, _lwhy = float(_got[0]), str(_got[1])
-            except Exception as _lexc:                          # noqa: BLE001
-                # ⚠️ FALLS BACK TO THE MARK CREDIT, NEVER TO A WORSE PRICE —
-                # the same fail direction `_walk_price` uses.
-                logger.warning("[ladder] credit-vertical pricing failed (%s) — "
-                               "posting at the mark credit", _lexc)
-            logger.info("[ladder] %s credit vertical: posting %.2f (%s) "
-                        "[structure %.2f/%.2f, mark %.2f]",
-                        INSTRUMENT, _limit, _lwhy, _st_bid, _st_ask, net_credit)
-            order = NewOrder(
-                time_in_force = OrderTimeInForce.DAY,
-                order_type    = OrderType.LIMIT,
-                price         = Decimal(str(round(_limit, 2))),  # + = credit
-                legs          = legs,
-            )
-            response = account.place_order(session, order, dry_run=False)
-            if response.errors:
-                logger.error(f"Condor leg order failed: {response.errors}")
-                return
-            basis = [(short_contract.symbol, 1, +1),
-                     (long_contract.symbol,  1, -1)]   # net = short − long (credit)
-            fill = confirm_order_fill(session, account, response.order, basis,
-                                      what="condor-leg entry")
+            _strat_name = ("TrendCreditSpread"
+                           if getattr(signal, "is_trend_credit", False)
+                           else (getattr(signal, "strategy_name", "") or "CreditVertical"))
+            _lkey = f"cv:{INSTRUMENT}:{_strat_name}:{signal.option_side}"
+            _structure = f"{short_contract.symbol}|{long_contract.symbol}"
+            fill, _limit, _lwhy = _post_credit_vertical(
+                short_contract, long_contract, contracts, _lkey, _structure,
+                mark_fallback=net_credit)
             if not fill.filled or fill.quantity <= 0 or fill.net_price is None:
-                # ⚠️ r220 — A NON-FILL MUST ADVANCE THE WALK OR THE LADDER IS
-                # DECORATION: without this the next tick re-offers the same
-                # rung forever, which is the static limit this replaced wearing
-                # a ladder's name. `refuse` is also the right call on a PARTIAL
-                # — the operator's definition is "didn't completely fill at
-                # that price", and the filled part is booked separately.
-                try:
-                    from execution import ladder_registry as _lr
-                    _lr.refuse(_lkey, _limit)
-                except Exception as _rexc:                      # noqa: BLE001
-                    logger.debug("[ladder] refuse failed: %s", _rexc)
                 logger.warning(f"Condor leg entry NOT filled ({fill.detail}) — "
                                f"no position recorded")
                 if fill.working_order_id:
@@ -2323,23 +2450,15 @@ def _execute_condor_leg(signal: "OptionsSignal", state: BotState,
                         f"{fill.working_order_id} could not be cancelled and may "
                         f"still fill — reconcile will adopt it. ({fill.detail})")
                 return
-            if fill.quantity < contracts:
+            _partial_remaining = 0
+            if fill.quantity < _req_contracts:
+                _partial_remaining = _req_contracts - fill.quantity
                 logger.warning(f"Condor leg entry PARTIAL: {fill.quantity}/"
-                               f"{contracts} filled — booking the filled size")
+                               f"{_req_contracts} filled — booking the filled size; "
+                               f"the remaining {_partial_remaining} keep walking")
             contracts   = fill.quantity          # book what ACTUALLY filled
             fill_credit = fill.net_price         # broker net, not our limit
             order_id    = fill.order_id or ""
-            # ⚠️ AND A COMPLETE FILL ENDS THE WALK. `ladder_registry.clear`:
-            # "Done with this intent — filled, or abandoned. Never leave a walk
-            # to rot." A PARTIAL is deliberately NOT cleared here: the
-            # remainder is still an open intent and must resume one rung
-            # further in, per the operator's definition of a refusal.
-            if fill.quantity >= _req_contracts:
-                try:
-                    from execution import ladder_registry as _lr
-                    _lr.clear(_lkey)
-                except Exception as _cexc:                      # noqa: BLE001
-                    logger.debug("[ladder] clear failed: %s", _cexc)
         except Exception as e:
             logger.error(f"Condor leg order failed: {e}")
             return
@@ -2517,6 +2636,24 @@ def _execute_condor_leg(signal: "OptionsSignal", state: BotState,
         _capture_fire_snapshot(ctx, record)
         _capture_entry_contract(ctx, record)          # v5.5 (N.9)
     get_position_manager(state.paper_trading).add_condor_leg(record)
+    # r315 — a PARTIAL leaves an open intent. Register it against the SAME
+    # record object the position manager now holds, so accretion updates the
+    # record under management and not a copy. Live only; paper has no partials.
+    if not state.paper_trading and _partial_remaining > 0 and _lkey:
+        try:
+            from execution import credit_remainder as _cr
+            _cr.register(_cr.Remainder(
+                key=_lkey, trade_id=record["trade_id"], record=record,
+                short_symbol=short_contract.symbol, long_symbol=long_contract.symbol,
+                short_strike=float(short_contract.strike),
+                long_strike=float(long_contract.strike),
+                side=signal.option_side, strategy=record["strategy"],
+                requested=_req_contracts, remaining=_partial_remaining,
+                stop_pct=(0.0 if _is_tcs else _stop_pct),
+                window_end_et=_credit_window_end(signal)))
+        except Exception as _rexc:                              # noqa: BLE001
+            logger.error("[remainder] could not register the unfilled %d: %s",
+                         _partial_remaining, _rexc)
 
     # v4.3: notify_leg_filled removed — the strategy no longer tracks a pair.
     # Each vertical is standalone; the roll detects open pairs independently.
@@ -4608,6 +4745,7 @@ def main_loop(state: BotState):
 
             # ── Manage open position ──────────────────────────────────────
             _supervise_offers(ctx, state)   # r195 — BOTH branches
+            _supervise_credit_remainders(ctx, state)   # r315 — BOTH branches
             if pos_mgr.has_open_position():
                 # ── Broken-wing roll: FIRST REFUSAL ───────────────────────
                 # The roll must run BEFORE manage_open_position. The per-leg

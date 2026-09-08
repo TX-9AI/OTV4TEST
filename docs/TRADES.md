@@ -535,6 +535,24 @@ fill or abandon. **Lost on restart**, which costs at most one re-offer of an
 already-refused price. Recorded here rather than defended: it does not ride a
 column, and WORKING_AGREEMENT 22 says state that must survive a restart does.
 
+**r315 (2026-09-08) — THREE CORRECTIONS ON THE CREDIT PATH, war-gamed first.**
+· **The credit rung gets the per-rung slice**, `max(4, 20/4)` = 5s, the same
+  `entry_engine._rung_deadline()` the debit walk has had since r104. It was
+  taking the whole 20s budget plus cancel grace per rung.
+· **A PARTIAL keeps walking.** The filled part is booked at once; the remainder
+  is registered in `execution/credit_remainder.py` and offered ONE rung per
+  tick from before the position split, on the SAME strikes and the SAME walk,
+  until it fills, the position closes, or the strategy's entry window closes.
+  Fills accrete into the one row — blended credit, recomputed max loss. In
+  memory, lost on restart, like the walk itself.
+· **The walk belongs to the INTENT, not the strike pair.** Key
+  `cv:<sym>:<strategy>:<side>`; the strikes ride as a tag. When the strategy
+  re-selects strikes mid-walk the RUNG carries and the PRICE ratchet drops —
+  a refused credit on one pair is not evidence about another. Before this a
+  moving tape restarted the walk at the 25% opener on every strike.
+· **No positive price, no order.** An unusable structure quote posts nothing;
+  it never falls to a bare mark.
+
 ---
 
 ## Not specced, deliberately
