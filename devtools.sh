@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# devtools.sh  v4.2
+# devtools.sh  v4.3
+# v4.3  2026-09-08  OTV4TEST r1 — item 40, LAND a tarball. This fork is
+#       segregated from control (no EC2 Name tag, no fleet fan-out reaches it),
+#       so it lands its own archives with its own lander, appending
+#       docs/GENESIS-TEST.md rather than the inherited docs/GENESIS.md.
+#       ⚠️ THE ARCHIVE'S land.sh RUNS, NOT THE REPO'S — so a delivery that
+#       fixes the lander is landed by the lander it ships, and a fresh box
+#       bootstraps by the same path it uses forever after.
 # v4.2  2026-09-08  r322 — 🔴 THE COMMENT MARKERS. r65 wrote its changelog
 #       entry into this header WITHOUT them, so lines 4-6 were SHELL, not
 #       prose: `v4.1: command not found`, then a syntax error on the
@@ -138,6 +145,9 @@ menu() {
    25) stop $BOT
    26) start $BOT
 
+  DEPLOY (this box — OTV4TEST only)
+   40) LAND a tarball from ~   the fork lander; appends docs/GENESIS-TEST.md
+
   GIT (this box)
    30) git pull --ff-only
    31) pull + restart $BOT  (single-box recovery)
@@ -152,10 +162,42 @@ MENU
     20) svc_status ;; 21) log_journal ;; 22) log_botfile ;;
     23) restart_bot ;; 24) restart_feed ;; 25) stop_bot ;; 26) start_bot ;;
     30) git_pull ;;   31) git_pull_restart ;; 32) git_state ;;
+    40) land_tarball ;;
     0) exit 0 ;;
     *) echo "unknown option: $choice" ;;
   esac
   pause
+}
+
+land_tarball() {
+  # OTV4TEST r1 — the fork lands its own archives, because it is segregated
+  # from control and no fleet deploy reaches it. Same lander as day_trader_pro,
+  # driven the same way: the archive carries land.sh at its root, so the
+  # BOOTSTRAP case (a fresh box with no lander yet) works identically to the
+  # steady state and there is no second procedure to remember.
+  # ⚠️ THE ARCHIVE'S OWN land.sh IS THE ONE THAT RUNS, never the repo's copy —
+  # a delivery that changes the lander must be landed BY the lander it ships,
+  # or a lander fix could never be applied.
+  local arc n=0 pick
+  mapfile -t arcs < <(ls -1t "$HOME"/*.tar.gz 2>/dev/null)
+  if [ "${#arcs[@]}" = "0" ]; then
+    echo "  no .tar.gz in $HOME — download one first."; return 0
+  fi
+  echo
+  for arc in "${arcs[@]}"; do n=$((n+1)); printf '  %d) %s\n' "$n" "$(basename "$arc")"; done
+  read -rp $'\nwhich archive (blank = cancel): ' pick
+  [ -n "$pick" ] || return 0
+  case "$pick" in (*[!0-9]*|"") echo "  not a number"; return 0 ;; esac
+  [ "$pick" -ge 1 ] && [ "$pick" -le "${#arcs[@]}" ] || { echo "  out of range"; return 0; }
+  arc="${arcs[$((pick-1))]}"
+  rm -rf /tmp/fork_land && mkdir -p /tmp/fork_land
+  tar xf "$arc" -C /tmp/fork_land || { echo "  extract FAILED — check the filename"; return 0; }
+  [ -f /tmp/fork_land/land.sh ] || { echo "  archive carries no land.sh at its root — refusing."; return 0; }
+  local halves
+  halves="$(cd /tmp/fork_land && find . -maxdepth 2 -name land.spec -printf '%h\n' | sed 's|^\./||')"
+  [ -n "$halves" ] || { echo "  archive carries no land.spec — refusing."; return 0; }
+  echo "  halves: $halves"
+  LAND_ARCHIVE="$arc" bash /tmp/fork_land/land.sh $halves
 }
 
 while true; do menu; done

@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """
-tests/gen_file_map.py  v4.3
+tests/gen_file_map.py  v4.4
+v4.4  2026-09-08  OTV4TEST r1 - docs/GENESIS-TEST.md JOINS THE EXCLUSION. The
+      fork keeps its own ledger and the lander appends to it BETWEEN
+      regenerating this map and verifying it, which is the exact reason
+      GENESIS.md was excluded. Without it the map is a function of the fork's
+      own commit message and the drift canary fires on every delivery whose
+      DESC names a module - it fired on r1 itself, in rehearsal, before
+      anything landed.
 v4.3  2026-09-07  r312 / DEP.10 - AN ENTRY POINT IS MATCHED ON PATH, AND AN
 AMBIGUOUS BASENAME IS NOT EVIDENCE. Two halves, and the first alone did nothing
 visible. (1) ENTRY_POINTS fell back to os.path.basename, so ANY file anywhere
@@ -185,8 +192,13 @@ def _mentions(root: str, names: set) -> dict:
             # DESC names four modules.
             # FILE_MAP/WRITE_MAP name every module by construction; counting
             # them would make everything look referenced.
+            # OTV4TEST r1 — GENESIS-TEST.md is the FORK'S ledger and the lander
+            # appends to it for exactly the same reason, so it needs exactly the
+            # same exclusion. Without it this map became a function of the
+            # fork's own commit message and the drift canary fired on r1 itself
+            # — caught in rehearsal, by the gate, before anything landed.
             if rel in ("docs/FILE_MAP.md", "docs/WRITE_MAP.md",
-                       "docs/GENESIS.md"):
+                       "docs/GENESIS.md", "docs/GENESIS-TEST.md"):
                 continue
             try:
                 text = open(full, encoding="utf-8", errors="replace").read()

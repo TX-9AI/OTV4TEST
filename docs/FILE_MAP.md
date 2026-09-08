@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-251 Python modules across 13 local packages.
+253 Python modules across 13 local packages.
 
-**Reached by:** 101 imported · 9 declared entry points · 75 referenced from a script, unit or doc but never imported · **66 by nothing here**.
+**Reached by:** 101 imported · 9 declared entry points · 76 referenced from a script, unit or doc but never imported · **67 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -484,7 +484,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/cascade_harness.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/FORK_BRIEF.md`
 
 ### `tests/cascade_real.py`
 - **calls:** (none)
@@ -648,6 +648,10 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_ladder_wired.py`
 - **calls:** `config.py`, `execution/__init__.py`, `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/ladder_registry.py`, `execution/order_confirm.py`
+- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+
+### `tests/check_land_tooling.py`
+- **calls:** (none)
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
 ### `tests/check_ledger_parity.py`
@@ -928,11 +932,11 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/gen_file_map.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/HANDOFF.md`, `docs/PORT_STATE.md`, `docs/TRADES.md` +2
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/HANDOFF.md`, `docs/PORT_STATE.md`, `docs/TRADES.md` +3
 
 ### `tests/gen_write_map.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `tools/land.sh`
 
 ### `tests/gex_from_chains.py`
 - **calls:** (none)
@@ -964,7 +968,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/r_ledger.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/FORK_BRIEF.md`
 
 ### `tests/rejection_ledger.py`
 - **calls:** (none)
@@ -1005,6 +1009,10 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tests/warehouse_source.py`
 - **calls:** (none)
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
+### `tools/check_land_discipline.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `README.md`, `docs/BACKLOG.md`, `docs/WORKING_AGREEMENT.md`, `tools/land.sh`
 
 ### `tools/manifold_health.py`
 - **calls:** `config.py`, `utils/time_utils.py`
