@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""check_plan_signal.py — v1.0
+"""check_plan_signal.py — v1.1
+v1.1  2026-09-08  OTV4TEST r2 — PS3 reads `strategy/orb_plan.py`, where the ORB
+      narration now lives ("Waiting on: impulsive candle" / "Waiting on: retest").
 
 🔴 THE PER-TICK LOG MUST CARRY SIGNAL, NOT A TRANSCRIPT OF THE CLOCK.
 
@@ -68,10 +70,13 @@ def main():
           not bad, f"not on ORBData: {sorted(bad) or 'none'}")
 
     # ── PS3 — the refusal names what it is WAITING FOR ───────────────────
-    src = open(os.path.join(_root, "strategy", "orb_strategy.py"),
+    # OTV4TEST r2 — the narration lives in the PLAN (strategy/orb_plan.py):
+    # both sides priced while waiting on the impulsive candle, then PREPARED
+    # while waiting on the retest.
+    src = open(os.path.join(_root, "strategy", "orb_plan.py"),
                encoding="utf-8").read()
-    check("PS3 the ORB refusal explains the state, not just names it",
-          "AWAITING RETEST" in src and "no break yet of" in src)
+    check("PS3 the ORB plan row says what it is WAITING ON, not just the state",
+          "Waiting on: retest" in src and "Waiting on: impulsive candle" in src)
 
     # ── 🔴 PS4 — OUT-OF-WINDOW IS DORMANT, AND DEDUPLICATED ──────────────
     from strategy import plan as P

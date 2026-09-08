@@ -191,6 +191,20 @@ clear liquidity path) describe the setup; **none of them gate it.**
 **FEASIBILITY** — the range must exist. `_opening_range` reads today's 09:30
 bar, after TCS.3 found the 60-bar 1m frame no longer reached it by 10:35.
 
+**OTV4TEST r2 (2026-09-08) — the spec as the operator stated it, and what
+came out.** Parts: range/width · impulsive candle H/L · direction · one of
+three consequences (retest → fire / runaway → hand off / re-entry → thesis
+over) · the sizing constraint · the stops. **Deleted by ruling:** the 12-bar
+"stale retest" re-arm (*"if it doesn't retest, it's outside the range — how
+would there be another break?"*) and the ATR floor (*"makes no sense"* for
+this setup). **Stops:** structure stop = the impulsive candle's LOW (long) /
+HIGH (short), body or wick, fired on a 1m CLOSE through it — *wicks are tests,
+closes are acceptance*; every other ORB exit kept except velocity stall
+(*"theta bleed should catch whatever a stall would have stood in for"*).
+**Plan provides:** stop, 100%/50% levels, target strike at ±width, the
+contract, floor premium, provisional size — from the impulsive candle's close,
+both sides priced from 09:35. Full contract: PLAN_SPEC §29.
+
 ⚠️ **v4.0 MADE IT PURELY MECHANICAL.** Three vestigial reads went: the regime
 label stamped onto the signal, a confluence note for regime agreement that could
 never fire, and `signal.conviction += regime.conviction * 0.7`. All were inert —

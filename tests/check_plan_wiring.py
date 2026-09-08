@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_wiring.py  v1.4  (2026-09-03)
+tests/check_plan_wiring.py  v1.5  (2026-09-08)
+v1.5  2026-09-08  OTV4TEST r2 — W2 accepts `self.plan.prepare(` as the wiring:
+      ORB's plan is a separate object the strategy owns (strategy/orb_plan.py).
 v1.4  2026-09-03  r231 — W6 RE-DERIVED, NOT PATCHED. `classify()` requires
       `spot`; each fixture carries one chosen so the case it was written for
       is still the case being tested, rather than one that merely compiles
@@ -81,8 +83,10 @@ def _bare_returns(path):
             body_src = ast.get_source_segment(src, fn) or ""
             # r160: a strategy whose generate_signal delegates to its own
             # prepare() (the plan) is wired through that call
+            # OTV4TEST r2: or to a plan object it owns (`self.plan.prepare(`)
             if ("planner.tick(" not in body_src and "t=None" not in body_src
-                    and "self.prepare(" not in body_src) \
+                    and "self.prepare(" not in body_src
+                    and ".plan.prepare(" not in body_src) \
                     and fn.name not in ("_build_leg_signal", "_build_signal"):
                 # an ABC stub (`return None` only) is exempt
                 if len(fn.body) == 1 and isinstance(fn.body[0], ast.Return):

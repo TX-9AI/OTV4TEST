@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_atr_units.py  v1.0
+tests/check_atr_units.py  v1.1
+v1.1  2026-09-08  OTV4TEST r2 — U2–U4 RE-POINTED AT THE RUNAWAY. The ORB ATR
+      floor they executed is deleted by the operator's ruling (orb_strategy
+      v4.6); the units defect this file pins is unchanged and the runaway
+      still carries a percent floor, so the same NFLX number is asserted
+      there. U3 now asserts the ORB floor does NOT exist; U6 drops the key.
 
 r96 — ATR THRESHOLDS ARE IN PERCENT. THE PRODUCER EMITS A FRACTION.
 
@@ -87,122 +92,24 @@ def main() -> int:
           abs(v.atr_pct - 0.4) < 1e-9,
           f"frac={v.atr_normalized} pct={v.atr_pct}")
 
-    # ── U2: THE REAL NFLX NUMBER CLEARS THE REAL FLOOR ───────────────────────
-    # The whole bug in one assertion. 0.4% is EIGHT TIMES the 0.05% floor; as a
-    # fraction it is one twelfth of it.
-    from strategy.orb_strategy import ORB_ATR_FLOOR_PCT
+    # ── U2–U4 RETIRED (OTV4TEST r2) — THE ORB ATR FLOOR IS DELETED BY RULING.
+    # Operator, 2026-09-08: the ATR floor "makes no sense" for the ORB setup.
+    # The units lesson this file exists for is unchanged and is pinned below
+    # on the RUNAWAY, which keeps its floor: the NFLX number (0.4%) must clear
+    # 0.08% as a percent and would NOT as a fraction.
+    from strategy.runaway_continuation import target_delta as _rw_delta, ATR_FLOOR_PCT as _RW_FLOOR
     nflx = _Vol(0.004)
     read = float(getattr(nflx, "atr_pct", None)
                  or (float(getattr(nflx, "atr_normalized", 0.0) or 0.0) * 100.0))
-    check("U2 NFLX's real ATR clears the ORB floor",
-          read >= ORB_ATR_FLOOR_PCT,
-          f"read={read}% floor={ORB_ATR_FLOOR_PCT}% "
-          f"(fraction would read {nflx.atr_normalized})")
-
+    check("U2 NFLX's real ATR clears the RUNAWAY floor as a percent",
+          read >= _RW_FLOOR and _rw_delta(read) is not None,
+          f"read={read}% floor={_RW_FLOOR}%")
     check("U2b and the fraction would NOT have — this is the live failure",
-          nflx.atr_normalized < ORB_ATR_FLOOR_PCT,
-          f"{nflx.atr_normalized} < {ORB_ATR_FLOOR_PCT}")
-
-    # ── U3: THE GATE ITSELF, EXECUTED ────────────────────────────────────────
-    # 🔴 THE FIRST VERSION OF U3/U4 WAS THEATRE AND BOTH MUTANTS PASSED IT. It
-    # called generate_signal with chain=None, which returns at the contract
-    # lookup ~25 lines BEFORE the ATR gate, and the assertion "no floor message
-    # was logged" was satisfied by never reaching the floor at all. WA 21: a
-    # test must EXECUTE the path, and the proof it is real is that it fails
-    # against the broken version.
-    # So the chain fetcher is stubbed to return a priced contract, which is the
-    # minimum required to reach line 259.
-    import logging
+          nflx.atr_normalized < _RW_FLOOR and _rw_delta(nflx.atr_normalized) is None,
+          f"{nflx.atr_normalized} < {_RW_FLOOR}")
     import strategy.orb_strategy as OS
-    from analysis.orb_engine import ORBState
-
-    class _Contract:
-        strike, expiry, mark, bid, ask = 81.0, "2026-08-28", 0.85, 0.83, 0.87
-        delta, symbol = 0.389, "NFLX 260828C81"
-
-    class _Fetcher:
-        def select_orb_strike(self, chain, direction, target_strike):
-            return _Contract()
-
-    orb = type("O", (), {})()
-    orb.state = ORBState.OPEN_LONG
-    orb.break_direction = "long"
-    orb.orb_high, orb.orb_low, orb.orb_width = 80.01, 79.02, 0.99
-    orb.target_100pct, orb.target_50pct = 81.0, 80.5
-    orb.stop_level, orb.target_strike = 79.9, 81
-    orb.attempt_number, orb.retest_depth_px = 1, 0.01
-
-    macro = type("M", (), {"vix": 15.0, "is_fed_day": False,
-                           "butterfly_half_size": False})()
-    # _analyze_liquidity iterates liq_map.pools before the ATR gate, so a bare
-    # None returns early and the gate is never reached — which is exactly what
-    # the first draft of this test failed to notice.
-    liq = type("L", (), {"pools": []})()
-    # generate_signal also reads ms.adx before the gate. A real MarketState is
-    # used rather than a stub so a future field addition surfaces here instead
-    # of being silently absorbed by a permissive fake.
-    from analysis.market_state import MarketState
-    ms_fix = MarketState()
-    ms_fix.adx = 26.0
-
-    def _run(vol):
-        """Call the REAL generate_signal and report what the ATR gate did."""
-        msgs = []
-
-        class _Grab(logging.Handler):
-            def emit(self, rec):
-                msgs.append(rec.getMessage())
-
-        lg = logging.getLogger("strategy.orb_strategy")
-        h = _Grab()
-        lg.addHandler(h)
-        lg.setLevel(logging.INFO)
-        real = OS.get_chain_fetcher
-        OS.get_chain_fetcher = lambda: _Fetcher()
-        err = None
-        try:
-            OS.ORBStrategy().generate_signal(
-                orb=orb, ms=ms_fix, vol_state=vol, liq_map=liq,
-                chain=object(), macro=macro, current_price=80.05)
-        except Exception as exc:                               # noqa: BLE001
-            err = exc
-        finally:
-            OS.get_chain_fetcher = real
-            lg.removeHandler(h)
-        refused = [m for m in msgs if "reachable floor" in m]
-        reached = bool(refused) or any("ORB" in m for m in msgs) or err is None
-        return refused, msgs, err, reached
-
-    # PROOF THE PATH IS LIVE: an ATR below the floor on BOTH readings must
-    # produce the refusal. If this does not fire, the test is not reaching the
-    # gate and every other U3 assertion is worthless.
-    dead_refused, _, _, _ = _run(_Vol(0.0001))       # 0.01% — below on any scale
-    check("U3a the ATR gate is REACHED (a truly dead tape is refused)",
-          bool(dead_refused),
-          "gate never reached — test is not executing the path"
-          if not dead_refused else dead_refused[0][:70])
-
-    # THE ACTUAL ASSERTION: 0.1 percent / 0.001 fraction. Above the floor as a
-    # percent, below it as a fraction. Only a gate reading the FRACTION refuses.
-    probe_refused, _, _, _ = _run(_Vol(0.001))
-    check("U3b a 0.1% ATR is NOT refused — the gate reads percent",
-          not probe_refused,
-          probe_refused[0][:80] if probe_refused else "")
-
-    # ── U4: A PART-BAKED BOX STILL GETS THE RIGHT NUMBER ─────────────────────
-    # 🔴 THE FALLBACK MUST NOT BE 0.0. A falsy `_atr_pct` SKIPS the gate and
-    # lets a trade through on an unmeasured ATR — a feasibility veto silently
-    # becoming a pass, which is worse than the bug being fixed. Driven through
-    # the REAL call with a state that has no `atr_pct` attribute at all.
-    legacy_dead, _, _, _ = _run(_Legacy(0.0001))
-    check("U4 a state with NO atr_pct still gets vetoed on a dead tape",
-          bool(legacy_dead),
-          "veto SKIPPED on a legacy state — fallback is falsy"
-          if not legacy_dead else legacy_dead[0][:70])
-
-    legacy_ok, _, _, _ = _run(_Legacy(0.001))
-    check("U4b and a legacy state at 0.1% is still allowed through",
-          not legacy_ok, legacy_ok[0][:80] if legacy_ok else "")
+    check("U3 ORB carries NO ATR floor (deleted OTV4TEST r2; check_orb_plan P15 fires at 0.01%)",
+          not hasattr(OS, "ORB_ATR_FLOOR_PCT"))
 
     # ── U5: THE SWEEP CEILING IS ALIVE AGAIN ─────────────────────────────────
     # The other direction. Fed the fraction, a MAX of 0.20 could never trip.
@@ -218,8 +125,7 @@ def main() -> int:
     # constant above 5 would mean somebody re-scaled one and not the others.
     from strategy.runaway_continuation import (ATR_FLOOR_PCT, ATR_HARD_VETO_PCT,
                                                ATR_DEEP_PCT)
-    consts = {"ORB_ATR_FLOOR_PCT": ORB_ATR_FLOOR_PCT,
-              "RUNAWAY_ATR_FLOOR_PCT": ATR_FLOOR_PCT,
+    consts = {"RUNAWAY_ATR_FLOOR_PCT": ATR_FLOOR_PCT,
               "RUNAWAY_ATR_VETO_PCT": ATR_HARD_VETO_PCT,
               "RUNAWAY_ATR_DEEP_PCT": ATR_DEEP_PCT,
               "SWEEP_CS_ATR_MAX_PCT": ATR_MAX_PCT}

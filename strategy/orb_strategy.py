@@ -1,5 +1,21 @@
 """
-strategy/orb_strategy.py  v4.5
+strategy/orb_strategy.py  v4.6
+v4.6  2026-09-08  OTV4TEST r2 — THE STRATEGY IS THE SPEC; THE PLAN SELECTS.
+      Agreed with the operator part by part on 2026-09-08 (PLAN_SPEC §29).
+      `generate_signal()` no longer touches the chain, picks a strike, prices
+      a contract or reads ATR: it asks `strategy/orb_plan.py` for this tick's
+      preparation and fires ONLY when every declared bar is met, with the
+      plan's stop, strike, contract, premium and floor. What moved out:
+      `get_chain_fetcher().select_orb_strike(...)` (now `orb_plan.select_contract`,
+      parity-pinned), the target/50% arithmetic (the engine's own numbers are
+      read, never recomputed), and the plan row (the plan writes it every tick
+      from 09:35, both sides priced, so "why did ORB not fire" has an answer
+      before the retest rather than after). DELETED BY RULING: the ATR floor
+      (`ORB_ATR_FLOOR_PCT`) — "makes no sense" for this setup; ORB has no ATR
+      read. The liquidity/VWAP/Fed-day items stay as NOTES on the signal (r193:
+      recorded, never gating). New kwargs `now_hhmm` and `offer_working` are
+      the two facts only main.py knows. `self.planner` is still the same Plan
+      object, now owned by the ORBPlan, so W2 and the board see no change.
 v4.5  2026-09-04  r235 — 🔴 THE GATE ASKS "HAS THIS CONFIRMATION
       FIRED", NOT "HAS ANY". `confirmation_spent()` is EXTRACTED to module
       level so the checker drives it rather than a copy (C.23). `>=` not `==`,
@@ -83,27 +99,27 @@ v-namelevels (2026-07-28) — the liquidity gate NAMES the levels it blocks on.
 """
 
 import logging
-import config
-from typing import Optional, List, Tuple
+from typing import Optional
 
 from strategy.base_strategy import BaseOptionsStrategy, OptionsSignal
 # ⚠️ `_n` renders an absent value as "n/a" and never raises — the ORB sequence
 # below prints levels that can legitimately be None before the range forms.
-from strategy.plan import Plan, _n
-from analysis.orb_engine import ORBData, ORBState
+from strategy.orb_plan import ORBPlan
+from analysis.orb_engine import ORBData
 from analysis.market_state import MarketState
 from analysis.volatility_engine import VolatilityState
-from analysis.liquidity_mapper import LiquidityMap, LiquidityPool
+from analysis.liquidity_mapper import LiquidityMap
 from data.options_chain import OptionsChain
-from data.options_chain import get_chain_fetcher
 from data.macro_data import MacroSnapshot
-from config import FED_DAY_ORB_BOOST, INSTRUMENT, MAX_LOSS_PCT
+from config import FED_DAY_ORB_BOOST, MAX_LOSS_PCT
 
 logger = logging.getLogger(__name__)
 
-# ⚠️ FEASIBILITY FLOOR. Below this ATR the target is unreachable - measured, not
-# chosen. Config-overridable because it was measured on 28 sessions in ONE
-ORB_ATR_FLOOR_PCT = getattr(config, "ORB_ATR_FLOOR_PCT", 0.05)
+# OTV4TEST r2 — `ORB_ATR_FLOOR_PCT` IS DELETED BY RULING (operator, 2026-09-08:
+# the ATR floor "makes no sense" for this setup). It was the runaway's
+# reachability study (0.05% ATR) glued onto ORB as a feasibility veto at r36;
+# the range width and the impulsive candle already say what the tape is doing.
+# The runaway keeps its own floor; this strategy has no ATR read at all.
 
 # ── GATE CATEGORIES AS DATA (WA §36) ───────────────────────────────────────
 # ⚠️ ORB HAS NO SELECTION GATES AND THEREFORE NOTHING TO RELAX. Every condition
@@ -112,12 +128,13 @@ ORB_ATR_FLOOR_PCT = getattr(config, "ORB_ATR_FLOOR_PCT", 0.05)
 # positive record. **The break and retest are the trade; there is no worse
 # version of them to fire on.**
 GATES = {
-    "ORB_ATR_FLOOR_PCT": "FEASIBILITY",
+    # OTV4TEST r2 — no FEASIBILITY entry: the ATR floor is deleted (above).
     # FOUNDATIONAL, all tested inline with no knob:
     #   the ORB engine armed (a break AND a retest: wick back inside the range,
     #     body still outside - `low < orb_high and body_low >= orb_high`)
     #   direction from the ORB state
-    #   the liquidity path to target not blocked by a named level
+    #   this confirmation has not already produced an order (r207/r235)
+    #   the liquidity path to target is a NOTE, not a gate (r193)
 }
 
 BREAK_LEVEL_PROXIMITY_PCT   = 0.0015
@@ -177,145 +194,51 @@ class ORBStrategy(BaseOptionsStrategy):
     # break+retest on the chart and the bot does not take it, the table could
     # not say why. Every field below already exists on ORBData and was simply
     # never read.
-    PLAN_CHECKS = ("engine_state", "orb_high", "orb_low", "orb_width",
-                   "break_direction", "break_close", "bars_since_break",
-                   "retest_depth_px", "attempt_number", "stop_level",
-                   "target_50pct", "target_100pct",
-                   # r207 — both declared so the row can say WHY a confirmed
-                   # setup did not produce an order. `stop_distance_px` is the
-                   # number the size ramps on and is recorded whether or not
-                   # the trade fires.
-                   "stop_distance_px", "order_already_placed",
-                   "contract", "premium", "atr_pct")
+    PLAN_CHECKS = ORBPlan.PLAN_CHECKS      # declared once, on the plan (r2)
 
     def __init__(self):
-        self.planner = Plan("ORBStrategy", self.PLAN_CHECKS,
-                         record_only=True, self_ledgers=True)
+        # OTV4TEST r2 — the plan owns the row, the chain and the selection.
+        # `self.planner` is kept as the same object so every reader that
+        # asks a strategy for its Plan (check_plan_wiring W2, the board)
+        # finds it where it always was.
+        self.plan = ORBPlan()
+        self.planner = self.plan.planner
 
     @property
     def name(self) -> str:
         return "ORBStrategy"
 
     def generate_signal(self,
-                         orb: ORBData,
-                         ms: MarketState,
-                         vol_state: VolatilityState,
-                         liq_map: LiquidityMap,
-                         chain: OptionsChain,
-                         macro: MacroSnapshot,
-                         current_price: float) -> Optional[OptionsSignal]:
-        t = self.planner.tick(current_price)
+                        orb: ORBData,
+                        ms: MarketState,
+                        vol_state: VolatilityState,
+                        liq_map: LiquidityMap,
+                        chain: OptionsChain,
+                        macro: MacroSnapshot,
+                        current_price: float,
+                        now_hhmm: str = "",
+                        offer_working: bool = False) -> Optional[OptionsSignal]:
+        """THE SPEC. Fire when every bar the plan reports is met — and only
+        with the plan's variables. This function selects nothing.
 
-        # ── 🔴 NARRATE THE SEQUENCE FIRST, EVERY TICK, WHATEVER THE STATE ────
-        # These are recorded BEFORE the gate so a refusal carries the geometry
-        # with it. A row that says only "ARMED_SHORT" cannot be argued with;
-        # one that says "armed short at 396.01, broke to 395.40, 3 bars since,
-        # retest 0.22 deep, attempt 2" can be checked against the chart.
-        _bd = getattr(orb, "break_direction", "") or ""
-        t.check("orb_high", getattr(orb, "orb_high", None))
-        t.check("orb_low", getattr(orb, "orb_low", None))
-        t.check("orb_width", getattr(orb, "orb_width", None))
-        t.check("break_direction", 1.0 if _bd == "long"
-                else -1.0 if _bd == "short" else None)
-        t.check("break_close", getattr(orb, "break_candle_close", None))
-        t.check("bars_since_break", getattr(orb, "bars_since_break", None))
-        t.check("retest_depth_px", getattr(orb, "retest_depth_px", None))
-        t.check("attempt_number", getattr(orb, "attempt_number", None))
-        t.check("stop_level", getattr(orb, "stop_level", None))
-        t.check("stop_distance_px", getattr(orb, "stop_distance_px", None))
-        t.check("target_50pct", getattr(orb, "target_50pct", None))
-        t.check("target_100pct", getattr(orb, "target_100pct", None))
+        OTV4TEST r2 — the bars (PLAN_SPEC §29.2), all read off `prep`:
+          1. an impulsive candle exists and is not invalidated (ARMED_*)
+          2. a retest bar has closed (OPEN_*)
+          3. this confirmation has not already produced an order
+          4. a contract with a live quote exists at the 100% target strike
+        Nothing else. No R hurdle, no geometry, no ATR, no confluence gate.
+        `ms`, `vol_state`, `liq_map` and `macro` are read for NOTES on the
+        signal only (they gate nothing and may be None).
+        """
+        prep = self.plan.prepare(orb=orb, chain=chain, price_now=current_price,
+                                 now_hhmm=now_hhmm, offer_working=offer_working)
+        if not prep.ready or prep.structural or prep.starved:
+            return prep.tick.already()
 
-        if orb.state not in (ORBState.OPEN_LONG, ORBState.OPEN_SHORT):
-            # ⚠️ THE REASON NAMES WHAT IT IS WAITING FOR, not just where it is.
-            _lvl = (getattr(orb, "orb_high", None) if _bd == "long"
-                    else getattr(orb, "orb_low", None))
-            _st = str(orb.state)
-            if "WAITING" in _st:
-                _await = (f"no break yet of {_n(getattr(orb,'orb_high',None))}/"
-                          f"{_n(getattr(orb,'orb_low',None))}")
-            elif "ARMED" in _st:
-                _await = (f"broke {_bd or '?'} at {_n(_lvl)}, close "
-                          f"{_n(getattr(orb,'break_candle_close',None))}, "
-                          f"{getattr(orb,'bars_since_break',0)} bars since — "
-                          f"AWAITING RETEST (wick into the range, body outside)")
-            elif "INVALIDATED" in _st:
-                _await = (f"invalidated: "
-                          f"{getattr(orb,'invalidation_reason','') or 'unknown'}"
-                          f" (attempt {getattr(orb,'attempt_number','?')})")
-            elif "EXPIRED" in _st:
-                _await = "past the 11:00 ET cutoff — no further ORB entries"
-            else:
-                _await = "state carries no further detail"
-            return t.refuse("engine_state",
-                            f"ORB {_st} — {_await}")
-        t.check("engine_state", None, True)
-
-        # ── 🔴 r207 — ONE CONFIRMATION, ONE ORDER ────────────────────────────
-        # Checked AFTER the state gate so the refusal is distinguishable from
-        # "not confirmed", and BEFORE anything is priced so a spent setup never
-        # reaches the chain. r195 made `_orb_offer_working()` the duplicate
-        # suppressor; that reads a table paper never writes, so paper had no
-        # suppressor at all. This latch is a property of the CONFIRMATION, so
-        # it is mode-independent — and `_rearm()` replaces ORBData wholesale,
-        # so a genuine next attempt is unaffected by construction.
-        # 🔴 r235 — KEYED TO THE CONFIRMATION, NOT TO THE SESSION. The bare
-        # boolean could only say "an order happened at some point", so the
-        # armed path had to clear it globally (r227) for the setup to fire
-        # again — and a global clear is indistinguishable from never having
-        # been set. Comparing sequences answers the real question: has THIS
-        # retest already produced an order? A fresh retest bumps
-        # `confirmation_seq` and re-opens the gate by construction; a resolved
-        # trade with no new retest leaves them equal and stays shut.
-        _cseq = int(getattr(orb, "confirmation_seq", 0) or 0)
-        if confirmation_spent(orb):
-            return t.refuse(
-                "order_already_placed",
-                f"attempt #{getattr(orb, 'attempt_number', '?')}, confirmation "
-                f"#{_cseq} has already produced an order — THIS confirmation is "
-                f"SPENT. The next order needs a fresh qualifying retest (wick "
-                f"into {_n(getattr(orb, 'orb_low', None))}-"
-                f"{_n(getattr(orb, 'orb_high', None))}, close back outside); a "
-                f"CLOSE inside the range ends the thesis and waits for a new "
-                f"break.")
-        t.check("order_already_placed", None, True)
-
-        direction   = orb.break_direction
-        option_side = "call" if direction == "long" else "put"
-        break_level = orb.orb_high if direction == "long" else orb.orb_low
-        t.direction = direction
-        t.anchor(trigger=break_level, invalidation=orb.stop_level)
-
-        liq_result = self._analyze_liquidity(
-            orb, liq_map, current_price, direction, break_level
-        )
-
-        # v-nopause 2026-07-28: a named pool in the target path DOWNGRADES the
-        # entry (setup_scorer: grade A -> B, smaller size). It does NOT veto and it
-        # does NOT pause. The veto here was never part of the design and produced
-        # behaviour nobody asked for: on 2026-07-28 it held the AVGO ORB short for
-        # SIX ticks (90s) from the moment the retest confirmed, then let it fill
-        # 1.4pt lower at the exhaustion low of the move (-$135.50). Waiting for the
-        # obstacle to fall behind price is the worst of the three possible
-        # responses. The pool is still detected, named, and journalled — it just
-        # feeds the grade instead of blocking the trade.
-        if liq_result["block"]:
-            logger.info(
-                f"ORB pool in path (DOWNGRADE, not a block): "
-                f"{liq_result['block_reason']}"
-            )
-
-        # 🔴 r193 — POOL IS RECORD-ONLY. Operator, 2026-08-29: pool presence is
-        # "recorded but not influence the entry or target location. We can
-        # evaluate its effects later on." The target is the pure measured
-        # move; `adjusted_target` is still COMPUTED and still written to the
-        # notes and the plan row, so the study is possible later, but it no
-        # longer moves where the trade aims. A grading-era survivor that
-        # changed what the trade DOES while looking like an annotation.
-        target_100 = orb.target_100pct
-        target_50  = orb.orb_high + (target_100 - orb.orb_high) * 0.5 \
-                     if direction == "long" \
-                     else orb.orb_low - (orb.orb_low - target_100) * 0.5
+        t = prep.tick
+        direction, option_side, contract = prep.direction, prep.side, prep.contract
+        break_level = prep.boundary
+        target_100, target_50 = prep.target_100, prep.target_50
 
         signal = OptionsSignal(
             strategy_name     = self.name,
@@ -323,175 +246,72 @@ class ORBStrategy(BaseOptionsStrategy):
             direction         = direction,
             option_side       = option_side,
             underlying_entry  = current_price,
-            underlying_stop   = orb.stop_level,
+            underlying_stop   = prep.stop,          # the impulsive candle's extreme
             underlying_target = target_100,
             underlying_tp50   = target_50,
-            # ── ORB range boundaries for strategy-aware exit ──────────────────
-            orb_range_high    = orb.orb_high,
-            orb_range_low     = orb.orb_low,
-            # r207 — FROZEN AT THE BREAK, not recomputed at the fill. The
-            # sizer reads this; see analysis/orb_engine.py v4.6.
+            orb_range_high    = prep.orb_high,
+            orb_range_low     = prep.orb_low,
+            # r207 — FROZEN AT THE BREAK, not recomputed at the fill; record only.
             orb_stop_distance_px = float(getattr(orb, "stop_distance_px", 0.0) or 0.0),
-            # r120 — carried from the engine's own counter, not recomputed.
-            # r120 — the tape window opens at the CONFIRMED BREAK, so the
-            # measurement spans the fight over the level rather than the fire
-            # instant. `confirmed_at` is an ET string; parsed to epoch here
-            # because the consumer needs a number and this is where the
-            # timezone context lives.
             orb_break_ts      = _confirmed_epoch(orb),
             atr_at_signal     = float(getattr(vol_state, "atr", 0.0) or 0.0),
-            # - which is exactly why it kept working while every gated strategy
-            # degraded, and why it is the one v3 strategy with a positive
-            # record (orb_trail_stop 96% / 85 trades / +$30,696, worst -$16).
-            # The label is no longer stamped: writing one the engine did not
-            # compute puts a fabricated field on the trade record where a
-            # reader will take it for an observation.
-            vix_at_signal     = macro.vix,
-            is_fed_day        = macro.is_fed_day,
+            vix_at_signal     = float(getattr(macro, "vix", 0.0) or 0.0),
+            is_fed_day        = bool(getattr(macro, "is_fed_day", False)),
             stop_loss_pct     = MAX_LOSS_PCT,
             tp_pct            = 1.0,
+            strike            = contract.strike,
+            expiry            = getattr(contract, "expiry", ""),
+            entry_premium     = prep.premium,
+            contract          = contract,
         )
 
-        # ── Base confluence ───────────────────────────────────────────────────
+        # ── NOTES — describe the setup; none of them authorises it ─────────
         self._add_confluence(signal, f"ORB break confirmed ({direction})")
         self._add_confluence(signal, "Break+retest pattern (1m body/wick rules)")
-
-        if liq_result["break_is_named_level"]:
-            pool_name = liq_result["break_level_name"]
-            self._add_confluence(
-                signal,
-                f"ORB break through named level {pool_name} — sweep catalyst"
-            )
-            signal.conviction += 0.15
-
-        if direction == "long" and vol_state.price_vs_vwap == "ABOVE":
+        liq_result = None
+        if liq_map is not None:
+            try:
+                liq_result = self._analyze_liquidity(orb, liq_map, current_price,
+                                                     direction, break_level)
+            except Exception as exc:                            # noqa: BLE001
+                logger.warning("ORB liquidity notes unavailable: %s", exc)
+        if liq_result:
+            if liq_result["block"]:
+                logger.info("ORB pool in path (RECORDED, not a block): %s",
+                            liq_result["block_reason"])
+            if liq_result["break_is_named_level"]:
+                self._add_confluence(signal, f"ORB break through named level "
+                                             f"{liq_result['break_level_name']} — sweep catalyst")
+                signal.conviction += 0.15
+            if liq_result["path_clear"]:
+                self._add_confluence(signal, "Liquidity path clear to target")
+            if liq_result["unnamed_in_path"] > 0:
+                signal.notes += (f" | {liq_result['unnamed_in_path']} unnamed liq "
+                                 f"cluster(s) in path (logged, no grade impact)")
+            if liq_result.get("target_adjusted"):
+                # RECORDED, NOT APPLIED (r193): the target stays the measured move.
+                signal.notes += (f" | Pool {liq_result['target_adj_reason']} at "
+                                 f"{liq_result.get('adjusted_target', 0.0):.2f} just beyond TP "
+                                 f"(RECORDED ONLY — target stays {target_100:.2f})")
+        _vwap = getattr(vol_state, "price_vs_vwap", "") if vol_state is not None else ""
+        if direction == "long" and _vwap == "ABOVE":
             self._add_confluence(signal, "Above VWAP — bullish bias")
-        elif direction == "short" and vol_state.price_vs_vwap == "BELOW":
+        elif direction == "short" and _vwap == "BELOW":
             self._add_confluence(signal, "Below VWAP — bearish bias")
-
-        # UNKNOWN so it could never fire - and a dead branch reads as a live
-        # one to anyone auditing this file.
-
-        if liq_result["path_clear"]:
-            self._add_confluence(signal, "Liquidity path clear to target")
-        if liq_result["unnamed_in_path"] > 0:
-            # metric only — equal-H/L clusters are logged, NOT penalized (low quality).
-            signal.notes += (
-                f" | {liq_result['unnamed_in_path']} unnamed liq cluster(s) in path"
-                f" (logged, no grade impact)"
-            )
-
-        if liq_result.get("target_adjusted"):
-            # RECORDED, NOT APPLIED (r193). The note names the pool and what the
-            # target WOULD have become, so the counterfactual survives in the
-            # record; `target_100` above is untouched.
-            signal.notes += (
-                f" | Pool {liq_result['target_adj_reason']} at "
-                f"{liq_result.get('adjusted_target', 0.0):.2f} just beyond TP "
-                f"(RECORDED ONLY — target stays {target_100:.2f})"
-            )
-
-        if macro.is_fed_day:
-            self._add_confluence(
-                signal, f"Fed day: {macro.fed_event_name} (+confluence)"
-            )
+        if getattr(macro, "is_fed_day", False):
+            self._add_confluence(signal, f"Fed day: {getattr(macro, 'fed_event_name', '')} "
+                                         f"(+confluence)")
             signal.conviction += FED_DAY_ORB_BOOST
-
-        # confirmatory by construction - a leaky integrator over argmax
-        # agreement is only confident once winning has already persisted - and
-        # it is permanently 0.0 in v4, so this line added nothing while looking
-        # like it added something.
-        # ⚠️ THE REMAINING `signal.conviction` ADDITIONS ARE STRUCTURAL FACTS
-        # describe the setup; they do not authorise it.
-        signal.adx_at_signal = ms.adx
-        signal.flat_angle_deg = getattr(ms, 'flat_angle_deg', 0.0) or 0.0
-
-        # ⚠️ v4.0: THE CONFLUENCE GATE IS GONE, AND IT COULD NEVER FAIL.
-        # Two factors were required; two are added UNCONDITIONALLY above ("ORB
-        # break confirmed" and "Break+retest pattern"), so the bar was met
-        # before any optional factor was considered. **A gate that cannot
-        # refuse is a gate in name only** - it reads as a safeguard to anyone
-        # auditing the file and provides none.
-        # Confluence was also the scoring model v4 abandoned: conditions are
-        # structural now, and they either hold or they do not.
-
-        # ── Strike selection ──────────────────────────────────────────────────
-        target_strike = orb.target_strike
-        if liq_result.get("target_adjusted"):
-            from utils.math_utils import round_to_strike
-            from config import STRIKE_INCREMENT
-            target_strike = round_to_strike(target_100, STRIKE_INCREMENT)
-
-        contract = get_chain_fetcher().select_orb_strike(
-            chain, direction, target_strike
-        )
-        if contract is None:
-            logger.warning("ORB: no valid option contract found")
-            return t.refuse("contract", f"no valid {option_side} contract near "
-                                        f"target strike {target_strike}")
-        t.check("contract", contract.strike, True)
-
-        signal.strike        = contract.strike
-        signal.expiry        = contract.expiry
-        signal.entry_premium = contract.mark
-        signal.contract      = contract
-
-        # ── v4.0: REACHABILITY, NOT `premium > 0` ───────────────────────────
-        # A zero-premium check only catches a contract with no quote. The real
-        # question is whether the TAPE CAN REACH THE TARGET, which is what the
-        # ATR map answers for RunawayContinuation and which ORB had no
-        # equivalent of.
-        # `tests/magnitude_estimator.py`, 52,949 bars over 28 dates: below
-        # **0.05% ATR the required move was reached on 0% of 5,517 bars** - not
-        # rarely, not once. `tests/chain_feasibility.py`, 110,162 contract
-        # observations, sets what "required" means: a 0.20-0.35 delta 0DTE
-        # contract needs ~0.75% including the round-trip spread.
-        # ⚠️ FEASIBILITY, NOT SELECTION - it says the trade CANNOT PAY, however
-        # clean the break and retest were.
-        if signal.entry_premium <= 0:
-            logger.warning("ORB: option has zero premium - skipping")
-            return t.refuse("premium", f"{option_side} {contract.strike} has zero premium")
-        t.check("premium", signal.entry_premium, True)
-        # 🔴 r96 — READ THE PERCENT FIELD, NOT THE FRACTION. This line read
-        # `atr_normalized` (atr/price, a FRACTION) and compared it against
-        # ORB_ATR_FLOOR_PCT, which is 0.05 meaning 0.05 PERCENT. The gate
-        # therefore demanded a 5% intraday ATR and REFUSED EVERY ORB THE FLEET
-        # EVER CONFIRMED. NFLX 2026-08-24: clean break+retest at 09:58 ET, strike
-        # priced, then "ATR 0.004% below the reachable floor" every tick to the
-        # cutoff — true ATR 0.4%, eight times ABOVE the floor.
-        # ⚠️ FALLBACK IS ×100 OF THE FRACTION, NOT 0.0. A box part-way through a
-        # bake has the old VolatilityState without `atr_pct`; defaulting to 0.0
-        # would make `_atr_pct` falsy, skip the gate entirely, and let a trade
-        # through on an UNMEASURED ATR — turning a feasibility veto into a
-        # silent pass. The conversion is exact, so the fallback is the same
-        # number by another route.
-        _atr_pct = float(getattr(vol_state, "atr_pct", None)
-                         or (float(getattr(vol_state, "atr_normalized", 0.0) or 0.0)
-                             * 100.0))
-        t.check("atr_pct", _atr_pct or None,
-                None if not _atr_pct else _atr_pct >= ORB_ATR_FLOOR_PCT)
-        if _atr_pct and _atr_pct < ORB_ATR_FLOOR_PCT:
-            logger.info(
-                "ORB: NO TRADE - ATR %.3f%% is below the reachable floor "
-                "(%.2f%%). Measured: below 0.05%% no strike was reached on any "
-                "of 5,517 bars, so the target cannot pay regardless of setup "
-                "quality.", _atr_pct, ORB_ATR_FLOOR_PCT)
-            return t.refuse("atr_pct", f"ATR {_atr_pct:.3f}% below the reachable "
-                                       f"floor {ORB_ATR_FLOOR_PCT:.2f}% — the "
-                                       f"target cannot pay")
+        signal.adx_at_signal = float(getattr(ms, "adx", 0.0) or 0.0) if ms is not None else 0.0
+        signal.flat_angle_deg = float(getattr(ms, "flat_angle_deg", 0.0) or 0.0) if ms is not None else 0.0
 
         logger.info(
-            f"🎯 ORB SIGNAL {direction.upper()}: "
-            f"underlying={current_price:.2f} "
-            f"orb={orb.orb_low:.2f}–{orb.orb_high:.2f} "
-            f"width={orb.orb_width:.2f} "
-            f"option={option_side.upper()} {contract.strike} "
-            f"mark=${contract.mark:.2f} delta={contract.delta:.3f} "
-            f"stop={orb.stop_level:.2f} target={target_100:.2f} "
-            f"break_is_named={liq_result['break_is_named_level']} "
-            f"path_clear={liq_result['path_clear']} "
-            f"target_adjusted={liq_result.get('target_adjusted', False)} "
-            f"fed_day={macro.is_fed_day} "
+            f"🎯 ORB SIGNAL {direction.upper()}: underlying={current_price:.2f} "
+            f"orb={prep.orb_low:.2f}–{prep.orb_high:.2f} width={prep.width:.2f} "
+            f"option={option_side.upper()} {contract.strike} mark=${prep.premium:.2f} "
+            f"delta={float(getattr(contract, 'delta', 0.0) or 0.0):.3f} "
+            f"stop={prep.stop:.2f} floor={prep.floor_premium:.2f} target={target_100:.2f} "
+            f"size~{prep.size_provisional} (restated at the fill) "
             f"confluence={signal.confluence_factors}"
         )
         return t.take(signal)

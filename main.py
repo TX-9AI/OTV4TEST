@@ -1,5 +1,16 @@
 """
-main.py  v4.39
+main.py  v4.40
+v4.40 2026-09-08  OTV4TEST r2 — ORB IS ASKED EVERY TICK OF ITS WINDOW, NOT ONLY
+      WHEN CONFIRMED. The plan (strategy/orb_plan.py) now writes the ORB row
+      from 09:35 — both candidate contracts priced, then the armed side with
+      its stop/strike/floor/size — so the dispatch stops gating the call on
+      `orb_confirmed` and stops writing its own "not a confirmed break+retest"
+      NOT ASKED row: the plan says what it is waiting on. The two facts only
+      this file knows travel as kwargs: `now_hhmm` (the window) and
+      `offer_working` (a standing offer resting for a confirmed setup — was a
+      `_plan_skip`, now a named DECLINE on the plan row). The afternoon-debit
+      block is unchanged and still precedes the call. Nothing about sizing,
+      the fill, the latch or the engine re-read moved.
 v4.39 2026-09-08  r315 — THE CREDIT LADDER WALKS THE WAY THE OPERATOR SPECIFIED,
       AND A PARTIAL FINISHES FILLING. War-gamed 2026-09-08 on synthetic tape,
       real entry_ladder/ladder_registry, driver reproduced from this file at
@@ -3588,51 +3599,59 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     # self-validating — the engine has proven the setup from the tape — so the
     # ORB dispatch is now gated on CONFIRMATION alone, which is what the
     # bypass's own doctrine said it was doing all along.
-    if orb_confirmed and not _afd_orb:
-        # ⚠️ ONE STANDING OFFER PER SETUP. The engine now correctly stays
-        # OPEN_LONG while an offer rests, so generate_signal() would keep
-        # producing the same signal every tick and place a new order each time.
-        # This is the other half of moving the re-arm: the state is honest, and
-        # the dispatch must respect it.
-        if _orb_offer_working():
-            _plan_skip("ORBStrategy", "a standing offer is already working "
-                                      "for this setup")
-            orb_sig = None
-        else:
-            orb_sig = _safe_strategy("ORB", lambda: _orb_strategy.generate_signal(
-                orb           = orb,
-                ms        = ms,
-                vol_state     = ctx["vol"],
-                liq_map       = ctx["liq_map"],
-                chain         = chain,
-                macro         = macro,
-            current_price = ctx["price"]
-            ), ctx)
-        if orb_sig:
-            signal = orb_sig
-            # 🔴 r195 — THE ENGINE NO LONGER RE-ARMS HERE, AND THAT WAS THE BUG.
-            # `mark_triggered()` fired the moment the SIGNAL existed, which
-            # re-armed the engine and `_rearm()` WIPES ORBData — direction,
-            # stop, target, confirmation — while the plan was still live. Under
-            # the ladder that was ~20s of exposure. With a standing offer it is
-            # the rest of the session, and a second attempt could confirm and
-            # place a SECOND offer at the same strike while the first still
-            # rested, giving two records for one broker position.
-            # The engine now stays OPEN_* until the TRADE resolves; the offer
-            # supervisor calls notify_position_closed() on a fill-and-close or
-            # a cancel trigger. Operator: "there is a SEQUENCE and 'waiting for
-            # the break' isn't what comes after 'enter long/short'."
-    elif _afd_orb:
-        _plan_skip("ORBStrategy", "past the afternoon debit cutoff")
-    else:
-        # r146 — the silence that cost 2026-08-26: "ORB did not set up" and
-        # "ORB was never asked" were the same absence. The engine's state IS
-        # the reason, and only this file knows it.
-        _plan_skip("ORBStrategy",
-                   f"ORB engine {getattr(orb, 'state', '?')} — not a confirmed "
-                   f"break+retest; range "
-                   f"{float(getattr(orb, 'orb_low', 0) or 0):.2f}-"
-                   f"{float(getattr(orb, 'orb_high', 0) or 0):.2f}")
+    # OTV4TEST r2 — ASKED EVERY TICK, INCLUDING OUTSIDE ITS WINDOW. The
+    # plan narrates every state (no range / both sides priced / armed and
+    # PREPARED / confirmed / spent / runaway / re-entry) and fires only on
+    # OPEN_* with an unspent confirmation. Outside 09:35–11:30 the plan is
+    # DORMANT — one row on the transition, then silent (operator: "observe
+    # only, don't write") — which is why the `_afd_orb` NOT ASKED row that
+    # used to be written EVERY TICK all afternoon is gone; the afternoon
+    # debit block itself is unchanged (`_afd_orb` still guards below).
+    # ⚠️ ONE STANDING OFFER PER SETUP (r195): the engine stays OPEN_* while
+    # an offer rests, so the resting offer is passed in and the plan
+    # refuses at a named gate instead of this file skipping.
+    orb_sig = _safe_strategy("ORB", lambda: _orb_strategy.generate_signal(
+        orb           = orb,
+        ms            = ms,
+        vol_state     = ctx["vol"],
+        liq_map       = ctx["liq_map"],
+        chain         = chain,
+        macro         = macro,
+        current_price = ctx["price"],
+        now_hhmm      = _now_disp.strftime("%H:%M") if _now_disp else "",
+        offer_working = bool(orb_confirmed and _orb_offer_working()),
+    ), ctx)
+    if orb_sig and _afd_orb:
+        logger.warning("[afd] ORB produced a signal past the afternoon debit "
+                       "cutoff — refused here; the plan's window and this "
+                       "gate disagree")
+        orb_sig = None
+    if orb_sig:
+        signal = orb_sig
+        # 🔴 r195 — THE ENGINE NO LONGER RE-ARMS HERE, AND THAT WAS THE BUG.
+        # `mark_triggered()` fired the moment the SIGNAL existed, which
+        # re-armed the engine and `_rearm()` WIPES ORBData — direction,
+        # stop, target, confirmation — while the plan was still live. Under
+        # the ladder that was ~20s of exposure. With a standing offer it is
+        # the rest of the session, and a second attempt could confirm and
+        # place a SECOND offer at the same strike while the first still
+        # rested, giving two records for one broker position.
+        # The engine now stays OPEN_* until the TRADE resolves; the offer
+        # supervisor calls notify_position_closed() on a fill-and-close or
+        # a cancel trigger. Operator: "there is a SEQUENCE and 'waiting for
+        # the break' isn't what comes after 'enter long/short'."
+        # 🔴 r195 — THE ENGINE NO LONGER RE-ARMS HERE, AND THAT WAS THE BUG.
+        # `mark_triggered()` fired the moment the SIGNAL existed, which
+        # re-armed the engine and `_rearm()` WIPES ORBData — direction,
+        # stop, target, confirmation — while the plan was still live. Under
+        # the ladder that was ~20s of exposure. With a standing offer it is
+        # the rest of the session, and a second attempt could confirm and
+        # place a SECOND offer at the same strike while the first still
+        # rested, giving two records for one broker position.
+        # The engine now stays OPEN_* until the TRADE resolves; the offer
+        # supervisor calls notify_position_closed() on a fill-and-close or
+        # a cancel trigger. Operator: "there is a SEQUENCE and 'waiting for
+        # the break' isn't what comes after 'enter long/short'."
 
     # ── Post-runaway routing (v-runaway-fix 2026-07-24) ───────────────────────
     # A RUNAWAY ORB (broke the range and ran to 50% TP with no retest) is a

@@ -1,5 +1,9 @@
 """
-config.py  v4.16
+config.py  v4.17
+v4.17  2026-09-08  OTV4TEST r2 — `ORB_MAX_RETEST_BARS` REMOVED with the stale
+      re-arm it fed (orb_engine v4.12, operator's ruling 2026-09-08: while
+      price is outside the range only a retest, a runaway or a close inside
+      can come next; a timeout is a fourth outcome nobody specified).
 v4.16  2026-09-08  r317 — `SWEEP_CS_LATEST_ET` EXISTS. The sweep read its END
       from `getattr(config, "SWEEP_CS_LATEST_ET", "14:00")` and that key was
       DEFINED NOWHERE, so the default was the only source — the third time
@@ -1009,7 +1013,7 @@ ORB_WINDOW_MINUTES          = 5
 
 # ─── ORB STRATEGY ─────────────────────────────────────────────────────────────
 
-ORB_MAX_RETEST_BARS         = 12
+# OTV4TEST r2 — ORB_MAX_RETEST_BARS deleted; the stale-retest timeout is gone.
 ORB_TP_MULTIPLIER           = 1.0
 
 # ─── r95 (2026-08-24) — THE RESTART TAPE REACH-BACK ──────────────────────────

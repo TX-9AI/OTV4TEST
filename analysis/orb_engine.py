@@ -1,5 +1,18 @@
 """
-analysis/orb_engine.py  v4.11
+analysis/orb_engine.py  v4.12
+v4.12  2026-09-08  OTV4TEST r2 — THE 12-BAR "STALE RETEST" RE-ARM IS DELETED.
+      Operator, 2026-09-08: *"'Stale' doesn't make any sense to me. If it
+      doesn't retest, then it's outside the range and if it's outside the
+      range, how would there be another break?"* While price sits outside the
+      range only three things can happen next — a retest, a runaway to the
+      50%, or a close back inside — and the engine already handles all three.
+      A retest on bar 13 is a retest. The v3.9 timeout dropped a live armed
+      setup into AWAITING_RANGE_REENTRY after `ORB_MAX_RETEST_BARS` (12) and
+      then IGNORED the very retest the setup was waiting for until price
+      closed back inside. `bars_since_break` is still counted and recorded
+      (the plan row shows it); it no longer acts. `ORB_MAX_RETEST_BARS` is
+      removed from config in the same revision. Pinned by check_orb_plan P12:
+      the real engine, armed 20 bars, confirms the 21st-bar retest.
 v4.11  2026-09-04  r235 — 🔴 THE LATCH IS PER-CONFIRMATION NOW.
       `order_placed` was a bare boolean that could only say "an order happened
       at some point", so `notify_position_closed` had to CLEAR it (r227) for a
@@ -420,7 +433,7 @@ from datetime import time as _dtime
 from config import ORB_NO_ENTRY_AFTER_ET as _ORB_CUT
 from utils.math_utils import orb_strike_selection
 from config import (
-    ORB_MAX_RETEST_BARS, STRIKE_INCREMENT, INSTRUMENT,
+    STRIKE_INCREMENT, INSTRUMENT,
     ORB_NO_ENTRY_AFTER_ET
 )
 
@@ -1511,14 +1524,8 @@ class ORBEngine:
         if candle_ts != d.last_retest_bar_ts:
             d.last_retest_bar_ts = candle_ts
             d.bars_since_break += 1
-        if d.bars_since_break > ORB_MAX_RETEST_BARS:
-            logger.info(
-                f"ORB: retest STALE after {d.bars_since_break - 1} bars with no "
-                f"confirm (attempt #{d.attempt_number}) — re-arming, waiting "
-                f"for a fresh break"
-            )
-            self._rearm()
-            return
+        # v4.12 (OTV4TEST r2) — NO STALE TIMEOUT. The count above is a record;
+        # the armed setup lives until a retest, a runaway or a close inside.
 
         candle    = df_1m.iloc[-2]
         close     = float(candle["close"])

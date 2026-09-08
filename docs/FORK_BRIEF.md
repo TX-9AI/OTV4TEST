@@ -198,6 +198,16 @@ to say anything.
 
 ## 7. ORDER OF WORK
 
+⚠️ **AMENDED 2026-09-08 (OTV4TEST r2), operator's ruling: ORB FIRST, ONE
+TRADE AT A TIME.** *"Slow down. Start with 1 trade spec at a time. We will
+sort through it and the associated plan to untangle it together, and discuss
+no other plans/strategies until we reach a point where they must interact. The
+ORB trade is almost purely mechanical, so that is a good place to start."* The
+spec and its plan are AGREED WITH THE OPERATOR BEFORE ANY CODE (PLAN_SPEC §29
+is the first). The vocabulary in item 1 is written per trade as each is
+untangled, not up front. Items 2–3 below record the brief's original proposal
+and are superseded by that ruling; item 4 stands.
+
 1. **Write the spec vocabulary first.** What a spec may declare: level roles,
    structure shapes, trigger events, economic floors, and (later) character
    axes. This is the contract the plan implements against. Get it wrong and each

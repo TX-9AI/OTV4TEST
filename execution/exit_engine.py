@@ -1,5 +1,12 @@
 """
-execution/exit_engine.py  v4.10
+execution/exit_engine.py  v4.11
+v4.11 2026-09-08  OTV4TEST r2 — VELOCITY STALL IS OUT OF THE ORB PATH. Operator,
+      2026-09-08, on the seven ORB exits read back to him: *"Keep all but 5.
+      Theta bleed should catch whatever a stall would have stood in for."*
+      `_evaluate_orb` skips `_velocity_stall` for `ORBStrategy` records. The
+      RunawayContinuation shares this evaluator and is NOT changed here — the
+      runaway's exits are its own conversation, and this fork takes one trade
+      at a time. Pinned by check_orb_plan P13 with the stall forced to fire.
 v4.10 2026-09-05  r269 — 🔴 THE FORMED CONDOR'S LOSS BOUNDARY IS SETTLED: there
       is NONE, deliberately. Operator: *"The current architecture covers all
       condor management. It's a settled issue."* The 15:45 close, the nickel
@@ -952,6 +959,7 @@ class ExitEngine:
                                death are caught independently, whichever fires first.
           4. THETA BLEED     \u2014 gated: held >= 20 min AND gain in [10%, 20%) AND
                                projected decay over the lookahead erases the gain.
+             (velocity stall: RUNAWAY records only \u2014 OTV4TEST r2, by ruling)
           5. PAST 100% TP    \u2014 no hard exit. Trail tightens to the nearest unfilled
                                in-favor 1m FVG, floored at 85% of current premium.
           6. BELOW 100% TP   \u2014 FVG trail arms at +20%; % trail arms at +50% and
@@ -1057,11 +1065,14 @@ class ExitEngine:
         # watching." A blended score would have averaged three healthy-ish
         # signals into inaction; separate gates, any one of which can fire,
         # fails safe.
-        _vel = self._velocity_stall(record, pnl_pct, df_1m)
-        if _vel is not None:
-            decision.should_exit = True
-            decision.exit_reason = _vel
-            return decision
+        # v4.11 (OTV4TEST r2) — no velocity stall on ORB, by ruling; the
+        # runaway (same evaluator) keeps it until its own spec is untangled.
+        if record.get("strategy") != "ORBStrategy":
+            _vel = self._velocity_stall(record, pnl_pct, df_1m)
+            if _vel is not None:
+                decision.should_exit = True
+                decision.exit_reason = _vel
+                return decision
 
         # 3. PAST 100% TP \u2014 switch to tightened FVG-aware trail, no hard exit
         if current_premium >= target:

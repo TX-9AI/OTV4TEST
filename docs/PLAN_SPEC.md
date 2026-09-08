@@ -1,5 +1,6 @@
 # PLAN_SPEC.md — every strategy declares its intent BEFORE the trigger
 
+**v1.24 · 2026-09-08 · OTV4TEST r2 — the ORB spec and its plan contract, agreed part by part; observe-only outside the window (§29).**
 **v1.23 · 2026-09-01 · r208 — the butterfly wing is searched, not computed (§28).**
 **v1.22 · 2026-09-01 · r207 — the ORB firing sequence is the gate (§27).**
 **v1.21 · 2026-08-28 · r181 — ORB risk-normalized sizing, pure geometry (§26).**
@@ -1102,3 +1103,100 @@ our winners and losers"* is a join whenever it is wanted (BFLY.10).
 Pinned by `tests/check_butterfly_foundational.py` (11 checks, 8 born red at
 f74818b) plus re-derived `check_butterfly_legs` v2.2, `check_butterfly_wing_grid`
 v1.1 and `check_plan_prepares` v1.5 — each born red 2 at HEAD.
+
+---
+
+## 29. OTV4TEST r2 — THE ORB SPEC AND ITS PLAN CONTRACT (agreed with the operator 2026-09-08, part by part)
+
+Doctrine: **wicks are tests, closes are acceptance** — in every instance.
+
+### 29.1 The spec — what the trade IS
+
+| part | definition | owner |
+|---|---|---|
+| range | high/low of the 09:30 five-minute bar; width = high − low | feed (IL1) |
+| impulsive candle | a 1m bar that OPENS inside the range and CLOSES outside it | plan reads, freezes |
+| direction | the side it closed on | plan reads |
+| retest → FIRE | a later 1m bar whose wick touches or enters the range while its body (open AND close) stays outside | strategy confirms |
+| runaway → HAND OFF | a 1m close beyond the 50% level before any retest; ORB is finished on this break | plan reports |
+| re-entry → THESIS OVER | a 1m close back inside the range; wait for a fresh impulsive candle | plan reports |
+| window | attempts until 11:30 ET; uncapped | spec value |
+
+**Deleted from the code by ruling (this fork):**
+- the 12-bar "stale retest" re-arm (`ORB_MAX_RETEST_BARS`). While price is outside the range only three things can happen next — retest, runaway, close inside. A retest on bar 13 is a retest.
+- the ATR floor on the fire (`ORB_ATR_FLOOR_PCT`). A runaway-reachability study glued onto a setup whose own width already says what the tape is doing.
+
+### 29.2 Entry conditions — the bars, as values
+
+1. impulsive candle exists and is not invalidated (state ARMED_*)
+2. a retest bar has closed (state OPEN_*)
+3. this confirmation has not already produced an order (`order_placed_seq < confirmation_seq`)
+4. a contract exists at the target strike with a live quote
+
+Nothing else gates. No R hurdle, no geometry, no ATR, no confluence. ORB never asked permission and still does not.
+
+### 29.3 What the plan must provide — ready BEFORE the retest prints
+
+Frozen at the impulsive candle's close:
+- **stop level** = that candle's LOW (long) / HIGH (short). Body or wick, whichever is the extreme.
+- **100% target** = boundary ± width; **50% level** = boundary ± width/2 (the runaway hand-off line, not a take-profit)
+- **target strike** = 100% target rounded to the increment; **the contract** at it (nearest listed strike; tie → lower |delta|)
+- **provisional size** = floor(width / |boundary − stop|), min 1 — restated at the fill as floor(width / |fill − stop|); capped by `ORB_BUDGET_USD`
+- **floor premium** = 75% of the contract's current premium (re-priced each tick until the fire, fixed at the fill)
+
+**When.** Both candidates are complete on the first tick after the 09:30 bar
+closes (09:35:00–09:35:15 on a 15s loop) — everything but direction. The tick
+after the impulsive candle closes, the trade is fully specified: direction,
+stop, the one contract, provisional size, floor. That is at least one whole 1m
+bar before a retest can exist, so the strategy holds a ready-to-fire condition
+for the entire armed period. At the retest bar's close the strategy fires; the
+only thing computed at that instant is the size restated off the fill.
+
+**Deconfliction is the plan's.** A high break and a low break are both
+candidates until the impulsive candle prints; only one 1m bar can open inside
+the range and close outside on one side, so the candle resolves it and the
+strategy receives exactly one prepared trade or nothing. After a close back
+inside (re-entry) both sides re-open and narrow again on the next candle. The
+strategy keeps one say: whether a bar's wick touched the range with its body
+outside is the spec's event, checked against the plan's boundary. The plan
+says *what* to fire; the strategy says *now*.
+
+**Outside the window the plan observes and does not write** (operator,
+2026-09-08: *"observe only, don't write"*). Before 09:35 and after 11:30 it
+reads the engine every tick and writes one DORMANT row on the transition,
+then nothing until the state changes. main.py asks it every tick regardless;
+the per-tick NOT ASKED row that used to fill the afternoon is gone.
+
+Declared for the exit engine (the strategy's conditions; the plan states them on the row):
+- 15:45 hard close · 25% premium floor (unconditional, precedence over structure) · structure stop = 1m CLOSE through the stop level (a wick through it is a test) · theta bleed (held ≥ 20 min, gain in [10%, 20%), projected decay erases it) · below 100%: FVG trail arms +20%, % trail arms +50% ratcheting to 75% of current · past 100%: no exit, trail tightens to the nearest in-favor 1m FVG floored at 85%.
+- **Removed from the ORB path by ruling:** velocity stall. Theta bleed covers it.
+
+### 29.4 The plan row, per tick (the fork's ledger vocabulary)
+
+| row (as written) | when | carries |
+|---|---|---|
+| NO PLAN (starved) | no opening range, no chain, no break direction | the missing input by name |
+| HOLD | range set, no impulsive candle yet | both candidates priced; "Waiting on: impulsive candle" |
+| HOLD PREPARED (setup selected) | impulsive candle closed | everything in 29.3; "Waiting on: retest" |
+| DECLINE `contract` (none available) | no listed strike with a live quote at the target | the strikes searched |
+| DECLINE `order_already_placed` / `offer_working` | confirmation spent / a standing offer rests | the confirmation number |
+| DECLINE `consequence` | runaway or close inside | which consequence |
+| DORMANT `entry_window` | before 09:35 / after 11:30 | one row on the transition, then silence |
+| TAKE | every bar clears and the strategy fires | the trade line |
+
+### 29.5 The acceptance test for this rewire
+Same recorded tick → the plan-driven fire selects the contract, stop, size and floor the e955020 strategy selected. Then a live session: every fire reads back against its plan row.
+
+### 29.6 After a trade resolves — the plan decides what the strategy may fire next (operator, 2026-09-08)
+
+Precedence order, evaluated on the closed 1m bar (closes are acceptance):
+1. a close beyond the 50% has been accepted → the runaway owns the move; ORB is finished on this break
+2. past 11:30 ET → expired
+3. the last close is INSIDE the range → RE-ENTRY: the thesis is over, the impulsive candle is dead; the cycle restarts and waits for a fresh impulsive candle, which brings new geometry, a new stop, a new size
+4. otherwise (price still outside the range, 50% not accepted) → the ORIGINAL impulsive candle's thesis still stands: the plan re-issues the SAME stop, target strike and floor, re-sizes off the next fill, and the next qualifying retest fires again
+
+Mechanical consequence: the impulsive candle opened inside the range, so its stop extreme is inside the range; a structure stop is a close through it and therefore always a re-entry (case 3). Case 4 can only follow a premium exit — floor, theta bleed, trail.
+
+**No limit on qualifying setups per session** — two or three ORB trades, each with its own impulsive candle and lot size, are all valid. The only bound is the time slot.
+
+**As built (OTV4TEST r2):** `strategy/orb_plan.py` (the plan; owns the Plan row, the chain search, `select_contract` parity-pinned to `select_orb_strike`, `provisional_size` parity-pinned to `RiskManager._size_geometry`), `strategy/orb_strategy.py` v4.6 (fires on `prep.ready` with the plan's variables; ATR floor deleted), `analysis/orb_engine.py` v4.12 (stale re-arm deleted), `execution/exit_engine.py` v4.11 (velocity stall out of the ORB path; the runaway shares the evaluator and is untouched), `main.py` v4.40 (ORB asked every tick). Hypotheticals P1–P16 in `tests/check_orb_plan.py`, born red at 910ad0e on P12/P13/P0. Two values carried from the old selector and NOT ruled: the `mark > 0.05` quote floor and the lower-|delta| tie-break (`ORB.2` in the fork backlog).
