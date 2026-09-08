@@ -1,6 +1,20 @@
 #!/usr/bin/env python3
 """
-tests/check_ledger_parity.py  v1.4
+tests/check_ledger_parity.py  v1.5
+v1.5  2026-09-08  r318 — r316 JOINS THE KNOWN-ROWLESS SET, AND THE LAND ORDER
+      IS WHY NOBODY SAW IT. r316 was cut and never landed (it bundled r317's
+      work with r315's; r315 landed first and made its BASE stale), so r317's
+      own GENESIS row explains the spent number by name — and that citation
+      made L3 red the instant it was appended. EXACTLY the r226 case, allowed
+      for exactly the r226 reason: the citation is the RECORD of why the
+      number is missing, not evidence of a lost row.
+      🔴 THE LAND GATE COULD NOT HAVE CAUGHT IT. `land.sh` runs the CHECK
+      lines, then regenerates the maps, then appends GENESIS — so every check
+      runs against a ledger that does not yet contain the row being landed.
+      A DESC that cites a rowless number therefore lands GREEN and the red
+      appears on the next run, with nothing tying it to the delivery that
+      caused it. r317 reported `check_ledger_parity PASS` and left origin red.
+      Recorded as DOC.20; the ordering itself is the operator's call.
 v1.4  2026-09-08  r317 — L7: NO ID CARRIES TWO BYTE-IDENTICAL ROWS. Four did
       (ORB.3 x3, ORB.4 x3, S3.1 x2, S3.6 x2) and every existing check passed
       over them, because L1/L5/L6 test for the CONTRADICTION case and
@@ -174,7 +188,12 @@ def main():
     # why the number is missing rather than evidence of a lost row. L2 already
     # allows it as a known unlanded revision; L3 allows the citation for the
     # same reason and by the same name.
-    KNOWN_ROWLESS_CITATIONS = {110, 141, 159, 226}
+    # ⚠️ r316 JOINED THIS SET WHEN r317 LANDED, and it is the r226 case again:
+    # r316 was cut, never landed, and re-cut as r317 after r315 made its BASE
+    # stale. r317's row says so by name, so the citation is the record of why
+    # the number is missing rather than evidence of a lost row. §26: the
+    # number is spent and does not come back.
+    KNOWN_ROWLESS_CITATIONS = {110, 141, 159, 226, 316}
     # 🔴 r317 — A CROSS-REPO CITATION IS NOT A CITATION OF THIS LEDGER.
     # otv4 rows routinely say "DOCS ONLY - DEV.5 FILED FOR dtp r305", naming a
     # day_trader_pro revision. `\br305\b` matched it, so L3 demanded an otv4
@@ -186,7 +205,7 @@ def main():
     cited = [n for n in gaps
              if re.search(rf'\br{n}\b', _own) and n not in KNOWN_ROWLESS_CITATIONS]
     check("L3 no NEW missing OTV4 revision number is cited in GENESIS prose "
-          "(r110/r141/r159/r226 known, DOC.13; dtp citations excluded)",
+          "(r110/r141/r159/r226/r316 known, DOC.13; dtp citations excluded)",
           not cited, f"cited but rowless: {cited}")
 
     # ══ L4 — THE SEQUENCE IS REPORTED, NOT ENFORCED ═══════════════════════
