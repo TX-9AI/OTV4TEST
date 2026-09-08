@@ -1,6 +1,29 @@
 #!/usr/bin/env python3
 """
-tests/check_ledger_parity.py  v1.2
+tests/check_ledger_parity.py  v1.4
+v1.4  2026-09-08  r317 — L7: NO ID CARRIES TWO BYTE-IDENTICAL ROWS. Four did
+      (ORB.3 x3, ORB.4 x3, S3.1 x2, S3.6 x2) and every existing check passed
+      over them, because L1/L5/L6 test for the CONTRADICTION case and
+      identical copies contradict nothing. Scoped to VERBATIM copies only:
+      differing rows per id are the ledger's own per-revision idiom.
+v1.3  2026-09-08  r317 — 🔴 L3 READ day_trader_pro's REVISION NUMBERS AS THIS
+      REPO'S, AND HAS SINCE THE TWO SEQUENCES OVERLAPPED. `\br305\b` matches
+      the "dtp r305" in an otv4 row, so a CROSS-REPO citation counted as a
+      same-repo one. otv4's GENESIS cites 31 distinct dtp revisions and 28 of
+      them HAPPEN to collide with a real otv4 row number, so the check stayed
+      quiet by luck; only 305, 309 and 316 fall outside otv4's range, and
+      those three are the entire red. It now requires the citation to be
+      un-prefixed.
+      ⚠️ THE TEMPTING FIX WAS THE WRONG ONE. Adding 305/309/316 to
+      `KNOWN_ROWLESS_CITATIONS` turns the board green and leaves the check
+      measuring the wrong thing — it would go quiet until dtp's numbering next
+      escapes otv4's range, and the allow-list is for holes this repo cannot
+      explain, not for a pattern that never applied. Same class as the r230
+      finding: a rule pointing at the wrong thing is worse than no rule.
+      ⚠️ AND THE COLLISION IS NOT HYPOTHETICAL IN THE OTHER DIRECTION — with
+      28 numbers shared, any genuine otv4 hole whose number a dtp citation
+      happens to mention was equally invisible. Whether one is hiding under
+      the fix is now answerable, and the run below says: none.
 v1.2  2026-09-04  r245 — 🔴 THE OPEN LIST MATCHES THE STATE MARKER,
       NOT THE WORD. It asked whether "OPEN" appeared anywhere in the state
       cell, and the older rows carry a long `◐ PUSHED…` narrative there
@@ -152,10 +175,18 @@ def main():
     # allows it as a known unlanded revision; L3 allows the citation for the
     # same reason and by the same name.
     KNOWN_ROWLESS_CITATIONS = {110, 141, 159, 226}
+    # 🔴 r317 — A CROSS-REPO CITATION IS NOT A CITATION OF THIS LEDGER.
+    # otv4 rows routinely say "DOCS ONLY - DEV.5 FILED FOR dtp r305", naming a
+    # day_trader_pro revision. `\br305\b` matched it, so L3 demanded an otv4
+    # row for a number that belongs to the other repo. 28 of the 31 dtp numbers
+    # cited here happen to also be real otv4 rows, which is why this only ever
+    # surfaced on the three that fall outside otv4's range.
+    _DTP = re.compile(r'(?:dtp|day_trader_pro)[\s-]*r\d+', re.I)
+    _own = _DTP.sub(" ", gen)          # strip cross-repo citations, then look
     cited = [n for n in gaps
-             if re.search(rf'\br{n}\b', gen) and n not in KNOWN_ROWLESS_CITATIONS]
-    check("L3 no NEW missing revision number is cited in GENESIS prose "
-          "(r110/r141/r159 known, DOC.13)",
+             if re.search(rf'\br{n}\b', _own) and n not in KNOWN_ROWLESS_CITATIONS]
+    check("L3 no NEW missing OTV4 revision number is cited in GENESIS prose "
+          "(r110/r141/r159/r226 known, DOC.13; dtp citations excluded)",
           not cited, f"cited but rowless: {cited}")
 
     # ══ L4 — THE SEQUENCE IS REPORTED, NOT ENFORCED ═══════════════════════
@@ -195,11 +226,37 @@ def main():
     check("L6c and the real list is non-empty and unique",
           op and len(op) == len(set(op)), f"{len(op)} open")
 
+    # ══ L7 — NO ID CARRIES TWO BYTE-IDENTICAL ROWS ════════════════════════
+    # 🔴 r317. FOUR IDS DID: ORB.3 and ORB.4 on THREE rows each, S3.1 and S3.6
+    # on two — a run of rows present verbatim in both the S3-repoint section
+    # and PART 2, in the same order, so a section insert duplicated a block
+    # rather than moving it.
+    # ⚠️ EVERY OTHER CHECK IN THIS FILE PASSED OVER THEM, AND THAT IS THE
+    # POINT. L1/L5/L6 were built for the CONTRADICTION case — an id open in
+    # one place and closed in another — and identical copies contradict
+    # nothing, so the open list resolved to 19 with the strays sitting in it.
+    # A checker cannot see a duplicate it was designed to tolerate.
+    # ⚠️ IDENTICAL ONLY, DELIBERATELY. Multiple DIFFERING rows per id are this
+    # ledger's own idiom: entries are prepended per revision and a superseded
+    # row is struck in place rather than deleted, because rewriting them
+    # rewrites history (r245). Flagging those would fire on the correct
+    # pattern and train the reader to skip reds — the CV.1 failure. A verbatim
+    # copy records nothing a single row does not.
+    _rows = {}
+    for _i, _l in enumerate(bl.splitlines(), 1):
+        _m = re.match(r'\| \*\*([A-Z0-9.]+)\*\* \|', _l)
+        if _m:
+            _rows.setdefault(_m.group(1), []).append((_i, _l))
+    _identical = {k: [i for i, _ in v] for k, v in _rows.items()
+                  if len(v) > 1 and len({l for _, l in v}) == 1}
+    check("L7 no backlog id carries two BYTE-IDENTICAL rows",
+          not _identical, f"duplicated verbatim: {_identical}")
+
     print()
     if FAILED:
         print(f"RED — {len(FAILED)} failed: {', '.join(FAILED)}")
         return 1
-    print("GREEN — 8 checks")
+    print("GREEN — 9 checks")
     return 0
 
 

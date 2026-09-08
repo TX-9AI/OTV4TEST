@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""check_entry_windows.py — v1.1
+"""check_entry_windows.py — v1.2
+v1.2  2026-09-08  r317: W8 — THE END SIDE, WHICH THIS FILE NEVER ASSERTED.
+      W1 has pinned ONE credit START across four paths since r146, written
+      after the sweep kept 11:11 on a `getattr` default whose key did not
+      exist. `SWEEP_CS_LATEST_ET` was the SAME DEFECT on the END and survived
+      both sweeps because nothing here looked at ends at all. Born red at
+      0498534, where `C.SWEEP_CS_LATEST_ET` raises AttributeError.
+      ⚠️ W8 GOES RED ON A DELIBERATE DIVERGENCE TOO, and that is the point:
+      if a future ruling gives one credit path its own cutoff, this check is
+      how that decision gets recorded rather than absorbed. Update it WITH the
+      ruling; do not loosen it to keep a run green.
 v1.1  2026-08-26  r146: W7 re-pinned to each strategy's PLAN_CHECKS after the
       builder engine was deleted.
 
@@ -104,6 +114,38 @@ def main():
     check("W6 debit cutoff and credit start are exactly one minute apart",
           (start[0]*60 + start[1]) - (_dc[0]*60 + _dc[1]) == 1,
           f"debit cutoff {_dc} -> credit start {start}")
+
+    # ── 🔴 W8 — ONE CREDIT END, THE MIRROR OF W1 ─────────────────────────
+    # The sweep's END was `getattr(config, "SWEEP_CS_LATEST_ET", "14:00")` with
+    # NO SUCH KEY — the third instance of the default-is-the-only-source shape
+    # in this codebase, and the first on the END side. All four read 14:00
+    # today, so this is latent: it costs nothing until the cutoff moves, and
+    # then three paths move and the sweep does not.
+    # ⚠️ NAMED FAILURE, NEVER A TRACEBACK. At 0498534 neither CREDIT_ENTRY_END_ET
+    # nor SWEEP_CS_LATEST_ET exists, and a bare read raised AttributeError —
+    # "the checker crashed" and "the constant is absent" must not look alike
+    # (WORKING_AGREEMENT §0.5), least of all in the check whose whole subject is
+    # a constant that was missing.
+    _missing = [n for n in ("CREDIT_ENTRY_END_ET", "SWEEP_CS_LATEST_ET",
+                            "CONDOR_ENTRY_CUTOFF_ET", "TCS_ENTRY_END_ET")
+                if not hasattr(C, n)]
+    if _missing:
+        check("W8 there is ONE credit end and every credit path uses it",
+              False, f"config defines no {', '.join(_missing)}")
+        check("W8b the credit window is bounded the right way round", False,
+              "cannot evaluate — the end constant is absent")
+        _end = None
+    else:
+        _end = tuple(C.CREDIT_ENTRY_END_ET)
+        check("W8 there is ONE credit end and every credit path uses it",
+              tuple(C.CONDOR_ENTRY_CUTOFF_ET) == _end
+              and tuple(C.TCS_ENTRY_END_ET) == _end
+              and _hm(C.SWEEP_CS_LATEST_ET) == _end
+              and _hm(_sc.LATEST_ET) == _end,
+              f"end={_end} condor={C.CONDOR_ENTRY_CUTOFF_ET} tcs={C.TCS_ENTRY_END_ET} "
+              f"sweep_cfg={C.SWEEP_CS_LATEST_ET} sweep_strategy={_sc.LATEST_ET}")
+        check("W8b the credit window is bounded the right way round",
+              tuple(start) < _end, f"{start} -> {_end}")
 
     # ── W7 — the PLAN side declares and applies the same window ──────────
     # ⚠️ NO PLAN BUILDER CHECKED THE CLOCK AT ALL until r142. A fork plan read

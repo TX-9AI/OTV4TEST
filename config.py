@@ -1,5 +1,17 @@
 """
-config.py  v4.15
+config.py  v4.16
+v4.16  2026-09-08  r317 — `SWEEP_CS_LATEST_ET` EXISTS. The sweep read its END
+      from `getattr(config, "SWEEP_CS_LATEST_ET", "14:00")` and that key was
+      DEFINED NOWHERE, so the default was the only source — the third time
+      this exact shape has appeared in this file (`SWEEP_CS_EARLIEST_ET` kept
+      11:11 while the other three credit paths moved to 11:31, r146;
+      `GEX_BFLY_EARLIEST_ET` opened an hour before the noon rule, r142). Both
+      of those were fixed on the START side and the END side was never swept.
+      It bites the day the credit cutoff moves: the sweep silently stays at
+      14:00 while everything else follows. New `CREDIT_ENTRY_END_ET` is the
+      one number, `SWEEP_CS_LATEST_ET` is derived from it, and
+      `check_entry_windows` W8 asserts the four credit paths agree on the END
+      exactly as W1 does on the START.
 v4.15  2026-09-05  r269 — WHY THIS REPO EXISTS IS NOW IN THE DOCTRINE BLOCK.
       The v3 direction-skill measurement (715 trades, 44.9% correct side, CI
       entirely below a coin flip) and the P&L attribution that followed it were
@@ -1379,6 +1391,20 @@ CONDOR_ENTRY_START_ET       = CREDIT_ENTRY_START_ET   # was (11, 11)
 # the other three moved. check_sweep_spread's S8a caught it; I had not.
 SWEEP_CS_EARLIEST_ET        = f"{CREDIT_ENTRY_START_ET[0]}:{CREDIT_ENTRY_START_ET[1]:02d}"
 CONDOR_ENTRY_CUTOFF_ET      = (14, 0)   # Standard entry cutoff
+# 🔴 r317 — THE END SIDE, WHICH THE TWO EARLIER FIXES BOTH MISSED.
+# `sweep_credit_spread.LATEST_ET` read `getattr(config, "SWEEP_CS_LATEST_ET",
+# "14:00")` and THE KEY DID NOT EXIST, so the default was the only source —
+# the same shape as `SWEEP_CS_EARLIEST_ET` above (which kept 11:11 while the
+# other three credit paths moved) and as `GEX_BFLY_EARLIEST_ET`. Both of those
+# were repaired on the START side; nobody swept the END.
+# ⚠️ IT COSTS NOTHING TODAY AND EVERYTHING ON THE DAY THE CUTOFF MOVES: all
+# four credit paths read 14:00 right now, so the defect is invisible until
+# someone changes the number — and then three paths move and the sweep does
+# not, silently, which is exactly how the 11:11 sweep survived r146.
+# ⚠️ MANAGEMENT IS NOT GATED BY THIS. Same as `TCS_ENTRY_END_ET`: the roll and
+# `management.py` reference no window constant and run to the 15:45 flatten.
+CREDIT_ENTRY_END_ET         = CONDOR_ENTRY_CUTOFF_ET   # one END for every credit path
+SWEEP_CS_LATEST_ET          = f"{CREDIT_ENTRY_END_ET[0]}:{CREDIT_ENTRY_END_ET[1]:02d}"
 
 # ─── EXIT MANAGEMENT ──────────────────────────────────────────────────────────
 
