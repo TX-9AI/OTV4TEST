@@ -1,6 +1,21 @@
 #!/usr/bin/env python3
 """
-tests/check_holiday_aware.py  v1.1
+tests/check_holiday_aware.py  v1.2
+v1.2  2026-09-08  r319 / SHD.3 — H5c RUNS THE ExecCondition, BECAUSE H5 READ
+      SOURCE TEXT AND WATCHED THE FLEET GO DARK. H5 asserts that
+      `shadow/trading_day.py` contains the string `from utils.market_calendar
+      import`. That string is precisely what broke it: an absolute package
+      import in a module systemd invokes as a PLAIN SCRIPT, where `sys.path`
+      carries the script's own directory and not the repo root. The import
+      raised, the ExecCondition exited 1, systemd SKIPPED `shadow-start`
+      (a non-zero condition is a skip, not a failure, so nothing entered a
+      failed state), and all fifteen boxes wrote ZERO shadow rows on the first
+      session after r304 landed. H5 was green the whole time.
+      WORKING_AGREEMENT §21 one layer up — H5 asserted the MENTION of the
+      import whose RESOLUTION was the defect. H5c executes the real
+      ExecCondition line with the SYSTEM python from a directory OUTSIDE the
+      repo and reads the exit code; H5d proves it fails for the right reason
+      by checking stderr carries no traceback.
 v1.1  2026-09-07  r307 - H4 DERIVES ITS out-of-coverage YEAR from coverage()
 instead of hardcoding 2035. It went red the moment the list was extended to
 2035 - a second copy of a constant, the same failure this session hit in a menu
@@ -86,6 +101,29 @@ def main() -> int:
     check("H5  shadow/trading_day.py IMPORTS the list, does not redefine it",
           "US_MARKET_HOLIDAYS = {" not in sh
           and "from utils.market_calendar import" in sh)
+    # ── 🔴 H5c — THE ExecCondition IS EXECUTED, NOT READ ──────────────────
+    # `deploy/shadow-start.service` runs:
+    #   ExecCondition=/usr/bin/python3 <install>/shadow/trading_day.py
+    # so the test is that exact shape: SYSTEM python, absolute script path,
+    # from a directory that is NOT the repo — because `WorkingDirectory=` does
+    # not put the cwd on `sys.path` and does not rescue this.
+    # ⚠️ 0 and 1 are BOTH legitimate (trading day / not), so the assertion is
+    # that it exits CLEANLY with one of them and prints no traceback. An
+    # ImportError also exits 1 — indistinguishable from "not a trading day" by
+    # exit code alone, which is exactly why it went unnoticed for a session.
+    import subprocess as _sp
+    _script = os.path.join(root, "shadow", "trading_day.py")
+    _r = _sp.run([sys.executable, _script], capture_output=True, text=True,
+                 cwd=os.path.dirname(root))
+    check("H5c shadow/trading_day.py RUNS as a bare script from outside the repo "
+          "(the systemd ExecCondition form)",
+          _r.returncode in (0, 1) and "Traceback" not in _r.stderr,
+          f"exit={_r.returncode} stderr={_r.stderr.strip().splitlines()[-1] if _r.stderr.strip() else ''}")
+    check("H5d and it agrees with the calendar it imports",
+          _r.returncode == (0 if mc.is_trading_day() else 1),
+          f"script exit={_r.returncode} "
+          f"is_trading_day={mc.is_trading_day()}")
+
     tu = open(os.path.join(root, "utils", "time_utils.py")).read()
     check("H5b time_utils does not define a holiday set of its own",
           "US_MARKET_HOLIDAYS = {" not in tu)
