@@ -1,9 +1,15 @@
 #!/bin/bash
 # ==========================================================================
-# push.sh  v4.1
-v4.1  2026-08-25  r65 EXORCISM: every mention of the retired classification
-      system removed - identifiers, comments, docstrings, schema. The word
-      does not appear in this tree. Full accounting: REMOVAL_LOG (delivery).
+# push.sh  v4.2
+# v4.2  2026-09-08  r322 — 🔴 THE COMMENT MARKERS. r65 wrote its changelog
+#       entry into this header WITHOUT them, so lines 4-6 were SHELL, not
+#       prose: `v4.1: command not found`, then a syntax error on the
+#       parenthesis in "(delivery)" — and a syntax error aborts the parse, so
+#       this script has done NOTHING since 2026-08-25. Four files, one commit,
+#       identical three lines.
+# v4.1  2026-08-25  r65 EXORCISM: every mention of the retired classification
+#       system removed - identifiers, comments, docstrings, schema. The word
+#       does not appear in this tree. Full accounting: REMOVAL_LOG (delivery).
 
 # Pushes the control checkout to GitHub.
 #
