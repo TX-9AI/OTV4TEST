@@ -1,5 +1,11 @@
 """
-query.py  v4.8
+query.py  v4.9
+v4.9  2026-09-02  OTV4TEST r7 — DECISIONS hushes plans outside their window.
+      Operator, 2026-09-09: "the bot should see everything. Just don't show
+      it to me on the products I actively use." DORMANT rows stay in the
+      store; ENTER ON lists a dormant strategy as one line of names under
+      "hushed (outside their window)" instead of a block each. Same for the
+      management plans' "no open position — nothing to manage" NOT ASKED rows.
 v4.8  2026-09-02  r216 — 🔴 THE P&L PERCENT COLUMN WAS OFF BY 100x SINCE r210.
       `pnl_pct` is a FRACTION — trade_logger:650 stores
       `(exit_price - entry_prem) / entry_prem` — so a doubling is 1.07. r210
@@ -822,12 +828,18 @@ def show_decisions(dc):
     if not rows:
         print("    no plan rows yet today")
     stale_cut = now_et().timestamp() - 300
+    hushed = []          # r7: dormant / nothing-to-manage — recorded, not shown
     for strat, verdict, reason, ts in rows:
+        if verdict == "DORMANT" or "nothing to manage" in str(reason or ""):
+            hushed.append(strat)
+            continue
         t = datetime.fromtimestamp(ts, ET).strftime("%H:%M:%S")
         stale = "  ⚠️ STALE" if ts < stale_cut else ""
         print(f"    {strat:<22s} {verdict:<8s} {t}{stale}")
         for line in _wrap(reason or "", 88):
             print(f"      {line}")
+    if hushed:
+        print(f"    hushed (outside their window): {', '.join(hushed)}")
     # ⚠️ THE SAME CUT ON THE MANAGE SIDE. A watcher row from yesterday is not
     # "an open position under management" today.
     mrows = _q(dc, "SELECT strategy, verdict, reason, ts_epoch FROM plan_tick p"

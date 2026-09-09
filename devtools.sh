@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# devtools.sh  v2.1  — OTV4TEST box menu
+# devtools.sh  v2.2  — OTV4TEST box menu
+# v2.2  2026-09-09  OTV4TEST r7 — PLAN ROWS and PLAN BOARD hush DORMANT rows
+#       (recorded, not shown; add them back with the prompt).
 # v2.1  2026-09-09  OTV4TEST r6 — Feed health shows OPEN INTEREST: the last `OI:`
 #       lines from the bot's journal (fetched / cached / NON-ZERO), so the
 #       butterfly's un-park is a menu read, not a grep.
@@ -75,14 +77,15 @@ s_notes() {
   _sql "$DERIVED_DB" "SELECT strategy, SUM(fired) AS signalled, COUNT(*)-SUM(fired) AS quiet, COUNT(*) AS looks FROM strategy_note WHERE ts_epoch >= $ET_FROM AND ts_epoch < $ET_TO GROUP BY strategy ORDER BY looks DESC;"; pause; }
 s_plan_board() {
   echo; echo "  Source: derived_store.db -> plan_tick + plan_check"; _ask_day || { pause; return; }
-  _sql "$DERIVED_DB" "SELECT strategy, verdict, COUNT(*) n, ROUND(MIN(r_now),2) r_lo, ROUND(MAX(r_now),2) r_hi, ROUND(AVG(underlying),2) px FROM plan_tick WHERE ts_epoch >= $ET_FROM AND ts_epoch < $ET_TO GROUP BY strategy, verdict ORDER BY strategy, verdict;"
+  _sql "$DERIVED_DB" "SELECT strategy, verdict, COUNT(*) n, ROUND(MIN(r_now),2) r_lo, ROUND(MAX(r_now),2) r_hi, ROUND(AVG(underlying),2) px FROM plan_tick WHERE ts_epoch >= $ET_FROM AND ts_epoch < $ET_TO AND verdict <> 'DORMANT' GROUP BY strategy, verdict ORDER BY strategy, verdict;"
   echo; echo "  WHICH CHECK FAILED, AND HOW OFTEN:"
   _sql "$DERIVED_DB" "SELECT strategy, check_name, verdict, COUNT(*) n, ROUND(MIN(value),2) lo, ROUND(MAX(value),2) hi FROM plan_check WHERE ts_epoch >= $ET_FROM AND ts_epoch < $ET_TO GROUP BY strategy, check_name, verdict ORDER BY strategy, check_name, verdict;"; pause; }
 s_plan_rows() {
   echo; echo "  Source: derived_store.db -> plan_tick, the ROWS (newest last) — the per-tick narrative"; _ask_day || { pause; return; }
   read -rp "  Strategy (ENTER = all): " S; local W=""; [ -n "$S" ] && W=" AND strategy='$S'"
   read -rp "  How many rows [40]: " N; N="${N:-40}"
-  _sql "$DERIVED_DB" "SELECT * FROM (SELECT datetime(ts_epoch,'unixepoch','-4 hours') AS et, strategy, verdict, substr(reason,1,150) AS reason FROM plan_tick WHERE ts_epoch >= $ET_FROM AND ts_epoch < $ET_TO$W ORDER BY ts_epoch DESC LIMIT $N) ORDER BY et;"; pause; }
+  read -rp "  Show DORMANT rows too? [y/N] " D; local H=" AND verdict <> 'DORMANT'"; case "${D:-}" in y|Y) H="";; esac
+  _sql "$DERIVED_DB" "SELECT * FROM (SELECT datetime(ts_epoch,'unixepoch','-4 hours') AS et, strategy, verdict, substr(reason,1,150) AS reason FROM plan_tick WHERE ts_epoch >= $ET_FROM AND ts_epoch < $ET_TO$W$H ORDER BY ts_epoch DESC LIMIT $N) ORDER BY et;"; pause; }
 s_plan_ledger() {
   echo; echo "  Source: derived_store.db -> plan_ledger (intent + terminal reason)"; _ask_day || { pause; return; }
   _sql "$DERIVED_DB" "SELECT strategy, state, COALESCE(terminal_reason,'(live)') AS reason, COUNT(*) AS n FROM plan_ledger WHERE created_ts >= $ET_FROM AND created_ts < $ET_TO GROUP BY strategy, state, reason ORDER BY n DESC;"; pause; }

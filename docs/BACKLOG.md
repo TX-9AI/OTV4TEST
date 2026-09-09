@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.5
+# BACKLOG.md — OTV4TEST — v0.6
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -63,6 +63,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.6 — 2026-09-09 — OTV4TEST r7 — readers hush dormant plans; the record stays whole (PLAN_SPEC §33); §32.2b states the butterfly's slot.**
 
 **v0.5 — 2026-09-09 — OTV4TEST r6 — the butterfly on the pin, OI fixed and visible, HYG.4 closed.**
 Best-R wing, smoothed persistence as a bar, OI as a starved input; the OI fetch

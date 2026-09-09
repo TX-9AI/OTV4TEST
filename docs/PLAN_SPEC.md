@@ -1301,6 +1301,9 @@ The runaway (§30) and the ORB (§29) exit on the same `REJECTED` the sweep fire
 ### 32.2 Starved inputs — the park as a state, not a flag
 No ATM IV · no chain · **open interest summing to zero across the chain** → `NO PLAN: starved open_interest`. GEX without OI is gamma² × spot and the pin sits at spot; that was the reason for the 08-19 park. The row now states it every tick, and the trade un-parks itself the day real OI arrives — which it did: 2026-09-09, 226 non-zero strikes by 15:43, once `data/open_interest.py` stopped losing the first batch of every cycle to a closed event loop (v4.2).
 
+### 32.2b The slot — permitted, not expected
+The butterfly is opportunistic like the condor: it is neither blocked by any open position nor blocks one (r161 asks it from the position-open branch; r197 stops `has_blocking_position()` counting it). A box may hold a butterfly plus one other thing.
+
 ### 32.3 Exits — unchanged, by ruling
 15% stop (the dead-thesis stop; no separate migration exit) and the 15:45 close. No target: a pinned fly pays as the wings die into the close.
 
@@ -1308,3 +1311,7 @@ No ATM IV · no chain · **open interest summing to zero across the chain** → 
 Three-leg stop-vs-spread ratio (`stop_vs_spread`, already a floor via `STOP_VS_SPREAD_MIN`), pin distance in EM at the fire, persistence in ticks. The first real pins say what the priors should be.
 
 **As built (OTV4TEST r6):** `strategy/gex_pin_butterfly.py` v5.0 (the plan lives in its `prepare()`, as the engine does for the ORB — the split into a `butterfly_plan.py` is a later tidy, not a behaviour), `data/open_interest.py` v4.2, `strategy/plan.py` (HYG.4), `devtools.sh` v2.1. Hypotheticals: `check_plan_prepares` B1–B14 (B12 on the smoothed pin, B14 the persistence bar), `check_butterfly_foundational`, `check_butterfly_legs`, `check_butterfly_wing_grid`.
+
+## 33. OTV4TEST r7 — THE JOURNAL: RECORDED WHOLE, READ HUSHED (operator 2026-09-09)
+
+*"The bot should see everything. Just don't show it to me on the products I actively use."* The plan_tick record is unchanged — a plan outside its window still writes its dormant transition row and the GATES reporter its edge line, so the corpus says when each window opened and closed. The READERS hush: `query.py` DECISIONS lists dormant strategies (and the management plans' "nothing to manage") as one line of names; the devtools PLAN ROWS and PLAN BOARD sensors exclude DORMANT rows unless asked. The verdict vocabulary stays (NO PLAN = none available; DECLINE = rejected for a named bar; HOLD-prepared / TAKE = plan accepted) — it does the same work as the operator's words.

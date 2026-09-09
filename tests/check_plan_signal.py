@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""check_plan_signal.py — v1.1
+"""check_plan_signal.py — v1.2
+v1.2  2026-09-09  OTV4TEST r7 — PS8: readers hush DORMANT, the writer keeps it.
 v1.1  2026-09-08  OTV4TEST r2 — PS3 reads `strategy/orb_plan.py`, where the ORB
       narration now lives ("Waiting on: impulsive candle" / "Waiting on: retest").
 
@@ -127,6 +128,17 @@ def main():
                     bad_call = True
         check(f"PS7 {os.path.basename(rel)}: dormant reason carries no clock",
               not bad_call)
+
+    # PS8 (OTV4TEST r7) — the READERS hush dormant plans; the record keeps them.
+    qsrc = open(os.path.join(_root, "query.py"), encoding="utf-8").read()
+    psrc = open(os.path.join(_root, "strategy", "plan.py"), encoding="utf-8").read()
+    dsrc = open(os.path.join(_root, "devtools.sh"), encoding="utf-8").read()
+    check("PS8 query.py DECISIONS lists dormant strategies as one hushed line, not a block each",
+          'if verdict == "DORMANT"' in qsrc and "hushed (outside their window)" in qsrc)
+    check("PS8b the WRITER still records the dormant transition row (the bot sees everything)",
+          'self._close("DORMANT", f"{gate}: {why}")' in psrc)
+    check("PS8c the PLAN ROWS / PLAN BOARD sensors exclude DORMANT by default",
+          "verdict <> 'DORMANT'" in dsrc and "Show DORMANT rows too?" in dsrc)
 
     print()
     if _fails:
