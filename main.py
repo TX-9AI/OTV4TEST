@@ -1,5 +1,11 @@
 """
-main.py  v4.42
+main.py  v4.43
+v4.43 2026-09-09  OTV4TEST r9 — the TCS is handed `atm_iv` (its EM band) and
+      the 1m frame (the frozen reference band); its trigger is the level
+      store's ACCEPTED, not the ORB latch. `_credit_window_end` reads the
+      TCS and sweep windows from their PLANS (HYG.5 closed: main.py no longer
+      reads the TCS end-of-window constant from config; the sweep's
+      09:35–14:00 tuple is the one the remainder honours).
 v4.42 2026-09-08  OTV4TEST r5 — the derived ctx carries the ORB data (`orb`) so
       derived/levels can retire every level inside the 5-minute opening range
       (operator: "NO LEVELS can exist inside the 5-minute opening range"), and
@@ -2221,11 +2227,17 @@ def _credit_window_end(signal) -> tuple:
     remainder honours (WORKING_AGREEMENT §37: hunting stops only at the
     strategy's own time gate). TCS reads its config constant; the sweep reads
     its module's LATEST_ET; anything else falls to 14:00 and says so."""
-    from config import TCS_ENTRY_END_ET
     name = getattr(signal, "strategy_name", "") or ""
     if getattr(signal, "is_trend_credit", False) or name == "TrendCreditSpread":
-        return tuple(TCS_ENTRY_END_ET)
+        # OTV4TEST r9 (HYG.5): the PLAN owns the window; main.py reads it there
+        from strategy import tcs_plan as _tp
+        return _tp.window_end()
     if name == "SweepCreditSpread":
+        try:
+            from strategy import sweep_plan as _sp          # r9: the plan's window (a tuple)
+            return tuple(_sp.LATEST_ET)
+        except Exception:                                      # noqa: BLE001
+            pass
         try:
             from strategy import sweep_credit_spread as _scs
             hh, mm = str(_scs.LATEST_ET).split(":")
@@ -3964,6 +3976,8 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
                 current_price=ctx["price"], trend=ctx.get("trend"),
                 orb_high=_orb_hi, orb_low=_orb_lo,
                 session_high=_tcs_hi, session_low=_tcs_lo,
+                atm_iv=ctx.get("atm_iv"),            # OTV4TEST r9: the EM band
+                df_1m=ctx.get("df_1m"),              # OTV4TEST r9: the frozen reference
                 # 🔴 r238 — TCS NOW NEEDS THE ORB ENGINE. Its trigger is
                 # `fifty_accepted` and its level is `target_50pct`; the old
                 # docstring said "NO `orb` PARAMETER... there is no morning

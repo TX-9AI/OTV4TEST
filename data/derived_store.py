@@ -1,5 +1,7 @@
 """
-data/derived_store.py  v4.3
+data/derived_store.py  v4.4
+v4.4  2026-09-09  OTV4TEST r9 — `latest_event(symbol, event, since, kind)`: the
+      general form of latest_rejection; the TCS reads ACCEPTED through it.
 v4.3  2026-09-08  OTV4TEST r5 — `live_levels(symbol)`: the un-retired support /
       resistance levels with their current price (tines move; the ledger row
       carries the price at the last upsert). The sweep plan reads its levels
@@ -241,13 +243,18 @@ class DerivedStore:
 
     def latest_rejection(self, symbol: str, since_ts: float = 0.0,
                          kind: Optional[str] = None):
-        """The most recent REJECTED event for `symbol` at/after `since_ts`
-        (epoch), optionally only levels of `kind`. Returns a dict or None."""
+        """The most recent REJECTED event — see latest_event()."""
+        return self.latest_event(symbol, "REJECTED", since_ts=since_ts, kind=kind)
+
+    def latest_event(self, symbol: str, event: str, since_ts: float = 0.0,
+                     kind: Optional[str] = None):
+        """The most recent level_event of `event` for `symbol` at/after
+        `since_ts` (epoch), optionally only levels of `kind`. dict or None."""
         try:
             sql = ("SELECT symbol, level_id, bar_ts, ts_epoch, event, price, kind,"
                    " provenance, pierce_pct, depth, closes_back, bar_close"
-                   " FROM level_event WHERE symbol=? AND event='REJECTED' AND ts_epoch>=?")
-            args = [symbol, float(since_ts or 0.0)]
+                   " FROM level_event WHERE symbol=? AND event=? AND ts_epoch>=?")
+            args = [symbol, str(event), float(since_ts or 0.0)]
             if kind:
                 sql += " AND kind=?"
                 args.append(kind)

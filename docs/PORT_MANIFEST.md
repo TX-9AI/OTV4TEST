@@ -1,0 +1,39 @@
+# PORT_MANIFEST.md — OTV4TEST → options_trader_v4 — v0.1
+v0.1  2026-09-09  OTV4TEST r9 — opened. One line per file per revision, with the
+      ruling it carries, so the back-port is a checklist and not archaeology.
+      The predecessor is FROZEN at e955020 (r322) — checked 2026-09-09, zero
+      commits since the fork — so the port is the fork's revisions applied
+      forward in ledger order, not a three-way merge. Tests are half the port:
+      every checker re-pointed here needs the same re-pointing on mainline.
+
+Legend: **N** new file · **M** modified · **T** test (new or re-pointed) · **D** docs
+
+| rev | file | kind | ruling / change |
+|---|---|---|---|
+| r2 | strategy/orb_plan.py | N | the ORB plan: both candidates from 09:35, stop = impulsive candle's extreme, strike at ±width, provisional size, four-state row |
+| r2 | strategy/orb_strategy.py | M | the strategy is the spec; ATR floor deleted; fires with the plan's variables |
+| r2 | analysis/orb_engine.py | M | stale 12-bar re-arm deleted |
+| r2 | config.py | M | ORB_MAX_RETEST_BARS removed |
+| r2 | execution/exit_engine.py | M | velocity stall off the ORB path |
+| r2 | main.py | M | ORB asked every tick; afternoon NOT ASKED row gone |
+| r2 | tests/check_orb_plan.py, check_atr_units, check_plan_signal, check_plan_wiring | T | new / re-pointed |
+| r3 | derived/levels.py, data/derived_store.py, warehouse/retention_purge.py | M | the rejection fact: WICKED / REJECTED / ACCEPTED, level_event (never purged) |
+| r3 | analysis/orb_engine.py | M | runaway invalidation is a close (fifty_accepted), acceptance tracked before the retest read |
+| r3 | strategy/runaway_plan.py | N | arm on the accepted 50, strength once, band by strength, one per break any exit, re-validation on actual |
+| r3 | strategy/runaway_continuation.py, database/trade_logger.py, main.py | M | strategy = bars + fire; any runaway exit finishes the break; session cap retired |
+| r3 | execution/exit_engine.py | M | REJECTED handoff (ORB + runaway); runaway thesis-dead / fizzle / backstop; no premium stop |
+| r3 | tests/check_level_rejection.py, check_runaway_plan.py, check_plan_prepares R-cases, check_runaway_handoff, check_signal_numeric_tail, check_orb_sequence | T | new / re-pointed |
+| r4 | devtools.sh | M | box menu 2.0 (registry-rendered; sensors, R suite, land, bake) |
+| r5 | derived/levels.py, derived/forks.py, derived/registry.py, data/derived_store.py | M | tines as levels (keyed on the tine, the tine rule), TRAVERSED inside the opening range, held-side close, live_levels() |
+| r5 | strategy/sweep_plan.py | N | both sides from 09:35, short anchored on the level, fires on a fresh REJECTED |
+| r5 | strategy/sweep_credit_spread.py, execution/exit_engine.py, database/trade_logger.py, main.py | M | strategy = bars + fire; breach accepted after the 15% stop; spent on acceptance only |
+| r5 | tests/check_sweep_plan.py, check_plan_prepares S/T-cases, check_sweep_liveness, check_sweep_spread, check_level_rejection | T | new / re-pointed |
+| r6 | strategy/gex_pin_butterfly.py, data/open_interest.py, strategy/plan.py, devtools.sh | M | best-R wing, smoothed persistence, OI starved input; OI fetch one loop; HYG.4 bound store; OI on Feed health |
+| r6 | tests/check_plan_prepares B-cases, check_butterfly_* | T | re-pointed |
+| r7 | query.py, devtools.sh | M | readers hush DORMANT (record whole) |
+| r8 | strategy/trend_credit_spread.py, query.py, devtools.sh | M | TCS terminals on every path; NOT ASKED hushed; BAKE daemon-reload |
+| r8 | tests/check_tcs_narrates.py | T | new |
+| r9 | strategy/tcs_plan.py | N | session extreme ACCEPTED outside the frozen EM band; anchored on the level; widest wing clearing 1R; POP applied |
+| r9 | strategy/trend_credit_spread.py, data/derived_store.py, execution/exit_engine.py, main.py | M | strategy = bars + fire; latest_event(); 15% lone-only; windows read from the plans (HYG.5) |
+| r9 | tests/check_tcs_plan.py, check_tcs_fifty (retired into it), check_tcs_narrates, check_tcs_parked, check_plan_prepares | T | new / re-pointed |
+| r2–r9 | docs/PLAN_SPEC.md §29–§34, docs/TRADES.md, docs/BACKLOG.md | D | the specs; the fork's own backlog |

@@ -1317,3 +1317,27 @@ Three-leg stop-vs-spread ratio (`stop_vs_spread`, already a floor via `STOP_VS_S
 *"The bot should see everything. Just don't show it to me on the products I actively use."* The plan_tick record is unchanged — a plan outside its window still writes its dormant transition row and the GATES reporter its edge line, so the corpus says when each window opened and closed. The READERS hush: `query.py` DECISIONS lists dormant strategies (and the management plans' "nothing to manage") as one line of names; the devtools PLAN ROWS and PLAN BOARD sensors exclude DORMANT rows unless asked. The verdict vocabulary stays (NO PLAN = none available; DECLINE = rejected for a named bar; HOLD-prepared / TAKE = plan accepted) — it does the same work as the operator's words.
 
 **§33 addendum (r8):** NOT ASKED joins the hushed line. The one case the operator wants to see — a vertical is open and the condor plan is looking for its complement — is a HOLD/PREPARED row from CondorManagement, never a NOT ASKED. And "NO PLAN during the TCS window" was not the market: r238's `prepare()` returned with the tick open on its common path; `trend_credit_spread` v4.13 gives every path a terminal (`check_tcs_narrates`). If a NO PLAN / NOT ASKED ever shows for an in-window strategy again, that IS a wiring defect — treat it as one.
+
+## 34. OTV4TEST r9 — THE TREND CREDIT SPREAD SPEC AND ITS PLAN CONTRACT (agreed with the operator 2026-09-09)
+
+Purpose, his words: *"catch large moves in the afternoon on some macro catalyst good or bad, and let theta do the work on our behalf since debits on 0DTE late in the day are deteriorating rapidly."* r238's trigger — the ORB's morning `fifty_accepted` latch — measured the wrong session half; it is gone.
+
+### 34.1 The spec
+| part | definition |
+|---|---|
+| trigger | a live **session extreme** (today's high / low, the store's `ny` levels) **ACCEPTED** after 11:30 — two closed 1m bars beyond it, the level store's own event — **and price outside the expected move** |
+| "outside" | read against the EM assessment that stood **before** the move: every tick the plan computes spot ± EM (ATM IV, remaining session); on the first 1m close beyond a live extreme it **freezes the previous tick's band** as that move's reference; acceptance with price outside the frozen band fires. A close back inside before acceptance clears it. *"The move exceeded its previous tick's EM assessment."* |
+| direction / anchor | the move's. A high accepted → the **put** spread behind it, short at the first strike at/below **the accepted level**; a low → the call spread above it. Near the money, rich, and the exit has a name |
+| structure | **the widest wing that clears 1:1 on the expiry basis** (r238's rule, kept: the most credit the R floor allows — best-R would pick the thinnest) |
+| bars | POP ≥ 0.70 (the theta-not-direction bar; it was a config constant nothing read) · credit ≥ 10% of width · nickel-multiple floor · the 15% stop survivable against the short's spread · freshness of the ACCEPTED event (`ACCEPT_FRESH_BARS` = 3, a prior) |
+| recorded, not barred | ADX (retired as a bar — measured flat; the EM breach is the size read) · richness = credit ÷ width · the protective leg's own bid/ask as a fraction of the wing |
+| window | 11:31–14:00; outside it the plan observes and does not write |
+| condor | **leg one only, never the second**; the complement must be a sweep (`authorize()`, untouched) |
+
+### 34.2 Exits, in order
+1. 15:45 hard close · 2. **15% of credit — a LONE vertical only** (a hedged leg's sibling suppresses it) · 3. **the level lost** — a 1m close back through the accepted extreme (`tcs_breach`) · **no nickel close** — the 2026-08-14 ruling ("no closing it short of a breach or the hard close") was measured, EV held to expiry, and stands; today's untangle listed a nickel in passing without revisiting it. Flagged, not changed.
+
+### 34.3 If it never fires, or fires too loosely
+The EM gate is the first suspect either way (operator). Every fire carries the frozen band and the distance outside it (`em_ref_band`, `em_outside_by`); every miss carries how far inside it stayed (`outside_by` < 0 on the DECLINE row).
+
+**As built (OTV4TEST r9):** `strategy/tcs_plan.py` v1.0, `strategy/trend_credit_spread.py` v5.0, `data/derived_store.py` v4.4 (`latest_event`), `execution/exit_engine.py` v4.14, `main.py` v4.43 (HYG.5: the windows read from the plans). Hypotheticals: `check_tcs_plan` T1–T8, X1–X3; `check_tcs_narrates`; `check_tcs_fifty` retired into it.

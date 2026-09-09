@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_tcs_parked.py  v1.1
+tests/check_tcs_parked.py  v1.2
+v1.2  2026-09-09  OTV4TEST r9 — the window lives on the plan (tcs_plan.py may read it);
+      P5b's reader set updated; main.py reads it from the plan (HYG.5).
 v1.1  2026-09-04  r238 — RE-DERIVED. It asserted (0,0); the window is now
       the operator's spec and the park is held only by `OT_TCS_ACTIVE=0` on the
       boxes. Asserts the SPEC, both window ends, and that management reads no
@@ -74,7 +76,7 @@ def main():
         now = datetime(2026, 9, 4, h, m, tzinfo=ET)
         s = TrendCreditSpread()
         try:
-            prep = s.prepare(None, None, None, None, 100.0, now_et=now)
+            prep = s.prepare(None, None, None, None, 100.0, now_et=now, atm_iv=0.2)
             # `_close("DORMANT", f"{gate}: {why}")` lands on plan._last —
             # (n, verdict, reason). Read the real record, not a guess at a
             # field name.
@@ -123,8 +125,8 @@ def main():
                              if not l.strip().startswith("#"))
             if "TCS_ENTRY_END_ET" in body and fn not in ("config.py",):
                 readers.append(fn)
-    check("P5b only trend_credit_spread reads it",
-          set(readers) <= {"trend_credit_spread.py"}, str(sorted(set(readers))))
+    check("P5b only trend_credit_spread (and its plan) reads it",
+          set(readers) <= {"trend_credit_spread.py", "tcs_plan.py"}, str(sorted(set(readers))))
 
     print()
     if FAILED:

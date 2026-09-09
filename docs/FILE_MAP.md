@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-261 Python modules across 13 local packages.
+263 Python modules across 13 local packages.
 
-**Reached by:** 104 imported · 9 declared entry points · 47 referenced from a script, unit or doc but never imported · **101 by nothing here**.
+**Reached by:** 106 imported · 9 declared entry points · 54 referenced from a script, unit or doc but never imported · **94 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -51,18 +51,18 @@ Change these with the most care; a break here reaches everything downstream.
 
 | module | imported by | some of the importers |
 |---|---|---|
-| `config.py` | 73 | alert_manager.py, broker_reconcile.py, candle_feed.py, candle_logger.py |
-| `utils/time_utils.py` | 38 | alert_manager.py, broker_reconcile.py, check_butterfly_foundational.py, check_butterfly_legs.py |
-| `strategy/__init__.py` | 36 | check_age_gate_gone.py, check_audit_20260823.py, check_butterfly_foundational.py, check_butterfly_legs.py |
-| `strategy/plan.py` | 30 | check_butterfly_foundational.py, check_butterfly_legs.py, check_butterfly_wing_grid.py, check_chain_ordering.py |
+| `config.py` | 72 | alert_manager.py, broker_reconcile.py, candle_feed.py, candle_logger.py |
+| `strategy/__init__.py` | 37 | check_age_gate_gone.py, check_audit_20260823.py, check_butterfly_foundational.py, check_butterfly_legs.py |
+| `utils/time_utils.py` | 37 | alert_manager.py, broker_reconcile.py, check_butterfly_foundational.py, check_butterfly_legs.py |
+| `strategy/plan.py` | 31 | check_butterfly_foundational.py, check_butterfly_legs.py, check_butterfly_wing_grid.py, check_chain_ordering.py |
 | `utils/math_utils.py` | 18 | credit_vertical.py, entry_ladder.py, exit_engine.py, gex_pin_butterfly.py |
 | `analysis/orb_engine.py` | 16 | base_strategy.py, check_orb_one_order.py, check_orb_plan.py, check_orb_rearm_zone.py |
+| `strategy/sweep_credit_spread.py` | 16 | check_age_gate_gone.py, check_atr_units.py, check_chain_ordering.py, check_dispatch.py |
 | `database/trade_logger.py` | 15 | check_condor_pairing.py, check_condor_stop_suppression.py, check_credit_remainder.py, check_one_per_session.py |
-| `strategy/sweep_credit_spread.py` | 15 | check_age_gate_gone.py, check_atr_units.py, check_chain_ordering.py, check_dispatch.py |
-| `execution/exit_engine.py` | 14 | check_condor_spec.py, check_condor_stop_suppression.py, check_exit_executes.py, check_ladder_wired.py |
+| `execution/exit_engine.py` | 15 | check_condor_spec.py, check_condor_stop_suppression.py, check_exit_executes.py, check_ladder_wired.py |
 | `strategy/criteria.py` | 14 | check_age_gate_gone.py, check_butterfly_foundational.py, check_criteria.py, check_plan_wiring.py |
 | `strategy/runaway_continuation.py` | 14 | check_atr_units.py, check_chain_ordering.py, check_dispatch.py, check_entry_windows.py |
-| `derived/base.py` | 13 | __init__.py, character_engine.py, check_derived_layer.py, check_engine_status.py |
+| `data/derived_store.py` | 13 | check_derived_layer.py, check_engine_status.py, check_level_rejection.py, check_plan_prepares.py |
 
 ## Every module
 
@@ -184,7 +184,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `config.py`
 - **calls:** (none)
-- **called by:** `analysis/chain_snapshot.py`, `analysis/liquidity_mapper.py`, `analysis/orb_engine.py`, `analysis/signal_journal.py`, `analysis/structure_analyzer.py`, `analysis/trend_engine.py`, `analysis/volatility_engine.py`, `data/candle_feed.py`, `data/candle_logger.py`, `data/data_cache.py`, `data/macro_data.py`, `data/market_data.py`, `data/options_chain.py`, `data/tasty_client.py`, `database/trade_logger.py`, `debug_status.py`, `derived/levels.py`, `execution/broker_reconcile.py`, `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/limit_ladder.py`, `execution/order_confirm.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `execution/tick_size.py`, `main.py`, `notifications/alert_manager.py`, `notifications/telegram_sender.py`, `query.py`, `risk/risk_manager.py`, `risk/session_guard.py`, `shadow/observer.py`, `status.py`, `strategy/condor_roll.py`, `strategy/criteria.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/orb_plan.py`, `strategy/orb_strategy.py`, `strategy/plan.py`, `strategy/relaxed.py`, `strategy/runaway_continuation.py`, `strategy/runaway_plan.py`, `strategy/sweep_credit_spread.py`, `strategy/sweep_plan.py`, `strategy/trend_credit_spread.py`, `stress_theta_bleed.py`, `tests/check_butterfly_foundational.py`, `tests/check_cascade_constants.py`, `tests/check_condor_rails.py`, `tests/check_condor_stop_suppression.py`, `tests/check_entry_gate.py`, `tests/check_entry_windows.py`, `tests/check_ext_polarity.py`, `tests/check_ladder_wired.py`, `tests/check_lone_stop.py`, `tests/check_manage_call.py`, `tests/check_orb_budget.py`, `tests/check_orb_geometry.py`, `tests/check_orb_plan.py`, `tests/check_orb_window.py`, `tests/check_r_basis.py`, `tests/check_runaway_plan.py`, `tests/check_sweep_liveness.py`, `tests/check_sweep_spread.py`, `tests/check_tcs_fifty.py`, `tests/check_tcs_parked.py`, `tests/check_tent.py`, `tests/eod_compare.py`, `tools/manifold_health.py`, `tools/probe_aux_streams.py`, `utils/time_utils.py`, `warehouse/self_close.py`
+- **called by:** `analysis/chain_snapshot.py`, `analysis/liquidity_mapper.py`, `analysis/orb_engine.py`, `analysis/signal_journal.py`, `analysis/structure_analyzer.py`, `analysis/trend_engine.py`, `analysis/volatility_engine.py`, `data/candle_feed.py`, `data/candle_logger.py`, `data/data_cache.py`, `data/macro_data.py`, `data/market_data.py`, `data/options_chain.py`, `data/tasty_client.py`, `database/trade_logger.py`, `debug_status.py`, `derived/levels.py`, `execution/broker_reconcile.py`, `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/limit_ladder.py`, `execution/order_confirm.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `execution/tick_size.py`, `main.py`, `notifications/alert_manager.py`, `notifications/telegram_sender.py`, `query.py`, `risk/risk_manager.py`, `risk/session_guard.py`, `shadow/observer.py`, `status.py`, `strategy/condor_roll.py`, `strategy/criteria.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/orb_plan.py`, `strategy/orb_strategy.py`, `strategy/plan.py`, `strategy/relaxed.py`, `strategy/runaway_continuation.py`, `strategy/runaway_plan.py`, `strategy/sweep_credit_spread.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `stress_theta_bleed.py`, `tests/check_butterfly_foundational.py`, `tests/check_cascade_constants.py`, `tests/check_condor_rails.py`, `tests/check_condor_stop_suppression.py`, `tests/check_entry_gate.py`, `tests/check_entry_windows.py`, `tests/check_ext_polarity.py`, `tests/check_ladder_wired.py`, `tests/check_lone_stop.py`, `tests/check_manage_call.py`, `tests/check_orb_budget.py`, `tests/check_orb_geometry.py`, `tests/check_orb_plan.py`, `tests/check_orb_window.py`, `tests/check_r_basis.py`, `tests/check_runaway_plan.py`, `tests/check_sweep_liveness.py`, `tests/check_sweep_spread.py`, `tests/check_tcs_parked.py`, `tests/check_tent.py`, `tests/eod_compare.py`, `tools/manifold_health.py`, `tools/probe_aux_streams.py`, `utils/time_utils.py`, `warehouse/self_close.py`
 
 ### `data/__init__.py`
 - **calls:** (none)
@@ -204,7 +204,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `data/derived_store.py`
 - **calls:** (none)
-- **called by:** `analysis/gate_report.py`, `derived/registry.py`, `execution/exit_engine.py`, `strategy/plan.py`, `strategy/sweep_plan.py`, `tests/check_derived_layer.py`, `tests/check_engine_status.py`, `tests/check_level_rejection.py`, `tests/check_plan_prepares.py`, `tests/check_runaway_plan.py`
+- **called by:** `analysis/gate_report.py`, `derived/registry.py`, `execution/exit_engine.py`, `strategy/plan.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_derived_layer.py`, `tests/check_engine_status.py`, `tests/check_level_rejection.py`, `tests/check_plan_prepares.py`, `tests/check_runaway_plan.py`, `tests/check_tcs_narrates.py`, `tests/check_tcs_plan.py`
 
 ### `data/disk_watch.py`
 - **calls:** (none)
@@ -324,7 +324,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `execution/exit_engine.py`
 - **calls:** `analysis/trend_strength.py`, `config.py`, `data/derived_store.py`, `data/tasty_client.py`, `database/trade_logger.py`, `derived/levels.py`, `execution/__init__.py`, `execution/ladder_registry.py`, `execution/limit_ladder.py`, `notifications/alert_manager.py`, `strategy/structure.py`, `utils/math_utils.py`, `utils/time_utils.py`
-- **called by:** `analysis/entry_snapshot.py`, `execution/position_manager.py`, `strategy/condor_roll.py`, `strategy/management.py`, `stress_theta_bleed.py`, `tests/check_condor_spec.py`, `tests/check_condor_stop_suppression.py`, `tests/check_exit_executes.py`, `tests/check_ladder_wired.py`, `tests/check_management_plan.py`, `tests/check_orb_plan.py`, `tests/check_runaway_plan.py`, `tests/check_sweep_plan.py`, `tests/stress_entry_path.py`
+- **called by:** `analysis/entry_snapshot.py`, `execution/position_manager.py`, `strategy/condor_roll.py`, `strategy/management.py`, `stress_theta_bleed.py`, `tests/check_condor_spec.py`, `tests/check_condor_stop_suppression.py`, `tests/check_exit_executes.py`, `tests/check_ladder_wired.py`, `tests/check_management_plan.py`, `tests/check_orb_plan.py`, `tests/check_runaway_plan.py`, `tests/check_sweep_plan.py`, `tests/check_tcs_plan.py`, `tests/stress_entry_path.py`
 
 ### `execution/fill_model.py`
 - **calls:** (none)
@@ -355,7 +355,7 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** `data/options_chain.py`, `execution/entry_ladder.py`, `execution/limit_ladder.py`
 
 ### `main.py`
-- **calls:** `analysis/__init__.py`, `analysis/chain_snapshot.py`, `analysis/condor_trigger_map.py`, `analysis/entry_snapshot.py`, `analysis/gap_measure.py`, `analysis/gate_report.py`, `analysis/level_grade.py`, `analysis/liquidity_ledger.py`, `analysis/liquidity_mapper.py`, `analysis/market_state.py`, `analysis/orb_engine.py`, `analysis/pitchfork.py`, `analysis/pitchfork_observer.py`, `analysis/signal_journal.py`, `analysis/structure_analyzer.py`, `analysis/trade_readiness.py`, `analysis/trend_engine.py`, `analysis/volatility_engine.py`, `analysis/volatility_measures.py`, `config.py`, `data/__init__.py`, `data/data_cache.py`, `data/disk_watch.py`, `data/gex_data.py`, `data/macro_data.py`, `data/market_data.py`, `data/options_chain.py`, `data/tasty_client.py`, `database/trade_logger.py`, `derived/base.py`, `derived/registry.py`, `execution/__init__.py`, `execution/broker_reconcile.py`, `execution/credit_remainder.py`, `execution/entry_engine.py`, `execution/ladder_registry.py`, `execution/limit_ladder.py`, `execution/order_confirm.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `notifications/alert_manager.py`, `notifications/telegram_sender.py`, `risk/risk_manager.py`, `risk/session_guard.py`, `strategy/__init__.py`, `strategy/base_strategy.py`, `strategy/condor_roll.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/management.py`, `strategy/orb_strategy.py`, `strategy/plan.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`, `strategy/trend_credit_spread.py`, `utils/__init__.py`, `utils/blindness_latch.py`, `utils/mem_trace.py`, `utils/time_utils.py`
+- **calls:** `analysis/__init__.py`, `analysis/chain_snapshot.py`, `analysis/condor_trigger_map.py`, `analysis/entry_snapshot.py`, `analysis/gap_measure.py`, `analysis/gate_report.py`, `analysis/level_grade.py`, `analysis/liquidity_ledger.py`, `analysis/liquidity_mapper.py`, `analysis/market_state.py`, `analysis/orb_engine.py`, `analysis/pitchfork.py`, `analysis/pitchfork_observer.py`, `analysis/signal_journal.py`, `analysis/structure_analyzer.py`, `analysis/trade_readiness.py`, `analysis/trend_engine.py`, `analysis/volatility_engine.py`, `analysis/volatility_measures.py`, `config.py`, `data/__init__.py`, `data/data_cache.py`, `data/disk_watch.py`, `data/gex_data.py`, `data/macro_data.py`, `data/market_data.py`, `data/options_chain.py`, `data/tasty_client.py`, `database/trade_logger.py`, `derived/base.py`, `derived/registry.py`, `execution/__init__.py`, `execution/broker_reconcile.py`, `execution/credit_remainder.py`, `execution/entry_engine.py`, `execution/ladder_registry.py`, `execution/limit_ladder.py`, `execution/order_confirm.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `notifications/alert_manager.py`, `notifications/telegram_sender.py`, `risk/risk_manager.py`, `risk/session_guard.py`, `strategy/__init__.py`, `strategy/base_strategy.py`, `strategy/condor_roll.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/management.py`, `strategy/orb_strategy.py`, `strategy/plan.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `strategy/trend_credit_spread.py`, `utils/__init__.py`, `utils/blindness_latch.py`, `utils/mem_trace.py`, `utils/time_utils.py`
 - **called by:** `tests/check_atm_iv_stored.py`, `tests/check_credit_remainder.py`, `tests/check_rehearsal_toggle.py`, `tests/check_signal_numeric_tail.py`, `tests/stress_entry_path.py`
 
 ### `notifications/__init__.py`
@@ -416,7 +416,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `strategy/__init__.py`
 - **calls:** (none)
-- **called by:** `derived/plans.py`, `main.py`, `strategy/criteria.py`, `strategy/iron_condor_strategy.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`, `strategy/sweep_plan.py`, `strategy/trend_credit_spread.py`, `tests/check_age_gate_gone.py`, `tests/check_audit_20260823.py`, `tests/check_butterfly_foundational.py`, `tests/check_butterfly_legs.py`, `tests/check_butterfly_wing_grid.py`, `tests/check_chain_ordering.py`, `tests/check_condor_spec.py`, `tests/check_criteria.py`, `tests/check_entry_windows.py`, `tests/check_management_plan.py`, `tests/check_not_asked_reasons.py`, `tests/check_orb_plan.py`, `tests/check_orb_sequence.py`, `tests/check_plan_prepares.py`, `tests/check_plan_signal.py`, `tests/check_plan_wiring.py`, `tests/check_pool_geometry.py`, `tests/check_r_basis.py`, `tests/check_runaway_break_key.py`, `tests/check_runaway_handoff.py`, `tests/check_runaway_plan.py`, `tests/check_signal_numeric_tail.py`, `tests/check_sweep_liveness.py`, `tests/check_tcs_narrates.py`, `tests/check_tick_join.py`, `tests/check_unrealized_sign.py`, `tests/check_wing_search.py`, `tests/stress_entry_path.py`
+- **called by:** `derived/plans.py`, `main.py`, `strategy/criteria.py`, `strategy/iron_condor_strategy.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_age_gate_gone.py`, `tests/check_audit_20260823.py`, `tests/check_butterfly_foundational.py`, `tests/check_butterfly_legs.py`, `tests/check_butterfly_wing_grid.py`, `tests/check_chain_ordering.py`, `tests/check_condor_spec.py`, `tests/check_criteria.py`, `tests/check_entry_windows.py`, `tests/check_management_plan.py`, `tests/check_not_asked_reasons.py`, `tests/check_orb_plan.py`, `tests/check_orb_sequence.py`, `tests/check_plan_prepares.py`, `tests/check_plan_signal.py`, `tests/check_plan_wiring.py`, `tests/check_pool_geometry.py`, `tests/check_r_basis.py`, `tests/check_runaway_break_key.py`, `tests/check_runaway_handoff.py`, `tests/check_runaway_plan.py`, `tests/check_signal_numeric_tail.py`, `tests/check_sweep_liveness.py`, `tests/check_tcs_narrates.py`, `tests/check_tcs_plan.py`, `tests/check_tick_join.py`, `tests/check_unrealized_sign.py`, `tests/check_wing_search.py`, `tests/stress_entry_path.py`
 
 ### `strategy/base_strategy.py`
 - **calls:** `analysis/orb_engine.py`, `data/options_chain.py`
@@ -428,15 +428,15 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `strategy/credit_vertical.py`
 - **calls:** `strategy/criteria.py`, `utils/math_utils.py`
-- **called by:** `strategy/iron_condor_strategy.py`, `strategy/sweep_plan.py`, `strategy/trend_credit_spread.py`, `tests/check_fill_basis.py`, `tests/check_r_basis.py`, `tests/check_wing_search.py`
+- **called by:** `strategy/iron_condor_strategy.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_fill_basis.py`, `tests/check_r_basis.py`, `tests/check_wing_search.py`
 
 ### `strategy/criteria.py`
 - **calls:** `config.py`, `strategy/__init__.py`, `strategy/relaxed.py`
-- **called by:** `strategy/credit_vertical.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/plan.py`, `strategy/sweep_plan.py`, `strategy/trend_credit_spread.py`, `tests/check_age_gate_gone.py`, `tests/check_butterfly_foundational.py`, `tests/check_criteria.py`, `tests/check_plan_wiring.py`, `tests/check_r_basis.py`, `tests/check_structure_viable.py`, `tests/check_tcs_parked.py`, `tests/check_wing_search.py`
+- **called by:** `strategy/credit_vertical.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/plan.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_age_gate_gone.py`, `tests/check_butterfly_foundational.py`, `tests/check_criteria.py`, `tests/check_plan_wiring.py`, `tests/check_r_basis.py`, `tests/check_structure_viable.py`, `tests/check_tcs_parked.py`, `tests/check_wing_search.py`
 
 ### `strategy/gex_pin_butterfly.py`
 - **calls:** `analysis/gate_report.py`, `config.py`, `strategy/base_strategy.py`, `strategy/criteria.py`, `strategy/plan.py`, `utils/math_utils.py`, `utils/time_utils.py`
-- **called by:** `derived/snapshot.py`, `main.py`, `tests/check_butterfly_foundational.py`, `tests/check_butterfly_legs.py`, `tests/check_butterfly_wing_grid.py`, `tests/check_dispatch.py`, `tests/check_entry_windows.py`, `tests/check_plan_prepares.py`, `tests/check_snapshot_pin.py`, `tests/stress_entry_path.py`
+- **called by:** `derived/snapshot.py`, `main.py`, `strategy/tcs_plan.py`, `tests/check_butterfly_foundational.py`, `tests/check_butterfly_legs.py`, `tests/check_butterfly_wing_grid.py`, `tests/check_dispatch.py`, `tests/check_entry_windows.py`, `tests/check_plan_prepares.py`, `tests/check_snapshot_pin.py`, `tests/stress_entry_path.py`
 
 ### `strategy/iron_condor_strategy.py`
 - **calls:** `analysis/gate_report.py`, `analysis/market_state.py`, `analysis/session_map.py`, `analysis/signal_journal.py`, `analysis/volatility_engine.py`, `config.py`, `data/macro_data.py`, `data/options_chain.py`, `derived/registry.py`, `strategy/__init__.py`, `strategy/base_strategy.py`, `strategy/condor_roll.py`, `strategy/credit_vertical.py`, `strategy/criteria.py`, `strategy/plan.py`
@@ -456,7 +456,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `strategy/plan.py`
 - **calls:** `analysis/gate_report.py`, `analysis/session_map.py`, `config.py`, `data/derived_store.py`, `derived/registry.py`, `strategy/criteria.py`
-- **called by:** `analysis/gate_report.py`, `derived/notes.py`, `derived/plans.py`, `main.py`, `strategy/condor_roll.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/management.py`, `strategy/orb_plan.py`, `strategy/runaway_plan.py`, `strategy/sweep_plan.py`, `strategy/trend_credit_spread.py`, `tests/check_butterfly_foundational.py`, `tests/check_butterfly_legs.py`, `tests/check_butterfly_wing_grid.py`, `tests/check_chain_ordering.py`, `tests/check_management_plan.py`, `tests/check_not_asked_reasons.py`, `tests/check_note_label.py`, `tests/check_orb_plan.py`, `tests/check_orb_sequence.py`, `tests/check_plan_prepares.py`, `tests/check_plan_signal.py`, `tests/check_plan_wiring.py`, `tests/check_runaway_handoff.py`, `tests/check_runaway_plan.py`, `tests/check_signal_numeric_tail.py`, `tests/check_tcs_narrates.py`, `tests/check_tick_join.py`, `tests/check_wing_search.py`
+- **called by:** `analysis/gate_report.py`, `derived/notes.py`, `derived/plans.py`, `main.py`, `strategy/condor_roll.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/management.py`, `strategy/orb_plan.py`, `strategy/runaway_plan.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_butterfly_foundational.py`, `tests/check_butterfly_legs.py`, `tests/check_butterfly_wing_grid.py`, `tests/check_chain_ordering.py`, `tests/check_management_plan.py`, `tests/check_not_asked_reasons.py`, `tests/check_note_label.py`, `tests/check_orb_plan.py`, `tests/check_orb_sequence.py`, `tests/check_plan_prepares.py`, `tests/check_plan_signal.py`, `tests/check_plan_wiring.py`, `tests/check_runaway_handoff.py`, `tests/check_runaway_plan.py`, `tests/check_signal_numeric_tail.py`, `tests/check_tcs_narrates.py`, `tests/check_tcs_plan.py`, `tests/check_tick_join.py`, `tests/check_wing_search.py`
 
 ### `strategy/relaxed.py`
 - **calls:** `config.py`
@@ -476,15 +476,19 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `strategy/sweep_credit_spread.py`
 - **calls:** `analysis/gate_report.py`, `config.py`, `strategy/__init__.py`, `strategy/base_strategy.py`, `strategy/relaxed.py`, `strategy/sweep_plan.py`, `utils/math_utils.py`
-- **called by:** `database/trade_logger.py`, `main.py`, `strategy/sweep_plan.py`, `tests/check_age_gate_gone.py`, `tests/check_atr_units.py`, `tests/check_chain_ordering.py`, `tests/check_dispatch.py`, `tests/check_entry_windows.py`, `tests/check_plan_prepares.py`, `tests/check_pool_geometry.py`, `tests/check_strike_beyond.py`, `tests/check_structure_viable.py`, `tests/check_sweep_liveness.py`, `tests/check_sweep_spread.py`, `tests/stress_entry_path.py`
+- **called by:** `database/trade_logger.py`, `main.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_age_gate_gone.py`, `tests/check_atr_units.py`, `tests/check_chain_ordering.py`, `tests/check_dispatch.py`, `tests/check_entry_windows.py`, `tests/check_plan_prepares.py`, `tests/check_pool_geometry.py`, `tests/check_strike_beyond.py`, `tests/check_structure_viable.py`, `tests/check_sweep_liveness.py`, `tests/check_sweep_spread.py`, `tests/stress_entry_path.py`
 
 ### `strategy/sweep_plan.py`
 - **calls:** `config.py`, `data/derived_store.py`, `strategy/__init__.py`, `strategy/credit_vertical.py`, `strategy/criteria.py`, `strategy/plan.py`, `strategy/relaxed.py`, `strategy/sweep_credit_spread.py`, `utils/math_utils.py`
-- **called by:** `strategy/sweep_credit_spread.py`, `tests/check_plan_prepares.py`
+- **called by:** `main.py`, `strategy/sweep_credit_spread.py`, `tests/check_plan_prepares.py`
+
+### `strategy/tcs_plan.py`
+- **calls:** `config.py`, `data/derived_store.py`, `strategy/__init__.py`, `strategy/credit_vertical.py`, `strategy/criteria.py`, `strategy/gex_pin_butterfly.py`, `strategy/plan.py`, `strategy/sweep_credit_spread.py`, `utils/math_utils.py`
+- **called by:** `main.py`, `strategy/trend_credit_spread.py`, `tests/check_tcs_narrates.py`, `tests/check_tcs_plan.py`
 
 ### `strategy/trend_credit_spread.py`
-- **calls:** `config.py`, `strategy/__init__.py`, `strategy/base_strategy.py`, `strategy/credit_vertical.py`, `strategy/criteria.py`, `strategy/plan.py`, `utils/math_utils.py`
-- **called by:** `main.py`, `tests/check_entry_windows.py`, `tests/check_plan_prepares.py`, `tests/check_tcs_fifty.py`, `tests/check_tcs_narrates.py`, `tests/check_tcs_parked.py`
+- **calls:** `strategy/base_strategy.py`, `strategy/tcs_plan.py`
+- **called by:** `main.py`, `tests/check_entry_windows.py`, `tests/check_plan_prepares.py`, `tests/check_tcs_narrates.py`, `tests/check_tcs_parked.py`, `tests/check_tcs_plan.py`
 
 ### `stress_theta_bleed.py`
 - **calls:** `config.py`, `execution/exit_engine.py`
@@ -520,7 +524,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_atr_units.py`
 - **calls:** `analysis/volatility_engine.py`, `strategy/orb_strategy.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** (not imported) — referenced in `docs/PORT_MANIFEST.md`
 
 ### `tests/check_attr_fidelity.py`
 - **calls:** (none)
@@ -676,7 +680,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_level_rejection.py`
 - **calls:** `data/derived_store.py`, `derived/levels.py`
-- **called by:** (not imported) — referenced in `devtools.sh`, `docs/PLAN_SPEC.md`
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/PLAN_SPEC.md`, `docs/PORT_MANIFEST.md`
 
 ### `tests/check_lone_stop.py`
 - **calls:** `config.py`
@@ -752,7 +756,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_orb_plan.py`
 - **calls:** `analysis/orb_engine.py`, `config.py`, `data/options_chain.py`, `execution/exit_engine.py`, `risk/risk_manager.py`, `strategy/__init__.py`, `strategy/orb_plan.py`, `strategy/orb_strategy.py`, `strategy/plan.py`
-- **called by:** (not imported) — referenced in `devtools.sh`, `docs/PLAN_SPEC.md`
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/PLAN_SPEC.md`, `docs/PORT_MANIFEST.md`
 
 ### `tests/check_orb_rearm_zone.py`
 - **calls:** `analysis/__init__.py`, `analysis/orb_engine.py`
@@ -768,7 +772,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_orb_sequence.py`
 - **calls:** `analysis/orb_engine.py`, `execution/__init__.py`, `execution/resting_orders.py`, `strategy/__init__.py`, `strategy/orb_strategy.py`, `strategy/plan.py`
-- **called by:** (not imported) — referenced in `docs/PLAN_SPEC.md`
+- **called by:** (not imported) — referenced in `docs/PLAN_SPEC.md`, `docs/PORT_MANIFEST.md`
 
 ### `tests/check_orb_window.py`
 - **calls:** `config.py`
@@ -788,15 +792,15 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_plan_prepares.py`
 - **calls:** `analysis/liquidity_mapper.py`, `data/derived_store.py`, `execution/position_manager.py`, `strategy/__init__.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/plan.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`, `strategy/sweep_plan.py`, `strategy/trend_credit_spread.py`, `utils/time_utils.py`
-- **called by:** (not imported) — referenced in `docs/PLAN_SPEC.md`
+- **called by:** (not imported) — referenced in `docs/PLAN_SPEC.md`, `docs/PORT_MANIFEST.md`
 
 ### `tests/check_plan_signal.py`
 - **calls:** `analysis/orb_engine.py`, `strategy/__init__.py`, `strategy/orb_strategy.py`, `strategy/plan.py`
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** (not imported) — referenced in `docs/PORT_MANIFEST.md`
 
 ### `tests/check_plan_wiring.py`
 - **calls:** `analysis/__init__.py`, `analysis/gate_report.py`, `analysis/session_map.py`, `strategy/__init__.py`, `strategy/criteria.py`, `strategy/plan.py`, `strategy/runaway_continuation.py`
-- **called by:** (not imported) — referenced in `devtools.sh`
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/PORT_MANIFEST.md`
 
 ### `tests/check_pool_geometry.py`
 - **calls:** `analysis/__init__.py`, `analysis/liquidity_mapper.py`, `analysis/session_map.py`, `strategy/__init__.py`, `strategy/sweep_credit_spread.py`
@@ -840,11 +844,11 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_runaway_handoff.py`
 - **calls:** `strategy/__init__.py`, `strategy/plan.py`, `strategy/runaway_continuation.py`
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** (not imported) — referenced in `docs/PORT_MANIFEST.md`
 
 ### `tests/check_runaway_plan.py`
 - **calls:** `analysis/orb_engine.py`, `config.py`, `data/derived_store.py`, `execution/exit_engine.py`, `strategy/__init__.py`, `strategy/plan.py`, `strategy/runaway_continuation.py`, `strategy/runaway_plan.py`
-- **called by:** (not imported) — referenced in `devtools.sh`, `docs/PLAN_SPEC.md`
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/PLAN_SPEC.md`, `docs/PORT_MANIFEST.md`
 
 ### `tests/check_shadow_velocity.py`
 - **calls:** `shadow/primitives.py`
@@ -860,7 +864,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_signal_numeric_tail.py`
 - **calls:** `main.py`, `strategy/__init__.py`, `strategy/plan.py`, `strategy/runaway_continuation.py`
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** (not imported) — referenced in `docs/PORT_MANIFEST.md`
 
 ### `tests/check_singletons.py`
 - **calls:** (none)
@@ -892,27 +896,31 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_sweep_liveness.py`
 - **calls:** `config.py`, `strategy/__init__.py`, `strategy/sweep_credit_spread.py`
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** (not imported) — referenced in `docs/PORT_MANIFEST.md`
 
 ### `tests/check_sweep_plan.py`
 - **calls:** `execution/exit_engine.py`
-- **called by:** (not imported) — referenced in `docs/PLAN_SPEC.md`
+- **called by:** (not imported) — referenced in `docs/PLAN_SPEC.md`, `docs/PORT_MANIFEST.md`
 
 ### `tests/check_sweep_spread.py`
 - **calls:** `config.py`, `data/options_chain.py`, `strategy/base_strategy.py`, `strategy/structure.py`, `strategy/sweep_credit_spread.py`
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** (not imported) — referenced in `docs/PORT_MANIFEST.md`
 
 ### `tests/check_tcs_fifty.py`
-- **calls:** `config.py`, `strategy/trend_credit_spread.py`, `utils/time_utils.py`
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **calls:** `tests/check_tcs_plan.py`
+- **called by:** (not imported) — referenced in `docs/PLAN_SPEC.md`, `docs/PORT_MANIFEST.md`
 
 ### `tests/check_tcs_narrates.py`
-- **calls:** `strategy/__init__.py`, `strategy/plan.py`, `strategy/trend_credit_spread.py`
-- **called by:** (not imported) — referenced in `docs/PLAN_SPEC.md`
+- **calls:** `data/derived_store.py`, `strategy/__init__.py`, `strategy/plan.py`, `strategy/tcs_plan.py`, `strategy/trend_credit_spread.py`
+- **called by:** (not imported) — referenced in `docs/PLAN_SPEC.md`, `docs/PORT_MANIFEST.md`
 
 ### `tests/check_tcs_parked.py`
 - **calls:** `config.py`, `strategy/criteria.py`, `strategy/trend_credit_spread.py`, `utils/time_utils.py`
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/PORT_MANIFEST.md`
+
+### `tests/check_tcs_plan.py`
+- **calls:** `data/derived_store.py`, `execution/exit_engine.py`, `strategy/__init__.py`, `strategy/plan.py`, `strategy/tcs_plan.py`, `strategy/trend_credit_spread.py`
+- **called by:** `tests/check_tcs_fifty.py`
 
 ### `tests/check_tent.py`
 - **calls:** `config.py`, `strategy/condor_roll.py`, `strategy/structure.py`
@@ -1080,7 +1088,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `utils/math_utils.py`
 - **calls:** (none)
-- **called by:** `analysis/liquidity_mapper.py`, `analysis/orb_engine.py`, `analysis/pitchfork.py`, `analysis/structure_analyzer.py`, `analysis/trend_engine.py`, `analysis/volatility_engine.py`, `data/options_chain.py`, `execution/entry_ladder.py`, `execution/exit_engine.py`, `risk/risk_manager.py`, `strategy/credit_vertical.py`, `strategy/gex_pin_butterfly.py`, `strategy/orb_plan.py`, `strategy/runaway_continuation.py`, `strategy/runaway_plan.py`, `strategy/sweep_credit_spread.py`, `strategy/sweep_plan.py`, `strategy/trend_credit_spread.py`
+- **called by:** `analysis/liquidity_mapper.py`, `analysis/orb_engine.py`, `analysis/pitchfork.py`, `analysis/structure_analyzer.py`, `analysis/trend_engine.py`, `analysis/volatility_engine.py`, `data/options_chain.py`, `execution/entry_ladder.py`, `execution/exit_engine.py`, `risk/risk_manager.py`, `strategy/credit_vertical.py`, `strategy/gex_pin_butterfly.py`, `strategy/orb_plan.py`, `strategy/runaway_continuation.py`, `strategy/runaway_plan.py`, `strategy/sweep_credit_spread.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`
 
 ### `utils/mem_trace.py`
 - **calls:** (none)
@@ -1088,7 +1096,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `utils/time_utils.py`
 - **calls:** `config.py`, `utils/__init__.py`, `utils/market_calendar.py`
-- **called by:** `analysis/entry_snapshot.py`, `analysis/orb_engine.py`, `analysis/tenor_publish.py`, `analysis/tenor_select.py`, `analysis/trade_readiness.py`, `analysis/trend_engine.py`, `analysis/volatility_measures.py`, `data/macro_data.py`, `data/market_data.py`, `data/options_chain.py`, `database/trade_logger.py`, `execution/broker_reconcile.py`, `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `main.py`, `notifications/alert_manager.py`, `risk/risk_manager.py`, `risk/session_guard.py`, `strategy/condor_roll.py`, `strategy/gex_pin_butterfly.py`, `tests/check_butterfly_foundational.py`, `tests/check_butterfly_legs.py`, `tests/check_butterfly_wing_grid.py`, `tests/check_condor_spec.py`, `tests/check_entry_gate.py`, `tests/check_exit_executes.py`, `tests/check_holiday_aware.py`, `tests/check_manage_call.py`, `tests/check_manifold_windows.py`, `tests/check_orb_resume.py`, `tests/check_plan_prepares.py`, `tests/check_rehearsal_toggle.py`, `tests/check_standing_offer.py`, `tests/check_tcs_fifty.py`, `tests/check_tcs_parked.py`, `tools/manifold_health.py`
+- **called by:** `analysis/entry_snapshot.py`, `analysis/orb_engine.py`, `analysis/tenor_publish.py`, `analysis/tenor_select.py`, `analysis/trade_readiness.py`, `analysis/trend_engine.py`, `analysis/volatility_measures.py`, `data/macro_data.py`, `data/market_data.py`, `data/options_chain.py`, `database/trade_logger.py`, `execution/broker_reconcile.py`, `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `main.py`, `notifications/alert_manager.py`, `risk/risk_manager.py`, `risk/session_guard.py`, `strategy/condor_roll.py`, `strategy/gex_pin_butterfly.py`, `tests/check_butterfly_foundational.py`, `tests/check_butterfly_legs.py`, `tests/check_butterfly_wing_grid.py`, `tests/check_condor_spec.py`, `tests/check_entry_gate.py`, `tests/check_exit_executes.py`, `tests/check_holiday_aware.py`, `tests/check_manage_call.py`, `tests/check_manifold_windows.py`, `tests/check_orb_resume.py`, `tests/check_plan_prepares.py`, `tests/check_rehearsal_toggle.py`, `tests/check_standing_offer.py`, `tests/check_tcs_parked.py`, `tools/manifold_health.py`
 
 ### `warehouse/__init__.py`
 - **calls:** (none)

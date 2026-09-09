@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_prepares.py  v1.13
+tests/check_plan_prepares.py  v1.14
+v1.14  2026-09-09  OTV4TEST r9 — the TCS constant patching is gone with the TCS rewrite
+      (the C cases were retired at r238; the TCS is pinned in check_tcs_plan).
 v1.13  2026-09-09  OTV4TEST r6 — B12 re-derived on the smoothed pin (one tick is chatter;
       the window's mode is a migration); B14 pins persistence as a bar; B2 titled BEST-R.
 v1.12  2026-09-09  OTV4TEST r5 — S1–S9 RE-DERIVED against the sweep PLAN: levels come
@@ -580,8 +582,7 @@ def main():
     sw._SPENT.clear()
     # ── TCS (r164) — the plan prepares off the ORB bound; the vote fires it ──
     import strategy.trend_credit_spread as tcs
-    tcs.TREND_CREDIT_ACTIVE = True
-    TC = tcs.TrendCreditSpread(); TC.planner.symbol = "TST"
+    TC = tcs.TrendCreditSpread(); TC.planner.symbol = "TST"   # constructs; pinned in check_tcs_plan
     from datetime import datetime as _dt
     # 🔴 r237 — THE WINDOW IS RESTORED FOR THE DURATION OF THESE CHECKS, AND
     # THAT IS DELIBERATE. `TCS_ENTRY_END_ET` is (0,0) in production so TCS
@@ -596,9 +597,6 @@ def main():
     # this file must never be the thing that says TCS is parked, or a patch
     # here would silently unpark it (§20: the canary cannot live in the file
     # that does the patching).
-    _real_end = tcs.TCS_ENTRY_END_ET
-    tcs.TCS_ENTRY_END_ET = (14, 0)
-    _noon = tcs.ET.localize(_dt(2026, 8, 27, 12, 0))
 
     class _Trend:
         def __init__(self, d, adx=30.0): self.overall_direction, self.primary_adx = d, adx

@@ -1,5 +1,14 @@
 """
-execution/exit_engine.py  v4.13
+execution/exit_engine.py  v4.14
+v4.14 2026-09-09  OTV4TEST r9 — THE TCS 15%-OF-CREDIT STOP IS LONE-ONLY: a hedged
+      leg's sibling suppresses it (operator 2026-09-09), the same mechanism the
+      sweep leg uses. Order for the TCS: hard close → 15% (lone) → the level
+      lost (`tcs_breach`, a close back through the accepted extreme the spread
+      was sold against — `underlying_stop` carries it). ⚠️ NO NICKEL CLOSE
+      STANDS: the 2026-08-14 ruling ("no closing it short of a breach or the
+      hard close") was MEASURED — EV held to expiry — and today's untangle
+      listed a nickel in passing without revisiting that measurement. Left as
+      ruled; flagged in the r9 report for an explicit decision.
 v4.13 2026-09-09  OTV4TEST r5 — THE SWEEP VERTICAL'S STRUCTURAL EXIT. Operator:
       *"we exit quickly if the breach is accepted, otherwise hold to flatten
       or if it runs hard, we take the nickel close."* In `_evaluate_condor_leg`
@@ -1915,7 +1924,10 @@ class ExitEngine:
                 _entry_cr = float(record.get("entry_premium") or 0.0)
             except (TypeError, ValueError):
                 _entry_cr = 0.0
-            if _entry_cr > 0 and current_premium is not None:
+            # OTV4TEST r9 — the 15%-of-credit stop applies to a LONE vertical only
+            # (operator 2026-09-09); a hedged leg's sibling suppresses it.
+            _tcs_hedged = self._condor_sibling_open(record, default=False)
+            if _entry_cr > 0 and current_premium is not None and not _tcs_hedged:
                 _stop_at = _entry_cr * (1.0 + TCS_STOP_PCT_OF_CREDIT)
                 if float(current_premium) >= _stop_at:
                     decision.should_exit = True

@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.7
+# BACKLOG.md — OTV4TEST — v0.8
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -43,11 +43,18 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 | **BFLY.2** | ⬜ **SPLIT `prepare()` INTO `strategy/butterfly_plan.py`** for parity with the other three trades — a tidy, not a behaviour; do it when the fly has fired once and the row shape is known. | 🔲 OPEN |
 | **OI.1** | ⬜ **WATCH THE OI FETCH after v4.2** — no `fetch failed … Event loop is closed` lines; `fetched N … NON-ZERO` once per cycle with the whole chain. Feed health shows it. | 🔲 OPEN |
 
+### TCS (PLAN_SPEC §34)
+
+| id | item | state |
+|---|---|---|
+| **TCS.1** | ⬜ **NICKEL CLOSE ON THE TCS — decide explicitly.** The 2026-08-14 ruling (no exit short of a breach or the hard close; EV measured held to expiry) stands in code; today's untangle listed a nickel in the exit order without revisiting that measurement. One ruling, one line in exit_engine. | 🔲 OPEN |
+| **TCS.2** | ⬜ **THE EM GATE IS THE FIRST SUSPECT** either way (operator). Read `em_outside_by` on fires and `outside_by` on DECLINEs for the first sessions before touching anything else. `ACCEPT_FRESH_BARS` = 3 is a prior. | 🔲 OPEN |
+
 ### Repo hygiene found on the way
 
 | id | item | state |
 |---|---|---|
-| **HYG.5** | ⬜ **`check_tcs_parked` P5b is red at r7/r8 and was before this fork touched TCS:** `main.py` reads `TCS_ENTRY_END_ET` (the test pins that only `trend_credit_spread.py` may). Not in the lander's CHECK set, so it never blocked a land. Resolve with the TCS spec. | 🔲 OPEN |
+| **HYG.5** | ✅ (r9) main.py reads the TCS and sweep windows from their plans (`tcs_plan.window_end()`, `sweep_plan.LATEST_ET`); `check_tcs_parked` P5b green. Was: main.py read `TCS_ENTRY_END_ET` from config, red before the fork touched TCS. | ✅ r9 |
 
 | id | item | state |
 |---|---|---|
@@ -67,6 +74,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.8 — 2026-09-09 — OTV4TEST r9 — the TCS on the accepted extreme outside the EM (PLAN_SPEC §34); PORT_MANIFEST opened; HYG.5 closed; TCS.1 opened.**
 
 **v0.7 — 2026-09-09 — OTV4TEST r8 — TCS narrates every path (a r238 wiring defect, fixed on sight); NOT ASKED is hushed on the readers; BAKE does daemon-reload.**
 
