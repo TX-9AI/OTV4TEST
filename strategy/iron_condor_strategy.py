@@ -1,5 +1,16 @@
 """
-strategy/iron_condor_strategy.py  v4.10
+strategy/iron_condor_strategy.py  v4.11
+v4.11 2026-09-09  OTV4TEST r11 — THE LADDER IS TWO RUNGS AND THE ROLL IS PREPARED
+      AHEAD (PLAN_SPEC §35 v2). Operator's picture: the "trick" is rung 1 at
+      its limit — the untested side re-sold at the tested short's own strike
+      with the wing widened until the credit clears the tested width (an iron
+      butterfly), so further travel that way cannot lose. The opposite-type
+      "tent" and the "invert" rung are RETIRED as separate mechanisms.
+      (1) Formed and NOT tested: the plan pre-searches the roll for BOTH sides
+      every tick so the fire computes nothing. (2) Tested: the prepared roll,
+      or RUNG 2 stop-and-page when no combination clears. (3) After the roll
+      the structure is FINAL FORM and the only exit is the 15%-from-formation
+      floor (exit_engine v4.16), plus the nickel and 15:45.
 v4.10 2026-09-09  OTV4TEST r10 — THE MANAGEMENT PLAN NAMES ITS WAIT. A lone
       vertical's row now carries the complement it is waiting on, read from
       the sweep plan's last preparation on the authorized side: "waiting on: a
@@ -373,7 +384,7 @@ class IronCondorStrategy(BaseOptionsStrategy):
         condor). Executes NOTHING — condor_roll does, and is called by main
         right after this, so the row is the account of the decision it will
         make on the same numbers."""
-        from strategy.condor_roll import classify_tested, find_risk_free_roll, _tent_breached
+        from strategy.condor_roll import classify_tested, find_risk_free_roll
         from config import TENT_FLOOR_PCT
         if not hasattr(self, "_mgmt_planner"):
             self._mgmt_planner = Plan("CondorManagement", self.MGMT_CHECKS, self_ledgers=True)
@@ -427,37 +438,58 @@ class IronCondorStrategy(BaseOptionsStrategy):
                 + f"  banked {banked:.2f}")
 
         # ── rung 2b: the tent, only on an already-rolled structure ─────────
-        breach = None
-        try:
-            breach = _tent_breached(df_1m, legs) if df_1m is not None else None
-        except Exception:                                      # noqa: BLE001
-            breach = None
-        t.check("breached", 1.0 if breach else 0.0, None)
-        if rolled and breach:
-            floor = banked * TENT_FLOOR_PCT
-            t.check("floor", floor, None)
-            t.check("rung", 2.5, True)
-            t.hold(f"{head}: RUNG 2b TENT — 1m close beyond the "
-                   f"{breach.get('option_side', '?')} short {breach.get('short_strike', 0):g}"
-                   f" on a rolled structure; take the profitable side off, buy the "
-                   f"opposite-type long equidistant from the survivor; the hedge is "
-                   f"bought only if its debit keeps the structure above "
-                   f"-{TENT_FLOOR_PCT:.0%} of cumulative credit ({floor:.2f}), else CLOSE",
-                   verdict="ROLL")
-            return "TENT"
-
+        t.check("breached", 0.0, None)              # r11: the tent rung is retired
+        if rolled:
+            # r11 — FINAL FORM. No further roll exists: the risk-free side is at
+            # the body and cannot add credit. The row says where the floor is,
+            # how far the structure is from it, and names a WHIPSAW when the
+            # rolled side is the one now being tested (operator 2026-09-09).
+            _fb = float(legs[0].get("final_form_basis") or 0.0)
+            _floor = round(_fb * (1 + TENT_FLOOR_PCT), 4) if _fb else None
+            _cost = sum(float(l.get("current_premium") or l.get("entry_premium") or 0.0) for l in legs)
+            t.check("floor", _floor, None)
+            t.check("cost_now", round(_cost, 4), (_floor is None) or (_cost < _floor))
+            _ws = ""
+            if tested is not None:
+                _rolled_side = next((l for l in legs if str(l.get("setup_type", "")).startswith("BWB rolled")), None)
+                if _rolled_side is not None and tested is _rolled_side:
+                    _ws = (f" — WHIPSAW: the rolled {tested.get('option_side')} side is now tested; "
+                           f"no further roll exists (the other side is at the body); the floor governs")
+                else:
+                    _ws = f" — the {tested.get('option_side')} side is tested; it is risk-free"
+            t.hold(f"{head}: FINAL FORM (rolled) — cost to close {_cost:.2f} vs floor "
+                   f"{(_floor or 0):.2f} (basis {_fb:.2f} +{TENT_FLOOR_PCT:.0%}); the floor is the only "
+                   f"exit; nickel and 15:45 stand{_ws}")
+            return "FINAL"
         if tested is None:
-            t.hold(f"{head}: formed, neither short tested — no rung, holding")
+            # r11 — PREPARE THE ROLL AHEAD: what each side's roll would be if it
+            # were tested on this tick, so the roll fires priced, not searched.
+            call_leg = next((l for l in legs if l.get("option_side") == "call"), None)
+            put_leg = next((l for l in legs if l.get("option_side") == "put"), None)
+            pre = []
+            for tst, unt in ((call_leg, put_leg), (put_leg, call_leg)):
+                if not (tst and unt):
+                    continue
+                try:
+                    pp = find_risk_free_roll(tst, unt, chain, current_price, banked)
+                except Exception:                              # noqa: BLE001
+                    pp = None
+                if pp is None:
+                    pre.append(f"if the {tst['option_side']} side were tested: NO roll prices")
+                else:
+                    pre.append(f"if the {tst['option_side']} side were tested: roll {unt['option_side']} to "
+                               f"{pp.new_short_strike:g}/{pp.new_long_strike:g} for +{pp.roll_credit:.2f}, "
+                               f"cumulative {pp.total_credit_after:.2f} vs width {pp.tested_width:.2f} — "
+                               f"{'RISK-FREE' if pp.risk_free else 'not risk-free'}")
+            t.hold(f"{head}: formed, neither short tested — holding. Prepared: " + "; ".join(pre))
             return "HOLD"
-
-        # ── rung 1: roll the UNTESTED side toward price to risk-free ──────
         plan = find_risk_free_roll(tested, untested, chain, current_price, banked)
         if plan is None:
-            t.check("rung", 3.0, False)
+            t.check("rung", 2.0, False)
             t.hold(f"{head}: {tested['option_side']} short {tested.get('short_strike', 0):g} "
                    f"TESTED and no roll is available — the untested vertical has no "
                    f"mark, or no liquid strike between it and price pays a credit; "
-                   f"RUNG 3 (close and page) is the only rung left", verdict="CLOSE")
+                   f"RUNG 2 (stop and page) is the only rung left", verdict="CLOSE")
             return "CLOSE"
         t.check("roll_credit", plan.roll_credit, plan.roll_credit > 0)
         t.check("close_cost", plan.close_cost, None)

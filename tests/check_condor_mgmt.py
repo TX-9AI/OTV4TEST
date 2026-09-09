@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_condor_mgmt.py  v1.0
+tests/check_condor_mgmt.py  v1.1
+v1.1  2026-09-09  OTV4TEST r11 — R1–R5: the widened-wing roll (the operator's picture),
+      the prepared roll on the row, the group final-form floor, the rich complement,
+      the tent retired. C7's tent-record pin is kept as history of the as-formed basis rule.
 v1.0  2026-09-09  OTV4TEST r10 — THE CONDOR MANAGEMENT PLAN (PLAN_SPEC §35).
 
   C1  tested by WICK: the closed bar's high reaches the short call, close inside -> call tested
@@ -104,6 +107,89 @@ def main():
               "entry_premium=form_basis" in csrc and "cumulative_credit=cum" in csrc)
     finally:
         XE.datetime, XE.is_hard_close_time = _rdt, _rhc
+
+    # ── r11: the widened-wing roll, the prepared roll, the group floor, the rich complement ──
+    from strategy.condor_roll import find_risk_free_roll
+    class _K:
+        def __init__(s, k, m): s.strike, s.mark, s.symbol = float(k), m, f"O{k}"
+    # operator's picture: 360/370C breached at 364; put marks fall with distance
+    puts = [_K(360, 6.10), _K(355, 3.60), _K(350, 2.20), _K(345, 1.40), _K(340, 0.95), _K(337.5, 0.75), _K(330, 0.35)]
+    chain = types.SimpleNamespace(puts=puts, calls=[])
+    tested = {"option_side": "call", "short_strike": 360.0, "long_strike": 370.0, "spread_width": 10.0}
+    untested = {"option_side": "put", "short_strike": 345.0, "long_strike": 340.0, "spread_width": 5.0, "contracts": 1}
+    plan = find_risk_free_roll(tested, untested, chain, 364.0, banked_credit=4.725)
+    # banked 4.725 + credit - close cost 0.45 (345/340) must reach 10: 360/337.5 gives 9.63 (short),
+    # 360/330 gives 10.03 -> the narrowest wing at the tested short that CLEARS
+    check("R1 the roll WIDENS its wing at the tested short's own strike until the credit clears the tested width",
+          plan is not None and plan.risk_free and plan.new_short_strike == 360.0 and plan.new_long_strike == 330.0,
+          f"plan={plan and (plan.new_short_strike, plan.new_long_strike, round(plan.total_credit_after, 2), plan.risk_free)}")
+    check("R1b ...and it is the NARROWEST wing that clears (337.5 falls 0.37 short, 330 is the first that does)",
+          plan is not None and plan.new_long_strike == 330.0 and round(plan.total_credit_after, 2) == 10.03)
+    thin = types.SimpleNamespace(puts=[_K(360, 1.0), _K(355, 0.9), _K(350, 0.85), _K(345, 0.84), _K(340, 0.83), _K(330, 0.8)], calls=[])
+    plan2 = find_risk_free_roll(tested, untested, thin, 364.0, banked_credit=4.725)
+    check("R2 no combination clears -> best-by-credit returned, NOT risk-free (rung 2: stop and page)",
+          plan2 is not None and not plan2.risk_free)
+    # R3 the management row prepares the roll while nothing is tested
+    class _PM2:
+        def get_open_records(self):
+            return [dict(tested, is_condor_leg=1, trade_id="c", credit_received=4.725, entry_premium=4.725, status="open"),
+                    dict(untested, is_condor_leg=1, trade_id="p", credit_received=1.0, entry_premium=1.0, status="open")]
+    IC2 = IronCondorStrategy()
+    P.begin_tick(2.0)
+    out = IC2.manage(_PM2(), chain, 352.0, df_1m=_frame([(352.0, 352.4, 351.6, 352.1), (352.1, 352.3, 351.9, 352.0)]))
+    P.close_tick(st, "TST")
+    r = st.conn.execute("SELECT verdict, reason FROM plan_tick WHERE strategy='CondorManagement' ORDER BY rowid DESC LIMIT 1").fetchone()
+    check("R3 formed, nothing tested -> the row carries the PREPARED roll for each side",
+          out == "HOLD" and r and "Prepared:" in r["reason"] and "if the call side were tested" in r["reason"],
+          (r["reason"][:160] if r else "none"))
+    # R6 whipsaw: after the roll the rolled side gets tested -> the row names it and the floor governs
+    class _PM3:
+        def get_open_records(self):
+            return [dict(tested, is_condor_leg=1, is_broken_wing=1, trade_id="c", credit_received=4.725,
+                         entry_premium=4.725, current_premium=0.30, status="open", final_form_basis=6.0,
+                         final_form_group="ff-c", setup_type="condor leg"),
+                    {"option_side": "put", "short_strike": 360.0, "long_strike": 330.0, "spread_width": 30.0,
+                     "is_condor_leg": 1, "is_broken_wing": 1, "trade_id": "p", "credit_received": 5.75,
+                     "entry_premium": 5.75, "current_premium": 6.10, "status": "open", "final_form_basis": 6.0,
+                     "final_form_group": "ff-c", "setup_type": "BWB rolled put vertical"}]
+    IC3 = IronCondorStrategy()
+    P.begin_tick(3.0)
+    out = IC3.manage(_PM3(), chain, 359.0, df_1m=_frame([(361.0, 361.2, 359.6, 360.4), (360.4, 360.6, 360.1, 360.3)]))
+    P.close_tick(st, "TST")
+    r = st.conn.execute("SELECT verdict, reason FROM plan_tick WHERE strategy='CondorManagement' ORDER BY rowid DESC LIMIT 1").fetchone()
+    check("R6 WHIPSAW: the rolled put side is tested after the roll -> FINAL FORM row names it, the floor governs",
+          out == "FINAL" and r and "WHIPSAW" in r["reason"] and "floor" in r["reason"], (r["reason"][:170] if r else "none"))
+    # R4 the final-form floor is one floor for the whole structure
+    try:
+        XE.datetime = _F; XE.is_hard_close_time = lambda: False
+        xe = XE.ExitEngine(paper_trading=True)
+        import database.trade_logger as TL
+        _real_tl = TL.get_trade_logger
+        sib = {"trade_id": "p2", "final_form_group": "ff-c", "current_premium": 4.0, "option_side": "put",
+               "is_condor_leg": 1, "symbol": "TST"}
+        TL.get_trade_logger = lambda: types.SimpleNamespace(get_open_trades=lambda: [sib])
+        xe._condor_sibling_open = lambda *a, **k: True
+        xe._sync_stop_suppression = lambda *a, **k: None
+        rec = {"trade_id": "c2", "strategy": "IronCondorStrategy", "setup_type": "x", "option_side": "call",
+               "entry_premium": 4.725, "contracts": 1, "status": "open", "stop_premium": 0.0, "is_condor_leg": 1,
+               "is_credit_vertical": 1, "is_broken_wing": 1, "final_form_group": "ff-c", "final_form_basis": 10.0,
+               "spread_width": 10.0, "symbol": "TST"}
+        d_hold = xe._evaluate_condor_leg(dict(rec), 7.0, df_1m=None)      # 7.0 + 4.0 = 11.0 < 11.5
+        d_exit = xe._evaluate_condor_leg(dict(rec), 7.6, df_1m=None)      # 7.6 + 4.0 = 11.6 >= 11.5
+        check("R4 the final-form floor sums BOTH legs against the as-formed basis (10.0 -> 11.5)",
+              (not d_hold.should_exit) and d_exit.should_exit and "final_form_floor" in str(d_exit.exit_reason),
+              str(d_exit.exit_reason)[:120])
+        TL.get_trade_logger = _real_tl
+    finally:
+        XE.datetime, XE.is_hard_close_time = _rdt, _rhc
+    # R5 the complement must be at least as rich as leg one
+    import strategy.sweep_plan as spm
+    src = open(os.path.join(_root, "strategy", "sweep_plan.py"), encoding="utf-8").read()
+    check("R5 the sweep plan refuses a thinner complement by name (complement_richness)",
+          "complement_richness" in spm.SweepPlan.PLAN_CHECKS and "not rich enough to complete a condor" in src)
+    msrc2 = open(os.path.join(_root, "main.py"), encoding="utf-8").read()
+    check("R5b main hands the complement leg one's richness; the tent call is gone",
+          "complement_min_richness=_leg1_rich" in msrc2 and "check_and_execute_tent(pos_mgr" not in msrc2)
 
     print()
     if FAILED:

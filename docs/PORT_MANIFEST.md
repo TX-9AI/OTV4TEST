@@ -1,4 +1,5 @@
-# PORT_MANIFEST.md — OTV4TEST → options_trader_v4 — v0.2
+# PORT_MANIFEST.md — OTV4TEST → options_trader_v4 — v0.3
+v0.3  2026-09-09  OTV4TEST r11 — the r11 rows (two-rung ladder, widened-wing roll, group floor).
 v0.2  2026-09-09  OTV4TEST r10 — the r10 rows and the DEFECTS FOUND IN THE PREDECESSOR
       section (eleven, one still open) — port these whether or not the rulings port.
 v0.1  2026-09-09  OTV4TEST r9 — opened. One line per file per revision, with the
@@ -41,6 +42,8 @@ Legend: **N** new file · **M** modified · **T** test (new or re-pointed) · **
 | r2–r9 | docs/PLAN_SPEC.md §29–§34, docs/TRADES.md, docs/BACKLOG.md | D | the specs; the fork's own backlog |
 | r10 | strategy/condor_roll.py, strategy/iron_condor_strategy.py, strategy/sweep_plan.py, execution/exit_engine.py, main.py | M | condor = management plan; tested by wick; the LONE row names its complement; entry retired; final-form floor from the structure as formed |
 | r10 | tests/check_condor_mgmt.py | T | new |
+| r11 | strategy/condor_roll.py, strategy/iron_condor_strategy.py, execution/exit_engine.py, database/trade_logger.py, strategy/sweep_plan.py, strategy/sweep_credit_spread.py, main.py | M | two-rung ladder: the roll widens its wing (iron fly at the limit), prepared every tick; tent and invert retired; group final-form floor (3 new trade columns); complement at least as rich as leg one; whipsaw named |
+| r11 | tests/check_condor_mgmt.py R1–R6, check_plan_prepares M5 | T | new / re-derived |
 
 ## DEFECTS FOUND IN THE PREDECESSOR (port these whether or not the rulings port)
 

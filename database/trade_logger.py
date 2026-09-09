@@ -1,5 +1,9 @@
 """
-database/trade_logger.py  v4.13
+database/trade_logger.py  v4.14
+v4.14  2026-09-09  OTV4TEST r11 — three columns for the condor's final form:
+      `final_form_basis`, `final_form_group`, `cumulative_credit` (migrated in
+      place, like every column since v3). Written by condor_roll v4.8 on a
+      risk-free roll; read by exit_engine v4.16's group floor.
 v4.13  2026-09-09  OTV4TEST r5 — A SWEEP LEVEL IS SPENT ON AN ACCEPTED BREACH, NOT
       ON A STOP-OUT. Operator: "A held level remains, but an accepted breach and
       continuation means that level is spent." `mark_spent` fires only when the
@@ -537,6 +541,10 @@ class TradeLogger:
             ("tape_vol_at_level",      "REAL"),
             ("tape_buy_frac_at_level", "REAL"),
             ("tape_prints_at_level",   "INTEGER"),
+            # OTV4TEST r11 — the condor's final form (condor_roll v4.8, exit_engine v4.16)
+            ("final_form_basis",       "REAL"),
+            ("final_form_group",       "TEXT DEFAULT ''"),
+            ("cumulative_credit",      "REAL"),
         ]
         for col, definition in _MIGRATION_ADDS:
             try:

@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.9
+# BACKLOG.md — OTV4TEST — v0.10
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -54,6 +54,7 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 
 | id | item | state |
 |---|---|---|
+| **CND.2** | ⬜ **THE TENT CODE IS UNCALLED, NOT DELETED.** `check_and_execute_tent`, `_tent_breached`, `_execute_tent`, `_tent_close_all` and `_evaluate_tent` remain in the tree with no caller after r11. Delete them with the port (a dead branch reads as live). | 🔲 OPEN |
 | **CND.1** | ⬜ **THE FIRST FORMED CONDOR IS THE TEST.** Every rung disposes every tick on the CondorManagement / CreditRoll rows; read the first real pairing end to end (formation row → tested by wick → roll search → whichever rung fires) before touching a number. The tent has no sample; each case is its own evidence. | 🔲 OPEN |
 
 ### Repo hygiene found on the way
@@ -80,6 +81,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.10 — 2026-09-09 — OTV4TEST r11 — the condor ladder is two rungs (PLAN_SPEC §35 v2): the roll widens its wing, prepared every tick; the tent and invert retired; the group final-form floor; the whipsaw named; the complement rich or not taken. CND.2 opened.**
 
 **v0.9 — 2026-09-09 — OTV4TEST r10 — the condor management plan (PLAN_SPEC §35); the predecessor defect list in PORT_MANIFEST; CND.1 opened.**
 

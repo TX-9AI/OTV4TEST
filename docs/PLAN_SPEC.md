@@ -1356,13 +1356,20 @@ The EM gate is the first suspect either way (operator). Every fire carries the f
 ### 35.2 Tested, breached, accepted — fact events, not distances
 A side is **tested** when the closed 1m bar's wick reached its short strike with the close still inside (wicks are tests); **breached** when a 1m close lands beyond it; **accepted** on the second close. The roll runs on tested; the tent on breached; nothing on a wick alone. The old one-strike proximity rule survives only when no tape is passed.
 
-### 35.3 The ladder (TRADES §5, unchanged in shape)
-1. **Roll to risk-free** — close the untested vertical, re-open it closer, collect; when `total_credit ≥ tested_side_width` the tested side cannot lose. Smallest qualifying roll. First right of refusal; no competing % stop once formed.
-2. **Invert** — no roll clears the width → the untested side rolled adjacent to the tested short (shorts touching; a butterfly).
-3. **The tent** — already rolled, then a close beyond a short → take the profitable vertical off, buy a long of the *opposite* type equidistant from the remaining short; price is left under the tent. Priced before it is paid. It removes **reversal** risk and turns a reversal into unbounded upside; the tested side's loss stays capped at its wing — the row says exactly that.
-4. **Stop and page** — both risk reductions unavailable.
+### 35.3 The ladder — TWO rungs (v2, operator 2026-09-09, superseding r10's four)
+The operator's own picture: **360/370C breached, price at 364 → take the profitable put vertical off and SELL 360/337.5P** — the short at the tested short's own strike, the wing widened until the credit clears the tested width. Any further upside cannot lose; the downside taken on is capped by the new wing. That is rung 1 at its limit, not a separate mechanism.
 
-### 35.4 The final-form floor — from where it stands
-After the tent the only exit is a **15% loss from the structure as formed** — the cost to close the tent at formation (kept vertical's mark less the hedge's), grown 15% — **not** 15% of cumulative credit. *"It's at a 15% loss from where it currently stands as formed. The entire premise has gone horribly wrong and we are lucky to be getting out at a 15% loss."* Cumulative credit stays on the record as the account of what was collected. 15:45 throughout.
+1. **Roll to risk-free.** The untested side is re-sold nearer — up to and including the tested short's own strike (shared body, an iron butterfly) — with **the wing widened only as far as the credit needs**: `total_credit ≥ tested_width`. Nearest short, narrowest wing that clears — least new risk. **No cap on the widening:** the 15%-from-formation floor is the protection. **Prepared every tick** while a condor is on: *"if the call side were tested now: roll put to 360/330 for +5.75, cumulative 10.03 vs width 10 — RISK-FREE."* The test fires a roll that was already priced.
+2. **Stop and page** — no strike combination clears. *"Unless no available strikes will make us whole again."*
 
-**As built (OTV4TEST r10):** `strategy/condor_roll.py` v4.7, `strategy/iron_condor_strategy.py` v4.10, `strategy/sweep_plan.py` v1.1, `execution/exit_engine.py` (tent floor wording), `main.py` v4.44. Hypotheticals: `check_condor_mgmt` C1–C7.
+**Retired:** the adjacent-shorts "invert" rung (it *is* rung 1 at its limit) and the opposite-type-long "tent" — one situation, one mechanism.
+
+### 35.4 Final form, the floor, and the whipsaw
+After the roll the structure is **final form** and the only exit is a **15% loss from the structure as formed** — the cost to close both verticals at formation, grown 15% — evaluated on the **group**, both legs together, both leave together (`final_form_floor`). Cumulative credit stays on the record as the account of what was collected. Nickel and 15:45 stand. *"We're out at 15% of our present positive P&L unless no available strikes will make us whole again."*
+
+**Whipsaw:** if the *rolled* side is the one tested next, no further roll exists — the other side is already at the body and cannot add credit. The row names it (*"WHIPSAW: the rolled put side is now tested; no further roll exists; the floor governs"*) and shows the cost to close against the floor every tick, so the exit is never a surprise.
+
+### 35.5 The complement is rich or it is not taken
+As a condor's second leg the sweep must be **at least as rich (credit ÷ width) as leg one** — a comparison, not an invented number — or it is REJECTED by name (`complement_richness`). Leg one is either fine or stopped; nothing else about it enters the authorization.
+
+**As built (OTV4TEST r10 + r11):** `strategy/condor_roll.py` v4.8, `strategy/iron_condor_strategy.py` v4.11, `strategy/sweep_plan.py` v1.2, `strategy/sweep_credit_spread.py` v6.1, `execution/exit_engine.py` v4.16, `database/trade_logger.py` v4.14, `main.py` v4.45. Hypotheticals: `check_condor_mgmt` C1–C7, R1–R6.

@@ -1,5 +1,8 @@
 """
-main.py  v4.44
+main.py  v4.45
+v4.45 2026-09-09  OTV4TEST r11 — the tent call is gone (the ladder is two rungs);
+      the sweep's complement is handed the open leg's richness so "the second
+      leg is rich or we don't take it" is a bar the plan reports.
 v4.44 2026-09-09  OTV4TEST r10 — the roll is handed the 1m frame (tested by wick,
       condor_roll v4.7); `IronCondorStrategy` is retired as an ENTRY — a condor
       forms from two credit spreads — and its row says so instead of the
@@ -4833,13 +4836,9 @@ def main_loop(state: BotState):
                 # compete for the same tick: the roll collects credit, the tent
                 # pays a debit, and paying when collecting was available would
                 # be strictly worse. Same first-refusal ordering, one rung down.
-                try:
-                    from strategy.condor_roll import check_and_execute_tent
-                    check_and_execute_tent(pos_mgr, ctx.get("chain"),
-                                           ctx["price"], state,
-                                           df_1m=ctx.get("df_1m"))
-                except Exception as _tent_err:                 # noqa: BLE001
-                    logger.warning(f"Tent check failed: {_tent_err}")
+                # OTV4TEST r11 — the tent rung is RETIRED (PLAN_SPEC §35 v2): the
+                # widened-wing roll is rung 1 at its limit; after it the only
+                # exit is the 15%-from-formation floor (exit_engine v4.16).
 
                 # classification the engine cannot currently confirm. None is
                 # those three branches already honours; price-based exits are
@@ -4914,6 +4913,19 @@ def main_loop(state: BotState):
                     _plan_skip("RunawayContinuation", _auth_why)
                     _plan_skip("TrendCreditSpread", _auth_why)
                     _sl_chain = ctx.get("chain")
+                    # OTV4TEST r11 — "the second leg is rich or we don't take it":
+                    # the complement must be at least as rich (credit / width) as
+                    # the leg already on. No number invented — a comparison.
+                    _leg1_rich = 0.0
+                    try:
+                        for _r in pos_mgr.get_open_records():
+                            if _r.get("is_credit_vertical") or _r.get("is_condor_leg"):
+                                _w = float(_r.get("spread_width") or 0.0)
+                                _c = float(_r.get("credit_received") or _r.get("entry_premium") or 0.0)
+                                if _w > 0:
+                                    _leg1_rich = max(_leg1_rich, _c / _w)
+                    except Exception:                          # noqa: BLE001
+                        _leg1_rich = 0.0
                     _sl2 = _safe_strategy("SweepForLeg2",
                         lambda: _sweep_cs_strategy.generate_signal(
                             price_now=ctx["price"],
@@ -4923,7 +4935,8 @@ def main_loop(state: BotState):
                             orb_high=ctx.get("orb_high"),
                             orb_low=ctx.get("orb_low"),
                             df_1m=ctx.get("df_1m"),
-                            required_side=_auth_side), ctx)
+                            required_side=_auth_side,
+                            complement_min_richness=_leg1_rich), ctx)
                     if (_sl2 is not None
                             and _can_open_credit_spread(_sl2.option_side,
                                                         _sl2, ctx["price"], ctx=ctx)):

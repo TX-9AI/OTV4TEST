@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_prepares.py  v1.14
+tests/check_plan_prepares.py  v1.15
+v1.15  2026-09-09  OTV4TEST r11 — M5 re-derived: a rolled structure is FINAL FORM with one
+      floor; the tent rung is retired (PLAN_SPEC §35 v2).
 v1.14  2026-09-09  OTV4TEST r9 — the TCS constant patching is gone with the TCS rewrite
       (the C cases were retired at r238; the TCS is pinned in check_tcs_plan).
 v1.13  2026-09-09  OTV4TEST r6 — B12 re-derived on the smoothed pin (one tick is chatter;
@@ -352,10 +354,9 @@ def main():
     P.begin_tick(14.0)
     rung = IC.manage(rolled, _Chain(m_puts, m_calls), 105.5, df_1m=df)
     m5 = _row(st, "CondorManagement", 14.0)
-    check("M5 rolled structure, close through the call short -> RUNG 2b TENT, opposite-type "
-          "hedge, floor stated",
-          rung == "TENT" and m5 and m5[0] == "ROLL" and "TENT" in m5[1]
-          and "opposite-type" in m5[1] and "15%" in m5[1], str(m5))
+    check("M5 (r11) rolled structure -> FINAL FORM: the floor is the only exit, the tent rung is retired",
+          rung == "FINAL" and m5 and m5[0] == "HOLD" and "FINAL FORM" in m5[1] and "floor" in m5[1]
+          and "TENT" not in m5[1], str(m5)[:160])
 
     # ── THE BUTTERFLY (r161) — earns its entry; exempt from the slot rule ──
     from strategy.gex_pin_butterfly import GEXPinButterflyStrategy

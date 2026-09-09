@@ -1,5 +1,7 @@
 """
-strategy/sweep_credit_spread.py  v6.0
+strategy/sweep_credit_spread.py  v6.1
+v6.1  2026-09-09  OTV4TEST r11 — `complement_min_richness` passes through to the plan:
+      as a condor's second leg the sweep must be at least as rich as leg one.
 v6.0  2026-09-09  OTV4TEST r5 — THE STRATEGY IS THE SPEC; THE PLAN SELECTS
       (PLAN_SPEC §31, agreed with the operator 2026-09-08/09). `prepare()` —
       the private wick detector over `liq_map.sweeps`, the level ranking, the
@@ -834,10 +836,12 @@ class SweepCreditSpreadStrategy:
 
     def generate_signal(self, *, price_now: float, now_et: str, atr_pct: float = None,
                         chain=None, orb_high: float = None, orb_low: float = None,
-                        required_side: str = "", df_1m=None, **_ignored) -> Optional[Signal]:
+                        required_side: str = "", df_1m=None,
+                        complement_min_richness: float = 0.0, **_ignored) -> Optional[Signal]:
         prep = self.plan.prepare(price_now=price_now, now_et=now_et, atr_pct=atr_pct,
                                  chain=chain, orb_high=orb_high, orb_low=orb_low,
-                                 df_1m=df_1m, required_side=required_side)
+                                 df_1m=df_1m, required_side=required_side,
+                                 complement_min_richness=complement_min_richness)
         if not prep.ready or prep.unmet or prep.structural or prep.starved:
             return prep.tick.already()
         if required_side and prep.side != required_side:

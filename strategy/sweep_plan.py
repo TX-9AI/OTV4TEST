@@ -1,5 +1,7 @@
 """
-strategy/sweep_plan.py  v1.1
+strategy/sweep_plan.py  v1.2
+v1.2  2026-09-09  OTV4TEST r11 — `complement_richness`: as a condor's second leg the
+      structure must be at least as rich as leg one, or it is REJECTED by name.
 v1.1  2026-09-09  OTV4TEST r10 — `LAST_PREP`: the most recent preparation, so the
       condor's management plan can name the complement it is waiting on.
 v1.0  2026-09-08  OTV4TEST r5 — THE SWEEP CREDIT SPREAD PLAN (PLAN_SPEC §31),
@@ -158,7 +160,8 @@ class SweepPlan:
                    "nearest_below", "nearest_below_credit", "nearest_below_r",
                    "rejected", "rejection_age_bars", "rejection", "pierce_depth",
                    "side_of_pool", "spent_level", "geometry", "short_anchor", "contract",
-                   "credit", "width", "richness", "r", "r_stop", "stop_premium")
+                   "credit", "width", "richness", "r", "r_stop", "stop_premium",
+                   "complement_richness")
 
     def __init__(self, store=None):
         self.planner = Plan(self.name, self.PLAN_CHECKS,
@@ -206,7 +209,8 @@ class SweepPlan:
     # ══════════════════════════════════════════════════════════════════════
     def prepare(self, *, price_now, now_et, atr_pct=None, chain=None,
                 orb_high=None, orb_low=None, df_1m=None, required_side: str = "",
-                session_open_epoch: float = 0.0) -> SweepPreparation:
+                session_open_epoch: float = 0.0,
+                complement_min_richness: float = 0.0) -> SweepPreparation:
         global LAST_PREP
         t = self.planner.tick(price_now)
         prep = SweepPreparation(t)
@@ -320,6 +324,15 @@ class SweepPlan:
             prep.unmet.append(("side_of_pool", f"price {price_now:.2f} is not on the profitable side of "
                                                f"{chosen.price:.2f}"))
         _sk = tine_spent_key(chosen.provenance) or chosen.price
+        # r11 — as a condor's complement, the second leg is rich or it is not taken:
+        # at least as rich (credit / width) as the leg already on. A comparison,
+        # not an invented number (operator 2026-09-09).
+        if required_side and complement_min_richness > 0 and chosen.sellable:
+            t.check("complement_richness", chosen.richness, (chosen.richness or 0) >= complement_min_richness)
+            if (chosen.richness or 0) < complement_min_richness:
+                prep.unmet.append(("complement_richness",
+                                   f"as leg two: {chosen.richness:.0%} of width is thinner than leg one's "
+                                   f"{complement_min_richness:.0%} — not rich enough to complete a condor"))
         spent, spent_why = is_spent(sym, chosen.side, _sk)
         t.check("spent_level", 1.0 if spent else 0.0, not spent)
         if spent:

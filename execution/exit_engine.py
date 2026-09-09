@@ -1,5 +1,14 @@
 """
-execution/exit_engine.py  v4.15
+execution/exit_engine.py  v4.16
+v4.16 2026-09-09  OTV4TEST r11 — THE FINAL-FORM FLOOR ON A ROLLED STRUCTURE. After
+      a risk-free roll both legs carry `final_form_group` and `final_form_basis`
+      (condor_roll v4.8: the cost to close the structure as formed). A hedged
+      leg with a group now exits when the GROUP's cost to close — the sum of
+      both legs' current premiums — has grown 15% (TENT_FLOOR_PCT) from the
+      basis: "final_form_floor". Both legs read the same numbers on the same
+      tick, so both leave together. Operator: "we're out at 15% … unless no
+      available strikes will make us whole again." The nickel and 15:45 stand.
+      The tent evaluator is no longer reached (its rung is retired).
 v4.15 2026-09-09  OTV4TEST r10 — the tent floor's reason names its basis: 15% from
       the structure AS FORMED (condor_roll v4.7 sets `entry_premium` to the
       as-formed cost and keeps `cumulative_credit` alongside). Operator: "15%
@@ -1373,6 +1382,30 @@ class ExitEngine:
             logger.warning("runaway thesis read failed: %s", exc)
         return ""
 
+    def _final_form_floor(self, record, current_premium) -> str:
+        """Rolled structure: exit when the GROUP's cost to close has grown
+        TENT_FLOOR_PCT from the as-formed basis. Returns the reason or ""."""
+        try:
+            grp = record.get("final_form_group")
+            basis = float(record.get("final_form_basis") or 0.0)
+            if not grp or basis <= 0:
+                return ""
+            from config import TENT_FLOOR_PCT
+            from database.trade_logger import get_trade_logger
+            tl = get_trade_logger()
+            total = float(current_premium or 0.0)
+            if tl is not None:
+                for t in tl.get_open_trades():
+                    if t.get("final_form_group") == grp and t.get("trade_id") != record.get("trade_id"):
+                        total += float(t.get("current_premium") or t.get("entry_premium") or 0.0)
+            if total >= basis * (1.0 + TENT_FLOOR_PCT):
+                return (f"final_form_floor: structure costs {total:.2f} to close vs basis "
+                        f"{basis:.2f} as formed (+{TENT_FLOOR_PCT:.0%}) — the premise has gone "
+                        f"wrong; out together")
+        except Exception as exc:                                # noqa: BLE001
+            logger.debug("final-form read failed: %s", exc)
+        return ""
+
     def _sweep_breach_accepted(self, record, df_1m) -> str:
         """SWEEP verticals only. ACCEPT_CLOSES consecutive closed 1m bars beyond
         the pool the spread was sold against -> the exit reason, else ""."""
@@ -2046,6 +2079,12 @@ class ExitEngine:
         # ride toward max loss (AUDIT.md 5.2: state the fail direction).
         _hedged = self._condor_sibling_open(record, default=False)
         self._sync_stop_suppression(record, _hedged)
+        # r11 — final form: one floor for the whole structure, from where it stands
+        _ff = self._final_form_floor(record, current_premium)
+        if _ff:
+            decision.should_exit = True
+            decision.exit_reason = _ff
+            return decision
         if not _hedged:
           # Lone calibration is 15%, UNCHANGED — TRADES.md §5 ("leg 1 manages
           # exactly like the sweep credit spread: a 15% stop"), applied by

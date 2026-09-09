@@ -1,5 +1,19 @@
 """
-strategy/condor_roll.py  v4.7
+strategy/condor_roll.py  v4.8
+v4.8  2026-09-09  OTV4TEST r11 — THE ROLL MAY WIDEN ITS WING (PLAN_SPEC §35 v2).
+      Operator's picture: 360/370C breached at 364 -> take the profitable put
+      vertical off and SELL 360/337.5P — the short at the tested short's own
+      strike (an iron butterfly), the wing widened until the credit clears the
+      tested width, so any further upside cannot lose. `find_risk_free_roll`
+      used a FIXED wing (the original width) and so could never reach that
+      credit; it now searches wings at every candidate short and takes the
+      NEAREST short with the NARROWEST wing that clears — least new risk for a
+      risk-free tested side. No cap on the widening: the 15%-from-formation
+      floor is the protection, and if no strike combination clears, the ladder
+      is stop-and-page. Candidates include the tested short's own strike. The
+      "invert" and "tent" rungs are RETIRED as separate mechanisms: the iron
+      fly IS rung 1 at its limit; `_execute_tent` and friends remain in the
+      file, uncalled, until the manifest port removes them.
 v4.7  2026-09-09  OTV4TEST r10 — TESTED IS A WICK, NOT A DISTANCE (PLAN_SPEC §35).
       `classify_tested` reads the closed 1m bar when a frame is given: a side
       is TESTED when the bar's wick reached its short strike with the close
@@ -230,32 +244,46 @@ def find_risk_free_roll(tested_leg: dict, untested_leg: dict, chain,
         while k >= current_price:
             candidates.append(k); k -= inc
 
+    # v4.8 — the tested short's own strike is a candidate (shared body)
+    _tk = float(tested_leg.get("short_strike") or 0.0)
+    if _tk > 0 and _tk not in candidates:
+        if (untested_side == "put" and _tk <= current_price) or (untested_side == "call" and _tk >= current_price):
+            candidates.append(_tk)
+            candidates.sort(reverse=(untested_side == "put"))
+            candidates.sort(key=lambda k: abs(k - float(untested_leg["short_strike"])))
+    # v4.8 — the wings to try at each short: the original width first, then wider
+    _listed = sorted({float(getattr(c, "strike", 0) or 0) for c in u_list} - {0.0})
     best: Optional[RollPlan] = None
     for new_short in candidates:
-        new_long = new_short - wing if untested_side == "put" else new_short + wing
-        ns = _contract_at(u_list, new_short)
-        nl = _contract_at(u_list, new_long)
-        if ns is None or nl is None:
-            continue
-        roll_credit = ns.mark - nl.mark
-        if roll_credit <= 0:
-            continue
-        total_after = banked_credit + roll_credit - close_cost
-        plan = RollPlan(
-            tested_side=tested_side, untested_side=untested_side,
-            new_short_strike=new_short, new_long_strike=new_long,
-            new_short_symbol=ns.symbol, new_long_symbol=nl.symbol,
-            roll_credit=roll_credit, close_cost=close_cost,
-            total_credit_after=total_after, tested_width=tested_width,
-            risk_free=(total_after >= tested_width), contracts=contracts,
-        )
-        # Track the best (highest cumulative credit) and return the FIRST one
-        # that is risk-free (smallest roll toward price).
-        if best is None or plan.total_credit_after > best.total_credit_after:
-            best = plan
-        if plan.risk_free:
-            return plan
+        if untested_side == "put":
+            wings = [new_short - k for k in _listed if k < new_short]
+        else:
+            wings = [k - new_short for k in _listed if k > new_short]
+        wings = sorted(w for w in wings if w >= wing) or [wing]
+        for _w in wings:
+            new_long = new_short - _w if untested_side == "put" else new_short + _w
+            ns = _contract_at(u_list, new_short)
+            nl = _contract_at(u_list, new_long)
+            if ns is None or nl is None:
+                continue
+            roll_credit = ns.mark - nl.mark
+            if roll_credit <= 0:
+                continue
+            total_after = banked_credit + roll_credit - close_cost
+            plan = RollPlan(
+                tested_side=tested_side, untested_side=untested_side,
+                new_short_strike=new_short, new_long_strike=new_long,
+                new_short_symbol=ns.symbol, new_long_symbol=nl.symbol,
+                roll_credit=roll_credit, close_cost=close_cost,
+                total_credit_after=total_after, tested_width=tested_width,
+                risk_free=(total_after >= tested_width), contracts=contracts,
+            )
+            if best is None or plan.total_credit_after > best.total_credit_after:
+                best = plan
+            if plan.risk_free:
+                return plan                # nearest short, narrowest wing that clears
     return best
+
 
 
 def check_and_execute_roll(pos_mgr, chain, current_price: float, state, df_1m=None) -> bool:
@@ -535,6 +563,22 @@ def _execute_roll(pos_mgr, tested: dict, untested: dict,
         # ── 3. Flag the TESTED (now genuinely risk-free) vertical ────────────
         tl.update_fields(tested["trade_id"], is_broken_wing=1)
         tested["is_broken_wing"] = 1
+        # r11 — FINAL FORM BASIS: the cost to close the whole structure AS FORMED
+        # (the tested vertical's mark + the rolled vertical's fill), stamped on
+        # BOTH legs with a shared group id. The only exit from here is a 15%
+        # loss from this number (exit_engine v4.16), not from cumulative credit.
+        try:
+            _tested_mark = float(tested.get("current_premium") or tested.get("entry_premium") or 0.0)
+            _basis = round(max(0.05, _tested_mark + float(roll_credit_fill)), 4)
+            _grp = f"ff-{tested['trade_id'][:8]}"
+            for _leg in (tested, rolled):
+                _leg["final_form_basis"] = _basis
+                _leg["final_form_group"] = _grp
+                _leg["cumulative_credit"] = float(actual_total_credit)
+                tl.update_fields(_leg["trade_id"], final_form_basis=_basis,
+                                 final_form_group=_grp, cumulative_credit=float(actual_total_credit))
+        except Exception as _fe:                                 # noqa: BLE001
+            logger.warning("[roll] final-form basis not stamped: %s", _fe)
 
         get_alert_manager()._send(
             f"\U0001F98B [{mode}] ROLLED TO BROKEN WING | "
