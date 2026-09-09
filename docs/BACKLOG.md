@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.6
+# BACKLOG.md — OTV4TEST — v0.7
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -47,6 +47,10 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 
 | id | item | state |
 |---|---|---|
+| **HYG.5** | ⬜ **`check_tcs_parked` P5b is red at r7/r8 and was before this fork touched TCS:** `main.py` reads `TCS_ENTRY_END_ET` (the test pins that only `trend_credit_spread.py` may). Not in the lander's CHECK set, so it never blocked a land. Resolve with the TCS spec. | 🔲 OPEN |
+
+| id | item | state |
+|---|---|---|
 | **HYG.1** | ⬜ **`analysis/trade_readiness.py::_combine` IS UNBOUND.** pyflakes over the tree (FORK_BRIEF §3.7) found `_combine` defined NESTED inside `ramp()` (indentation) and called five times at module level — a NameError on every readiness path, masked because the engine is log-only and import-guarded in main.py. Two more undefined names sit in tests (`check_management_plan.py:302 esrc`, `scrub_headers.py:285 s2`). Not fixed in r2 (not the asked-for change); a `check_undefined_names.py` gate (undefined-name only, never unused-import) is the fix's companion. | 🔲 OPEN |
 | **HYG.2** | ⬜ **DOC STRIP — PROPOSED, NOT RULED.** FORK_BRIEF §3.6 proposes removing `ROADMAP.md`, `PORT_STATE.md`, `INHERITED_FINDINGS.md`, `HANDOFF.md`, `VISION.md` (mainline history with no fork consumer). `BACKLOG.md` was ruled: restarted blank (this file). The rest await the operator; deletion is a revision with a ledger row, and `FILE_MAP.md` is checked for links first. | 🔲 OPEN |
 | **HYG.4** | ✅ (r6) **A TEST WROTE INTO THE BOX'S LIVE PLAN LEDGER.** `TestStrat` rows (WIPED_BY_RESTART, TRIGGERED) in the corpus on 2026-09-09, from the lander's checks: `Plan._ledger_open` resolved the registry's live ledger even when a test had bound its own store. Closed: a bound store never reaches the box's ledger. The existing rows are history; delete by hand if they offend. | ✅ r6 |
@@ -63,6 +67,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.7 — 2026-09-09 — OTV4TEST r8 — TCS narrates every path (a r238 wiring defect, fixed on sight); NOT ASKED is hushed on the readers; BAKE does daemon-reload.**
 
 **v0.6 — 2026-09-09 — OTV4TEST r7 — readers hush dormant plans; the record stays whole (PLAN_SPEC §33); §32.2b states the butterfly's slot.**
 

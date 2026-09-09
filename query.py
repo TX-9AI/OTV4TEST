@@ -1,5 +1,10 @@
 """
-query.py  v4.9
+query.py  v4.10
+v4.10 2026-09-09  OTV4TEST r8 — NOT ASKED rows are hushed too. Operator: "Not asked
+      is exactly what I don't want to know … until we have an open vertical
+      spread, then it needs to let me know it's looking for a complementary
+      partner." That case is a HOLD/PREPARED row from CondorManagement, never a
+      NOT ASKED — so every NOT ASKED joins the hushed line.
 v4.9  2026-09-02  OTV4TEST r7 — DECISIONS hushes plans outside their window.
       Operator, 2026-09-09: "the bot should see everything. Just don't show
       it to me on the products I actively use." DORMANT rows stay in the
@@ -830,7 +835,7 @@ def show_decisions(dc):
     stale_cut = now_et().timestamp() - 300
     hushed = []          # r7: dormant / nothing-to-manage — recorded, not shown
     for strat, verdict, reason, ts in rows:
-        if verdict == "DORMANT" or "nothing to manage" in str(reason or ""):
+        if verdict in ("DORMANT", "NOT ASKED") or "nothing to manage" in str(reason or ""):
             hushed.append(strat)
             continue
         t = datetime.fromtimestamp(ts, ET).strftime("%H:%M:%S")
@@ -839,7 +844,7 @@ def show_decisions(dc):
         for line in _wrap(reason or "", 88):
             print(f"      {line}")
     if hushed:
-        print(f"    hushed (outside their window): {', '.join(hushed)}")
+        print(f"    hushed (dormant / not asked): {', '.join(hushed)}")
     # ⚠️ THE SAME CUT ON THE MANAGE SIDE. A watcher row from yesterday is not
     # "an open position under management" today.
     mrows = _q(dc, "SELECT strategy, verdict, reason, ts_epoch FROM plan_tick p"

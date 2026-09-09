@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# devtools.sh  v2.2  — OTV4TEST box menu
+# devtools.sh  v2.3  — OTV4TEST box menu
+# v2.3  2026-09-09  OTV4TEST r8 — BAKE runs `systemctl daemon-reload` before the
+#       restart (the unit file changed on disk and systemd said so at r7's bake).
 # v2.2  2026-09-09  OTV4TEST r7 — PLAN ROWS and PLAN BOARD hush DORMANT rows
 #       (recorded, not shown; add them back with the prompt).
 # v2.1  2026-09-09  OTV4TEST r6 — Feed health shows OPEN INTEREST: the last `OI:`
@@ -211,6 +213,7 @@ bake() {
   confirm "BAKE: git pull --ff-only, check_imports, restart $BOT on THIS box?" || { echo "cancelled"; return; }
   ( cd "$REPO" && git pull --ff-only ) || { echo "  pull FAILED — not restarting"; return 0; }
   ( cd "$REPO" && "$PY" tests/check_imports.py ) || { echo "  check_imports FAILED — NOT restarting; the tree does not start"; return 0; }
+  sudo systemctl daemon-reload 2>/dev/null
   sudo systemctl restart "$BOT" && echo "baked → $(svc "$BOT")  $(git -C "$REPO" log -1 --oneline)"
 }
 land_tarball() {

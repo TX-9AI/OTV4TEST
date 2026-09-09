@@ -1,5 +1,11 @@
 """
-strategy/trend_credit_spread.py  v4.12
+strategy/trend_credit_spread.py  v4.13
+v4.13  2026-09-09  OTV4TEST r8 — TWO BARE RETURNS IN prepare() GET TERMINALS. Every
+      tick without an accepted 50 (the common state) and every tick where price
+      had retaken it returned the preparation with the tick OPEN, so the board
+      wrote NOT ASKED / "dispatch gap" for TCS through the whole credit window.
+      A wiring defect since r238, not a market fact. Both paths now HOLD and
+      name what they wait on. The spec itself is untouched — it is next.
 v4.12  2026-09-04  r238 — 🔴 THE CREDIT VERSION OF THE RUNAWAY. Operator's
       spec, 2026-09-04. TRIGGER is `fifty_accepted` — a 1m close beyond
       `target_50pct` HELD at the next tick — reused from the ORB engine rather
@@ -387,6 +393,19 @@ class TrendCreditSpread:
                 if _acc and (_fifty <= 0 or not _bdir):
                     prep.starved.append("target_50pct")
                     t.starved("target_50pct")
+                    return prep
+                # OTV4TEST r8 — THIS RETURN HAD NO TERMINAL. r238 shipped it, and
+                # every tick without an accepted 50 left the tick OPEN, so the
+                # board wrote "NOT ASKED — dispatch gap" for TCS through the whole
+                # credit window (operator, 2026-09-09: "NO PLAN is unacceptable
+                # during the TCS window"). It was a wiring defect, not a market
+                # fact. Now it says what it is waiting on.
+                _bd = getattr(orb, "break_direction", "") or "no break yet"
+                t.hold(f"ORB {getattr(orb, 'state', '?')} ({_bd}): waiting on: the 50% "
+                       f"level ACCEPTED (a 1m close beyond {_fifty:.2f}, held)"
+                       if _fifty > 0 else
+                       f"ORB {getattr(orb, 'state', '?')}: no range or 50% level yet — "
+                       f"waiting on: an ORB break and the 50 accepted")
                 return prep
             t.check("fifty", round(_fifty, 4), True)
 
@@ -412,6 +431,10 @@ class TrendCreditSpread:
                       self.CONDITIONS["holds_fifty"], _holds)
             t.check("dist_from_fifty_pts", round(abs(current_price - _fifty), 4), None)
             if prep.unmet:
+                # OTV4TEST r8 — the second bare return: the 50 was accepted but
+                # price has retaken it. Say so; the latch is not the thesis.
+                t.hold(f"the 50 ({_fifty:.2f}) was accepted but price {current_price:.2f} "
+                       f"has retaken it — waiting on: holds_fifty")
                 return prep
 
             # ── THE SHORT: NEAREST OTM FROM CURRENT PRICE ────────────────────
@@ -536,6 +559,26 @@ class TrendCreditSpread:
             logger.error("[tcs] prepare raised: %s", exc, exc_info=True)
             prep.starved.append("exception")
             t.starved("exception")
+        finally:
+            # ── OTV4TEST r8: THE TERMINAL EPILOGUE, in `finally` so the eight
+            #    `return prep` sites inside the try reach it. Every structural
+            #    refusal above appended its reason and returned with the tick
+            #    OPEN; nothing ever wrote the row. One place, every outcome named.
+            from strategy.plan import tick_now as _tn
+            _n, _ = _tn()
+            _last = getattr(t.plan, "_last", None)
+            _already = bool(_last) and _last[0] == _n        # a deduped DORMANT wrote/kept this tick
+            if not t.closed and not _already:
+                if prep.starved:
+                    t.starved(*prep.starved)
+                elif prep.structural:
+                    gate, why = prep.structural[0]
+                    t.refuse(gate, why)
+                elif prep.unmet:
+                    t.hold("waiting on: " + ", ".join(str(u) for u in prep.unmet))
+                elif not prep.ready:
+                    t.hold("prepared, not ready — no condition named (TCS r8 epilogue)")
+                # ready: the tick stays OPEN for generate_signal to take()
         return prep
 
     def generate_signal(self, ms, vol_state, chain, macro,
