@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_orb_plan.py  v1.0
+tests/check_orb_plan.py  v1.1
+v1.1  2026-09-08  OTV4TEST r3 — P10 drives the acceptance (close + hold): the runaway
+      invalidation is a close, not a wick (orb_engine v4.13).
 v1.0  2026-09-08  OTV4TEST r2 — THE ORB PLAN, ON HYPOTHETICALS (PLAN_SPEC §29).
 
 Every case drives REAL code — `ORBPlan.prepare()`, `ORBStrategy.generate_signal()`,
@@ -327,8 +329,12 @@ def main():
 
     # ── P10 / P11 consequences ───────────────────────────────────────────
     e8 = _break(_engine_with_range(), "long")
-    e8._check_for_retest(_frame([(708.50, 708.60, 708.30, 708.55),      # runs to 50% (708.445)
-                                 (708.55, 708.70, 708.40, 708.60)]))
+    # OTV4TEST r3: the runaway invalidation is a CLOSE beyond the 50 (708.445)
+    # that HOLDS — two closed bars — not a wick. Drive update()'s order.
+    for rows in ([(708.50, 708.60, 708.30, 708.55), (708.55, 708.70, 708.40, 708.60)],
+                 [(708.55, 708.70, 708.40, 708.60), (708.60, 708.75, 708.45, 708.65)]):
+        e8._track_fifty_acceptance(_frame(rows))
+        e8._check_for_retest(_frame(rows))
     check("P10pre the real engine invalidated on runaway",
           e8._data.state == ORBState.INVALIDATED and e8._data.invalidation_reason == "runaway")
     p10 = prep_for(e8, _chain())

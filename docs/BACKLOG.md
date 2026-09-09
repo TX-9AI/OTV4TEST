@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.1
+# BACKLOG.md — OTV4TEST — v0.2
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -23,7 +23,15 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 |---|---|---|
 | **ORB.1** | ⬜ **PROVE IT FIRES ON THE BOX.** The rewired ORB (OTV4TEST r2) has run on hypotheticals only. Acceptance (FORK_BRIEF §6): a live session in which every fire reads back against its plan row — stop = the impulsive candle's extreme, strike at ±width, the size the sizer produced against the provisional size the row showed. A null result is a result: a session of `HOLD PREPARED … waiting on: retest` with no retest is the tape, not a defect. Read `plan_tick` for `ORBStrategy` after the first session. | 🔲 OPEN |
 | **ORB.2** | ⬜ **TWO SELECTION VALUES CARRIED, NOT RULED.** `strategy/orb_plan.py` declares `QUOTE_FLOOR = 0.05` (contracts marked at a nickel or less are not candidates) and `DELTA_BIAS = "lower"` (an equidistant tie goes further OTM). Both were silent inside `select_orb_strike` and are now readable values, parity-pinned so what the plan picks is what e955020 picked. The operator asked which strikes the plan should look for and agreed the rule; these two edges were named and not decided. Keep, change, or drop — one number each. | 🔲 OPEN |
-| **ORB.3** | ⬜ **THE RUNAWAY STILL CARRIES VELOCITY STALL THROUGH THE SHARED EVALUATOR.** `exit_engine._evaluate_orb` serves both `ORBStrategy` and `RunawayContinuation`; r2 removed the stall for ORB records only (operator: keep all but 5). Whether the runaway keeps it is the runaway's conversation — recorded here so the shared path is not forgotten when that trade is untangled. | 🔲 OPEN |
+
+### Runaway — the second trade untangled (PLAN_SPEC §30)
+
+| id | item | state |
+|---|---|---|
+| **RUN.6** | ⬜ **PARTICIPATION IS NOT WIRED INTO THE STRENGTH READ.** §30.3 names three components; only pace and acceptance are measured at acceptance. The prints stream (aggressor side, r64) and `tape_at_level` exist but are not reachable from the strategy path; `runaway_plan.prepare(participation=...)` accepts the value and records None. Wire it as a dial, then re-read the band prior. | 🔲 OPEN |
+| **RUN.7** | ⬜ **WOULD-HAVE-FLOORED WATCH.** The runaway has no premium stop by ruling; `exit_engine` records `_would_have_floored` the first time the old 20% floor would have fired while the thesis held. After the first sessions: how many trades, and did the structure exits recover them or not? A percent under the structure is a question, not a bar, until this is read. | 🔲 OPEN |
+| **RUN.8** | ⬜ **THE FIZZLE PRIORS ARE UNMEASURED.** "Two events, or one event plus one dial", the 0.5× range-contraction line and the acc_recent < 0.5 read are declared priors; every read lands on the record (`_fizzle_read`). Score them against RAN (not 5% green) once fires exist; kill, keep, or codify. | 🔲 OPEN |
+| **SWP.0** | ⬜ **THE SWEEP CREDIT SPREAD IS NEXT.** Its trigger is the REJECTED fact (§30.1); its thesis is the level holds to the close; the condor forms from a second rejection on the other side. The afternoon-only gate is a clock standing in for the handoff (§30.5) and stays until the handoff has fired on real tape. | 🔲 OPEN |
 
 ### Repo hygiene found on the way
 
@@ -37,11 +45,21 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 
 ## PART 2 — CLOSED
 
-_(none yet)_
+| id | item | closed |
+|---|---|---|
+| **ORB.3** | The runaway carried velocity stall through the shared evaluator. Closed OTV4TEST r3: the runaway's exit list is its own (§30.4) and the stall is off it. | r3 |
 
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.2 — 2026-09-08 — OTV4TEST r3 — the rejection fact, the runaway spec, RUN.6–8 and SWP.0 opened, ORB.3 closed.**
+The level engine emits WICKED / REJECTED / ACCEPTED on closed 1m bars (one close
+back inside on a shallow pierce, two on a deep); the runaway is re-specced
+(PLAN_SPEC §30): arm on the accepted 50, strength once at acceptance, band from
+strength, one per break on any exit with re-validation on actual, no premium
+stop, exits handoff → thesis → fizzle → trail → theta → backstop. ORB gains the
+handoff exit (§29 amendment). devtools 40 auto-selects a lone archive; 41 bakes.
 
 **v0.1 — 2026-09-08 — OTV4TEST r2 — THE FORK'S BACKLOG STARTS BLANK (v0.x: fork-numbered, never mainline's); ORB.1–3, HYG.1–3 opened.**
 Opened alongside the first rewire: the ORB spec and its plan contract agreed

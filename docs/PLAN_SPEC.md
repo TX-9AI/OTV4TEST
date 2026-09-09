@@ -1200,3 +1200,55 @@ Mechanical consequence: the impulsive candle opened inside the range, so its sto
 **No limit on qualifying setups per session** — two or three ORB trades, each with its own impulsive candle and lot size, are all valid. The only bound is the time slot.
 
 **As built (OTV4TEST r2):** `strategy/orb_plan.py` (the plan; owns the Plan row, the chain search, `select_contract` parity-pinned to `select_orb_strike`, `provisional_size` parity-pinned to `RiskManager._size_geometry`), `strategy/orb_strategy.py` v4.6 (fires on `prep.ready` with the plan's variables; ATR floor deleted), `analysis/orb_engine.py` v4.12 (stale re-arm deleted), `execution/exit_engine.py` v4.11 (velocity stall out of the ORB path; the runaway shares the evaluator and is untouched), `main.py` v4.40 (ORB asked every tick). Hypotheticals P1–P16 in `tests/check_orb_plan.py`, born red at 910ad0e on P12/P13/P0. Two values carried from the old selector and NOT ruled: the `mark > 0.05` quote floor and the lower-|delta| tie-break (`ORB.2` in the fork backlog).
+
+**§29 amendment (OTV4TEST r3):** the ORB exit list gains **REJECTED handoff** at position 2 — after the 15:45 hard close, before the 25% floor. A pool on the trade's side, beyond the entry, REJECTED on a close since entry (the fact from §30.1) exits the ORB: "handoff: pool X rejected on close — sweep owns it." The reversal is where the ORB historically gave its gains back. r193 stands: a pool *ahead* still never caps the target; a pool *rejected* after the trade is on is an event that already happened.
+
+## 30. OTV4TEST r3 — THE RUNAWAY SPEC AND ITS PLAN CONTRACT (agreed with the operator 2026-09-08)
+
+Intent, his words: *"catch an early high velocity move from the market open where there's a lot of participation and a lot of volume and we just wanna participate in it and when it fizzles out … we want out of it."* Starting at the 50.
+
+### 30.1 The rejection fact — one primitive, four consumers
+
+Before r3 the only thing that could see a wick through a pool was the sweep strategy's private rule; `derived/levels.py` read the 5m close and never a high or a low. Now the level engine, on every CLOSED 1m bar, for every live support/resistance level:
+
+| event | rule |
+|---|---|
+| WICKED | a wick through the level with the close inside. Depth: **shallow** ≤ 0.25% of price (the sweep's strict ceiling), **deep** ≤ 0.75% (the relaxed ceiling, 3×), **beyond** deeper — the level is being taken, not swept; recorded, never rejected |
+| REJECTED | closes back inside reach the doctrine's count — **one on a shallow pierce, two on a deep one** (the wicking bar's own close counts). A close beyond in between clears it |
+| ACCEPTED | two closes beyond (measured, r63) — the level retires |
+
+Written to `level_event` (never purged), read by `DerivedStore.latest_rejection()`. Consumers: the runaway (exit → handoff), the ORB (exit → handoff, §29 amendment), the sweep (trigger, next spec), the condor (pairing, after that). Nobody re-detects it.
+
+### 30.2 The spec
+
+| part | definition |
+|---|---|
+| setup | the ORB's range and impulsive candle; the third consequence — the 50 reached with no retest |
+| **arm** | the 50% level **ACCEPTED**: a 1m close beyond it, held at the next close. The engine's own latch (`fifty_accepted`), which is now also what invalidates the ORB (orb_engine v4.13). A wick to the 50 arms nothing, ends nothing |
+| direction | the break's |
+| window | 09:35–11:30, no relaxed extension; outside it the plan observes and does not write |
+| feasibility | the ATR floor (0.08%, veto 0.05%) — kept by ruling |
+| limits | **one per break, any exit**, keyed (direction, boundary). The r179 session cap is retired: a new break is a new trade. **Re-validation on actual:** after any exit the standing state never re-fires; the break trades again only when the 50 was LOST on a close and then ACCEPTED again |
+
+### 30.3 What the plan provides — before the accepting close
+
+- **strength, measured once at acceptance and frozen** — the move from the boundary to the 50 is a complete sample. `analysis/trend_strength.measure()` over the bars since the impulsive candle: **pace** (displacement per bar against true range) and **acceptance** (where the closes sat in their bars). **Participation** (aggressor share from the prints) is not yet wired — recorded None, RUN.6. Composite = mean of what is available. A **dial**, never a gate.
+- **band from strength** — grind (< 0.40) 0.5× the run, normal 1.0×, rip (≥ 0.70) 1.5×. `gamma_leverage_pick` runs unchanged inside the band; the teenie gate still bounds the cheap end. **Category 1 prior** — a baseline, unfitted, recorded on every row and fire.
+- the contract, premium, floor premium (recorded), R (muteable through 09-11), the 50 level (the thesis) and the boundary (the backstop), both on the signal.
+
+### 30.4 Exits — the negation of the entry, in order
+
+1. 15:45 hard close
+2. **REJECTED handoff** — a pool on the trade's side rejected on a close → "sweep owns it"
+3. **thesis dead** — a 1m close back through the 50
+4. **fizzle** — the entry's evidence decaying on the bars since entry. EVENTS (no threshold): higher-low broken (short: lower-high), VWAP recrossed (when the frame carries volume). DIALS (self-referenced): acceptance decaying (`acc_delta` < 0 with `acc_recent` < 0.5), range contracting (< 0.5× the first bars), premium diverging (a new underlying extreme without a new premium high). **Exit on two events, or one event plus one dial.** Every read lands on the record.
+5. trail (unchanged)
+6. theta bleed (kept)
+7. **structure backstop** — a 1m close through the ORB boundary itself
+- **No premium stop.** *"If we're going to immediately open another momentum trade the second the preceding one stops out, then why not just HOLD?"* What a 20% floor would have done is recorded (`would_have_floored`) — a question for the first sessions, not a bar. Velocity stall is off the runaway too (ORB.3 closed).
+
+### 30.5 The interaction, named
+
+The momentum exit and the sweep entry are the same event seen from two sides. The loop runs exits before the entry attempt within one tick, so in paper the handoff is same-tick; live it is bounded by the close fill. The sweep's afternoon-only gate is a clock standing in for this handoff; it stays until the handoff has fired on real tape.
+
+**As built (OTV4TEST r3):** `derived/levels.py` v4.1 (the emitter), `data/derived_store.py` v4.2 (`level_event`, `latest_rejection`), `strategy/runaway_plan.py` v1.0, `strategy/runaway_continuation.py` v5.0, `execution/exit_engine.py` v4.12, `analysis/orb_engine.py` v4.13, `database/trade_logger.py` v4.12, `main.py` v4.41. Hypotheticals: `tests/check_level_rejection.py`, `tests/check_runaway_plan.py`.

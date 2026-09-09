@@ -1,5 +1,17 @@
 """
-analysis/orb_engine.py  v4.12
+analysis/orb_engine.py  v4.13
+v4.13  2026-09-08  OTV4TEST r3 — THE RUNAWAY INVALIDATION IS A CLOSE, NOT A WICK.
+      Operator: *"a wick isn't confirmation."* (a) in `_check_for_retest` read
+      `high >= target_50pct` / `low <= target_50pct` — a WICK to the 50 ended
+      the ORB thesis while the runaway (close + hold) never armed, so a wick
+      that touched and pulled back left the band owned by nobody. r221 fixed
+      this for the post-trade path only. Now (a) reads `fifty_accepted` — the
+      SAME two-part test the runaway arms on, tracked by
+      `_track_fifty_acceptance` on the closed bar — so ORB stands until the 50
+      is ACCEPTED and the runaway arms on the same event. `_track_fifty_
+      acceptance` now runs BEFORE `_check_for_retest` so the acceptance is
+      seen on the bar that produced it, not one tick later. Pinned by
+      check_runaway_plan R1/R2.
 v4.12  2026-09-08  OTV4TEST r2 — THE 12-BAR "STALE RETEST" RE-ARM IS DELETED.
       Operator, 2026-09-08: *"'Stale' doesn't make any sense to me. If it
       doesn't retest, then it's outside the range and if it's outside the
@@ -728,6 +740,7 @@ class ORBEngine:
             self._check_for_break(df_1m)
 
         if d.state in (ORBState.ARMED_LONG, ORBState.ARMED_SHORT):
+            self._track_fifty_acceptance(df_1m)      # v4.13: BEFORE the retest read
             self._check_for_retest(df_1m, ms)
 
         if d.state == ORBState.INVALIDATED:
@@ -1557,12 +1570,12 @@ class ORBEngine:
         if d.break_direction == "long":
             # (a) Runaway breakout — ran to the 50% TP with no retest → invalidate.
             # This is the setup that most favors a sweep reversal instead.
-            if high >= d.target_50pct:
+            if d.fifty_accepted:                       # v4.13: a CLOSE, held
                 d.state = ORBState.INVALIDATED
                 d.invalidation_reason = "runaway"
                 logger.info(
-                    f"ORB INVALIDATED: ran to 50% TP ({d.target_50pct:.2f}) "
-                    f"without retest — runaway breakout (favors sweep reversal)"
+                    f"ORB INVALIDATED: 50% TP ({d.target_50pct:.2f}) ACCEPTED "
+                    f"(close beyond, held) with no retest — the runaway owns it"
                 )
                 return
             # RETEST (v3.3): the wick must ENTER the range (low < orb_high) and the
@@ -1590,12 +1603,12 @@ class ORBEngine:
                 logger.info(f"ORB INVALIDATED: 1m close={close:.2f} back inside range")
         else:
             # (a) Runaway breakout (short) — ran to the 50% TP with no retest.
-            if low <= d.target_50pct:
+            if d.fifty_accepted:                       # v4.13: a CLOSE, held
                 d.state = ORBState.INVALIDATED
                 d.invalidation_reason = "runaway"
                 logger.info(
-                    f"ORB INVALIDATED: ran to 50% TP ({d.target_50pct:.2f}) "
-                    f"without retest — runaway breakout (favors sweep reversal)"
+                    f"ORB INVALIDATED: 50% TP ({d.target_50pct:.2f}) ACCEPTED "
+                    f"(close beyond, held) with no retest — the runaway owns it"
                 )
                 return
             # RETEST (v3.3) — mirror of the long side. Wick enters the range

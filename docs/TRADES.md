@@ -35,6 +35,16 @@ conditions (all ambient), recorded columns (gates or empty), opening bias (a
 coin, forward-only, 797 sessions) and the tape harness (every surviving
 condition helped UP *and* DOWN). The live book agreed at 44.9%.
 
+**OTV4TEST r3 — re-specced with the operator, PLAN_SPEC §30 is the spec.** What
+follows is the pre-fork text, kept for its measurements; where they disagree
+§30 wins: the trigger is the engine's `fifty_accepted` latch (the same event
+that now invalidates the ORB), strength is measured once at acceptance and
+sets the strike band, one per break on ANY exit with re-validation on actual,
+the r179 session cap is retired, and there is NO premium stop — the position
+HOLDS while price is beyond the 50 and exits on the rejection handoff, a close
+back through the 50, the fizzle read, the trail, or a close through the
+boundary. The relaxed 14:00 extension below was removed at r176.
+
 **FOUNDATIONAL**
 · the ORB reached its 50% TP and **HELD** — a 1m *close* beyond, still on the
   right side at the next tick. **This is the entire premise.**
@@ -42,7 +52,7 @@ condition helped UP *and* DOWN). The live book agreed at 44.9%.
 · firing **disarms the retest**: the runaway *is* the evidence price never came
   back for it.
 
-**SELECTION** — cutoff 11:30 → 14:00 relaxed.
+**SELECTION** — cutoff 11:30 (the 14:00 relaxed extension is gone).
 
 **FEASIBILITY** — the ATR floor and the ATR→delta map. Below **0.05% ATR the
 required move was reached on 0% of 5,517 measured bars.**

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tests/check_signal_numeric_tail.py  v1.0  (2026-08-28, r173)
+tests/check_signal_numeric_tail.py  v1.1  (2026-09-08)
+v1.1  2026-09-08  OTV4TEST r3 — N6's fake ORB carries `fifty_accepted`; no `prev_close`.
 
 EVERY STRATEGY'S SIGNAL SHAPE MUST SURVIVE THE EXECUTION TAIL'S NUMERIC
 READS. Born red at c90cdc5: the sizing seam read `signal.stop_premium` with
@@ -82,6 +83,7 @@ def main():
     class _ORB:
         state, orb_high, orb_low, target_50pct = "OPEN_LONG", 101.0, 100.0, 101.5
         invalidation_reason, break_direction = "", ""
+        fifty_accepted, bars_since_break = True, 2      # OTV4TEST r3: the trigger
 
     class _C:
         def __init__(self, k, prem, d, g):
@@ -96,7 +98,7 @@ def main():
     P.begin_tick(1.0)
     os.environ["OT_RELAXED_ENTRY"] = "1"
     RW = RunawayContinuationStrategy(); RW.planner.symbol = "TST"
-    sig = RW.generate_signal(orb=_ORB(), atr_pct=0.14, price_now=101.9, prev_close=101.6,
+    sig = RW.generate_signal(orb=_ORB(), atr_pct=0.14, price_now=101.9,
                              now_et="10:15", chain=_Chain())
     os.environ["OT_RELAXED_ENTRY"] = "0"
     sp = M._sig_num(sig, "stop_premium") if sig else None

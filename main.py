@@ -1,5 +1,12 @@
 """
-main.py  v4.40
+main.py  v4.41
+v4.41 2026-09-08  OTV4TEST r3 — THE RUNAWAY IS ASKED EVERY TICK OF ITS WINDOW,
+      hands its plan the 1m frame (strength at acceptance, re-validation on
+      actual), and no longer carries the r179 one-per-session cap: one per
+      BREAK on any exit is the plan's rule now, and a new break is a new
+      trade, as it is for the ORB. `prev_close` is no longer passed — the
+      trigger is the engine's `fifty_accepted` latch. The "ORB has not run
+      away" NOT ASKED row is gone; the plan says what it is waiting on.
 v4.40 2026-09-08  OTV4TEST r2 — ORB IS ASKED EVERY TICK OF ITS WINDOW, NOT ONLY
       WHEN CONFIRMED. The plan (strategy/orb_plan.py) now writes the ORB row
       from 09:35 — both candidate contracts priced, then the armed side with
@@ -3661,7 +3668,8 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     # AFTER continuation has no setup, and then ONLY against a NAMED level
     # (PDH/PDL/session) — a reversal off a weak equal-H/L at the end of a strong
     # push is exactly the low-quality sweep that bled last week.
-    _is_runaway = getattr(orb, "invalidation_reason", "") == "runaway"
+    # (OTV4TEST r3: `_is_runaway` retired — the runaway's plan reads the
+    #  engine's `fifty_accepted` latch itself.)
 
     # ═══ v4.0 DISPATCH ═══════════════════════════════════════════════════════
     # ⚠️ ORDER IS LOAD-BEARING. RunawayContinuation must get first refusal after
@@ -3690,31 +3698,22 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     # r179 — ONE PER SESSION ON THIS BOX (operator, 2026-08-28: "Only one
     # runway debit trade aloud per session on a box … Simple"). DB-backed,
     # survives restarts, fails closed.
-    if signal is None and _one_per_session_used("RunawayContinuation"):
-        _plan_skip("RunawayContinuation",
-                   "one per session on this box — already traded today")
-    elif signal is not None:
+    if signal is not None:
         _plan_skip("RunawayContinuation", f"slot claimed by {signal.strategy_name}")
-    elif not _is_runaway:
-        _plan_skip("RunawayContinuation",
-                   f"ORB has not run away (invalidation_reason="
-                   f"{getattr(orb, 'invalidation_reason', '') or 'none'})")
-    if signal is None and _is_runaway:
-        _prev_close = None
-        try:
-            _df1 = ctx.get("df_1m")
-            if _df1 is not None and len(_df1) >= 2:
-                _prev_close = float(_df1["close"].iloc[-2])
-        except Exception:                                      # noqa: BLE001
-            _prev_close = None
+    else:
+        # OTV4TEST r3 — asked EVERY tick; the plan narrates (no direction /
+        # waiting on the 50 accepted / break finished, re-validating / PREPARED)
+        # and is dormant outside 09:35–11:30. `_is_runaway` no longer gates
+        # the call: the trigger is the engine's `fifty_accepted` latch, which
+        # is ALSO what invalidates the ORB (orb_engine v4.13).
         rc_sig = _safe_strategy("RunawayContinuation",
                                 lambda: _runaway_strategy.generate_signal(
                                     orb           = orb,
                                     atr_pct       = _atr_pct,
                                     price_now     = ctx["price"],
-                                    prev_close    = _prev_close,
                                     now_et        = _now_et_hhmm,
                                     chain         = chain,
+                                    df_1m         = ctx.get("df_1m"),
                                 ), ctx)
         if rc_sig:
             signal = rc_sig

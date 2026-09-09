@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_wiring.py  v1.5  (2026-09-08)
+tests/check_plan_wiring.py  v1.6  (2026-09-08)
+v1.6  2026-09-08  OTV4TEST r3 — W9's fake ORB carries `fifty_accepted`, the runaway plan's trigger.
 v1.5  2026-09-08  OTV4TEST r2 — W2 accepts `self.plan.prepare(` as the wiring:
       ORB's plan is a separate object the strategy owns (strategy/orb_plan.py).
 v1.4  2026-09-03  r231 — W6 RE-DERIVED, NOT PATCHED. `classify()` requires
@@ -255,6 +256,7 @@ def main():
         # match the real class, not the caller's assumption.
         orb_high, orb_low, target_50pct = 101.0, 100.0, 101.5
         invalidation_reason = "runaway"
+        fifty_accepted, bars_since_break = True, 2      # OTV4TEST r3: the trigger
 
     class _C:
         def __init__(s, k, mark, delta, gamma=0.01):
@@ -269,15 +271,13 @@ def main():
 
     rs = RunawayContinuationStrategy()
     P.begin_tick(1006.0)
-    r0 = rs.generate_signal(orb=_ORB(), atr_pct=0.14, price_now=101.6,
-                            prev_close=101.55, now_et="10:15")
+    r0 = rs.generate_signal(orb=_ORB(), atr_pct=0.14, price_now=101.6, now_et="10:15")
     row6 = st.conn.execute("SELECT verdict, reason FROM plan_tick WHERE "
                            "strategy='RunawayContinuation' AND ts_epoch=1006.0").fetchone()
     check("W9 runaway without a chain: NO PLAN row naming the chain",
           r0 is None and row6 and row6[0] == "NO PLAN" and "chain" in (row6[1] or ""), str(row6))
     P.begin_tick(1007.0)
-    r1 = rs.generate_signal(orb=_ORB(), atr_pct=0.14, price_now=101.6,
-                            prev_close=101.55, now_et="10:15", chain=_Chain())
+    r1 = rs.generate_signal(orb=_ORB(), atr_pct=0.14, price_now=101.6, now_et="10:15", chain=_Chain())
     row7 = st.conn.execute("SELECT verdict, r_now, invalidation FROM plan_tick WHERE "
                            "strategy='RunawayContinuation' AND ts_epoch=1007.0").fetchone()
     # r168: the runaway has NO price invalidation — its floor is a 20% premium

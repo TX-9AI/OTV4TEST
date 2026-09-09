@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_orb_sequence.py  v1.1
+tests/check_orb_sequence.py  v1.2
+v1.2  2026-09-08  OTV4TEST r3 — S11b drives the acceptance (close + hold), since the
+      runaway invalidation is no longer a wick to the 50 (orb_engine v4.13).
 v1.1  2026-09-04  r235 — S4's fixtures set the SEQS, not the bare
       boolean. Setting only `order_placed` no longer refuses, so the check
       would fall through to the liquidity analysis and die on a None map — a
@@ -365,9 +367,13 @@ def main() -> int:
           e._data.state == ORBState.WAITING_FOR_BREAK, f"state={e._data.state}")
 
     e = _armed_engine("short")
-    # ran to the 50% TP with no retest — the runaway hands off, it never fires
-    e._check_for_retest(_frame([(705.40, 705.50, 705.00, 705.10),
-                                (705.10, 705.20, 705.00, 705.05)]))
+    # ran to the 50% TP with no retest — the runaway hands off, it never fires.
+    # OTV4TEST r3 (orb_engine v4.13): a runaway is a CLOSE beyond the 50 that
+    # HOLDS — two closed bars through update()'s order — never a wick.
+    for rows in ([(705.40, 705.50, 705.00, 705.10), (705.10, 705.20, 705.00, 705.05)],
+                 [(705.10, 705.20, 705.00, 705.05), (705.05, 705.15, 704.95, 705.00)]):
+        e._track_fifty_acceptance(_frame(rows))
+        e._check_for_retest(_frame(rows))
     check("S11b a runaway invalidates instead of confirming",
           e._data.state == ORBState.INVALIDATED
           and e._data.invalidation_reason == "runaway",

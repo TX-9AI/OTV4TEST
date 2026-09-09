@@ -1,5 +1,12 @@
 """
-data/derived_store.py  v4.1
+data/derived_store.py  v4.2
+v4.2  2026-09-08  OTV4TEST r3 — `level_event`: THE REJECTION FACT HAS A HOME.
+      One row per (level, closed 1m bar) event: WICKED (wick through, close
+      inside), REJECTED (the doctrine's close-back-inside count reached:
+      one on a shallow pierce, two on a deep one), ACCEPTED (two closes
+      beyond, the level retired). Written by derived/levels.py v4.1, read by
+      `latest_rejection()` — the exit engine's handoff and, later, the sweep's
+      trigger and the condor's pairing. Never purged (with level_ledger).
 v4.1  2026-08-25  r65 EXORCISM: every mention of the retired classification
       system removed - identifiers, comments, docstrings, schema. The word
       does not appear in this tree. Full accounting: REMOVAL_LOG (delivery).
@@ -139,6 +146,23 @@ class DerivedStore:
                 is_live_session INTEGER DEFAULT 0   -- 1 = still forming (NY)
             );""")
         c.execute("CREATE INDEX IF NOT EXISTS ix_level_sym ON level_ledger(symbol, retired_ts)")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS level_event (
+                symbol     TEXT NOT NULL,
+                level_id   TEXT NOT NULL,
+                bar_ts     TEXT NOT NULL,           -- the CLOSED 1m bar that produced it
+                ts_epoch   REAL NOT NULL,
+                event      TEXT NOT NULL,           -- WICKED / REJECTED / ACCEPTED
+                price      REAL NOT NULL,           -- the level
+                kind       TEXT,                    -- support / resistance
+                provenance TEXT,
+                pierce_pct REAL,                    -- wick beyond the level, fraction of price
+                depth      TEXT,                    -- shallow / deep / beyond
+                closes_back INTEGER,                -- closes back inside counted so far
+                bar_close  REAL,
+                PRIMARY KEY (symbol, level_id, bar_ts, event)
+            );""")
+        c.execute("CREATE INDEX IF NOT EXISTS ix_levev_sym ON level_event(symbol, ts_epoch)")
 
         # TIER 4 — second-order. Impossible without the greeks series.
         # 🔴 CHARM = dDelta/dt, VANNA = dDelta/dVol. Operator: "absolutely
@@ -188,6 +212,37 @@ class DerivedStore:
                            "is unaffected and this value is simply absent",
                            len(rows), exc)
             return 0
+
+    def insert_level_event(self, row):
+        """One (level, bar, event). Idempotent on the primary key."""
+        return self._write(
+            "INSERT OR IGNORE INTO level_event (symbol, level_id, bar_ts, ts_epoch,"
+            " event, price, kind, provenance, pierce_pct, depth, closes_back, bar_close)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", [row])
+
+    def latest_rejection(self, symbol: str, since_ts: float = 0.0,
+                         kind: Optional[str] = None):
+        """The most recent REJECTED event for `symbol` at/after `since_ts`
+        (epoch), optionally only levels of `kind`. Returns a dict or None."""
+        try:
+            sql = ("SELECT symbol, level_id, bar_ts, ts_epoch, event, price, kind,"
+                   " provenance, pierce_pct, depth, closes_back, bar_close"
+                   " FROM level_event WHERE symbol=? AND event='REJECTED' AND ts_epoch>=?")
+            args = [symbol, float(since_ts or 0.0)]
+            if kind:
+                sql += " AND kind=?"
+                args.append(kind)
+            sql += " ORDER BY ts_epoch DESC LIMIT 1"
+            with self._lock:
+                r = self.conn.execute(sql, args).fetchone()
+            if not r:
+                return None
+            keys = ("symbol", "level_id", "bar_ts", "ts_epoch", "event", "price", "kind",
+                    "provenance", "pierce_pct", "depth", "closes_back", "bar_close")
+            return dict(zip(keys, r))
+        except Exception as exc:                                # noqa: BLE001
+            logger.warning("latest_rejection read failed: %s", exc)
+            return None
 
     def append_indicators(self, rows):
         return self._write(

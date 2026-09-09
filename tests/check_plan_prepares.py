@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_prepares.py  v1.10
+tests/check_plan_prepares.py  v1.11
+v1.11  2026-09-08  OTV4TEST r3 — R1–R14 re-pointed at the runaway PLAN: the trigger is
+      the engine's `fifty_accepted` latch (no `prev_close`), an unmet bar is a DECLINE
+      naming the bar, a finished break HOLDS pending re-validation, any exit finishes
+      the break, and the cutoff pin reads strategy/runaway_plan.py.
 v1.10  2026-09-04  r238 — C1–C5, T7 and T8 RETIRED, not patched. They
       pinned `adx`, `trend_vote`, `outside_range` and `drift_bar` — conditions
       the r238 rewrite DELETED. A check for a rule that no longer exists cannot
@@ -625,9 +629,11 @@ def main():
     RW = rw.RunawayContinuationStrategy(); RW.planner.symbol = "TST"
 
     class _ORB:
-        def __init__(self, state="OPEN_LONG", hi=101.0, lo=100.0, tp=101.5, inval="", bd=""):
+        def __init__(self, state="OPEN_LONG", hi=101.0, lo=100.0, tp=101.5, inval="", bd="",
+                     accepted=False):
             self.state, self.orb_high, self.orb_low, self.target_50pct = state, hi, lo, tp
             self.invalidation_reason, self.break_direction = inval, bd
+            self.fifty_accepted, self.bars_since_break = accepted, 2   # OTV4TEST r3
 
     class _G:
         def __init__(self, k, prem, delta, gamma):
@@ -645,18 +651,16 @@ def main():
     _by_lev = sorted(calls_rw, key=lambda c: -_lev(c))
     os.environ["OT_RELAXED_ENTRY"] = "1"      # R muteable here; the pick is the point
     P.begin_tick(50.0)
-    sig = RW.generate_signal(orb=_ORB(), atr_pct=0.14, price_now=101.9, prev_close=101.4,
+    sig = RW.generate_signal(orb=_ORB(), atr_pct=0.14, price_now=101.9,
                              now_et="10:15", chain=_Chain([], calls_rw))
     r50 = _row(st, "RunawayContinuation", 50.0)
-    check("R1 broke and ran, TP not yet closed beyond -> HOLD with the contract PREPARED, "
-          "waiting on runaway_confirmed",
-          sig is None and r50 and r50[0] == "HOLD" and "PREPARED" in r50[1]
-          and "runaway_confirmed" in r50[1] and "leverage" in r50[1], str(r50))
+    check("R1 (OTV4TEST r3) broke and ran, the 50 not yet ACCEPTED -> HOLD waiting on it",
+          sig is None and r50 and r50[0] == "HOLD" and "50 ACCEPTED" in r50[1], str(r50))
     P.begin_tick(51.0)
-    sig = RW.generate_signal(orb=_ORB(), atr_pct=0.14, price_now=101.9, prev_close=101.6,
+    sig = RW.generate_signal(orb=_ORB(accepted=True), atr_pct=0.14, price_now=101.9,
                              now_et="10:15", chain=_Chain([], calls_rw))
     r51 = _row(st, "RunawayContinuation", 51.0)
-    check("R2 close beyond the 50% TP and holding -> BUYS the plan's contract, valid",
+    check("R2 the 50 ACCEPTED (close beyond, held) -> BUYS the plan's contract, valid",
           sig is not None and sig.is_valid and sig.option_side == "call"
           and getattr(sig, "disarms_retest", False) and r51 and r51[0] == "TAKE", str(r51))
     check("R2b (r168) the runaway carries NO underlying stop and a 20% premium floor — "
@@ -664,7 +668,7 @@ def main():
           sig is not None and not getattr(sig, "underlying_stop", 0)
           and abs(sig.stop_loss_pct - 0.20) < 1e-9
           and abs(sig.stop_premium() - sig.entry_premium * 0.80) < 1e-9
-          and "no price stop" in (r51[1] or ""),
+          and "50" in (r51[1] or ""),
           f"underlying_stop={getattr(sig, 'underlying_stop', None)} floor={sig and sig.stop_premium():.2f}")
     # Raw leverage-per-dollar always crowns the cheapest far-OTM ticket (here
     # the 105/106). "Just enough OTM" is the reachability band — strikes
@@ -675,46 +679,43 @@ def main():
           and _by_lev[0].strike > 101.9 + 0.9,
           f"picked {sig and sig.strike}; raw ranking {[c.strike for c in _by_lev][:3]}")
     P.begin_tick(52.0)
-    sig = RW.generate_signal(orb=_ORB(hi=100.0, tp=100.8), atr_pct=0.14, price_now=101.9,
-                             prev_close=101.6, now_et="10:15", chain=_Chain([], calls_rw))
+    sig = RW.generate_signal(orb=_ORB(hi=100.0, tp=100.8, accepted=True), atr_pct=0.14, price_now=101.9, now_et="10:15", chain=_Chain([], calls_rw))
     check("R4 a bigger run (1.90) reaches further and gamma picks the 103 — 'just enough OTM' "
           "scales with the intensity of the move",
           sig is not None and sig.strike == 103.0, str(sig and sig.strike))
     P.begin_tick(53.0)
-    sig = RW.generate_signal(orb=_ORB(state="INVALIDATED", inval="runaway", bd="long"),
-                             atr_pct=0.14, price_now=101.9, prev_close=101.6, now_et="10:15",
+    sig = RW.generate_signal(orb=_ORB(state="INVALIDATED", inval="runaway", bd="long", accepted=True),
+                             atr_pct=0.14, price_now=101.9, now_et="10:15",
                              chain=_Chain([], calls_rw))
     check("R5 the engine has invalidated on 'runaway' — direction taken from break_direction, "
           "the handoff fires", sig is not None and sig.direction == "long")
     P.begin_tick(54.0)
-    sig = RW.generate_signal(orb=_ORB(state="WATCHING"), atr_pct=0.14, price_now=100.5,
-                             prev_close=100.4, now_et="10:15", chain=_Chain([], calls_rw))
+    sig = RW.generate_signal(orb=_ORB(state="WATCHING"), atr_pct=0.14, price_now=100.5, now_et="10:15", chain=_Chain([], calls_rw))
     r54 = _row(st, "RunawayContinuation", 54.0)
     check("R6 ORB not broken -> HOLD, nothing to prepare until it breaks",
           sig is None and r54 and r54[0] == "HOLD" and "nothing to prepare" in r54[1], str(r54))
     P.begin_tick(55.0)
-    sig = RW.generate_signal(orb=_ORB(), atr_pct=0.03, price_now=101.9, prev_close=101.6,
+    sig = RW.generate_signal(orb=_ORB(accepted=True), atr_pct=0.03, price_now=101.9,
                              now_et="10:15", chain=_Chain([], calls_rw))
     r55 = _row(st, "RunawayContinuation", 55.0)
-    check("R7 ATR 0.03% (unreachable tape) -> HOLD prepared, waiting on atr_pct — recorded, not silent",
-          sig is None and r55 and r55[0] == "HOLD" and "atr_pct" in r55[1], str(r55))
+    check("R7 ATR 0.03% (unreachable tape) -> DECLINE naming atr_pct and the gap — recorded, not silent",
+          sig is None and r55 and r55[0] == "DECLINE" and r55[1].startswith("atr_pct"), str(r55))
     # ── r174 — the two structural gates from 2026-08-28's tape ───────────
     import strategy.runaway_continuation as rwmod
     # the teenie: floor 20% of 0.17 = 3.4c, spread ask-bid = 4c -> refused
     teenie = _G(107, 0.15, 0.09, 0.022); teenie.ask, teenie.bid = 0.17, 0.13
     P.begin_tick(57.0)
-    sig = RW.generate_signal(orb=_ORB(hi=100.0, tp=100.8), atr_pct=0.14, price_now=105.9,
-                             prev_close=105.6, now_et="10:15",
+    sig = RW.generate_signal(orb=_ORB(hi=100.0, tp=100.8, accepted=True), atr_pct=0.14, price_now=105.9, now_et="10:15",
                              chain=_Chain([], [teenie]))
     r57 = _row(st, "RunawayContinuation", 57.0)
     check("R9 (r174) the only candidate is a teenie whose 20% floor sits INSIDE its own "
           "bid/ask -> structural DECLINE naming the spread, even on relaxed",
           sig is None and r57 and r57[0] == "DECLINE" and "clears its own bid/ask" in r57[1]
-          and "1 rejected for spread" in r57[1], str(r57))
+          and "1 rejected" in r57[1], str(r57))
     # same chain plus a real-premium strike: the pick lands there, not the teenie
     real = _G(102, 0.95, 0.46, 0.050)          # floor 19c >> ~4c spread
     P.begin_tick(58.0)
-    sig = RW.generate_signal(orb=_ORB(), atr_pct=0.14, price_now=101.9, prev_close=101.6,
+    sig = RW.generate_signal(orb=_ORB(accepted=True), atr_pct=0.14, price_now=101.9,
                              now_et="10:15", chain=_Chain([], [real, teenie]))
     check("R10 (r174) with a real-premium strike on the chain the pick lands there — the "
           "spread gate is what keeps the leverage score off the teenies",
@@ -722,26 +723,24 @@ def main():
     # one runaway per break: a floor stop-out finishes (long, 101.0)
     rwmod.finish_break("long", 101.0)
     P.begin_tick(59.0)
-    sig = RW.generate_signal(orb=_ORB(), atr_pct=0.14, price_now=101.9, prev_close=101.6,
+    sig = RW.generate_signal(orb=_ORB(accepted=True), atr_pct=0.14, price_now=101.9,
                              now_et="10:15", chain=_Chain([], [real]))
     r59 = _row(st, "RunawayContinuation", 59.0)
-    check("R11 (r174) this break already stopped out at its floor -> structural DECLINE: "
-          "one runaway per break", sig is None and r59 and r59[0] == "DECLINE"
-          and "already stopped out" in r59[1], str(r59))
+    check("R11 (OTV4TEST r3) this break is finished -> HOLD naming re-validation: one runaway per break, any exit",
+          sig is None and r59 and r59[0] == "HOLD" and "finished" in r59[1], str(r59))
     P.begin_tick(59.5)
-    sig = RW.generate_signal(orb=_ORB(hi=103.0, tp=103.8), atr_pct=0.14, price_now=104.9,
-                             prev_close=104.6, now_et="10:15",
+    sig = RW.generate_signal(orb=_ORB(hi=103.0, tp=103.8, accepted=True), atr_pct=0.14, price_now=104.9, now_et="10:15",
                              chain=_Chain([], [_G(106, 0.95, 0.46, 0.050)]))
     check("R12 (r174) a NEW break at a new boundary is a new trade",
           sig is not None, str(sig and sig.strike))
     rwmod.FINISHED_BREAKS.clear()
     src_tl = open(os.path.join(_root, "database", "trade_logger.py"), encoding="utf-8").read()
-    check("R13 (r174) the losing-exit hook finishes the break (source pin)",
-          "finish_break(_dir, _bnd)" in src_tl and '"Runaway" in _strat' in src_tl)
+    check("R13 (OTV4TEST r3) the exit hook finishes the break on ANY runaway exit (source pin)",
+          "finish_break(_dir, _bnd)" in src_tl and 'or "Runaway" in _strat' in src_tl)
 
     os.environ["OT_RELAXED_ENTRY"] = "0"
     P.begin_tick(56.0)
-    sig = RW.generate_signal(orb=_ORB(), atr_pct=0.14, price_now=101.9, prev_close=101.6,
+    sig = RW.generate_signal(orb=_ORB(accepted=True), atr_pct=0.14, price_now=101.9,
                              now_et="11:45", chain=_Chain([], calls_rw))
     r56 = _row(st, "RunawayContinuation", 56.0)
     check("R8 past the 11:30 cutoff (strict) -> DORMANT", sig is None and r56 and r56[0] == "DORMANT", str(r56))
@@ -751,14 +750,14 @@ def main():
     # produces no signal and no new TAKE/HOLD row.
     os.environ["OT_RELAXED_ENTRY"] = "1"
     P.begin_tick(56.5)
-    sig = RW.generate_signal(orb=_ORB(), atr_pct=0.14, price_now=101.9, prev_close=101.6,
+    sig = RW.generate_signal(orb=_ORB(accepted=True), atr_pct=0.14, price_now=101.9,
                              now_et="11:45", chain=_Chain([], [_G(102, 0.95, 0.46, 0.050)]))
     r565 = _row(st, "RunawayContinuation", 56.5)
     check("R14 (r176) 11:45 UNDER RELAXED -> still dormant: no signal, no TAKE/HOLD row",
           sig is None and (r565 is None or r565[0] == "DORMANT"), str(r565))
-    src_rw = open(os.path.join(_root, "strategy", "runaway_continuation.py"), encoding="utf-8").read()
-    check("R14b (r176) the relaxed 14:00 extension is gone from the source",
-          'relaxed.window("00:00", CUTOFF_ET' not in src_rw and "_cut = CUTOFF_ET" in src_rw)
+    src_rw = open(os.path.join(_root, "strategy", "runaway_plan.py"), encoding="utf-8").read()
+    check("R14b (r176) the relaxed 14:00 extension is gone from the source (now the plan's)",
+          'relaxed.window(' not in src_rw and "_cutoff_hm()" in src_rw)
     os.environ["OT_RELAXED_ENTRY"] = "0"
 
     # 🔴 r238 — REMOVED with the C-block: this drove `drift_bar` and the

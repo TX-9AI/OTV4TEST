@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""check_runaway_handoff.py
+"""check_runaway_handoff.py  v1.2
+v1.2  2026-09-08  OTV4TEST r3 — RW9/RW13 read strategy/runaway_plan.py, where the
+      direction block and the 50% read now live (one site per module).
 v1.1  2026-08-27  r165: runs the real prepare() instead of exec-ing a source slice. — v1.0
 
 🔴 AN ORB INVALIDATED *BY RUNAWAY* IS RunawayContinuation'S TRIGGER, NOT A
@@ -120,10 +122,10 @@ def main():
     # ⚠️ THE REFUSAL MUST NAME THE REASON. "carries no direction" alone sent
     # the operator hunting; the invalidation reason is what distinguishes a
     # handoff from a disarm.
-    src = open(os.path.join(_root, "strategy", "runaway_continuation.py"),
+    src = open(os.path.join(_root, "strategy", "runaway_plan.py"),
                encoding="utf-8").read()
-    check("RW9 the refusal message names the invalidation reason",
-          "invalidated: {_inval_reason}" in src or "_inval_reason}" in src)
+    check("RW9 the refusal message names the invalidation reason (the plan's)",
+          "invalidated: {inval}" in src)
 
     # ── 🔴 RW10-RW12 — THE 50% TP FIELD, THE SECOND HALF OF THE SAME BUG ──
     # r148 unblocked the direction lookup; the very next gate refused all eight
@@ -148,9 +150,9 @@ def main():
     check("RW12 an ORB with no TP field refuses, never guesses",
           runaway_confirmed(_Bare(), 79.32, 79.40, "short") is False)
 
-    src2 = open(os.path.join(_root, "strategy", "runaway_continuation.py"),
-                encoding="utf-8").read()
-    _n_sites = src2.count('getattr(orb, "target_50pct"')
+    src2 = (open(os.path.join(_root, "strategy", "runaway_continuation.py"), encoding="utf-8").read()
+            + open(os.path.join(_root, "strategy", "runaway_plan.py"), encoding="utf-8").read())
+    _n_sites = src2.count('getattr(orb, "target_50pct"')   # OTV4TEST r3: one per module
     check("RW13 the strategy reads target_50pct at BOTH sites",
           _n_sites == 2, f"{_n_sites} sites (want 2)")
 

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-warehouse/retention_purge.py  v1.4
+warehouse/retention_purge.py  v1.5
+v1.5  2026-09-08  OTV4TEST r3 — `level_event` joins NEVER_PURGE beside level_ledger:
+      the rejection fact is evidence for every handoff and must outlive the horizons.
 v1.4  2026-09-05  r270 / ASK.1 — `character_axis_sample` added at 20 days,
       IN THE SAME REVISION THAT PUSHES IT. It was in no list at all — neither
       purged nor protected — which is the by-absence exposure that let
@@ -244,7 +246,7 @@ ARTIFACT_DAYS = {
 # 🔴 NEVER PURGED. Not configurable, not overridable.
 NEVER_PURGE = {
     "character_ledger", "plan_ledger", "gate_disposition",
-    "strategy_note", "fire_snapshot", "level_ledger",
+    "strategy_note", "fire_snapshot", "level_ledger", "level_event",
     "exit_counterfactual", "circuit_breaker_events", "trades",
 }
 

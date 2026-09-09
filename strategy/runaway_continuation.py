@@ -1,5 +1,20 @@
 """
-strategy/runaway_continuation.py  v4.8
+strategy/runaway_continuation.py  v5.0
+v5.0  2026-09-08  OTV4TEST r3 — THE STRATEGY IS THE SPEC; THE PLAN SELECTS
+      (PLAN_SPEC §30, agreed with the operator 2026-09-08). `prepare()` moved
+      to `strategy/runaway_plan.py` and grew: the trigger is the engine's own
+      `fifty_accepted` latch (a close beyond the 50, held — the same event that
+      now invalidates the ORB, orb_engine v4.13), strength is measured ONCE at
+      acceptance from the bars since the impulsive candle (pace + acceptance,
+      `analysis/trend_strength`) and frozen, and the gamma pick runs inside a
+      band the strength sets (grind 0.5x / normal 1.0x / rip 1.5x the run —
+      a declared prior). One per break on ANY exit; re-validation on actual
+      (the 50 lost on a close, then accepted again) before the same break may
+      trade again; the r179 session cap retired for this strategy. The signal
+      carries `underlying_tp50` so the exit engine can HOLD while the thesis
+      is true and exit when it is not. `runaway_confirmed`, `_break_key`,
+      `finish_break`, `gamma_leverage_pick`, `target_delta` and the doctrine
+      header stay here — the plan imports them. `prev_close` is no longer read.
 v4.8  2026-09-08  r321 — DOCTRINE HEADER CORRECTED, NO BEHAVIOUR CHANGE. The
       GATE CATEGORIES block still read *"SELECTION — relaxed. cutoff 11:30 ->
       14:00"*, which r176 removed on 2026-08-29. Code and `criteria.py` were
@@ -193,7 +208,6 @@ import config
 from strategy import relaxed
 from utils.math_utils import safe_float
 from strategy.base_strategy import OptionsSignal as Signal
-from strategy.plan import Plan, _n
 
 logger = logging.getLogger(__name__)
 
@@ -364,222 +378,43 @@ def gamma_leverage_pick(contracts, direction: str, spot: float, run: float,
     return best[3], best[0], len(cands), spread_rejected
 
 
-class _RunawayPreparation:
-    """What the plan hands the strategy each tick of the slot — never executable."""
-    __slots__ = ("tick", "direction", "side", "tp50", "boundary", "run", "contract",
-                 "premium", "leverage", "considered", "r", "conditions", "unmet",
-                 "structural", "starved", "ready")
-
-    def __init__(self, tick):
-        self.tick = tick
-        self.direction = self.side = ""
-        self.tp50 = self.boundary = None
-        self.run = 0.0
-        self.contract = None
-        self.premium = self.leverage = self.r = None
-        self.considered = 0
-        self.conditions, self.unmet, self.structural, self.starved = {}, [], [], []
-        self.ready = False
-
-    def cond(self, name, current, required, met):
-        self.conditions[name] = (current, required, bool(met))
-        if not met:
-            self.unmet.append(name)
-        self.tick.check(name, current if isinstance(current, (int, float)) else None, bool(met))
-
-    def trade_line(self):
-        if not self.ready:
-            return "no trade prepared"
-        c = self.contract
-        return (f"buy {c.strike:g}{self.side[0].upper()} at {self.premium:.2f}  "
-                f"δ {abs(float(getattr(c, 'delta', 0) or 0)):.2f} γ "
-                f"{float(getattr(c, 'gamma', 0) or 0):.3f}  over a {self.run:.2f} run "
-                f"-> {self.leverage:.2f}x leverage ({self.considered} strikes considered)  "
-                f"floor {self.premium * (1 - RunawayContinuationStrategy.MAX_LOSS_PCT):.2f} "
-                f"(-{RunawayContinuationStrategy.MAX_LOSS_PCT:.0%} premium, no price stop)  R {_n(self.r)}")
-
 
 class RunawayContinuationStrategy:
-    """Fires when the ORB has already run and held. Disarms the retest.
+    """THE SPEC (PLAN_SPEC §30). Fire when every bar the plan reports is met,
+    with the plan's variables. Selects nothing.
 
-    🔴 THE PREMISE (operator, 2026-08-27): *"the symbol did not even entertain
-    coming back for a retest, it just broke out & ran. We want in on the move,
-    but it needs to be over quickly … purchase and wait for our trailing stop
-    to take it off."* So the plan has the contract CHOSEN before the move
-    confirms; the fire is a purchase, not a deliberation. Stops are a later
-    conversation and are not encoded here.
-
-    ⚠️ THIS STRATEGY DISARMS THE ORB RETEST ARM WHEN IT FIRES. Both cannot be
-    live on the same range: the runaway IS the evidence that price never came
-    back for the retest, so leaving the retest armed would leave a second
-    position waiting for a pullback the tape has already declined to give.
+    OTV4TEST r3 — the bars, read off `prep` from `strategy/runaway_plan.py`:
+      1. the 50% level ACCEPTED — a 1m close beyond it, held (the engine's latch)
+      2. this break not finished (one per break, any exit) or re-validated on
+         actual (the 50 lost on a close, then accepted again)
+      3. the tape can reach a strike (ATR floor — FEASIBILITY, kept by ruling)
+      4. a contract whose floor clears its own spread, inside the strength band
+      5. R (strict only; muted under relaxed through 09-11)
+    Exits (exit_engine v4.12 — the runaway shares the ORB evaluator):
+      hard close → REJECTED handoff → the 50 lost on a close (thesis dead) →
+      fizzle → trail → theta bleed → structure backstop (a close through the
+      boundary). No premium stop: HOLD while the entry condition is true.
     """
     name = "RunawayContinuation"
-
     MAX_LOSS_PCT = float(getattr(config, "RUNAWAY_MAX_LOSS_PCT", 0.20))
 
-    CONDITIONS = {
-        "entry_window":      f"before the debit cutoff {CUTOFF_ET} ET — no relaxed "
-                             f"extension (operator 2026-08-29: debit entries are "
-                             f"finished at 11:30, period; we are burning theta)",
-        "atr_pct":           f"ATR >= {ATR_FLOOR_PCT:.2f}% — a move this tape can pay",
-        "orb_direction":     "the ORB has BROKEN with a direction",
-        "runaway_confirmed": "a 1m close beyond the 50% TP, still beyond it at this tick",
-    }
-    STRUCTURAL = ("contract", "stop_distance", "r")
-    PLAN_CHECKS = tuple(CONDITIONS) + STRUCTURAL + (
-        "price", "run", "leverage", "considered", "spread_rejected",
-        "break_finished", "debit", "stop_premium", "target_distance")
-
     def __init__(self):
-        self.planner = Plan(self.name, self.PLAN_CHECKS)
+        from strategy.runaway_plan import RunawayPlan      # lazy: it imports this module
+        self.plan = RunawayPlan()
+        self.planner = self.plan.planner                    # same object, as before
+        self.PLAN_CHECKS = self.plan.PLAN_CHECKS
 
-    # ══════════════════════════════════════════════════════════════════════
-    # THE PLAN — evaluates the declared conditions, SELECTS the contract.
-    # ══════════════════════════════════════════════════════════════════════
-    def prepare(self, *, orb, atr_pct, price_now, prev_close, now_et, chain=None,
-                **_ignored) -> _RunawayPreparation:
-        t = self.planner.tick(price_now)
-        prep = _RunawayPreparation(t)
-        # r176 — the cutoff does NOT relax. Operator, 2026-08-29: "Debit
-        # entries are finished at 1130, period. Do not extend it for relaxed.
-        # We are burning theta." The 14:00 extension also let the runaway's
-        # evaluation claim the dispatch slot all afternoon on trend boxes,
-        # starving the credit book (2026-08-28/29 fleet data). After 11:30
-        # the box belongs to the credit strategies and the butterfly.
-        _cut = CUTOFF_ET
-        if now_et and now_et >= _cut:
-            t.dormant("entry_window", f"past the debit cutoff {_cut} — dormant until tomorrow")
-            return prep
-        prep.cond("entry_window", None, self.CONDITIONS["entry_window"], True)
-        price_now = safe_float(price_now)
-        prev_close = safe_float(prev_close)
-        if not price_now or price_now <= 0 or price_now > 1e7:
-            prep.starved.append("price_now")
-            t.starved("price_now")
-            return prep
-        t.check("price", price_now, True)
-        _atr = safe_float(atr_pct)
-        reachable = target_delta(atr_pct) is not None
-        prep.cond("atr_pct", _atr, self.CONDITIONS["atr_pct"], reachable)
+    def prepare(self, *, orb, atr_pct, price_now, now_et, chain=None, df_1m=None,
+                **_ignored):
+        """Kept for callers that ask the strategy for its preparation; the
+        plan owns it (WA C.1: one owner)."""
+        return self.plan.prepare(orb=orb, atr_pct=atr_pct, price_now=price_now,
+                                 now_et=now_et, chain=chain, df_1m=df_1m)
 
-        state = str(getattr(orb, "state", "") or "")
-        _inval_reason = str(getattr(orb, "invalidation_reason", "") or "")
-        _break_dir = str(getattr(orb, "break_direction", "") or "").lower()
-        direction = ""
-        if "LONG" in state.upper():
-            direction = "long"
-        elif "SHORT" in state.upper():
-            direction = "short"
-        elif _inval_reason == "runaway" and _break_dir in ("long", "short"):
-            direction = _break_dir
-        prep.cond("orb_direction", (1.0 if direction == "long" else -1.0) if direction else 0.0,
-                  f"a broken ORB (now state {state or 'none'}"
-                  f"{', invalidated: ' + _inval_reason if _inval_reason else ''})",
-                  bool(direction))
-        if not direction:
-            # ⚠️ NAME THE INVALIDATION REASON (check_runaway_handoff RW9): a
-            # disarm and a handoff look identical without it.
-            t.hold(f"ORB {state or 'none'}"
-                   + (f" (invalidated: {_inval_reason})" if _inval_reason else "")
-                   + " carries no direction — nothing to prepare until it breaks")
-            return prep
-        side = "call" if direction == "long" else "put"
-        prep.direction, prep.side = direction, side
-        t.direction = direction
-        tp50 = getattr(orb, "target_50pct", None)
-        boundary = (getattr(orb, "orb_high", None) if direction == "long"
-                    else getattr(orb, "orb_low", None))
-        if not tp50 or not boundary:
-            miss = [n for n, v in (("target_50pct", tp50), ("orb_boundary", boundary)) if not v]
-            prep.starved.extend(miss)
-            t.starved(*miss)
-            return prep
-        prep.tp50, prep.boundary = float(tp50), float(boundary)
-        # trigger = the 50% TP; NO price invalidation — the floor is premium
-        t.anchor(trigger=prep.tp50)
-        # r174 — ONE RUNAWAY PER BREAK: a floor stop-out finished this one.
-        if _break_key(direction, prep.boundary) in FINISHED_BREAKS:
-            prep.structural.append(("break_finished",
-                f"this {direction} break at {prep.boundary:.2f} already stopped out at its "
-                f"floor — one runaway per break; a NEW break is a new trade"))
-            t.check("break_finished", prep.boundary, False)
-        confirmed = runaway_confirmed(orb, price_now, prev_close, direction)
-        prep.cond("runaway_confirmed", 1.0 if confirmed else 0.0,
-                  f"1m close beyond the 50% TP {prep.tp50:.2f} and still beyond now "
-                  f"(prev close {_n(prev_close)}, now {price_now:.2f})", confirmed)
-
-        # ── SELECTION — the contract gamma pays most over the move's run ──
-        run = abs(price_now - prep.boundary)
-        prep.run = run
-        t.check("run", run, run > 0)
-        if run <= 0:
-            prep.structural.append(("stop_distance",
-                f"price {price_now:.2f} is at/inside the ORB boundary {prep.boundary:.2f} — "
-                f"no run to lever, no risk distance"))
-        elif chain is None:
-            prep.starved.append("chain")
-        else:
-            contracts = chain.calls if side == "call" else chain.puts
-            c, lev, n, spread_rej = gamma_leverage_pick(
-                contracts, direction, price_now, run, floor_pct=self.MAX_LOSS_PCT)
-            t.check("considered", n, n > 0)
-            t.check("spread_rejected", spread_rej, None)
-            if c is None:
-                prep.structural.append(("contract",
-                    f"no {side} whose {self.MAX_LOSS_PCT:.0%} floor clears its own bid/ask "
-                    f"spread ({spread_rej} rejected for spread; a stop inside the spread is "
-                    f"not a stop) on a {run:.2f} run"))
-            else:
-                prem = float(getattr(c, "ask", 0) or getattr(c, "mark", 0) or 0)
-                t.check("contract", c.strike, True)
-                t.check("leverage", lev, lev > 0)
-                # R = modelled gain over the run / the 20% premium floor. The
-                # stop is on PREMIUM, so the risk is exactly that fraction.
-                d_ = abs(float(getattr(c, "delta", 0) or 0)); g_ = float(getattr(c, "gamma", 0) or 0)
-                gain = d_ * run + 0.5 * g_ * run * run
-                risk = prem * self.MAX_LOSS_PCT
-                t.debit = prem
-                t.reward, t.risk = round(gain, 4), round(risk, 4)
-                t.r = round(gain / risk, 4) if risk > 0 else None
-                t.check("debit", prem, True)
-                t.check("stop_premium", round(prem * (1 - self.MAX_LOSS_PCT), 4), None)
-                t.check("target_distance", run, run > 0)
-                t.check("r", t.r, None)
-                ok, why = t.executable()          # strict vetoes R; relaxed records
-                if not ok:
-                    prep.structural.append(("r", why))
-                else:
-                    prep.contract, prep.premium, prep.leverage = c, prem, lev
-                    prep.considered, prep.r = n, t.r
-                    prep.ready = True
-                    t.note(why)
-
-        head = (f"ORB broke {direction} at {prep.boundary:.2f}, run {run:.2f} to "
-                f"{price_now:.2f}, 50% TP {prep.tp50:.2f}")
-        if prep.starved:
-            t.starved(*prep.starved)
-            return prep
-        if prep.structural:
-            gate, why = prep.structural[0]
-            t.refuse(gate, f"{head}: {why}")
-            return prep
-        if prep.unmet:
-            cur = "; ".join(f"{n}={_n(prep.conditions[n][0]) if isinstance(prep.conditions[n][0], (int, float)) else 'no'}"
-                            f" (need {prep.conditions[n][1]})" for n in prep.unmet)
-            t.hold(f"{head}: PREPARED — {prep.trade_line()}. Waiting on: {cur}")
-            return prep
-        t.note(f"{head}: all {len(self.CONDITIONS)} conditions true — {prep.trade_line()}")
-        return prep
-
-    # ══════════════════════════════════════════════════════════════════════
-    # THE STRATEGY — conditions true -> BUY the plan's contract.
-    # ══════════════════════════════════════════════════════════════════════
-    def generate_signal(self, *, orb, atr_pct: float, price_now: float,
-                        prev_close: float, now_et: str, chain=None,
-                        **_ignored) -> Optional[Signal]:
-        prep = self.prepare(orb=orb, atr_pct=atr_pct, price_now=price_now,
-                            prev_close=prev_close, now_et=now_et, chain=chain)
+    def generate_signal(self, *, orb, atr_pct: float, price_now: float, now_et: str,
+                        chain=None, df_1m=None, **_ignored) -> Optional[Signal]:
+        prep = self.plan.prepare(orb=orb, atr_pct=atr_pct, price_now=price_now,
+                                 now_et=now_et, chain=chain, df_1m=df_1m)
         if not prep.ready or prep.unmet or prep.structural or prep.starved:
             return prep.tick.already()
         price_now = safe_float(price_now)
@@ -590,10 +425,10 @@ class RunawayContinuationStrategy:
             direction=prep.direction,
             option_side=prep.side,
             underlying_entry=price_now,
-            # NO underlying_stop (r168): the floor is the 20% premium loss
             underlying_target=(price_now + prep.run if prep.direction == "long"
                                else price_now - prep.run),
-            stop_loss_pct=self.MAX_LOSS_PCT,
+            underlying_tp50=prep.tp50,                 # the thesis: HOLD while beyond it
+            stop_loss_pct=self.MAX_LOSS_PCT,           # recorded; the exit engine HOLDS
             orb_range_high=getattr(orb, "orb_high", 0.0),
             orb_range_low=getattr(orb, "orb_low", 0.0),
             strike=c.strike,
@@ -604,8 +439,12 @@ class RunawayContinuationStrategy:
         sig.gamma_leverage = prep.leverage
         sig.run_at_entry = prep.run
         sig.atr_pct_at_entry = atr_pct
+        sig.strength_at_entry = prep.strength
+        sig.strength_pace = prep.pace
+        sig.strength_acceptance = prep.acceptance
+        sig.strength_band = prep.band
         sig.disarms_retest = True
         relaxed.tag(sig)
-        logger.info("[runaway] FIRE %s — %s  (retest DISARMED - price never came back for it)",
+        logger.info("[runaway] FIRE %s — %s  (no price stop; the 50 is the thesis)",
                     prep.direction, prep.trade_line())
         return prep.tick.take(sig)

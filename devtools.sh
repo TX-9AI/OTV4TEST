@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# devtools.sh  v4.3
+# devtools.sh  v4.4
+# v4.4  2026-09-08  OTV4TEST r3 — item 40 auto-selects when exactly ONE archive
+#       sits in ~ (the name is still printed; the picker appears only for two
+#       or more), and item 41 BAKE: git pull --ff-only, check_imports, then
+#       restart the bot — the step that makes a landed revision live.
 # v4.3  2026-09-08  OTV4TEST r1 — item 40, LAND a tarball. This fork is
 #       segregated from control (no EC2 Name tag, no fleet fan-out reaches it),
 #       so it lands its own archives with its own lander, appending
@@ -147,6 +151,7 @@ menu() {
 
   DEPLOY (this box — OTV4TEST only)
    40) LAND a tarball from ~   the fork lander; appends docs/GENESIS-TEST.md
+   41) BAKE                    pull --ff-only, check_imports, restart the bot
 
   GIT (this box)
    30) git pull --ff-only
@@ -163,10 +168,20 @@ MENU
     23) restart_bot ;; 24) restart_feed ;; 25) stop_bot ;; 26) start_bot ;;
     30) git_pull ;;   31) git_pull_restart ;; 32) git_state ;;
     40) land_tarball ;;
+    41) bake ;;
     0) exit 0 ;;
     *) echo "unknown option: $choice" ;;
   esac
   pause
+}
+
+bake() {
+  # v4.4 (OTV4TEST r3) — LANDED ≠ BAKED. A landed revision is live only after
+  # the service restarts on this box. Pull, prove the tree imports, restart.
+  confirm "BAKE: git pull --ff-only, check_imports, restart $BOT on THIS box?" || { echo "cancelled"; return; }
+  ( cd "$REPO" && git pull --ff-only ) || { echo "  pull FAILED — not restarting"; return 0; }
+  ( cd "$REPO" && "$PY" tests/check_imports.py ) || { echo "  check_imports FAILED — NOT restarting; the tree does not start"; return 0; }
+  sudo systemctl restart "$BOT" && echo "baked → $(svc "$BOT")  $(git -C "$REPO" log -1 --oneline)"
 }
 
 land_tarball() {
@@ -184,12 +199,19 @@ land_tarball() {
     echo "  no .tar.gz in $HOME — download one first."; return 0
   fi
   echo
-  for arc in "${arcs[@]}"; do n=$((n+1)); printf '  %d) %s\n' "$n" "$(basename "$arc")"; done
-  read -rp $'\nwhich archive (blank = cancel): ' pick
-  [ -n "$pick" ] || return 0
-  case "$pick" in (*[!0-9]*|"") echo "  not a number"; return 0 ;; esac
-  [ "$pick" -ge 1 ] && [ "$pick" -le "${#arcs[@]}" ] || { echo "  out of range"; return 0; }
-  arc="${arcs[$((pick-1))]}"
+  if [ "${#arcs[@]}" = "1" ]; then
+    # v4.4 — one archive, no picker; the name is still shown so the operator
+    # sees what is about to land.
+    arc="${arcs[0]}"
+    echo "  one archive in ~: $(basename "$arc")"
+  else
+    for arc in "${arcs[@]}"; do n=$((n+1)); printf '  %d) %s\n' "$n" "$(basename "$arc")"; done
+    read -rp $'\nwhich archive (blank = cancel): ' pick
+    [ -n "$pick" ] || return 0
+    case "$pick" in (*[!0-9]*|"") echo "  not a number"; return 0 ;; esac
+    [ "$pick" -ge 1 ] && [ "$pick" -le "${#arcs[@]}" ] || { echo "  out of range"; return 0; }
+    arc="${arcs[$((pick-1))]}"
+  fi
   rm -rf /tmp/fork_land && mkdir -p /tmp/fork_land
   tar xf "$arc" -C /tmp/fork_land || { echo "  extract FAILED — check the filename"; return 0; }
   [ -f /tmp/fork_land/land.sh ] || { echo "  archive carries no land.sh at its root — refusing."; return 0; }

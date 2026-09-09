@@ -1,5 +1,34 @@
 """
-execution/exit_engine.py  v4.11
+execution/exit_engine.py  v4.12
+v4.12 2026-09-08  OTV4TEST r3 — THE HANDOFF, THE THESIS, THE FIZZLE, THE BACKSTOP.
+      Operator 2026-09-08. In `_evaluate_orb`, for BOTH families:
+      · REJECTED HANDOFF (position 2, after the hard close, before any floor):
+        `DerivedStore.latest_rejection()` reports a pool on the trade's side,
+        beyond the entry, REJECTED on a close since entry → exit "handoff:
+        pool X rejected on close — sweep owns it". The reversal is where the
+        ORB historically gave its gains back; the fact is emitted once, in
+        derived/levels v4.1, and read here rather than re-detected.
+      For RUNAWAY records only:
+      · NO PREMIUM STOP. *"If we're going to immediately open another momentum
+        trade the second the preceding one stops out, then why not just
+        HOLD?"* The exit is the negation of the entry: THESIS DEAD = a 1m
+        CLOSE back through the 50% level (boundary ± width/2 from the record's
+        own range). While price holds beyond it, premium wobbles do not exit.
+        What a 20% floor WOULD have done is recorded on the decision
+        (`would_have_floored`) so the first sessions show whether a percent
+        under the structure is needed — a question, not a bar.
+      · FIZZLE — the entry's evidence decaying, measured on the bars since
+        entry: EVENTS (no threshold) higher-low broken, VWAP recrossed (when
+        the frame carries volume); DIALS (self-referenced) acceptance decaying
+        (trend_strength acc_delta < 0 with acc_recent < 0.5), range
+        contracting (< 0.5x the first bars), premium diverging (a new
+        underlying high in the last 3 bars without a new premium high). Exit
+        on two events, or one event plus one dial. Priors, recorded per tick.
+      · STRUCTURE BACKSTOP — a 1m close back through the ORB boundary itself
+        (beneath the 50; the air-pocket case). Replaces the 20% floor.
+      Order for the runaway: hard close → handoff → thesis dead → fizzle →
+      trail (unchanged) → theta bleed (kept) → backstop.
+      ORB records keep their own list (§29) plus the handoff.
 v4.11 2026-09-08  OTV4TEST r2 — VELOCITY STALL IS OUT OF THE ORB PATH. Operator,
       2026-09-08, on the seven ORB exits read back to him: *"Keep all but 5.
       Theta bleed should catch whatever a stall would have stood in for."*
@@ -996,7 +1025,31 @@ class ExitEngine:
         #     regardless of trail state. As of v3.3, record['stop_premium'] is
         #     IMMUTABLE (set once at entry; trails persist in trail_stop), so
         #     this check is truthful: it fires only at the real -25% floor.
+        _is_runaway = record.get("strategy") == "RunawayContinuation"
+        # ── v4.12: REJECTED HANDOFF — a pool on our side rejected on a close ──
+        _ho = self._rejected_handoff(record, direction)
+        if _ho:
+            decision.should_exit = True
+            decision.exit_reason = _ho
+            logger.info("HANDOFF: %s %s", trade_id[:8], _ho)
+            return decision
+        # ── v4.12: the runaway HOLDS while its thesis is true — no premium stop
+        if _is_runaway:
+            _rw = self._runaway_thesis_exits(record, direction, current_premium,
+                                             entry_prem, pnl_pct, df_1m)
+            if _rw:
+                decision.should_exit = True
+                decision.exit_reason = _rw
+                logger.info("RUNAWAY EXIT: %s %s", trade_id[:8], _rw)
+                return decision
         stop_prem = record.get("stop_premium", 0.0) or (entry_prem * (1 - MAX_LOSS_PCT))
+        if _is_runaway and stop_prem > 0 and current_premium <= stop_prem:
+            # recorded, never acted on (operator: HOLD)
+            if not record.get("_would_have_floored"):
+                record["_would_have_floored"] = f"{current_premium:.2f} <= {stop_prem:.2f} pnl={pnl_pct:.1%}"
+                logger.info("RUNAWAY would-have-floored (HELD): %s %s", trade_id[:8],
+                            record["_would_have_floored"])
+            stop_prem = 0.0
         if stop_prem > 0 and current_premium <= stop_prem:
             decision.should_exit = True
             # label carries the record's ACTUAL floor pct (older records keep
@@ -1170,6 +1223,130 @@ class ExitEngine:
         return self._trail_stops.get(trade_id)
 
     # ─── Long-option theta protection + general FVG trail ─────────────────────
+    # ── v4.12 (OTV4TEST r3) helpers ─────────────────────────────────────
+    @staticmethod
+    def _entry_epoch(record) -> float:
+        try:
+            from datetime import datetime as _dt
+            raw = record.get("entry_time")
+            if isinstance(raw, (int, float)):
+                return float(raw)
+            if raw:
+                return _dt.fromisoformat(str(raw)).timestamp()
+        except Exception:                                       # noqa: BLE001
+            pass
+        return 0.0
+
+    def _rejected_handoff(self, record, direction) -> str:
+        """A pool on the trade's side, beyond the entry, REJECTED on a close
+        since entry (derived/levels v4.1). Returns the exit reason or ""."""
+        try:
+            from data.derived_store import get_derived_store
+            store = get_derived_store()
+            if store is None:
+                return ""
+            import config as _cfg
+            sym = str(getattr(_cfg, "INSTRUMENT", "") or "")   # the level engine's symbol
+            kind = "resistance" if direction == "long" else "support"
+            r = store.latest_rejection(sym, self._entry_epoch(record), kind=kind)
+            if not r:
+                return ""
+            entry = float(record.get("underlying_entry") or 0.0)
+            lvl = float(r.get("price") or 0.0)
+            beyond = (lvl > entry) if direction == "long" else (lvl < entry)
+            if not beyond:
+                return ""
+            return (f"handoff: pool {lvl:.2f} ({r.get('provenance')}) REJECTED on close "
+                    f"({r.get('depth')} pierce {float(r.get('pierce_pct') or 0) * 100:.2f}%, "
+                    f"bar {r.get('bar_ts')}) — sweep owns it")
+        except Exception as exc:                                # noqa: BLE001
+            logger.debug("handoff read failed: %s", exc)
+            return ""
+
+    def _runaway_thesis_exits(self, record, direction, current_premium, entry_prem,
+                              pnl_pct, df_1m) -> str:
+        """THESIS DEAD → FIZZLE, in that order. Returns the reason or ""."""
+        if df_1m is None or len(df_1m) < 2:
+            return ""
+        try:
+            hi = float(record.get("orb_range_high") or 0.0)
+            lo = float(record.get("orb_range_low") or 0.0)
+            if hi <= 0 or lo <= 0 or hi <= lo:
+                return ""
+            width = hi - lo
+            tp50 = hi + width / 2 if direction == "long" else lo - width / 2
+            last_close = float(df_1m.iloc[-2]["close"])
+            lost = last_close < tp50 if direction == "long" else last_close > tp50
+            if lost:
+                return (f"runaway_thesis_dead: 1m close {last_close:.2f} back through the "
+                        f"50% {tp50:.2f}")
+            # ── fizzle, on the bars since entry ──
+            t0 = self._entry_epoch(record)
+            bars = df_1m.iloc[:-1]
+            if t0 > 0:
+                try:
+                    bars = bars[bars.index.map(lambda x: x.timestamp()) >= t0]
+                except Exception:                               # noqa: BLE001
+                    pass
+            n = len(bars)
+            events, dials = [], []
+            if n >= 4:
+                highs = bars["high"].astype(float); lows = bars["low"].astype(float)
+                closes = bars["close"].astype(float)
+                # EVENT: higher-low broken (short: lower-high broken)
+                if direction == "long":
+                    pull = lows.iloc[:-1].rolling(3).min().dropna()
+                    if len(pull) and closes.iloc[-1] < float(pull.iloc[-1]):
+                        events.append(f"higher_low_broken {closes.iloc[-1]:.2f}<{float(pull.iloc[-1]):.2f}")
+                else:
+                    pull = highs.iloc[:-1].rolling(3).max().dropna()
+                    if len(pull) and closes.iloc[-1] > float(pull.iloc[-1]):
+                        events.append(f"lower_high_broken {closes.iloc[-1]:.2f}>{float(pull.iloc[-1]):.2f}")
+                # EVENT: VWAP recrossed (only when the frame carries volume)
+                if "volume" in bars.columns:
+                    v = bars["volume"].astype(float)
+                    if float(v.sum()) > 0:
+                        vwap = float((closes * v).sum() / v.sum())
+                        if (direction == "long" and closes.iloc[-1] < vwap) or \
+                           (direction == "short" and closes.iloc[-1] > vwap):
+                            events.append(f"vwap_recross {closes.iloc[-1]:.2f} vs {vwap:.2f}")
+                # DIAL: acceptance decaying
+                try:
+                    from analysis.trend_strength import measure
+                    ts = measure(bars, direction, min_bars=4)
+                    ad, ar = getattr(ts, "acc_delta", None), getattr(ts, "acc_recent", None)
+                    if ad is not None and ar is not None and ad < 0 and ar < 0.5:
+                        dials.append(f"acceptance_decay delta={ad:.2f} recent={ar:.2f}")
+                except Exception:                               # noqa: BLE001
+                    pass
+                # DIAL: range contracting against the first bars since entry
+                rng = (highs - lows)
+                k = min(3, n // 2)
+                if k >= 2 and float(rng.iloc[:k].mean()) > 0:
+                    ratio = float(rng.iloc[-k:].mean()) / float(rng.iloc[:k].mean())
+                    if ratio < 0.5:
+                        dials.append(f"range_contraction {ratio:.2f}x")
+                # DIAL: premium diverging from the underlying
+                peak = max(float(record.get("_rw_peak_premium") or 0.0), float(current_premium))
+                record["_rw_peak_premium"] = peak
+                recent_hi = float(highs.iloc[-3:].max()) if direction == "long" else float(lows.iloc[-3:].min())
+                prior = float(highs.iloc[:-3].max()) if direction == "long" else float(lows.iloc[:-3].min())
+                new_underlying_extreme = (recent_hi > prior) if direction == "long" else (recent_hi < prior)
+                if peak > 0 and new_underlying_extreme and current_premium < peak * 0.9:
+                    dials.append(f"premium_divergence {current_premium:.2f} vs peak {peak:.2f}")
+            record["_fizzle_read"] = f"events={events} dials={dials}"
+            if len(events) >= 2 or (len(events) >= 1 and len(dials) >= 1):
+                return f"runaway_fizzle: {'; '.join(events + dials)}"
+            # ── structure backstop: a close back through the boundary ──
+            boundary = hi if direction == "long" else lo
+            crossed = last_close < boundary if direction == "long" else last_close > boundary
+            if crossed:
+                return (f"runaway_backstop: 1m close {last_close:.2f} through the ORB boundary "
+                        f"{boundary:.2f}")
+        except Exception as exc:                                # noqa: BLE001
+            logger.warning("runaway thesis read failed: %s", exc)
+        return ""
+
     def _velocity_stall(self, record: TradeRecord, pnl_pct: float,
                         df_1m) -> Optional[str]:
         """Is the underlying still delivering fast enough to beat decay?

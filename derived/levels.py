@@ -1,6 +1,27 @@
 """
-derived/levels.py  v4.0
-Owns `level_ledger`. Tier 3 — stateful; the object has a biography.
+derived/levels.py  v4.1
+Owns `level_ledger` and `level_event`. Tier 3 — stateful; the object has a biography.
+v4.1  2026-09-08  OTV4TEST r3 — THE REJECTION FACT, EMITTED ONCE, HERE. Before
+      this the only thing in the tree that could see a wick through a pool was
+      the sweep strategy's private rule; this engine read the 5m CLOSE and never
+      a high or a low, so a rejection was invisible to the derived layer. Now,
+      on every CLOSED 1m bar (iloc[-2], processed once per bar timestamp), for
+      every live support/resistance level:
+        · close beyond the level (outside tolerance)  -> `beyond` += 1; at
+          ACCEPT_CLOSES (2, measured) the level retires ACCEPTED_THROUGH and
+          an ACCEPTED event is written. Any pierce state is cleared.
+        · wick beyond, close inside                    -> WICKED, with depth:
+            shallow  pierce <= SHALLOW_PIERCE_PCT (the sweep's strict ceiling,
+                     SWEEP_CS_MAX_REJECTION_PCT = 0.25%)
+            deep     pierce <= DEEP_PIERCE_PCT (3x, the relaxed ceiling)
+            beyond   deeper than that — the level is being TAKEN, not swept;
+                     recorded, never rejected
+          Operator, 2026-09-08: *"one on a shallow and 2 on a deep pierce just
+          to be sure"* — closes back inside COUNT THE WICKING BAR'S OWN CLOSE.
+          A shallow pierce is REJECTED on that bar; a deep pierce needs the
+          next bar to close inside too. A close beyond in between clears it.
+      Consumers read `DerivedStore.latest_rejection()`; nobody re-detects.
+      Wicks are tests, closes are acceptance — the whole emitter is that line.
 
 v4.0  2026-08-22  See docs/DERIVED_STORES.md.
 
@@ -52,6 +73,14 @@ TOUCH_TOL_PCT = 0.0015
 # Closes through required before the level is retired. Inherited from the
 # sweep rules, where it was MEASURED rather than chosen.
 ACCEPT_CLOSES = 2
+# v4.1 — pierce depth bands, from the sweep's own ceiling (strict / relaxed x3).
+try:
+    import config as _cfg
+    SHALLOW_PIERCE_PCT = float(getattr(_cfg, "SWEEP_CS_MAX_REJECTION_PCT", 0.0025))
+except Exception:                                               # noqa: BLE001
+    SHALLOW_PIERCE_PCT = 0.0025
+DEEP_PIERCE_PCT = SHALLOW_PIERCE_PCT * 3.0
+CLOSES_BACK = {"shallow": 1, "deep": 2}          # operator, 2026-09-08
 
 
 def _f(v) -> Optional[float]:
@@ -83,7 +112,10 @@ class LevelEngine(DerivedEngine):
     def __init__(self, store=None, symbol: str = ""):
         super().__init__(store)
         self.symbol = symbol
-        self._live: dict = {}          # level_id -> mutable state
+        self._live: dict = {}
+        self._pierce: dict = {}          # level_id -> {"depth", "pierce_pct", "closes_back", "bar_ts"}
+        self._last_bar_ts: str = ""
+        self.last_events: list = []      # events emitted on the most recent derive()          # level_id -> mutable state
 
     def _sources(self, ctx: dict):
         """(provenance, price, kind, timeframe, is_live) for every known level.
@@ -146,6 +178,7 @@ class LevelEngine(DerivedEngine):
 
         now = time.time()
         written = 0
+        self.last_events = []
         for prov, lvl_price, kind, tf, live in self._sources(ctx):
             lid = _level_id(sym, prov, lvl_price)
             st = self._live.get(lid)
@@ -169,6 +202,10 @@ class LevelEngine(DerivedEngine):
                 if st["beyond"] >= ACCEPT_CLOSES:
                     st["retired"] = now
                     st["reason"] = "ACCEPTED_THROUGH"
+                    self._pierce.pop(lid, None)
+                    self._emit(store, sym, lid, lvl_price, kind, prov, "5m", now,
+                               "ACCEPTED", {"pierce_pct": 0.0, "depth": "accepted",
+                                            "closes_back": 0}, close)
             elif abs(close - lvl_price) <= tol:
                 # Held at the level — that is a TOUCH.
                 st["touches"] += 1
@@ -180,6 +217,76 @@ class LevelEngine(DerivedEngine):
                                 st["beyond"], st["retired"], st["reason"],
                                 int(live)))
             written += 1
+        written += self._derive_events(ctx, sym, now)
+        return written
+
+    # ── v4.1: the rejection fact, from the CLOSED 1m bar ────────────────
+    def _emit(self, store, sym, lid, lvl, kind, prov, bar_ts, now, name, p, close):
+        row = (sym, lid, bar_ts, now, name, lvl, kind, prov,
+               float(p["pierce_pct"]), p["depth"], int(p["closes_back"]), close)
+        self.last_events.append({"event": name, "level_id": lid, "price": lvl,
+                                 "kind": kind, "provenance": prov, "bar_ts": bar_ts,
+                                 "pierce_pct": p["pierce_pct"], "depth": p["depth"],
+                                 "closes_back": p["closes_back"], "bar_close": close})
+        logger.info("[level] %s %s %s %.2f (%s) pierce %.3f%% %s closes_back=%d bar=%s",
+                    sym, name, kind, lvl, prov, p["pierce_pct"] * 100, p["depth"],
+                    p["closes_back"], bar_ts)
+        return store.insert_level_event(row) if store is not None else 0
+
+    def _derive_events(self, ctx: dict, sym: str, now: float) -> int:
+        store = self._store
+        df = ctx.get("df_1m")
+        try:
+            if df is None or len(df) < 2:
+                return 0
+            bar = df.iloc[-2]
+            bar_ts = str(df.index[-2])
+            hi, lo, close = float(bar["high"]), float(bar["low"]), float(bar["close"])
+        except Exception:                                       # noqa: BLE001
+            return 0
+        if bar_ts == self._last_bar_ts:
+            return 0                                 # one closed bar, once
+        self._last_bar_ts = bar_ts
+        written = 0
+        for prov, lvl, kind, tf, live in self._sources(ctx):
+            if kind not in ("support", "resistance"):
+                continue                             # VWAP is crossed, not swept
+            lid = _level_id(sym, prov, lvl)
+            st = self._live.get(lid)
+            if st is None or st["retired"]:
+                continue
+            tol = lvl * TOUCH_TOL_PCT
+            # the CLOSE keeps the touch tolerance (inside it is noise, as
+            # derive() counts touches); the WICK does not — a wick through
+            # the level is a wick through the level, and the depth bands
+            # (0.25% / 0.75%) are what grade it, not the 0.15% close noise.
+            if kind == "resistance":
+                close_beyond = close > lvl + tol
+                wick_beyond = hi > lvl
+                pierce = (hi - lvl) / lvl if wick_beyond else 0.0
+            else:
+                close_beyond = close < lvl - tol
+                wick_beyond = lo < lvl
+                pierce = (lvl - lo) / lvl if wick_beyond else 0.0
+            if close_beyond:
+                # a rejection cannot survive a close through the level;
+                # acceptance itself is counted by derive() on the 5m close.
+                self._pierce.pop(lid, None)
+                continue
+            ps = self._pierce.get(lid)
+            if wick_beyond:
+                depth = ("shallow" if pierce <= SHALLOW_PIERCE_PCT
+                         else "deep" if pierce <= DEEP_PIERCE_PCT else "beyond")
+                ps = {"depth": depth, "pierce_pct": pierce, "closes_back": 1, "bar_ts": bar_ts}
+                self._pierce[lid] = ps
+                written += self._emit(store, sym, lid, lvl, kind, prov, bar_ts, now,
+                                      "WICKED", ps, close)
+            elif ps:
+                ps["closes_back"] += 1
+            if ps and ps["depth"] in CLOSES_BACK and ps["closes_back"] >= CLOSES_BACK[ps["depth"]]:
+                written += self._emit(store, sym, lid, lvl, kind, prov, bar_ts, now,
+                                      "REJECTED", ps, close)
+                self._pierce.pop(lid, None)
         return written
 
     def walk(self, price: float, limit: int = 3):

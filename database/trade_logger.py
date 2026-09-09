@@ -1,5 +1,12 @@
 """
-database/trade_logger.py  v4.11
+database/trade_logger.py  v4.12
+v4.12  2026-09-08  OTV4TEST r3 — A RUNAWAY EXIT FINISHES ITS BREAK WHATEVER THE
+      SIGN. r174 finished the break only on a LOSS, so a trail winner could
+      re-enter on the same standing state the instant it closed. Operator:
+      one per break, any exit; the next runaway on that break must re-validate
+      on actual (the 50 lost on a close, then accepted again — runaway_plan
+      v1.0 watches for it and re-opens the key). The credit-vertical branch is
+      unchanged (still loss-only, its own rule).
 v4.11  2026-09-08  r315 — `log_accretion`: a credit vertical that PARTIAL-filled
       and later fills more of the same structure is ONE position, so the row's
       size and basis move together — contracts, blended entry_premium, and the
@@ -746,8 +753,8 @@ class TradeLogger:
         # — it would fire sometimes and be trusted always.
         # ⚠️ LOSSES ONLY. A level that PAID is not discredited by paying.
         try:
-            if float(pnl_usd or 0.0) < 0:
-                _strat = self._get_field(trade_id, "strategy") or ""
+            _strat = self._get_field(trade_id, "strategy") or ""
+            if float(pnl_usd or 0.0) < 0 or "Runaway" in _strat:   # v4.12: any runaway exit
                 # r167 — operator: a lone credit spread that stops out marks the
                 # level it sold at FINISHED for the session — "do not sell
                 # another one at that level". Any credit vertical, not only the
