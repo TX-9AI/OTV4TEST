@@ -6,7 +6,7 @@ the canary fails on drift (WORKING_AGREEMENT 33).
 
 258 Python modules across 13 local packages.
 
-**Reached by:** 103 imported · 9 declared entry points · 38 referenced from a script, unit or doc but never imported · **108 by nothing here**.
+**Reached by:** 103 imported · 9 declared entry points · 43 referenced from a script, unit or doc but never imported · **103 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -520,7 +520,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_attr_fidelity.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `docs/PLAN_SPEC.md`
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/PLAN_SPEC.md`
 
 ### `tests/check_audit_20260823.py`
 - **calls:** `analysis/__init__.py`, `analysis/gate_report.py`, `data/__init__.py`, `data/candle_feed.py`, `derived/plan_ledger.py`, `strategy/__init__.py`, `strategy/iron_condor_strategy.py`, `warehouse/__init__.py`, `warehouse/self_close.py`
@@ -644,7 +644,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_gates.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `docs/HANDOFF.md`, `docs/PORT_STATE.md`, `docs/TRADES.md`, `docs/WORKING_AGREEMENT.md`
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/HANDOFF.md`, `docs/PORT_STATE.md`, `docs/TRADES.md` +1
 
 ### `tests/check_holiday_aware.py`
 - **calls:** `utils/__init__.py`, `utils/market_calendar.py`, `utils/time_utils.py`
@@ -660,7 +660,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_land_tooling.py`
 - **calls:** (none)
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** (not imported) — referenced in `devtools.sh`
 
 ### `tests/check_ledger_parity.py`
 - **calls:** (none)
@@ -672,7 +672,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_level_rejection.py`
 - **calls:** `data/derived_store.py`, `derived/levels.py`
-- **called by:** (not imported) — referenced in `docs/PLAN_SPEC.md`
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/PLAN_SPEC.md`
 
 ### `tests/check_lone_stop.py`
 - **calls:** `config.py`
@@ -748,7 +748,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_orb_plan.py`
 - **calls:** `analysis/orb_engine.py`, `config.py`, `data/options_chain.py`, `execution/exit_engine.py`, `risk/risk_manager.py`, `strategy/__init__.py`, `strategy/orb_plan.py`, `strategy/orb_strategy.py`, `strategy/plan.py`
-- **called by:** (not imported) — referenced in `docs/PLAN_SPEC.md`
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/PLAN_SPEC.md`
 
 ### `tests/check_orb_rearm_zone.py`
 - **calls:** `analysis/__init__.py`, `analysis/orb_engine.py`
@@ -792,7 +792,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_plan_wiring.py`
 - **calls:** `analysis/__init__.py`, `analysis/gate_report.py`, `analysis/session_map.py`, `strategy/__init__.py`, `strategy/criteria.py`, `strategy/plan.py`, `strategy/runaway_continuation.py`
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** (not imported) — referenced in `devtools.sh`
 
 ### `tests/check_pool_geometry.py`
 - **calls:** `analysis/__init__.py`, `analysis/liquidity_mapper.py`, `analysis/session_map.py`, `strategy/__init__.py`, `strategy/sweep_credit_spread.py`
@@ -840,7 +840,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_runaway_plan.py`
 - **calls:** `analysis/orb_engine.py`, `config.py`, `data/derived_store.py`, `execution/exit_engine.py`, `strategy/__init__.py`, `strategy/plan.py`, `strategy/runaway_continuation.py`, `strategy/runaway_plan.py`
-- **called by:** (not imported) — referenced in `docs/PLAN_SPEC.md`
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/PLAN_SPEC.md`
 
 ### `tests/check_shadow_velocity.py`
 - **calls:** `shadow/primitives.py`
@@ -924,7 +924,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/edge_scan.py`
 - **calls:** (none)
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** (not imported) — referenced in `devtools.sh`
 
 ### `tests/entry_profile.py`
 - **calls:** (none)
@@ -940,7 +940,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/exit_replay.py`
 - **calls:** (none)
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** (not imported) — referenced in `devtools.sh`
 
 ### `tests/fees.py`
 - **calls:** `strategy/structure.py`
@@ -988,7 +988,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/r_ledger.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `docs/FORK_BRIEF.md`
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/FORK_BRIEF.md`
 
 ### `tests/rejection_ledger.py`
 - **calls:** (none)
@@ -1000,7 +1000,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/stop_sweep.py`
 - **calls:** (none)
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** (not imported) — referenced in `devtools.sh`
 
 ### `tests/stress_entry_path.py`
 - **calls:** `execution/entry_ladder.py`, `execution/exit_engine.py`, `main.py`, `strategy/__init__.py`, `strategy/gex_pin_butterfly.py`, `strategy/relaxed.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`

@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.2
+# BACKLOG.md — OTV4TEST — v0.3
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -52,6 +52,16 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.3 — 2026-09-08 — OTV4TEST r4 — devtools 2.0: the box menu catches up with control.**
+The otv1-era break-glass menu is replaced by a registry-rendered menu in
+control's shape (numbers assigned at display time; cite by label). Ported to
+run LOCALLY: SENSORS (the same SQL over this box's own derived_store.db and
+feed_store.db, with an ET date prompt), DEBUG / LOGS, and the R SUITE via the
+fork's own tests/*.py through their `--db` escape hatch on trades.db (the box
+is masked from S3). New sensors: PLAN ROWS (the per-tick narrative) and LEVEL
+EVENTS (the rejection fact). Fleet wrangling is deliberately absent. LAND and
+BAKE now sit under GIT & LAND — the numbers moved; the labels did not.
 
 **v0.2 — 2026-09-08 — OTV4TEST r3 — the rejection fact, the runaway spec, RUN.6–8 and SWP.0 opened, ORB.3 closed.**
 The level engine emits WICKED / REJECTED / ACCEPTED on closed 1m bars (one close
