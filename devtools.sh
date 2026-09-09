@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# devtools.sh  v2.0  — OTV4TEST box menu, rebuilt (fork-numbered from here)
+# devtools.sh  v2.1  — OTV4TEST box menu
+# v2.1  2026-09-09  OTV4TEST r6 — Feed health shows OPEN INTEREST: the last `OI:`
+#       lines from the bot's journal (fetched / cached / NON-ZERO), so the
+#       butterfly's un-park is a menu read, not a grep.
 # v2.0  2026-09-08  OTV4TEST r4 — THE BOX MENU CATCHES UP WITH CONTROL.
 #       Operator: this instance is standalone; control's devtools never reaches
 #       it, and the box's own menu was the otv1-era break-glass list. The
@@ -162,6 +165,8 @@ log_bot_tail() { [ -f "$BOTLOG" ] && tail -n 40 "$BOTLOG" || echo "no bot.log at
 feed_health() {
   local age; age=$(( $(date +%s) - $(stat -c %Y "${FEED_DB}-wal" 2>/dev/null || stat -c %Y "$FEED_DB" 2>/dev/null || echo 0) ))
   echo "  $FEED=$(svc "$FEED")  store_write_age_s=$age  ($FEED_DB)"
+  echo; echo "  OPEN INTEREST (the bot's own fetch, today):"
+  journalctl -u "$BOT" --since today --no-pager 2>/dev/null | grep "OI:" | tail -3 | sed 's/^/  /' || echo "  (no OI lines today)"
   _sql "$FEED_DB" "SELECT symbol, interval, COUNT(*) AS bars, datetime(MAX(ts_epoch_ms)/1000,'unixepoch','-4 hours') AS last_bar_et FROM candles GROUP BY symbol, interval ORDER BY interval;" 2>/dev/null | head -20; pause
 }
 

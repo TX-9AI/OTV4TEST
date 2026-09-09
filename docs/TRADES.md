@@ -142,7 +142,9 @@ no premium stop. Fixed: per-side validation, pairing gate ->
 
 ---
 
-## 3. GEX Pin Butterfly — `gex_pin_butterfly.py` ⏸ PARKED
+## 3. GEX Pin Butterfly — `gex_pin_butterfly.py`
+
+**OTV4TEST r6 — UN-PARKED BY DATA, re-specced with the operator; PLAN_SPEC §32 is the spec.** Real open interest is arriving on the box (2026-09-09); zero OI is now a STARVED input the row states, not a park flag. Where the text below disagrees with §32 (best-R wing, smoothed persistence, firm EM 1.00), §32 wins.
 
 **Apex on the gamma pin, out of the money. Buy the move to the magnet.**
 

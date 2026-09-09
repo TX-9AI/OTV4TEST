@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_prepares.py  v1.12
+tests/check_plan_prepares.py  v1.13
+v1.13  2026-09-09  OTV4TEST r6 — B12 re-derived on the smoothed pin (one tick is chatter;
+      the window's mode is a migration); B14 pins persistence as a bar; B2 titled BEST-R.
 v1.12  2026-09-09  OTV4TEST r5 — S1–S9 RE-DERIVED against the sweep PLAN: levels come
       from a DerivedStore fixture, the trigger is a REJECTED event, the short anchors
       on the level; S8/S9 pin freshness and the depth band. The liq_map fixtures are gone.
@@ -359,6 +361,10 @@ def main():
     bf.ENABLED = True
     bf.EARLIEST_ET, bf.LATEST_ET = "09:30", "16:00"
     B = GEXPinButterflyStrategy()
+
+    # OTV4TEST r6: persistence is a bar (8 ticks); these fixtures assert SELECTION on
+    # a single tick, so the bar is set to 1 here and pinned on its own in check_plan_prepares B13.
+    import strategy.gex_pin_butterfly as _bfm; _bfm.PERSIST_TICKS = 1
     B.planner.symbol = "TST"
     # PIN THE CLOCK: expected_move() reads wall time for the remaining-session
     # scaling, so an unpinned test drifts with the hour it is run at (it broke
@@ -421,7 +427,7 @@ def main():
     P.begin_tick(21.0)
     sig = B.generate_signal(gex=_GEX(), chain=_Chain([], calls_good), **bcommon)
     rb2 = _row(st, "GEXPinButterfly", 21.0)
-    check("B2 pinning, strong, reachable -> fires the NARROWEST qualifying wing",
+    check("B2 pinning, strong, reachable -> fires the BEST-R qualifying wing (r6; here also the narrowest)",
           sig is not None and sig.is_valid and sig.is_butterfly
           and sig.center_contract.strike == 101.0
           and sig.lower_contract.strike == 100.0
@@ -768,12 +774,38 @@ def main():
           "pin_played; no second fly on the same magnet, relaxed does not waive it",
           sigB2 is None and r61b and r61b[0] == "DECLINE" and "already has a butterfly" in r61b[1],
           str(r61b))
+    # OTV4TEST r6 — SMOOTHED: one tick at a new strike is chatter, not a migration.
     P.begin_tick(62.0)
     sigB3 = B.generate_signal(gex=_GEX(pin=102.0), chain=_Chain([], calls_good), **bcommon)
-    check("B12 (r178) the magnet migrates to a NEW pin -> a new trade is allowed to prepare",
-          (sigB3 is not None) or (_row(st, "GEXPinButterfly", 62.0)
-                                  and _row(st, "GEXPinButterfly", 62.0)[0] in ("HOLD", "TAKE")),
-          str(_row(st, "GEXPinButterfly", 62.0)))
+    check("B12a (r6) ONE tick at a new pin is chatter — the smoothed pin stays 101, still played",
+          sigB3 is None and _row(st, "GEXPinButterfly", 62.0)[0] == "DECLINE"
+          and "pin_played" in _row(st, "GEXPinButterfly", 62.0)[1], str(_row(st, "GEXPinButterfly", 62.0)))
+    for i in range(_bfm.SMOOTH_WINDOW):
+        P.begin_tick(62.5 + i * 0.01)
+        sigB3 = B.generate_signal(gex=_GEX(pin=102.0), chain=_Chain([], calls_good), **bcommon)
+    check("B12 (r178/r6) the magnet MIGRATES (the new pin is the mode of the window) -> a new trade may prepare",
+          (sigB3 is not None) or (_row(st, "GEXPinButterfly", 62.5 + (_bfm.SMOOTH_WINDOW - 1) * 0.01)
+                                  and _row(st, "GEXPinButterfly", 62.5 + (_bfm.SMOOTH_WINDOW - 1) * 0.01)[0] in ("HOLD", "TAKE")),
+          str(_row(st, "GEXPinButterfly", 62.5 + (_bfm.SMOOTH_WINDOW - 1) * 0.01)))
+    # B14 (r6) — PERSISTENCE AS A BAR: with the real 8-tick bar, a fresh strategy holds
+    # "waiting on pin_persistence" for 7 ticks and fires on the 8th; a one-tick
+    # wobble to the adjacent strike in the middle does not reset it.
+    _bfm.PERSIST_TICKS = 8
+    _bfm.GEXPinButterflyStrategy.PLAYED_PINS.clear()
+    B2 = GEXPinButterflyStrategy(); B2.planner.symbol = "TST"
+    fired_at = None
+    for i in range(10):
+        P.begin_tick(70.0 + i)
+        pin = 100.0 if i == 4 else 101.0        # tick 5 wobbles to the neighbour
+        sg = B2.generate_signal(gex=_GEX(pin=pin), chain=_Chain([], calls_good), **bcommon)
+        if sg is not None and fired_at is None:
+            fired_at = i + 1
+    r70 = _row(st, "GEXPinButterfly", 70.0)
+    check("B14 (r6) persistence is a bar: tick 1 HOLDS waiting on pin_persistence",
+          r70 and r70[0] == "HOLD" and "pin_persistence" in r70[1], str(r70))
+    check("B14b ...and the fly fires on the 8th tick, the wobble at tick 5 notwithstanding",
+          fired_at == 8, f"fired_at={fired_at}")
+    _bfm.PERSIST_TICKS = 1
     msrc2 = open(os.path.join(_root, "main.py"), encoding="utf-8").read()
     check("B13 (r178) the fire site marks the pin played AFTER execution",
           "mark_pin_played" in msrc2

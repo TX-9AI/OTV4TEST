@@ -1281,3 +1281,30 @@ No trail, no other target: the vertical is earning from decay.
 The runaway (§30) and the ORB (§29) exit on the same `REJECTED` the sweep fires on; the loop runs exits before the entry attempt, so in paper the handoff is one tick. `required_side` and `_can_open_credit_spread` are untouched: the sweep may still form a condor's complementary side. The condor's own spec comes last.
 
 **As built (OTV4TEST r5):** `strategy/sweep_plan.py` v1.0, `strategy/sweep_credit_spread.py` v6.0, `derived/levels.py` v4.2, `derived/forks.py` v4.1, `derived/registry.py` v4.1, `data/derived_store.py` v4.3, `execution/exit_engine.py` v4.13, `database/trade_logger.py` v4.13, `main.py` v4.42. Hypotheticals: `check_plan_prepares` S1–S9, T4–T7; `check_level_rejection` T1–T3; `check_sweep_plan` E1–E5, X1.
+
+## 32. OTV4TEST r6 — THE GEX PIN BUTTERFLY SPEC AND ITS PLAN CONTRACT (agreed with the operator 2026-09-09)
+
+*"Only the pin strength, during GEX pinning behavior and pin is reachable, with economic performance planned to best available payoff asymmetry, earliest possible no less than 1-R, taken as a debit. EM at 1.0 firm, no relaxed conditions."*
+
+### 32.1 The spec
+| part | definition |
+|---|---|
+| anchor | the pin, only — no level, no tine strengthens it |
+| regime | PINNING |
+| reachable | pin at 0.30–1.00 of the expected move, FIRM — no relaxed dial anywhere in this trade (confirmed by reading: none was live after r321) |
+| pin strength | concentration ≥ 0.25, firm |
+| **persistence, smoothed** | the acting pin is the MODE of the last `SMOOTH_WINDOW` (12) instant pins — chatter between adjacent strikes does not move it, a migration does — and it must have held `PERSIST_TICKS` (8). Both are declared priors, recorded every tick (`pin_raw`, `pin_persist_ticks`) |
+| structure | every listed wing width priced per side; **the pick is the MAX R** (payoff ÷ debit) among those that clear R_FLOOR (≥ 1R) and the stop-vs-spread floor. "Narrowest first" is superseded |
+| fire | the earliest tick the best structure clears 1R; a debit; the whole position through the §6 ladder walk |
+| one per session | main.py's r179 DB-backed cap; no additional attempts. One structure per pin (PLAYED_PINS) stays underneath it |
+
+### 32.2 Starved inputs — the park as a state, not a flag
+No ATM IV · no chain · **open interest summing to zero across the chain** → `NO PLAN: starved open_interest`. GEX without OI is gamma² × spot and the pin sits at spot; that was the reason for the 08-19 park. The row now states it every tick, and the trade un-parks itself the day real OI arrives — which it did: 2026-09-09, 226 non-zero strikes by 15:43, once `data/open_interest.py` stopped losing the first batch of every cycle to a closed event loop (v4.2).
+
+### 32.3 Exits — unchanged, by ruling
+15% stop (the dead-thesis stop; no separate migration exit) and the 15:45 close. No target: a pinned fly pays as the wings die into the close.
+
+### 32.4 Recorded, not barred
+Three-leg stop-vs-spread ratio (`stop_vs_spread`, already a floor via `STOP_VS_SPREAD_MIN`), pin distance in EM at the fire, persistence in ticks. The first real pins say what the priors should be.
+
+**As built (OTV4TEST r6):** `strategy/gex_pin_butterfly.py` v5.0 (the plan lives in its `prepare()`, as the engine does for the ORB — the split into a `butterfly_plan.py` is a later tidy, not a behaviour), `data/open_interest.py` v4.2, `strategy/plan.py` (HYG.4), `devtools.sh` v2.1. Hypotheticals: `check_plan_prepares` B1–B14 (B12 on the smoothed pin, B14 the persistence bar), `check_butterfly_foundational`, `check_butterfly_legs`, `check_butterfly_wing_grid`.

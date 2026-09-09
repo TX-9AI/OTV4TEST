@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.4
+# BACKLOG.md — OTV4TEST — v0.5
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -35,12 +35,21 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 | **SWP.2** | ⬜ **RICHNESS IS A DIAL WITH NO BAR.** Credit/width is on every prepared row. Read it against the fires before anyone proposes a floor. | 🔲 OPEN |
 | **SWP.0** | ✅ (r5, PLAN_SPEC §31) **THE SWEEP CREDIT SPREAD IS NEXT.** Its trigger is the REJECTED fact (§30.1); its thesis is the level holds to the close; the condor forms from a second rejection on the other side. The afternoon-only gate is a clock standing in for the handoff (§30.5) and stays until the handoff has fired on real tape. | 🔲 OPEN |
 
+### Butterfly (PLAN_SPEC §32)
+
+| id | item | state |
+|---|---|---|
+| **BFLY.1** | ⬜ **THE PERSISTENCE PRIORS ARE UNMEASURED.** `SMOOTH_WINDOW` 12 / `PERSIST_TICKS` 8 are mine; `pin_raw` and `pin_persist_ticks` are on every row. After the first real pins: how long does a real pin hold, how often does the mode flip, did the bar ever refuse a fly that would have paid? | 🔲 OPEN |
+| **BFLY.2** | ⬜ **SPLIT `prepare()` INTO `strategy/butterfly_plan.py`** for parity with the other three trades — a tidy, not a behaviour; do it when the fly has fired once and the row shape is known. | 🔲 OPEN |
+| **OI.1** | ⬜ **WATCH THE OI FETCH after v4.2** — no `fetch failed … Event loop is closed` lines; `fetched N … NON-ZERO` once per cycle with the whole chain. Feed health shows it. | 🔲 OPEN |
+
 ### Repo hygiene found on the way
 
 | id | item | state |
 |---|---|---|
 | **HYG.1** | ⬜ **`analysis/trade_readiness.py::_combine` IS UNBOUND.** pyflakes over the tree (FORK_BRIEF §3.7) found `_combine` defined NESTED inside `ramp()` (indentation) and called five times at module level — a NameError on every readiness path, masked because the engine is log-only and import-guarded in main.py. Two more undefined names sit in tests (`check_management_plan.py:302 esrc`, `scrub_headers.py:285 s2`). Not fixed in r2 (not the asked-for change); a `check_undefined_names.py` gate (undefined-name only, never unused-import) is the fix's companion. | 🔲 OPEN |
 | **HYG.2** | ⬜ **DOC STRIP — PROPOSED, NOT RULED.** FORK_BRIEF §3.6 proposes removing `ROADMAP.md`, `PORT_STATE.md`, `INHERITED_FINDINGS.md`, `HANDOFF.md`, `VISION.md` (mainline history with no fork consumer). `BACKLOG.md` was ruled: restarted blank (this file). The rest await the operator; deletion is a revision with a ledger row, and `FILE_MAP.md` is checked for links first. | 🔲 OPEN |
+| **HYG.4** | ✅ (r6) **A TEST WROTE INTO THE BOX'S LIVE PLAN LEDGER.** `TestStrat` rows (WIPED_BY_RESTART, TRIGGERED) in the corpus on 2026-09-09, from the lander's checks: `Plan._ledger_open` resolved the registry's live ledger even when a test had bound its own store. Closed: a bound store never reaches the box's ledger. The existing rows are history; delete by hand if they offend. | ✅ r6 |
 | **HYG.3** | ⬜ **`tests/check_ledger_parity.py` READS THE FROZEN LEDGER.** It opens `docs/GENESIS.md` (mainline, frozen here) and this backlog; on the fork the revision it should reconcile against is `docs/GENESIS-TEST.md`. Not run by the lander today; repoint before relying on it. | 🔲 OPEN |
 
 ---
@@ -54,6 +63,11 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.5 — 2026-09-09 — OTV4TEST r6 — the butterfly on the pin, OI fixed and visible, HYG.4 closed.**
+Best-R wing, smoothed persistence as a bar, OI as a starved input; the OI fetch
+runs every batch in one loop; Feed health shows the OI lines; a bound test store
+never touches the live ledger. BFLY.1–2 and OI.1 opened.
 
 **v0.4 — 2026-09-09 — OTV4TEST r5 — the sweep credit spread on the rejection fact; SWP.1–2 opened.**
 Tines are levels (keyed on the tine, the tine rule), no level inside the opening

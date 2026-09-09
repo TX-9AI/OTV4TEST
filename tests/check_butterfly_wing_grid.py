@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""tests/check_butterfly_wing_grid.py  v1.1
+"""tests/check_butterfly_wing_grid.py  v1.2
+v1.2  2026-09-09  OTV4TEST r6 — the persistence bar is set to 1 for these selection fixtures.
 v1.1  2026-09-01  r208 — W2/W3/W7 RE-DERIVED AGAINST THE SEARCH. The wing is
       no longer computed from WING_EM_FRAC and snapped to a grid, so W2/W3
       re-implemented arithmetic that no longer exists (C.23: a test that
@@ -121,6 +122,10 @@ def main():
     b.expected_move = lambda u, iv, now=None: _em0(
         u, iv, now=b.datetime(2026, 8, 27, 12, 30, tzinfo=_ET0))
     strat = b.GEXPinButterflyStrategy(); strat.planner.symbol = "PLTR"
+
+    # OTV4TEST r6: persistence is a bar (8 ticks); these fixtures assert SELECTION on
+    # a single tick, so the bar is set to 1 here and pinned on its own in check_plan_prepares B13.
+    import strategy.gex_pin_butterfly as _bfm; _bfm.PERSIST_TICKS = 1
     # atm_iv 0.60 at the pinned 12:30 clock -> EM ~5.2, so the 2.50 pin sits
     # at 48% of it: inside the 30-100% band. At 1.20 the EM is 10.4 and the
     # setup HOLDS on pin_em_fraction — a fixture fault, not a code one.

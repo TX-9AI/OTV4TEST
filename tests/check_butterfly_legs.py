@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tests/check_butterfly_legs.py  v2.2  (2026-09-01, r208)
+tests/check_butterfly_legs.py  v2.3
+v2.3  2026-09-09  OTV4TEST r6 — BEST-R pick, OI on the fixture, persistence bar set to 1 here.
 v2.2  r208: THE BUTTERFLY PINS ARE RE-DERIVED, NOT PATCHED. B1-B3 encoded a
       world that no longer exists — a wing COMPUTED from WING_EM_FRAC and
       snapped to a grid, with R checked afterwards. The wing is now SEARCHED
@@ -124,6 +125,10 @@ def main():
     _fixed_now = bf.datetime(2026, 8, 27, 12, 30, tzinfo=_ET)
     bf.expected_move = lambda u, iv, now=None: _em_real(u, iv, now=_fixed_now)
     b = GEXPinButterflyStrategy()
+
+    # OTV4TEST r6: persistence is a bar (8 ticks); these fixtures assert SELECTION on
+    # a single tick, so the bar is set to 1 here and pinned on its own in check_plan_prepares B13.
+    import strategy.gex_pin_butterfly as _bfm; _bfm.PERSIST_TICKS = 1
     b.planner.symbol = "TST"
     P.begin_tick(20.0)
     sig = b.generate_signal(gex=_GEX(), price_now=100.0, now_et="12:30", atm_iv=0.43,
@@ -144,7 +149,7 @@ def main():
     P.begin_tick(20.5)
     sig_ok = b.generate_signal(gex=_GEX(), price_now=99.0, now_et="12:30", atm_iv=0.90,
                                chain=_Chain(tight, []))
-    check("B2 a qualifying ladder fires the NARROWEST wing of those that clear",
+    check("B2 a qualifying ladder fires the BEST-R wing of those that clear (r6)",
           sig_ok is not None and sig_ok.is_valid and sig_ok.is_butterfly
           and sig_ok.center_contract.strike == 101.0
           and sig_ok.lower_contract.strike == 100.0

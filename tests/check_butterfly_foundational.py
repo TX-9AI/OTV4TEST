@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tests/check_butterfly_foundational.py  v1.0
+tests/check_butterfly_foundational.py  v1.1
+v1.1  2026-09-09  OTV4TEST r6 — BEST-R pick, OI on the fixture, persistence bar set to 1 here.
 v1.0  2026-09-01  r208 — THE THREE CONDITIONS RELAXED MAY NEVER WAIVE.
 
 Operator, 2026-09-01, after five flies fired on the first tick of the noon
@@ -48,6 +49,7 @@ class bf_C:
     def __init__(self, strike, bid, ask):
         self.strike, self.bid, self.ask = strike, bid, ask
         self.mark = round((bid + ask) / 2.0, 4)
+        self.open_interest = 100          # OTV4TEST r6: zero OI is a STARVED input
 
 
 def main():
@@ -170,6 +172,10 @@ def main():
         u, iv, now=bf.datetime(2026, 8, 27, 12, 30, tzinfo=_ET))
     strat = bf.GEXPinButterflyStrategy(); strat.planner.symbol = "TST"
 
+    # OTV4TEST r6: persistence is a bar (8 ticks); these fixtures assert SELECTION on
+    # a single tick, so the bar is set to 1 here and pinned on its own in check_plan_prepares B13.
+    import strategy.gex_pin_butterfly as _bfm; _bfm.PERSIST_TICKS = 1
+
     def _row(ts):
         r = st.conn.execute("SELECT verdict, reason FROM plan_tick WHERE "
                             "ts_epoch=?", (ts,)).fetchone()
@@ -199,7 +205,7 @@ def main():
                                  now_et="12:30", atm_iv=0.90)
     got = (sig2 and (sig2.lower_contract.strike, sig2.center_contract.strike,
                      sig2.upper_contract.strike))
-    check("F8b two wings qualify and the NARROWEST is taken",
+    check("F8b two wings qualify and the BEST-R wing is taken (r6; here the narrower)",
           got == (100.0, 101.0, 102.0),
           f"{got} (wing 2 at 99/101/103 also clears R>=1)")
     check("F8c the apex is the pin, never a substitute",

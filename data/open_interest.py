@@ -1,5 +1,9 @@
 """
-data/open_interest.py  v4.0
+data/open_interest.py  v4.2
+v4.2  2026-09-09  OTV4TEST r6 — one event loop per fetch, immediate retry on a
+      closed loop: the first batch of every cycle failed "Event loop is closed"
+      because each batch ran under its own asyncio.run(); OI arrived (226
+      non-zero strikes by 15:43) but only half the chain per cycle.
 v4.1  2026-08-21  get_market_data_by_type IS A COROUTINE and was called
       without await - GEX has run WITHOUT open interest on every cycle since
       the port, logging a warning nobody actioned. Bridged for both call
@@ -157,13 +161,35 @@ def fetch_open_interest(session, occ_symbols: Iterable[str],
         return {s: _CACHE[s] for s in syms if s in _CACHE}
 
     got = 0
-    for i in range(0, len(missing), _BATCH):
-        batch = missing[i:i + _BATCH]
-        try:
-            rows = _await(get_market_data_by_type(session, options=batch))
-        except Exception as e:                                 # noqa: BLE001
-            logger.warning("OI: fetch failed for %d symbol(s): %s", len(batch), e)
-            continue
+    batches = [missing[i:i + _BATCH] for i in range(0, len(missing), _BATCH)]
+
+    async def _all():
+        # v4.2 — ONE loop for every batch. Each batch under its own
+        # asyncio.run() handed the SDK's async client a CLOSED loop on the
+        # next call ("Event loop is closed" on the first batch of every cycle,
+        # 2026-09-09 on the QQQ TEST box). Inside one loop the client is
+        # created and used on the same loop; a closed-loop error is retried
+        # once immediately rather than waiting out _RETRY_S.
+        out = []
+        for batch in batches:
+            rows = None
+            for attempt in (1, 2):
+                try:
+                    rows = await get_market_data_by_type(session, options=batch)
+                    break
+                except Exception as e:                         # noqa: BLE001
+                    if attempt == 1 and "loop is closed" in str(e).lower():
+                        continue
+                    logger.warning("OI: fetch failed for %d symbol(s): %s", len(batch), e)
+            out.append(rows or [])
+        return out
+
+    try:
+        results = _await(_all())
+    except Exception as e:                                     # noqa: BLE001
+        logger.warning("OI: fetch failed outright: %s", e)
+        results = []
+    for rows in results:
         for r in rows or []:
             sym = getattr(r, "symbol", None)
             oi = getattr(r, "open_interest", None)

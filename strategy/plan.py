@@ -1,5 +1,8 @@
 """
-strategy/plan.py  v1.8
+strategy/plan.py  v1.9
+v1.9  2026-09-09  OTV4TEST r6 (HYG.4) — `_ledger_open` returns when a store is BOUND
+      (tests): the box's plan_ledger carried TestStrat rows written by the
+      lander's checks. A bound store means "not the box".
 v1.8  2026-09-03  r231 — `PlanTick.level()` takes `spot` and passes it to
       `classify()`, which now requires it. Geometry asks role-vs-PRICE as well
       as role-vs-range (operator, 2026-09-03), and a level price has already
@@ -745,6 +748,11 @@ class Plan:
         live row to attach the fill to. State TRIGGERED — the strategy has
         fired; the fill (or its absence) is what comes next."""
         if self.self_ledgers:
+            return
+        if _BOUND_STORE["store"] is not None:
+            # OTV4TEST r6 (HYG.4): a test that bound its own store must not
+            # open rows in the BOX's plan_ledger — TestStrat rows were found in
+            # the live corpus on 2026-09-09, written by the lander's checks.
             return
         try:
             from derived.registry import plan_ledger as _pl

@@ -1,5 +1,22 @@
 """
-strategy/gex_pin_butterfly.py  v4.9
+strategy/gex_pin_butterfly.py  v5.0
+v5.0  2026-09-09  OTV4TEST r6 — THE BUTTERFLY ON THE OPERATOR'S RULINGS
+      (PLAN_SPEC §32). Anchor = the pin only; regime PINNING; reachable = EM
+      0.30–1.00, FIRM (no live relaxed call was left here after r321 —
+      confirmed by reading, and now stated). (1) PERSISTENCE, SMOOTHED: the
+      acting pin is the MODE of the last SMOOTH_WINDOW instant pins and must
+      have held PERSIST_TICKS ticks — a new condition `pin_persistence`; the
+      instant pin is recorded as `pin_raw`. (2) BEST PAYOFF ASYMMETRY: every
+      listed width is priced (unchanged) and the pick is the MAX R among those
+      that clear R_FLOOR and the stop-vs-spread floor — "narrowest first" is
+      superseded. (3) OI IS A STARVED INPUT: zero open interest across the
+      chain -> NO PLAN starved open_interest, every tick, so the park is a
+      fact the row states and un-parks itself when real OI arrives (it did,
+      2026-09-09: 226 non-zero strikes by 15:43). (4) ONE PER SESSION, NO
+      ADDITIONAL ATTEMPTS: main.py's r179 DB-backed session cap is the lock
+      (one owner; a second in-process flag was built and removed in the same
+      revision — it blocked nothing the cap does not). Exits unchanged (15% stop = the dead-thesis stop, 15:45). Entry
+      unchanged: the whole position through the ladder walk.
 v4.9  2026-09-01  r215 — RECORD-ONLY: `pin_dist_pct` and `pin_strike_raw` are
       written to plan_check on every evaluation. `pin_strike` is now BOUNDED to
       PIN_MAX_DIST_PCT of spot in compute_gex (see data/gex_data.py) because
@@ -292,9 +309,15 @@ EM_MIN_FRAC = getattr(config, "GEX_BFLY_EM_MIN_FRAC", 0.30)
 EM_MAX_FRAC = getattr(config, "GEX_BFLY_EM_MAX_FRAC", 1.00)
 EARLIEST_ET = getattr(config, "GEX_BFLY_EARLIEST_ET", "11:00")
 LATEST_ET = getattr(config, "GEX_BFLY_LATEST_ET", "15:00")
+# OTV4TEST r6 — persistence with smoothing (operator 2026-09-09). PRIORS,
+# recorded on every row; the first real pins say what they should be.
+SMOOTH_WINDOW = int(getattr(config, "GEX_BFLY_SMOOTH_WINDOW", 12))    # ticks (~3 min)
+PERSIST_TICKS = int(getattr(config, "GEX_BFLY_PERSIST_TICKS", 8))     # ticks (~2 min)
 
 # ── GATE CATEGORIES AS DATA (WA §36) ───────────────────────────────────────
 GATES = {
+    "SMOOTH_WINDOW":  "SELECTION",     # OTV4TEST r6 prior — a dial, gates nothing
+    "PERSIST_TICKS":  "FOUNDATIONAL",  # OTV4TEST r6 — the persistence bar
     # 🔴 r196 — FOUNDATIONAL, NOT SELECTION. Operator, 2026-08-31, watching
     # butterflies open at 09:45 on the first live open: "the noon floor is
     # non-negotiable."
@@ -489,6 +512,7 @@ class GEXPinButterflyStrategy:
         "entry_window":      f"{EARLIEST_ET}-{LATEST_ET} ET",
         "expected_move":     "an expected move from the chain's ATM IV (no fallback)",
         "pin_em_fraction":   f"pin at {EM_MIN_FRAC:.0%}-{EM_MAX_FRAC:.0%} of the expected move (NOT relaxable, r208)",
+        "pin_persistence":   "the smoothed pin has held for PERSIST_TICKS ticks (OTV4TEST r6)",
     }
     STRUCTURAL = ("legs", "debit", "r", "pin_played", "stop_survivable")
     PLAN_CHECKS = tuple(CONDITIONS) + STRUCTURAL + ("gex", "wing_width", "width",
@@ -512,6 +536,23 @@ class GEXPinButterflyStrategy:
     # session. A NEW pin (GEX migrates the magnet) is a new trade.
     # In-process registry; a restart clears it, recorded as acceptable.
     PLAYED_PINS: set = set()
+    _pins: list = []                     # instant pins, last SMOOTH_WINDOW ticks
+    _persist: int = 0                    # ticks the smoothed pin has held
+    _last_smoothed: float = 0.0
+
+    def _smoothed_pin(self, pin_raw: float) -> float:
+        from collections import Counter
+        if pin_raw and pin_raw > 0:
+            self._pins = (self._pins + [round(pin_raw, 2)])[-SMOOTH_WINDOW:]
+        if not self._pins:
+            self._persist = 0
+            return 0.0
+        mode, _n = Counter(self._pins).most_common(1)[0]
+        if mode == self._last_smoothed:
+            self._persist += 1
+        else:
+            self._last_smoothed, self._persist = mode, 1
+        return float(mode)
 
     @classmethod
     def mark_pin_played(cls, pin) -> None:
@@ -547,10 +588,33 @@ class GEXPinButterflyStrategy:
             t.starved("gex")
             return prep
         t.check("gex", 1.0, True)
-
+        # ── OTV4TEST r6: OI IS A STARVED INPUT, NOT A GUESS. Zero OI across
+        #    the chain means GEX is gamma-squared, not positioning — the
+        #    parked reason, now a state the row says every tick.
+        _oi_sum = 0
+        try:
+            for _c in (list(getattr(chain, "calls", []) or []) + list(getattr(chain, "puts", []) or [])):
+                _oi_sum += int(getattr(_c, "open_interest", 0) or 0)
+        except Exception:                                      # noqa: BLE001
+            _oi_sum = 0
+        t.check("open_interest", float(_oi_sum), _oi_sum > 0)
+        if chain is not None and _oi_sum <= 0:
+            prep.starved.append("open_interest")
+            t.starved("open_interest")
+            return prep
         env = str(getattr(gex, "gex_environment", "") or "")
         conc = float(getattr(gex, "pin_concentration", 0.0) or 0.0)
-        pin = float(getattr(gex, "pin_strike", 0.0) or 0.0)
+        pin_raw = float(getattr(gex, "pin_strike", 0.0) or 0.0)
+        # ── OTV4TEST r6: PERSISTENCE, SMOOTHED. The acting pin is the MODE of
+        #    the last SMOOTH_WINDOW instant pins (chatter between adjacent
+        #    strikes does not move it; a migration does), and it must have
+        #    been the mode for PERSIST_TICKS ticks. Both are declared priors.
+        pin = self._smoothed_pin(pin_raw)
+        t.check("pin_raw", pin_raw or None)
+        t.check("pin_persist_ticks", float(self._persist), self._persist >= PERSIST_TICKS)
+        prep.cond("pin_persistence", float(self._persist),
+                  f">= {PERSIST_TICKS} ticks at one strike (smoothed over {SMOOTH_WINDOW})",
+                  self._persist >= PERSIST_TICKS)
         prep.pin, prep.conc = pin, conc
         # r178 — a played pin is a structural DECLINE; relaxed does not waive
         # it, and it is checked BEFORE the conditions so the row names it
@@ -724,10 +788,11 @@ class GEXPinButterflyStrategy:
                             f"{_rej_surv} too narrow to clear their own spread "
                             f"(best {_nr(_best_ratio)}x of {STOP_VS_SPREAD_MIN:.1f}x)"))
                     else:
-                        # ⚠️ NARROWEST FIRST, per the ruling. `_cands` is built
-                        # in ascending wing order, so [0] IS the narrowest that
-                        # cleared both bounds.
-                        wing, lower, upper, debit, r, _ratio = _cands[0]
+                        # OTV4TEST r6 — BEST PAYOFF ASYMMETRY, per the operator
+                        # (2026-09-09): every listed width is priced and the pick
+                        # is the MAX R among those that cleared both bounds.
+                        # "Narrowest first" is superseded here.
+                        wing, lower, upper, debit, r, _ratio = max(_cands, key=lambda c: c[4])
                         width = wing
                         prep.wing = wing
                         prep.wing_intended = wing        # searched, not intended
@@ -743,7 +808,7 @@ class GEXPinButterflyStrategy:
                         t.check("stop_survivable", None, True)
                         if len(_cands) > 1:
                             logger.info("[gex_bfly] wing search: %d qualified, "
-                                        "taking the narrowest %.2f (R %.2f, stop "
+                                        "taking the BEST-R wing %.2f (R %.2f, stop "
                                         "%.2fx its spread); widest was %.2f",
                                         len(_cands), wing, r, _ratio or 0.0,
                                         _cands[-1][0])
