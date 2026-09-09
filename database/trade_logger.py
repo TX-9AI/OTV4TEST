@@ -1,5 +1,10 @@
 """
-database/trade_logger.py  v4.12
+database/trade_logger.py  v4.13
+v4.13  2026-09-09  OTV4TEST r5 — A SWEEP LEVEL IS SPENT ON AN ACCEPTED BREACH, NOT
+      ON A STOP-OUT. Operator: "A held level remains, but an accepted breach and
+      continuation means that level is spent." `mark_spent` fires only when the
+      exit reason is `sweep_breach_accepted` (exit_engine v4.13); a 15% lone
+      stop on a wobble leaves the level live for the next rejection.
 v4.12  2026-09-08  OTV4TEST r3 — A RUNAWAY EXIT FINISHES ITS BREAK WHATEVER THE
       SIGN. r174 finished the break only on a LOSS, so a trail winner could
       re-enter on the same standing state the instant it closed. Operator:
@@ -819,13 +824,16 @@ class TradeLogger:
                     # r163 — a MOVING level (a fork tine) is keyed by NAME, since
                     # its price drifts every bar; the sweep plan reads the same key.
                     _lvl_name = self._get_field(trade_id, "swept_level_name") or ""
-                    if "tine" in _lvl_name:
+                    if str(_lvl_name).startswith("fork1h/"):
+                        from strategy.sweep_credit_spread import tine_spent_key
+                        _pool = tine_spent_key(_lvl_name)          # r5: keyed on the tine
+                    elif "tine" in _lvl_name:
                         from strategy.sweep_credit_spread import _name_key
                         _pool = _name_key(_lvl_name)
-                    if _pool:
+                    if _pool and "sweep_breach_accepted" in str(exit_reason or ""):
                         from strategy.sweep_credit_spread import mark_spent
                         mark_spent(_sym, _side, float(_pool),
-                                   f"stopped out {exit_reason} "
+                                   f"breach accepted {exit_reason} "
                                    f"pnl=${float(pnl_usd):+.2f}")
         except Exception as exc:                               # noqa: BLE001
             # ⚠️ NEVER RAISE INTO THE CLOSE PATH — but say so. A silent failure

@@ -1,5 +1,12 @@
 """
-main.py  v4.41
+main.py  v4.42
+v4.42 2026-09-08  OTV4TEST r5 — the derived ctx carries the ORB data (`orb`) so
+      derived/levels can retire every level inside the 5-minute opening range
+      (operator: "NO LEVELS can exist inside the 5-minute opening range"), and
+      the SWEEP is asked every tick of 09:35–14:00 with the chain and the 1m
+      frame, its plan preparing both sides from the level store; the r167
+      "sweep is afternoon-only" NOT ASKED row and the private wick detector are
+      gone — the trigger is the REJECTED fact.
 v4.41 2026-09-08  OTV4TEST r3 — THE RUNAWAY IS ASKED EVERY TICK OF ITS WINDOW,
       hands its plan the 1m frame (strength at acceptance, re-validation on
       actual), and no longer carries the r179 one-per-session cap: one per
@@ -1410,6 +1417,13 @@ def atm_iv_from_chain(chain):
         return None
 
 
+def _orb_engine_ready() -> bool:
+    try:
+        return get_orb_engine() is not None
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
 def run_analysis(state: BotState, chain=None) -> dict:
     """Fetch all market data and run analysis pipeline."""
     cache  = get_cache()
@@ -1454,6 +1468,8 @@ def run_analysis(state: BotState, chain=None) -> dict:
         "liq_map":   liq_map,
         "df_1m":     df_1m,
         "df_5m":     df_5m,
+        # OTV4TEST r5 — the level engine retires levels inside the opening range
+        "orb":       (get_orb_engine().data if _orb_engine_ready() else None),
     }
 
     # ── Level.1 (2026-08-18) — WHAT IS PRICE TRADING INTO? ──────────────────
@@ -3734,13 +3750,13 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     if signal is None:
         sc_sig = _safe_strategy("SweepCreditSpread",
                                 lambda: _sweep_cs_strategy.generate_signal(
-                                    liq_map       = ctx["liq_map"],
                                     price_now     = ctx["price"],
                                     now_et        = _now_et_hhmm,
                                     atr_pct       = _atr_pct,
                                     chain         = chain,
                                     orb_high      = ctx.get("orb_high"),
                                     orb_low       = ctx.get("orb_low"),
+                                    df_1m         = ctx.get("df_1m"),
                                 ), ctx)
         if sc_sig:
             # r163 — the strategy classes its own trigger now: a tine TOUCH is
@@ -4879,13 +4895,13 @@ def main_loop(state: BotState):
                     _sl_chain = ctx.get("chain")
                     _sl2 = _safe_strategy("SweepForLeg2",
                         lambda: _sweep_cs_strategy.generate_signal(
-                            liq_map=ctx["liq_map"],
                             price_now=ctx["price"],
                             now_et=now_et().strftime("%H:%M"),
                             atr_pct=float(getattr(ctx.get("vol"), "atr_pct", 0.0) or 0.0),
                             chain=_sl_chain,
                             orb_high=ctx.get("orb_high"),
                             orb_low=ctx.get("orb_low"),
+                            df_1m=ctx.get("df_1m"),
                             required_side=_auth_side), ctx)
                     if (_sl2 is not None
                             and _can_open_credit_spread(_sl2.option_side,

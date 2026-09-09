@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.3
+# BACKLOG.md — OTV4TEST — v0.4
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -31,7 +31,9 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 | **RUN.6** | ⬜ **PARTICIPATION IS NOT WIRED INTO THE STRENGTH READ.** §30.3 names three components; only pace and acceptance are measured at acceptance. The prints stream (aggressor side, r64) and `tape_at_level` exist but are not reachable from the strategy path; `runaway_plan.prepare(participation=...)` accepts the value and records None. Wire it as a dial, then re-read the band prior. | 🔲 OPEN |
 | **RUN.7** | ⬜ **WOULD-HAVE-FLOORED WATCH.** The runaway has no premium stop by ruling; `exit_engine` records `_would_have_floored` the first time the old 20% floor would have fired while the thesis held. After the first sessions: how many trades, and did the structure exits recover them or not? A percent under the structure is a question, not a bar, until this is read. | 🔲 OPEN |
 | **RUN.8** | ⬜ **THE FIZZLE PRIORS ARE UNMEASURED.** "Two events, or one event plus one dial", the 0.5× range-contraction line and the acc_recent < 0.5 read are declared priors; every read lands on the record (`_fizzle_read`). Score them against RAN (not 5% green) once fires exist; kill, keep, or codify. | 🔲 OPEN |
-| **SWP.0** | ⬜ **THE SWEEP CREDIT SPREAD IS NEXT.** Its trigger is the REJECTED fact (§30.1); its thesis is the level holds to the close; the condor forms from a second rejection on the other side. The afternoon-only gate is a clock standing in for the handoff (§30.5) and stays until the handoff has fired on real tape. | 🔲 OPEN |
+| **SWP.1** | ⬜ **REJECTION_FRESH_BARS = 3 IS A PRIOR.** "Decide quickly" needed a number; 3 bars is mine, config-overridable (`SWEEP_CS_REJECTION_FRESH_BARS`), recorded on every fire and every stale note. After the first sessions: did any fire beyond 1–2 bars, and did a 4th-bar rejection ever matter? | 🔲 OPEN |
+| **SWP.2** | ⬜ **RICHNESS IS A DIAL WITH NO BAR.** Credit/width is on every prepared row. Read it against the fires before anyone proposes a floor. | 🔲 OPEN |
+| **SWP.0** | ✅ (r5, PLAN_SPEC §31) **THE SWEEP CREDIT SPREAD IS NEXT.** Its trigger is the REJECTED fact (§30.1); its thesis is the level holds to the close; the condor forms from a second rejection on the other side. The afternoon-only gate is a clock standing in for the handoff (§30.5) and stays until the handoff has fired on real tape. | 🔲 OPEN |
 
 ### Repo hygiene found on the way
 
@@ -52,6 +54,13 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.4 — 2026-09-09 — OTV4TEST r5 — the sweep credit spread on the rejection fact; SWP.1–2 opened.**
+Tines are levels (keyed on the tine, the tine rule), no level inside the opening
+range, the sweep plan prepares both sides from 09:35 with the short anchored on
+the level, fires on a fresh REJECTED, exits hard close → 15% of risk → breach
+accepted → nickel; spent on acceptance only. SWP.0's spec is done; its window is
+09:35–14:00. Devtools unchanged.
 
 **v0.3 — 2026-09-08 — OTV4TEST r4 — devtools 2.0: the box menu catches up with control.**
 The otv1-era break-glass menu is replaced by a registry-rendered menu in

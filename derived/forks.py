@@ -1,5 +1,9 @@
 """
-derived/forks.py  v4.0
+derived/forks.py  v4.1
+v4.1  2026-09-08  OTV4TEST r5 — the engine KEEPS the last built fork per frame
+      (`last_forks[tf]`) and the frame's current bar index (`last_idx[tf]`) so
+      derived/levels can ask where a tine IS at the bar — the tines are moving
+      levels (time + slope) and the level engine must not recompute the fork.
 Owns `fork_series`. Tier 2 — regressive, and dies on restart today.
 
 v4.0  2026-08-22  See docs/DERIVED_STORES.md.
@@ -66,6 +70,8 @@ class ForkEngine(DerivedEngine):
     def __init__(self, store=None, symbol: str = ""):
         super().__init__(store)
         self.symbol = symbol
+        self.last_forks: dict = {}      # tf -> Pitchfork (v4.1)
+        self.last_idx: dict = {}        # tf -> current bar index in that frame
 
     def derive(self, ctx: dict) -> int:
         store = self._store
@@ -101,6 +107,8 @@ class ForkEngine(DerivedEngine):
                 fork = pf.build_fork_contained(sym, df, tf, atr)
             except Exception as exc:                            # noqa: BLE001
                 logger.debug("fork build raised for %s %s: %s", sym, tf, exc)
+            self.last_forks[tf] = fork
+            self.last_idx[tf] = len(df) - 1
             reason = None
             try:
                 reason = pf.last_reject_reason()

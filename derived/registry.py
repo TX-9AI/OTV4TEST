@@ -1,5 +1,7 @@
 """
-derived/registry.py  v4.0
+derived/registry.py  v4.1
+v4.1  2026-09-08  OTV4TEST r5 — the level engine is handed the fork engine so the
+      1h tines are levels in the store (moving, keyed on the tine).
 Builds the engine set for one box. The single place main.py touches.
 
 v4.0  2026-08-22  See docs/DERIVED_STORES.md.
@@ -49,10 +51,11 @@ def build_engines(symbol: str) -> List:
         logger.warning("derived registry: engine import failed: %s", exc)
         return []
 
-    levels = LevelEngine(store, symbol)
+    forks = ForkEngine(store, symbol)
+    levels = LevelEngine(store, symbol, forks=forks)      # r5: tines are levels
     return [
         IndicatorEngine(store, symbol),
-        ForkEngine(store, symbol),
+        forks,
         levels,
         SurfaceEngine(store, symbol),
         SnapshotEngine(store, symbol, levels=levels),

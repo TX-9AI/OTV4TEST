@@ -1,5 +1,17 @@
 """
-execution/exit_engine.py  v4.12
+execution/exit_engine.py  v4.13
+v4.13 2026-09-09  OTV4TEST r5 — THE SWEEP VERTICAL'S STRUCTURAL EXIT. Operator:
+      *"we exit quickly if the breach is accepted, otherwise hold to flatten
+      or if it runs hard, we take the nickel close."* In `_evaluate_condor_leg`
+      a SWEEP vertical (setup_type sweep_credit_spread) now exits on BREACH
+      ACCEPTED — ACCEPT_CLOSES (2) consecutive closed 1m bars beyond the pool
+      it sold against (`pool_price` on the record) — placed AFTER the
+      15%-of-risk lone stop (operator: two minutes into a dead thesis can
+      rack up serious losses; the floor answers first, the breach names the
+      reason) and before the nickel close (0.05, CONDOR_NICKEL_CLOSE), which
+      was already there. The level is marked SPENT on THIS exit only
+      (trade_logger v4.13), not on a stop-out: a 15% wobble leaves a held
+      level live. Hedged (condor) legs keep their stop suppression unchanged.
 v4.12 2026-09-08  OTV4TEST r3 — THE HANDOFF, THE THESIS, THE FIZZLE, THE BACKSTOP.
       Operator 2026-09-08. In `_evaluate_orb`, for BOTH families:
       · REJECTED HANDOFF (position 2, after the hard close, before any floor):
@@ -1347,6 +1359,26 @@ class ExitEngine:
             logger.warning("runaway thesis read failed: %s", exc)
         return ""
 
+    def _sweep_breach_accepted(self, record, df_1m) -> str:
+        """SWEEP verticals only. ACCEPT_CLOSES consecutive closed 1m bars beyond
+        the pool the spread was sold against -> the exit reason, else ""."""
+        try:
+            if str(record.get("setup_type") or "") != "sweep_credit_spread":
+                return ""
+            pool = float(record.get("pool_price") or 0.0)
+            if pool <= 0 or df_1m is None or len(df_1m) < 3:
+                return ""
+            from derived.levels import ACCEPT_CLOSES
+            side = str(record.get("option_side") or "")
+            closes = [float(x) for x in df_1m["close"].iloc[-(ACCEPT_CLOSES + 1):-1]]
+            beyond = [(c > pool) if side == "call" else (c < pool) for c in closes]
+            if len(beyond) >= ACCEPT_CLOSES and all(beyond):
+                return (f"sweep_breach_accepted: {ACCEPT_CLOSES} closes beyond the pool "
+                        f"{pool:.2f} ({', '.join(f'{c:.2f}' for c in closes)}) — the level is SPENT")
+        except Exception as exc:                                # noqa: BLE001
+            logger.debug("sweep breach read failed: %s", exc)
+        return ""
+
     def _velocity_stall(self, record: TradeRecord, pnl_pct: float,
                         df_1m) -> Optional[str]:
         """Is the underlying still delivering fast enough to beat decay?
@@ -2101,6 +2133,15 @@ class ExitEngine:
         # commit, because a guard outliving the thing it guarded is this repo's
         # most-repeated bug shape.
 
+        # v4.13 (OTV4TEST r5) — the sweep's thesis is the level HOLDS; two
+        # closes beyond it is the negation. AFTER the 15%-of-risk stop by the
+        # operator's ruling: "2 minutes into a dead thesis could rack up some
+        # serious losses" — the floor answers first, the breach names the reason.
+        _sb = self._sweep_breach_accepted(record, df_1m)
+        if _sb:
+            decision.should_exit = True
+            decision.exit_reason = _sb
+            return decision
         if current_premium <= CONDOR_NICKEL_CLOSE:
             decision.should_exit = True
             decision.exit_reason = f"nickel_close pnl={pnl_pct:.1%}"

@@ -1,5 +1,9 @@
 """
-data/derived_store.py  v4.2
+data/derived_store.py  v4.3
+v4.3  2026-09-08  OTV4TEST r5 — `live_levels(symbol)`: the un-retired support /
+      resistance levels with their current price (tines move; the ledger row
+      carries the price at the last upsert). The sweep plan reads its levels
+      in play from here, never from a strategy's private map.
 v4.2  2026-09-08  OTV4TEST r3 — `level_event`: THE REJECTION FACT HAS A HOME.
       One row per (level, closed 1m bar) event: WICKED (wick through, close
       inside), REJECTED (the doctrine's close-back-inside count reached:
@@ -219,6 +223,21 @@ class DerivedStore:
             "INSERT OR IGNORE INTO level_event (symbol, level_id, bar_ts, ts_epoch,"
             " event, price, kind, provenance, pierce_pct, depth, closes_back, bar_close)"
             " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", [row])
+
+    def live_levels(self, symbol: str):
+        """[{level_id, price, kind, provenance, timeframe, touches}] for every
+        un-retired support/resistance level of `symbol`."""
+        try:
+            with self._lock:
+                rows = self.conn.execute(
+                    "SELECT level_id, price, kind, provenance, timeframe, touch_count "
+                    "FROM level_ledger WHERE symbol=? AND retired_ts IS NULL "
+                    "AND kind IN ('support','resistance')", (symbol,)).fetchall()
+            keys = ("level_id", "price", "kind", "provenance", "timeframe", "touches")
+            return [dict(zip(keys, r)) for r in rows]
+        except Exception as exc:                                # noqa: BLE001
+            logger.warning("live_levels read failed: %s", exc)
+            return []
 
     def latest_rejection(self, symbol: str, since_ts: float = 0.0,
                          kind: Optional[str] = None):

@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_level_rejection.py  v1.0
+tests/check_level_rejection.py  v1.1
+v1.1  2026-09-08  OTV4TEST r5 — T1–T3: the 1h tines as moving levels keyed on the
+      tine, the tine rule (a bottom tine is never a ceiling), and TRAVERSED
+      retirement of any level inside the opening range.
 v1.0  2026-09-08  OTV4TEST r3 — THE REJECTION FACT, ON HYPOTHETICALS.
 
 Drives the REAL `LevelEngine.derive()` against an in-memory DerivedStore with
@@ -137,6 +140,49 @@ def main():
     # L9 rejection on a retired level is nothing
     ev, _ = tick([(709.20, 710.71, 709.00, 709.60), (709.60, 709.80, 709.40, 709.70)], "09:59")
     check("L9 a wick at a RETIRED level emits nothing", ev == [], str(ev))
+
+    # ── r5: tines as moving levels, the tine rule, the opening-range rule ──
+    class _Fork:
+        direction = "bullish"
+        def upper_at(self, i): return 712.0 + 0.1 * i
+        def median_at(self, i): return 706.0 + 0.1 * i
+        def lower_at(self, i): return 702.0 + 0.1 * i
+    class _FE:
+        last_forks = {"1h": _Fork()}
+        last_idx = {"1h": 10}
+    eng2 = LevelEngine(store, "TEST", forks=_FE())
+    def tick2(rows, start, price=705.0, orb=None):
+        ctx = {"symbol": "TEST", "price": price, "liq_map": _Liq(), "vol": None,
+               "df_1m": _df1(rows, start), "df_5m": _df5(price), "orb": orb}
+        eng2.derive(ctx)
+        return [(e["provenance"], e["event"], e["kind"]) for e in eng2.last_events
+                if e["provenance"].startswith("fork1h/")]
+    # upper tine at 713.0 (712 + 0.1*10): a shallow wick through it, close inside
+    ev = tick2([(712.5, 713.4, 712.3, 712.8), (712.8, 713.0, 712.6, 712.9)], "10:10")
+    check("T1 the 1h upper tine is a RESISTANCE level: shallow wick -> WICKED + REJECTED on the tine",
+          ("fork1h/upper", "WICKED", "resistance") in ev and ("fork1h/upper", "REJECTED", "resistance") in ev,
+          str(ev))
+    ids = [r[0] for r in store.conn.execute("SELECT level_id FROM level_event WHERE provenance='fork1h/upper'")]
+    check("T1b ...keyed on the tine, not the price", ids and all(i.endswith(":0.00") for i in ids), str(ids[:2]))
+    # lower tine at 703.0: a wick UP through it is not an event (the tine rule)
+    ev = tick2([(702.4, 703.6, 702.2, 702.7), (702.7, 702.9, 702.5, 702.8)], "10:12", price=702.7)
+    check("T2 tine rule: a wick UP through the LOWER tine emits nothing",
+          not any(p == "fork1h/lower" for p, _, _ in ev), str(ev))
+    ev = tick2([(703.4, 703.6, 702.4, 703.3), (703.3, 703.5, 703.1, 703.4)], "10:14", price=703.3)
+    check("T2b ...a wick DOWN through it is a support rejection",
+          ("fork1h/lower", "REJECTED", "support") in ev, str(ev))
+    # opening range: a level inside 704.5-706.5 is retired TRAVERSED
+    class _Orb: orb_low, orb_high = 704.5, 706.5
+    class _Liq2(_Liq): prev_day_high = 705.5
+    ctx = {"symbol": "TEST", "price": 705.0, "liq_map": _Liq2(), "vol": None,
+           "df_1m": _df1([(705.0, 705.2, 704.8, 705.1), (705.1, 705.3, 704.9, 705.2)], "10:16"),
+           "df_5m": _df5(705.0), "orb": _Orb()}
+    eng3 = LevelEngine(store, "TEST")
+    eng3.derive(ctx)
+    r = store.conn.execute("SELECT retired_reason FROM level_ledger WHERE price=705.5 AND provenance='prev_day'").fetchone()
+    check("T3 a level inside the opening range is retired TRAVERSED", r and r[0] == "TRAVERSED", str(r))
+    ev3 = [e for e in eng3.last_events if e["price"] == 705.5]
+    check("T3b ...and emits no events", ev3 == [], str(ev3))
 
     print()
     if FAILED:

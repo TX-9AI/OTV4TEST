@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tests/check_sweep_spread.py  v1.1
+tests/check_sweep_spread.py  v1.2
+v1.2  2026-09-09  OTV4TEST r5 — S7h reads strategy/sweep_plan.py; selection moved to the plan.
 v1.1  2026-09-03  r233 — S7c RE-DERIVED, NOT PATCHED. It asserted
       PARITY with the pre-r107 rule on every case that rule could answer,
       which was right while r107 only claimed to WIDEN the strategy. r233
@@ -155,9 +156,9 @@ check("S7f a truncated chain DECLINES rather than selling a wild strike",
 check("S7g no chain falls back to the grid, same answer",
       _S(7638.17, 7639.01, False, increment=5) == 7635.0)
 
-_ssrc = open(os.path.join(ROOT, "strategy/sweep_credit_spread.py")).read()
-check("S7h the strategy selects via the CHAIN, not the config constant",
-      "strike_beyond_sweep(" in _ssrc and "contracts=_side_contracts" in _ssrc)
+_ssrc = open(os.path.join(ROOT, "strategy/sweep_plan.py")).read()      # OTV4TEST r5: the plan selects
+check("S7h the PLAN selects via the CHAIN, not the config constant",
+      "strike_beyond_sweep(" in _ssrc and "contracts=contracts" in _ssrc)
 
 # ── S8 (r123) — THE CREDIT WINDOW AGREES WITH EVERY OTHER CREDIT SPREAD ─────
 # Operator, 2026-08-25: "All credit spreads must be ungated at 1131 & clearly

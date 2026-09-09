@@ -69,6 +69,8 @@ book, so **BOS is not used.**
 
 ## 2. Sweep Credit Spread — `sweep_credit_spread.py`
 
+**OTV4TEST r5 — re-specced with the operator; PLAN_SPEC §31 is the spec.** The text below is the pre-fork record, kept for its measurements (the pierce-depth finding stands and is a bar). Where they disagree §31 wins: the trigger is the derived REJECTED fact, levels come from the store (3 up, 3 down, the 1h tines), the short anchors on the level, the window is 09:35–14:00, the age rule is retired, and the exits are hard close → 15% of risk → breach accepted → nickel.
+
 > **r163 (2026-08-27) — THE FORK'S TINES ARE LEVELS THIS STRATEGY MAY USE, ON A
 > TOUCH.** Operator: *"it's basically a moving level that sweep is allowed to
 > use, but with a touch, not a reject. The plan would still need to select a

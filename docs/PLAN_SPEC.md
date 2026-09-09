@@ -1252,3 +1252,32 @@ Written to `level_event` (never purged), read by `DerivedStore.latest_rejection(
 The momentum exit and the sweep entry are the same event seen from two sides. The loop runs exits before the entry attempt within one tick, so in paper the handoff is same-tick; live it is bounded by the close fill. The sweep's afternoon-only gate is a clock standing in for this handoff; it stays until the handoff has fired on real tape.
 
 **As built (OTV4TEST r3):** `derived/levels.py` v4.1 (the emitter), `data/derived_store.py` v4.2 (`level_event`, `latest_rejection`), `strategy/runaway_plan.py` v1.0, `strategy/runaway_continuation.py` v5.0, `execution/exit_engine.py` v4.12, `analysis/orb_engine.py` v4.13, `database/trade_logger.py` v4.12, `main.py` v4.41. Hypotheticals: `tests/check_level_rejection.py`, `tests/check_runaway_plan.py`.
+
+## 31. OTV4TEST r5 — THE SWEEP CREDIT SPREAD SPEC AND ITS PLAN CONTRACT (agreed with the operator 2026-09-08/09)
+
+Thesis, his words: **the level holds to the close.** A previously held extreme is swept and rejected; sell a credit vertical against it, near the money, while it is rich. *"It is always a CREDIT."* *"It has to decide quickly … wait too long and it was for nothing."*
+
+### 31.1 Levels in play — from the store, never a private map
+- **3 named up, 3 named down** (as many as exist near ATH) — PDH/PDL, session extremes, the map's named pools — plus **the 1h pitchfork's tines**.
+- **Tines are moving levels** (time + slope). derived/levels v4.2 keys them on the tine (`fork1h/upper|median|lower`), reads the price at the bar from the fork the ForkEngine built, and accrues WICKED / REJECTED / ACCEPTED on the tine. **The tine rule:** a top tine can never be a floor, a bottom tine never a ceiling — upper is resistance only, lower support only, median by which side price is on.
+- **No level inside the 5-minute opening range.** Once the 09:30 bar prints, everything between `orb_low` and `orb_high` is retired `TRAVERSED` — price has been through it.
+- **Age does not matter.** A previously held extreme is enough.
+- **Spent** = the level's breach ACCEPTED (two closes beyond); a 15% stop-out on a wobble leaves it live.
+
+### 31.2 The bars, as values
+window **09:35–14:00** (opened from 13:00 to test the handoff sync; competes with ORB/runaway before 11:30 and TCS after, except as a condor's complement) · a **fresh `REJECTED`** on a level in play (within `REJECTION_FRESH_BARS` = 3 of its bar — a declared prior, recorded; a stale rejection is not a trigger, it is a note) · pierce depth inside the band (≥ 0.02%, ≤ 0.25% strict / 0.75% relaxed — a deep pierce is a weak level) · price on the profitable side · not spent · geometry · **ATR ≤ 0.20% (FEASIBLE) and the wing clears the R floor (ECONOMICAL)**.
+
+### 31.3 What the plan provides — both sides, every tick from 09:35
+For every level in play, the structure it *would* sell: **short strike = the first listed strike at/beyond THE LEVEL** (the held extreme — not the wick's extreme, which protected the trades least worth taking), wing via `search_wing` against `R_FLOOR` on bid/ask, credit, width, R, R-on-stop, stop premium, and **richness = credit ÷ width** recorded as a dial. The row: *"nearest above: PDH 712.40 — would sell 713/718C for 0.85 (R 1.10, 17% of width) — waiting on: REJECTED."* The fire is the fact printing — on a shallow pierce, the wicking bar's own close; on a deep one, the next. Nothing is computed at the fire. Size = the env default for verticals.
+
+### 31.4 Exits, in order (exit_engine v4.13)
+1. 15:45 hard close
+2. **15% of risk** — the false-start floor. *"2 minutes into a dead thesis could rack up some serious losses."*
+3. **breach accepted** — two closed 1m bars beyond the pool. The level is SPENT here and only here.
+4. **nickel close** — 0.05 per lot, literal.
+No trail, no other target: the vertical is earning from decay.
+
+### 31.5 The handoff and the condor
+The runaway (§30) and the ORB (§29) exit on the same `REJECTED` the sweep fires on; the loop runs exits before the entry attempt, so in paper the handoff is one tick. `required_side` and `_can_open_credit_spread` are untouched: the sweep may still form a condor's complementary side. The condor's own spec comes last.
+
+**As built (OTV4TEST r5):** `strategy/sweep_plan.py` v1.0, `strategy/sweep_credit_spread.py` v6.0, `derived/levels.py` v4.2, `derived/forks.py` v4.1, `derived/registry.py` v4.1, `data/derived_store.py` v4.3, `execution/exit_engine.py` v4.13, `database/trade_logger.py` v4.13, `main.py` v4.42. Hypotheticals: `check_plan_prepares` S1–S9, T4–T7; `check_level_rejection` T1–T3; `check_sweep_plan` E1–E5, X1.

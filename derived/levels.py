@@ -1,6 +1,23 @@
 """
-derived/levels.py  v4.1
+derived/levels.py  v4.2
 Owns `level_ledger` and `level_event`. Tier 3 — stateful; the object has a biography.
+v4.2  2026-09-08  OTV4TEST r5 — THREE RULINGS FROM THE SWEEP UNTANGLE.
+      · THE 1H PITCHFORK'S TINES ARE LEVELS. Moving ones (time + slope), so
+        they are keyed on the TINE, not the price: `fork1h/upper`,
+        `fork1h/median`, `fork1h/lower` (the `_level_id` price part is fixed at
+        0.00 for them), and the price is read at the bar from the fork the
+        ForkEngine built (`forks.last_forks["1h"]`). WICKED / REJECTED /
+        ACCEPTED accrue on the tine.
+      · THE TINE RULE: a top tine can never be a floor, a bottom tine never a
+        ceiling. Upper -> resistance only; lower -> support only; median ->
+        whichever side price is on at the bar. A wick UP through the lower
+        tine is not an event.
+      · NO LEVEL INSIDE THE OPENING RANGE. Once the 09:30 five-minute bar has
+        printed (ctx["orb"] carries orb_high/orb_low), every level with
+        orb_low <= price <= orb_high is retired TRAVERSED — price has been
+        through it — and leaves every consumer at once. Tines are exempt
+        (they move; the rule is evaluated per bar for them instead: a tine
+        inside the range at the bar emits nothing).
 v4.1  2026-09-08  OTV4TEST r3 — THE REJECTION FACT, EMITTED ONCE, HERE. Before
       this the only thing in the tree that could see a wick through a pool was
       the sweep strategy's private rule; this engine read the 5m CLOSE and never
@@ -109,9 +126,10 @@ class LevelEngine(DerivedEngine):
     table = "level_ledger"
     min_interval_s = 0.0
 
-    def __init__(self, store=None, symbol: str = ""):
+    def __init__(self, store=None, symbol: str = "", forks=None):
         super().__init__(store)
         self.symbol = symbol
+        self._forks = forks              # v4.2: the ForkEngine, for tine prices
         self._live: dict = {}
         self._pierce: dict = {}          # level_id -> {"depth", "pierce_pct", "closes_back", "bar_ts"}
         self._last_bar_ts: str = ""
@@ -153,7 +171,40 @@ class LevelEngine(DerivedEngine):
             p = _f(getattr(vol, "vwap", None))
             if p and p > 0:
                 out.append(("vwap", p, "dynamic", "session", 1))
+        # v4.2 — the 1h fork's tines, priced at the frame's current bar
+        for prov, p, kind in self._tines(ctx):
+            out.append((prov, p, kind, "1h", 1))
         return out
+
+    def _tines(self, ctx: dict):
+        """(provenance, price_now, kind) for the 1h fork's three tines, kind by
+        the tine rule; empty when no fork is built."""
+        fe = self._forks
+        fork = getattr(fe, "last_forks", {}).get("1h") if fe is not None else None
+        if fork is None:
+            return []
+        idx = float(getattr(fe, "last_idx", {}).get("1h", 0) or 0)
+        price = _f(ctx.get("price")) or 0.0
+        out = []
+        try:
+            up, md, lo = float(fork.upper_at(idx)), float(fork.median_at(idx)), float(fork.lower_at(idx))
+        except Exception:                                       # noqa: BLE001
+            return []
+        if up > 0:
+            out.append(("fork1h/upper", up, "resistance"))
+        if lo > 0:
+            out.append(("fork1h/lower", lo, "support"))
+        if md > 0 and price > 0:
+            out.append(("fork1h/median", md, "resistance" if price < md else "support"))
+        return out
+
+    @staticmethod
+    def _is_tine(prov: str) -> bool:
+        return str(prov).startswith("fork1h/")
+
+    def _lid(self, sym: str, prov: str, price: float) -> str:
+        # a tine's identity is the tine; its price moves every bar
+        return _level_id(sym, prov, 0.0 if self._is_tine(prov) else price)
 
     def derive(self, ctx: dict) -> int:
         store = self._store
@@ -179,8 +230,12 @@ class LevelEngine(DerivedEngine):
         now = time.time()
         written = 0
         self.last_events = []
+        orb = ctx.get("orb")
+        rng_lo = _f(getattr(orb, "orb_low", None)) if orb is not None else None
+        rng_hi = _f(getattr(orb, "orb_high", None)) if orb is not None else None
+        in_range = (lambda p: bool(rng_lo and rng_hi and rng_lo <= p <= rng_hi))
         for prov, lvl_price, kind, tf, live in self._sources(ctx):
-            lid = _level_id(sym, prov, lvl_price)
+            lid = self._lid(sym, prov, lvl_price)
             st = self._live.get(lid)
             if st is None:
                 st = {"created": now, "touches": 0, "beyond": 0,
@@ -188,6 +243,18 @@ class LevelEngine(DerivedEngine):
                 self._live[lid] = st
             if st["retired"]:
                 continue                       # finished — operator's ruling
+            # v4.2 — NO LEVEL INSIDE THE OPENING RANGE (tines exempt: they move)
+            if kind in ("support", "resistance") and not self._is_tine(prov) and in_range(lvl_price):
+                st["retired"] = now
+                st["reason"] = "TRAVERSED"
+                self._pierce.pop(lid, None)
+                logger.info("[level] %s %s %.2f (%s) retired TRAVERSED — inside the "
+                            "opening range %.2f-%.2f", sym, kind, lvl_price, prov, rng_lo, rng_hi)
+                store.upsert_level((lid, sym, lvl_price, kind, prov, tf,
+                                    st["created"], st["touches"], st["last_touch"],
+                                    st["beyond"], st["retired"], st["reason"], int(live)))
+                written += 1
+                continue
 
             tol = lvl_price * TOUCH_TOL_PCT
             if kind == "resistance":
@@ -251,27 +318,39 @@ class LevelEngine(DerivedEngine):
         for prov, lvl, kind, tf, live in self._sources(ctx):
             if kind not in ("support", "resistance"):
                 continue                             # VWAP is crossed, not swept
-            lid = _level_id(sym, prov, lvl)
+            lid = self._lid(sym, prov, lvl)
             st = self._live.get(lid)
             if st is None or st["retired"]:
                 continue
+            if self._is_tine(prov):
+                orb = ctx.get("orb")
+                lo_, hi_ = (_f(getattr(orb, "orb_low", None)), _f(getattr(orb, "orb_high", None))) if orb is not None else (None, None)
+                if lo_ and hi_ and lo_ <= lvl <= hi_:
+                    continue                   # a tine inside the range, this bar
             tol = lvl * TOUCH_TOL_PCT
             # the CLOSE keeps the touch tolerance (inside it is noise, as
             # derive() counts touches); the WICK does not — a wick through
             # the level is a wick through the level, and the depth bands
             # (0.25% / 0.75%) are what grade it, not the 0.15% close noise.
+            # "inside" means the close is on the HELD side of the level — not
+            # merely within the touch tolerance on the far side, which is a
+            # bar trading beyond it (v4.2, found by T2: a bar wholly below a
+            # support is not a rejection of it).
             if kind == "resistance":
                 close_beyond = close > lvl + tol
+                close_held = close <= lvl
                 wick_beyond = hi > lvl
                 pierce = (hi - lvl) / lvl if wick_beyond else 0.0
             else:
                 close_beyond = close < lvl - tol
+                close_held = close >= lvl
                 wick_beyond = lo < lvl
                 pierce = (lvl - lo) / lvl if wick_beyond else 0.0
-            if close_beyond:
+            if close_beyond or not close_held:
                 # a rejection cannot survive a close through the level;
                 # acceptance itself is counted by derive() on the 5m close.
-                self._pierce.pop(lid, None)
+                if close_beyond:
+                    self._pierce.pop(lid, None)
                 continue
             ps = self._pierce.get(lid)
             if wick_beyond:

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tests/check_sweep_liveness.py  v1.1
+tests/check_sweep_liveness.py  v1.2
+v1.2  2026-09-09  OTV4TEST r5 — L2–L5 read the plan's PLAN_CHECKS; CONDITIONS is gone.
 v1.1  2026-09-04  r241 — RE-DERIVED. Every check pinned a CEILING —
       that MAX_AGE_BARS existed, resolved to 48, was FOUNDATIONAL and admitted
       33-48 bar sweeps. r241 removes the gate outright per the operator's
@@ -73,9 +74,9 @@ def main():
     # 🔴 MEASURED FLEET-WIDE 08-31..09-04: age failed 46,791 of 61,641 (76%),
     # and on 333 ticks — 26% of every tick that was ONE gate short — it was the
     # ONLY thing refusing. Complete setups, declined for being old.
-    check("L2 'age' is not a declared condition",
-          "age" not in scs.SweepCreditSpreadStrategy.CONDITIONS,
-          str(sorted(scs.SweepCreditSpreadStrategy.CONDITIONS)))
+    _checks = scs.SweepCreditSpreadStrategy().PLAN_CHECKS          # OTV4TEST r5: the plan's
+    check("L2 'age' is not a declared check on the plan",
+          not any(c in ("age", "sweep_age", "bars_ago") for c in _checks), str(_checks))
     conds = [n for n in ast.walk(tree)
              if isinstance(n, ast.Call)
              and getattr(n.func, "attr", "") == "cond"
@@ -88,21 +89,21 @@ def main():
     # ⚠️ r241 removes the GATE, not the MEASUREMENT. `sig.sweep_age_bars` still
     # carries it onto the trade row: knowing how old a level was is useful for
     # fitting, DECIDING with it is what was ruled out.
-    check("L3 the age is still recorded on the signal",
-          "sig.sweep_age_bars = prep.age" in src)
+    check("L3 the age field is still on the signal (now always 0 — the trigger IS the fresh rejection)",
+          "sig.sweep_age_bars = 0" in src)
 
     # ── L4 — THE UNMEASURABLE CASE REFUSES ON ITS OWN TERMS ──────────────
     # 🔴 A 999 sentinel means `bars_ago` could not be read AT ALL. That is a
     # DATA fault, not a staleness judgement, and admitting it silently would be
     # the absent-is-not-zero failure this repo keeps paying for.
-    check("L4 the 999 sentinel still refuses, by its own name",
-          "sweep_unmeasurable" in src and "_AGE_UNMEASURABLE = 999" in src)
+    check("L4 (r5) the plan declares rejection freshness as a check, by name",
+          "rejection_age_bars" in _checks)
 
     # ── L5 — LIVENESS IS `invalidated`, WHICH SWP.5 ALWAYS SAID ──────────
     # It fails 73% fleet-wide, which is price accepting through a level — a
     # market fact, not a defect, and the gate doing exactly its job.
-    check("L5 'invalidated' remains a declared condition",
-          "invalidated" in scs.SweepCreditSpreadStrategy.CONDITIONS)
+    check("L5 (r5) the trigger is the REJECTED fact — declared as a check",
+          "rejected" in _checks)
 
     print()
     if FAILED:

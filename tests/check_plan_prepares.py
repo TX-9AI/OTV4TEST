@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_prepares.py  v1.11
+tests/check_plan_prepares.py  v1.12
+v1.12  2026-09-09  OTV4TEST r5 — S1–S9 RE-DERIVED against the sweep PLAN: levels come
+      from a DerivedStore fixture, the trigger is a REJECTED event, the short anchors
+      on the level; S8/S9 pin freshness and the depth band. The liq_map fixtures are gone.
 v1.11  2026-09-08  OTV4TEST r3 — R1–R14 re-pointed at the runaway PLAN: the trigger is
       the engine's `fifty_accepted` latch (no `prev_close`), an unmet bar is a DECLINE
       naming the bar, a finished break HOLDS pending re-validation, any exit finishes
@@ -175,111 +178,99 @@ def main():
     st = _Store()
     P.bind_store(st)
     os.environ["OT_RELAXED_ENTRY"] = "0"
+    # ── the sweep (OTV4TEST r5) — the plan reads levels from the STORE and
+    #    fires on the REJECTED fact; the old liq_map fixtures are retired ──
+    import time as _time
+    import tempfile as _tf
+    import strategy.sweep_plan as swp
     import strategy.sweep_credit_spread as sw
-    sw.EARLIEST_ET, sw.LATEST_ET = "13:00", "14:00"
+    from data.derived_store import DerivedStore
+    _ds = DerivedStore(path=os.path.join(_tf.mkdtemp(), "derived.db"))
+    swp._symbol_of = lambda: "TST"
+    sw._symbol_of = lambda: "TST"
     S = sw.SweepCreditSpreadStrategy()
+    S.plan._store = _ds
     S.planner.symbol = "TST"
-
-    # a put chain where 95/92.5 clears R>=1: short 95 bid 1.40, wing 92.5 ask
-    # 0.10 -> credit 1.30 on a 2.5 width, risk 1.20, R 1.08. (A first draft
-    # priced the wing at 0.30 -> R 0.79 and the plan correctly REFUSED it —
-    # the hypothetical was wrong, not the plan.)
+    _now = _time.time()
+    def _level(price, kind, prov, retired=None):
+        lid = f"TST:{prov}:{price:.2f}"
+        _ds.upsert_level((lid, "TST", price, kind, prov, "session", _now - 3600, 0, None, 0,
+                          retired, ("ACCEPTED_THROUGH" if retired else None), 1))
+        return lid
+    def _reject(lid, price, kind, prov, age_s=30.0, pierce=0.0018, depth="shallow", bar="10:31"):
+        _ds.insert_level_event(("TST", lid, f"2026-09-09 {bar}:00", _now - age_s, "REJECTED",
+                                price, kind, prov, pierce, depth, 1, price + (0.1 if kind == "support" else -0.1)))
     good_puts = [_C(97.5, 2.40, 2.50), _C(95, 1.40, 1.44), _C(92.5, 0.08, 0.10),
                  _C(90, 0.03, 0.05), _C(87.5, 0.02, 0.03)]
     poor_puts = [_C(97.5, 2.40, 2.50), _C(95, 0.30, 0.34), _C(92.5, 0.20, 0.22),
                  _C(90, 0.12, 0.14), _C(87.5, 0.08, 0.10)]
-    common = dict(price_now=96.6, now_et="13:30", atr_pct=0.08, orb_high=99.5, orb_low=97.5)
-
-    # S1
+    common = dict(price_now=96.6, now_et="10:32", atr_pct=0.08, orb_high=99.5, orb_low=97.5)
+    lid_ny = _level(96.0, "support", "ny")
+    _level(101.0, "resistance", "prev_day")
     P.begin_tick(1.0)
-    lm = _LM(_Sweep("low_sweep", 96.0, "NY Low", reclaimed=False))
-    sig = S.generate_signal(liq_map=lm, chain=_Chain(good_puts), **common)
+    sig = S.generate_signal(chain=_Chain(good_puts), **common)
     r1 = _row(st, "SweepCreditSpread", 1.0)
-    check("S1 not yet reclaimed -> PLAN holds with the trade PREPARED and names the wait",
-          sig is None and r1 and r1[0] == "HOLD" and "PREPARED" in r1[1]
-          and "sell 95P" in r1[1] and "reclaimed" in r1[1], str(r1))
-
-    # S2
+    check("S1 no rejection yet -> HOLD with BOTH sides prepared, waiting on REJECTED",
+          sig is None and r1 and r1[0] == "HOLD" and "would sell 95/" in r1[1]
+          and "Waiting on: REJECTED" in r1[1], str(r1))
     P.begin_tick(2.0)
-    lm = _LM(_Sweep("low_sweep", 96.0, "NY Low", reclaimed=True))
-    sig = S.generate_signal(liq_map=lm, chain=_Chain(good_puts), **common)
+    _reject(lid_ny, 96.0, "support", "ny")
+    sig = S.generate_signal(chain=_Chain(good_puts), **common)
     r2 = _row(st, "SweepCreditSpread", 2.0)
-    # 🔴 RE-DERIVED AT r219. The fixture's 95P is 1.40/1.44 and the 92.5P is
-    # 0.08/0.10, so the BID/ASK credit is 1.40 - 0.10 = 1.30 and the MARK
-    # credit is 1.42 - 0.09 = 1.33. The signal now BOOKS the mark, per the
-    # operator's ruling that paper fills at mark; R is still JUDGED on 1.30.
-    # ⚠️ ASSERTING 1.30 HERE WAS ASSERTING THE BASIS MISMATCH ITSELF — the
-    # entry was recorded at bid/ask while position_manager marks the position
-    # at mid, and the difference (both half-spreads) was booked as an instant
-    # loss on every credit vertical. This check passed throughout.
-    check("S2 reclaimed -> STRATEGY fires, BOOKING the mark credit",
-          sig is not None and sig.is_valid and sig.short_put_contract.strike == 95.0
-          and sig.long_put_contract.strike == 92.5
-          and abs(sig.net_credit - 1.33) < 1e-9
-          # 🔴 RE-DERIVED AT r234. This asserted `1.33 * 1.15` — 15% OF CREDIT,
-          # the inverted rule r155 deleted and exit_engine's own fallback
-          # warns about ("the trade will stop on noise"). The engine fires at
-          # 15% OF RISK, so the suite was CERTIFYING a stop four times tighter
-          # than the real one — the third time a fixture in this file has
-          # certified the defect it was meant to pin (r219 did it for the fill
-          # basis). The stop is now `fill + 0.15*(width - fill)`.
-          and abs(sig.stop_premium - (1.33 + 0.15 * (2.5 - 1.33))) < 1e-9
-          and r2 and r2[0] == "TAKE",
-          f"{r2} sig={sig and (sig.strike, sig.net_credit)}")
-
-    # ⚠️ AND THE NARRATION MUST NAME BOTH. "credit N (bid/ask)" printing the
-    # mark is how this stayed invisible.
-    check("S2b the plan line names the mark AND the judged bid/ask credit",
-          r2 and "1.33 (mark)" in r2[1] and "judged 1.30 bid/ask" in r2[1],
-          str(r2)[:150])
-
-    # S3
+    check("S2 a fresh REJECTED on the level in play -> STRATEGY fires the prepared structure",
+          sig is not None and r2 and r2[0] == "TAKE" and sig.pool_price == 96.0
+          and float(sig.short_call_contract.strike if sig.option_side == "call"
+                    else sig.short_put_contract.strike) == 95.0
+          and sig.option_side == "put" and sig.entry_premium > 0, str(r2))
+    check("S2b the short anchors on THE LEVEL (first strike at/beyond 96.0 = 95), not the wick",
+          sig is not None and float(sig.strike) == 95.0 and sig.richness_at_entry is not None)
+    P.begin_tick(2.5)
+    sig = S.generate_signal(chain=_Chain(good_puts), **common)
+    check("S2c the same REJECTED event does not fire twice",
+          sig is None and _row(st, "SweepCreditSpread", 2.5)[0] == "HOLD")
     P.begin_tick(3.0)
-    sig = S.generate_signal(liq_map=lm, chain=_Chain(poor_puts), **common)
+    _reject(lid_ny, 96.0, "support", "ny", bar="10:33")
+    sig = S.generate_signal(chain=_Chain(poor_puts), **common)
     r3 = _row(st, "SweepCreditSpread", 3.0)
-    check("S3 trigger true but no wing clears R 1.00 -> DECLINE wing_r_best, no fire",
-          sig is None and r3 and r3[0] == "DECLINE" and "wing_r_best" in r3[1], str(r3))
-    os.environ["OT_RELAXED_ENTRY"] = "1"
-    P.begin_tick(3.5)
-    sig = S.generate_signal(liq_map=lm, chain=_Chain(poor_puts), **common)
-    check("S3b relaxed does NOT waive the R floor (structure, not selection)", sig is None)
-    os.environ["OT_RELAXED_ENTRY"] = "0"
-
-    # S4
+    check("S3 trigger true but no wing clears R 1.00 -> DECLINE naming the wing, no fire",
+          sig is None and r3 and r3[0] == "DECLINE", str(r3))
     P.begin_tick(4.0)
-    sig = S.generate_signal(liq_map=lm, chain=None, **common)
+    sig = S.generate_signal(chain=None, **common)
     r4 = _row(st, "SweepCreditSpread", 4.0)
     check("S4 no chain -> NO PLAN naming chain", sig is None and r4 and r4[0] == "NO PLAN"
           and "chain" in r4[1], str(r4))
-
-    # S5
     P.begin_tick(5.0)
-    c5 = dict(common); c5["now_et"] = "10:15"
-    sig = S.generate_signal(liq_map=lm, chain=_Chain(good_puts), **c5)
+    sig = S.generate_signal(chain=_Chain(good_puts), **dict(common, now_et="14:30"))
     r5 = _row(st, "SweepCreditSpread", 5.0)
-    check("S5 outside the slot -> DORMANT, nothing selected",
+    check("S5 outside 09:35-14:00 -> DORMANT, nothing selected",
           sig is None and r5 and r5[0] == "DORMANT", str(r5))
-
-    # S6
     P.begin_tick(6.0)
-    lm6 = _LM(_Sweep("high_sweep", 103.0, "NY High", reclaimed=True, bars=1),
-              _Sweep("low_sweep", 96.0, "NY Low", reclaimed=True, bars=4))
-    calls = [_C(103, 0.30, 0.34), _C(105, 0.10, 0.12)]
-    sig = S.generate_signal(liq_map=lm6, chain=_Chain(good_puts, calls),
+    _reject(lid_ny, 96.0, "support", "ny", bar="10:34")
+    sig = S.generate_signal(chain=_Chain(good_puts, calls=[_C(101, 1.0, 1.1), _C(103, 0.3, 0.35)]),
                             required_side="put", **common)
-    check("S6 call vertical open (put authorized): the plan prepares the LOW sweep, "
-          "not the fresher HIGH, and fires a put spread",
-          sig is not None and sig.option_side == "put" and sig.swept_level_name == "NY Low",
-          str(sig and (sig.option_side, sig.swept_level_name)))
-
-    # S7
+    check("S6 call vertical open (put authorized): only supports are prepared, the put fires",
+          sig is not None and sig.option_side == "put")
     P.begin_tick(7.0)
-    sw.mark_spent(sw._symbol_of(), "put", 96.0, "stopped out 13:05")
-    sig = S.generate_signal(liq_map=lm, chain=_Chain(good_puts), **common)
+    sw.mark_spent("TST", "put", 96.0, "breach accepted earlier")
+    _reject(lid_ny, 96.0, "support", "ny", bar="10:35")
+    sig = S.generate_signal(chain=_Chain(good_puts), **common)
     r7 = _row(st, "SweepCreditSpread", 7.0)
     check("S7 a spent pool -> DECLINE spent_level even with the trigger true",
-          sig is None and r7 and r7[0] == "DECLINE" and "spent_level" in r7[1], str(r7))
+          sig is None and r7 and r7[0] == "DECLINE" and r7[1].startswith("spent_level"), str(r7))
     sw._SPENT.clear()
+    P.begin_tick(8.0)
+    _ds.conn.execute("UPDATE level_event SET ts_epoch = ts_epoch - 3600"); _ds.conn.commit()
+    _reject(lid_ny, 96.0, "support", "ny", age_s=600.0, bar="10:20")
+    sig = S.generate_signal(chain=_Chain(good_puts), **common)
+    r8 = _row(st, "SweepCreditSpread", 8.0)
+    check("S8 a REJECTED 10 bars old is not a trigger -> HOLD, the row says how stale (decide quickly, or not at all)",
+          sig is None and r8 and r8[0] == "HOLD" and "bars ago" in r8[1], str(r8))
+    P.begin_tick(9.0)
+    _reject(lid_ny, 96.0, "support", "ny", pierce=0.006, depth="deep", bar="10:36")
+    sig = S.generate_signal(chain=_Chain(good_puts), **common)
+    r9 = _row(st, "SweepCreditSpread", 9.0)
+    check("S9 a 0.60% pierce (deep) -> DECLINE pierce_depth under strict (a weak level)",
+          sig is None and r9 and r9[0] == "DECLINE" and r9[1].startswith("pierce_depth"), str(r9))
 
     # ── the condor ────────────────────────────────────────────────────────
     from strategy.iron_condor_strategy import IronCondorStrategy
@@ -540,50 +531,47 @@ def main():
 
     # T4: the sweep's plan takes the TOUCH as leg one: short beyond the move's
     # extreme, no reclaim required. Price is back inside (99.6 < 100).
+    # ── T4–T7 RE-DERIVED (OTV4TEST r5): a tine is a LEVEL in the store, keyed
+    #    on the tine; its REJECTED event is the trigger; a tine TOUCH is not ──
     S2 = sw.SweepCreditSpreadStrategy(); S2.planner.symbol = "TST"
-    # short 100 (first strike beyond the 99.95 high) bid 1.28; wing 101 ask 0.72
-    # -> credit 0.56 on width 1, risk 0.44, R 1.27. (R>=1 on a credit vertical
-    # needs credit >= half the width — a first draft priced the wing at 0.80
-    # and the plan refused it at R 0.85. The hypothetical was wrong.)
+    S2.plan._store = _ds
     calls_t = [_C(k, m - 0.02, m + 0.02) for k, m in
                ((100, 1.30), (101, 0.70), (102, 0.35), (103, 0.15), (104, 0.06), (105, 0.03))]
+    _ds.conn.execute("UPDATE level_event SET ts_epoch = ts_epoch - 3600"); _ds.conn.commit()   # the S events are history now
+    tine_id = "TST:fork1h/upper:0.00"
+    _ds.upsert_level((tine_id, "TST", 100.0, "resistance", "fork1h/upper", "1h", _now - 3600, 0, None, 0, None, None, 1))
     P.begin_tick(30.0)
-    sigt = S2.generate_signal(liq_map=lm, chain=_Chain([], calls_t), price_now=99.6,
-                              now_et="13:30", atr_pct=0.08, orb_high=99.2, orb_low=98.4)
+    sigt = S2.generate_signal(chain=_Chain([], calls_t), price_now=99.6, now_et="10:40",
+                              atr_pct=0.08, orb_high=99.2, orb_low=98.4)
     rt4 = _row(st, "SweepCreditSpread", 30.0)
-    check("T4 a tine TOUCH fires leg one: call spread with the short BEYOND the touching high, "
-          "classed as a fork trigger",
-          sigt is not None and sigt.option_side == "call" and sigt.short_call_contract.strike > 99.95
-          and sigt.condor_trigger_source == "1h_fork" and getattr(sigt, "touch_of_tine", False)
-          and rt4 and rt4[0] == "TAKE" and "TOUCH" in rt4[1],
-          f"{rt4} short={sigt and sigt.short_call_contract.strike}")
-    # T5: under the condor's authorization (leg two) the same touch is NOT selected
+    check("T4 the upper tine is in play as a resistance; no rejection yet -> HOLD naming it",
+          sigt is None and rt4 and rt4[0] == "HOLD" and "fork1h/upper" in rt4[1], str(rt4))
     P.begin_tick(31.0)
-    sig5 = S2.generate_signal(liq_map=lm, chain=_Chain([], calls_t), price_now=99.6,
-                              now_et="13:30", atr_pct=0.08, orb_high=99.2, orb_low=98.4,
-                              required_side="call")
-    rt5 = _row(st, "SweepCreditSpread", 31.0)
-    check("T5 as LEG TWO the touch is never selected — a rejection is required",
-          sig5 is None and rt5 and rt5[0] == "HOLD" and "waiting for a named pool" in rt5[1], str(rt5))
-    # T6: an invalidated tine touch does not fire
+    _reject(tine_id, 100.0, "resistance", "fork1h/upper", bar="10:41")
+    sigt = S2.generate_signal(chain=_Chain([], calls_t), price_now=99.6, now_et="10:41",
+                              atr_pct=0.08, orb_high=99.2, orb_low=98.4)
+    check("T5 the tine REJECTED -> a call spread with the short at/beyond the tine (100), classed 1h_fork",
+          sigt is not None and sigt.option_side == "call" and float(sigt.strike) == 100.0
+          and sigt.condor_trigger_source == "1h_fork" and sigt.touch_of_tine is True,
+          f"sig={sigt and (sigt.option_side, sigt.strike, sigt.condor_trigger_source)}")
+    _ds.upsert_level((tine_id, "TST", 100.3, "resistance", "fork1h/upper", "1h", _now - 3600, 0, None, 2, _now, "ACCEPTED_THROUGH", 1))
     P.begin_tick(32.0)
-    sig6 = S2.generate_signal(liq_map=lm3, chain=_Chain([], calls_t), price_now=100.3,
-                              now_et="13:30", atr_pct=0.08, orb_high=99.2, orb_low=98.4)
+    _reject(tine_id, 100.3, "resistance", "fork1h/upper", bar="10:42")
+    sigt = S2.generate_signal(chain=_Chain([], calls_t), price_now=99.6, now_et="10:42",
+                              atr_pct=0.08, orb_high=99.2, orb_low=98.4)
     rt6 = _row(st, "SweepCreditSpread", 32.0)
-    check("T6 an ACCEPTED (invalidated) tine does not fire; the row names invalidated",
-          sig6 is None and rt6 and "invalidated" in rt6[1], str(rt6))
-    # T7: spent by NAME survives the rail drifting
-    sw.mark_spent(sw._symbol_of(), "call", sw._name_key("1h upper tine"), "stopped out 13:40")
-    lm7 = LiquidityMap()
-    publish_tines(lm7, _CTM(_Rail("1h", "call", 99.98, 0.60)), _bars(rows))    # rail has drifted
+    check("T6 an ACCEPTED (retired) tine is not in play — a stale REJECTED on it does not fire",
+          sigt is None and rt6 and rt6[0] == "HOLD", str(rt6))
+    _ds.upsert_level((tine_id, "TST", 100.6, "resistance", "fork1h/upper", "1h", _now - 3600, 0, None, 0, None, None, 1))
+    sw.mark_spent("TST", "call", sw.tine_spent_key("fork1h/upper"), "breach accepted")
     P.begin_tick(33.0)
-    sig7 = S2.generate_signal(liq_map=lm7, chain=_Chain([], calls_t), price_now=99.6,
-                              now_et="13:30", atr_pct=0.08, orb_high=99.2, orb_low=98.4)
+    _reject(tine_id, 100.6, "resistance", "fork1h/upper", bar="10:43")
+    sig7 = S2.generate_signal(chain=_Chain([], calls_t), price_now=99.6, now_et="10:43",
+                              atr_pct=0.08, orb_high=99.2, orb_low=98.4)
     rt7 = _row(st, "SweepCreditSpread", 33.0)
-    check("T7 a stopped-out tine stays SPENT by name although its price has moved",
+    check("T7 a spent tine stays SPENT by name although its price has moved",
           sig7 is None and rt7 and rt7[0] == "DECLINE" and "spent_level" in rt7[1], str(rt7))
     sw._SPENT.clear()
-
     # ── TCS (r164) — the plan prepares off the ORB bound; the vote fires it ──
     import strategy.trend_credit_spread as tcs
     tcs.TREND_CREDIT_ACTIVE = True

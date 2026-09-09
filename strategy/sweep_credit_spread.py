@@ -1,5 +1,19 @@
 """
-strategy/sweep_credit_spread.py  v5.4
+strategy/sweep_credit_spread.py  v6.0
+v6.0  2026-09-09  OTV4TEST r5 — THE STRATEGY IS THE SPEC; THE PLAN SELECTS
+      (PLAN_SPEC §31, agreed with the operator 2026-09-08/09). `prepare()` —
+      the private wick detector over `liq_map.sweeps`, the level ranking, the
+      age rule, the selection against the wick's extreme and `search_wing`
+      — moved to `strategy/sweep_plan.py`, where it reads its levels in play
+      from the derived level store (3 named up, 3 down, the 1h tines) and
+      fires on the REJECTED fact (derived/levels v4.1/4.2) — the same event
+      that ends an ORB or runaway position, so the handoff is one tick. The
+      short strike anchors on THE LEVEL (the held extreme), not the wick.
+      Window 09:35–14:00 (the afternoon gate was a clock standing in for the
+      handoff). The age rule is retired (a previously held extreme is enough).
+      `strike_beyond_sweep`, `boundary_from_sweep`, `mark_spent`/`is_spent`,
+      `level_rank`, `_sweep_at_level`, `pierced_strike` and the doctrine header
+      stay here — the plan and the trade logger import what they use.
 v5.4  2026-09-08  r321 — 🔴 THE ENTRY WINDOW NO LONGER RELAXES AT EITHER END.
       Operator: *"The sweep window cannot be relaxed. It needs to remain strict
       at all times at 11:31."* The END was pinned already; the START fell to
@@ -313,11 +327,7 @@ from typing import Optional
 
 import config
 from strategy import relaxed
-from strategy import credit_vertical as cv     # r97 — shared spread math
 from strategy.base_strategy import OptionsSignal as Signal
-from strategy.criteria import (stop_survivable, R_FLOOR, R_FLOOR_STOP,
-                              stop_distance as _stop_distance_of)
-from strategy.plan import Plan, _n
 from utils.math_utils import safe_float
 
 logger = logging.getLogger(__name__)
@@ -702,6 +712,15 @@ _SPENT: dict = {}
 _SPENT_DAY: str = ""
 
 
+_TINE_SPENT_KEYS = {"fork1h/upper": -1.0, "fork1h/median": -2.0, "fork1h/lower": -3.0}
+
+
+def tine_spent_key(provenance: str) -> float:
+    """A tine's price moves; SPENT is keyed on the TINE (r5). Returns the pool
+    key to pass to mark_spent/is_spent, or 0.0 for a non-tine."""
+    return _TINE_SPENT_KEYS.get(str(provenance or ""), 0.0)
+
+
 def _spent_key(symbol: str, side: str, pool: float) -> tuple:
     # ⚠️ ROUNDED TO THE CENT. The pool is recomputed per tick and drifts in the
     # last decimal; an exact-float key would never match itself and the lock
@@ -783,489 +802,48 @@ def _sweep_at_level(liq_map, level: float, side: str = ""):
     return best
 
 
-class SweepPreparation:
-    """What the PLAN hands the STRATEGY on every tick of its slot.
-
-    ⚠️ NOTHING HERE IS EXECUTABLE. It is the answer to "if the trigger fires on
-    the next tick, what is the trade" — the level, every declared condition
-    with its current reading, and every selected variable. The strategy
-    decides whether its conditions are met and, if so, executes THESE.
-    """
-    __slots__ = ("tick", "sweep", "name", "pool", "side", "boundary", "conditions",
-                 "unmet", "structural", "starved", "short", "long", "credit",
-                 # r219 — `judged` is the BID/ASK credit R was tested on;
-                 # `credit` is the MARK credit that gets BOOKED. __slots__ is
-                 # why this needs declaring: assigning an undeclared attribute
-                 # raises rather than silently creating one, which is the slot
-                 # doing its job.
-                 "judged",
-                 "width", "stop_prem", "stop_dist", "r", "r_min", "r_stop_disp", "swept_px",
-                 "age", "rej", "ready")
-
-    def __init__(self, tick):
-        self.tick = tick
-        self.sweep = None
-        self.name, self.pool, self.side, self.boundary = "", 0.0, "", ""
-        self.conditions = {}      # name -> (current, required, met)
-        self.unmet = []           # trigger conditions not yet true
-        self.structural = []      # (name, why) — untradeable even if the trigger fires
-        self.starved = []         # inputs the plan could not find
-        self.short = self.long = None
-        self.credit = self.width = self.stop_prem = self.stop_dist = None
-        self.judged = None
-        # \U0001f534 r234 - THE NARRATION NAMES THE BASIS IT WAS GATED ON. r219's
-        # lesson one layer over: the plan line printed `credit N (bid/ask)`
-        # while N had become the mark, and *"printing one and labelling it the
-        # other is how this stayed invisible for the life of the strategy."*
-        # The gate moved to the stop basis; the line said R and meant expiry.
-        self.r, self.r_min = None, R_FLOOR_STOP
-        self.r_stop_disp = None
-        self.swept_px, self.age, self.rej = 0.0, 0, 0.0
-        self.ready = False
-
-    def cond(self, name, current, required, met):
-        self.conditions[name] = (current, required, bool(met))
-        if not met:
-            self.unmet.append(name)
-        self.tick.check(name, current if isinstance(current, (int, float)) else None, bool(met))
-
-    def trade_line(self) -> str:
-        if not self.ready:
-            return "no trade prepared"
-        # 🔑 TWO CREDITS, BOTH NAMED. `credit` is what gets BOOKED (mark, the
-        # operator's fill ruling); `judged` is what R was tested on (bid/ask).
-        # Printing one and labelling it the other is how the basis mismatch
-        # stayed invisible for the life of the strategy.
-        _j = getattr(self, "judged", None)
-        _jtxt = f" (judged {_j:.2f} bid/ask)" if _j is not None else ""
-        return (f"sell {self.short.strike:g}{self.side[0].upper()} / buy "
-                f"{self.long.strike:g}{self.side[0].upper()}  credit "
-                f"{self.credit:.2f} (mark){_jtxt}  stop {self.stop_prem:.2f}"
-                f"  R {self.r_stop_disp:.2f} on the stop "
-                f"(min {self.r_min:.2f}; {self.r:.2f} at expiry)"
-                if self.r_stop_disp is not None else
-                f"  R {self.r:.2f} at expiry (stop basis unpriceable)")
-
-
 class SweepCreditSpreadStrategy:
-    """THE SPEC. Declares its conditions, executes with the plan's variables.
+    """THE SPEC (PLAN_SPEC §31). Fire when every bar the plan reports is met,
+    with the plan's structure. Selects nothing.
 
-    🔴 THE SPLIT (operator, 2026-08-27, read back and confirmed): the plan is
-    ANTICIPATORY — on tick t it evaluates what would need to be true on tick
-    t+1 for this strategy to execute, and selects every variable of that
-    trade. The strategy is CONFIRMATORY — it checks its declared conditions
-    against the tick and, if all are true, executes the prepared trade. The
-    strategy holds no chain and picks no strike. Which layer decides? These
-    CONDITIONS do; the plan reads them and reports.
+    OTV4TEST r5 — the bars, read off `prep` from `strategy/sweep_plan.py`:
+      1. window 09:35–14:00 (opened from 13:00 to test the handoff sync)
+      2. a FRESH REJECTED event on a level in play (the derived fact)
+      3. that level not spent; price on the profitable side; geometry
+      4. pierce depth inside the band (a deep pierce is a weak level)
+      5. ATR <= ceiling (FEASIBLE) and the wing clears R_FLOOR (ECONOMICAL)
+    The condor complement (`required_side`) narrows which side may fire while
+    the other vertical is open; it never selects a level.
+    Exits (exit_engine v4.13): breach ACCEPTED (two closes beyond the pool)
+    → 15% of risk for false starts → nickel close → 15:45 flatten.
     """
     name = "SweepCreditSpread"
 
-    # ── THE DECLARED CONDITIONS — what must be true for this spec to fire ──
-    # name -> what "true" means. The plan evaluates each against the feed and
-    # reports (current, required, met). Thresholds are this file's GATES.
-    CONDITIONS = {
-        "named":        "the swept level is a NAMED pool",
-        "reclaimed":    "a bar has CLOSED back inside the pool (a wick is a touch) — "
-                        "or the level is a MOVING tine, whose TOUCH is the trigger",
-        "invalidated":  "price has NOT accepted through it after the reclaim",
-
-        "rejection":    f"rejection >= {MIN_REJECTION_PCT*100:.3f}%",
-        "pierce_depth": f"pierce <= {MAX_REJECTION_PCT*100:.3f}% (relaxed x3)",
-        "side_of_pool": "price is on the profitable side of the pool",
-        "entry_window": f"{EARLIEST_ET}-{LATEST_ET} ET (relaxed extends)",
-        "atr_pct":      f"ATR <= {ATR_MAX_PCT:.2f}% or unmeasured",
-    }
-    # structural — untradeable even if every condition is true
-    STRUCTURAL = ("geometry", "spent_level", "short_anchor", "wing_r_best",
-                  "credit", "stop_vs_spread")
-    PLAN_CHECKS = tuple(CONDITIONS) + STRUCTURAL + (
-        "sweep", "contract", "wing", "width", "risk", "r", "r_expiry",
-        # r233 record-only telemetry - gates nothing, exists to be fitted
-        "pierce_pts", "level_dist_pts", "level_dist_pct")
-
     def __init__(self):
-        self.planner = Plan(self.name, self.PLAN_CHECKS)
+        from strategy.sweep_plan import SweepPlan          # lazy: it imports this module
+        self.plan = SweepPlan()
+        self.planner = self.plan.planner
+        self.PLAN_CHECKS = self.plan.PLAN_CHECKS
 
-    # ══════════════════════════════════════════════════════════════════════
-    # THE PLAN — reads the feed, evaluates the declared conditions, SELECTS
-    # every variable, narrates. Returns a SweepPreparation or None (dormant).
-    # ══════════════════════════════════════════════════════════════════════
-    def prepare(self, *, liq_map, price_now, now_et, atr_pct=None, chain=None,
-                orb_high=None, orb_low=None, required_side: str = "",
-                **_ignored) -> SweepPreparation:
-        t = self.planner.tick(price_now)
-        prep = SweepPreparation(t)
+    def prepare(self, *, price_now, now_et, atr_pct=None, chain=None,
+                orb_high=None, orb_low=None, required_side: str = "", df_1m=None,
+                **_ignored):
+        return self.plan.prepare(price_now=price_now, now_et=now_et, atr_pct=atr_pct,
+                                 chain=chain, orb_high=orb_high, orb_low=orb_low,
+                                 df_1m=df_1m, required_side=required_side)
 
-        # ── the slot: outside it the plan is DORMANT, one row, no narration ─
-        # 🔴 r321 — THE WINDOW DOES NOT RELAX, AT EITHER END. Operator,
-        # 2026-09-08: *"The sweep window cannot be relaxed. It needs to remain
-        # strict at all times at 11:31."* The END was already pinned; the START
-        # was left to `relaxed.window`'s `relaxed_earliest` DEFAULT of "09:45"
-        # — a value nobody chose for this strategy, which opened the sweep 106
-        # minutes ahead of `CREDIT_ENTRY_START_ET` and against r242's whole
-        # argument that credit should not even POLL before 11:31.
-        # ⚠️ THIRD INSTANCE OF THE SAME DEFAULT. r196 hardened the butterfly's
-        # noon floor after exactly this: *"That 09:45 is `relaxed.window()`'s
-        # relaxed_earliest DEFAULT, exactly"* — four flies opened at 09:45 on
-        # 08-31 and the fires were the relaxed floor, not a pin forming early.
-        # The butterfly was fixed and the sweep was never swept.
-        # ⚠️ AND check_entry_windows W5 PASSED THROUGHOUT, because it compares
-        # the MODULE CONSTANT to config and never the value `prepare()` computes.
-        _early, _late = relaxed.window(EARLIEST_ET, LATEST_ET,
-                                       relaxed_earliest=EARLIEST_ET,
-                                       relaxed_latest=LATEST_ET)
-        in_window = (not now_et) or (_early <= now_et <= _late)
-        if not in_window:
-            # ⚠️ TIME-INVARIANT reason (check_plan_signal PS7): the dormant row
-            # is edge-triggered on its text; a clock in it defeats the dedupe.
-            t.dormant("entry_window", f"outside the sweep slot {_early}-{_late}")
-            return prep                       # dormant: nothing prepared
-        prep.cond("entry_window", None, self.CONDITIONS["entry_window"], True)
-
-        # ── the level: the sweep this spec would trade ─────────────────────
-        # With an authorization (the condor: "only a complementary-side sweep
-        # may fire") the plan prepares the freshest sweep of THAT side; without
-        # one, the map's most recent sweep. The plan chooses which level to
-        # PREPARE; the strategy's conditions decide whether it FIRES.
-        # ⚠️ PRICE IS VALIDATED FIRST NOW: r233 selects the level BY DISTANCE
-        # from spot, so the selector cannot run before the thing it ranks on.
-        price_now = safe_float(price_now)
-        if not price_now or price_now <= 0 or price_now > 1e7:
-            prep.starved.append("price_now")
-            t.starved("price_now")
-            return prep
-        # 🔴 r233 - THE NEAREST LIVE LEVEL WINS, NOT THE MOST RECENT RAID.
-        # Operator, 2026-09-03: *"the level in question needs to be the closest
-        # to the current price that's ever held."* Both branches used RECENCY:
-        # this one took min(bars_ago) across every level, and the fallback took
-        # `recent_sweep`, the map's minutes-normalised freshest. So a raid on a
-        # level three points out beat one 0.6 points out if it landed a bar
-        # sooner - and selling the cusp of a distant level is still distant,
-        # which is what makes this the change that gives the strike rule its
-        # meaning.
-        # ⚠️ RECENCY IS NOT DISCARDED, IT IS DEMOTED TO THE TIE-BREAK. Two
-        # levels at the same distance are separated by freshness, which is the
-        # only question distance cannot answer.
-        # ⚠️ AND THIS RETIRES THE CROSS-TIMEFRAME UNIT BUG AT THIS SITE RATHER
-        # THAN FIXING IT: `bars_ago` is counted in each sweep's OWN timeframe,
-        # so comparing a 15m sweep's 4 against a 5m sweep's 6 compared 60
-        # minutes against 30 (SWEEP.6). Distance carries no units problem.
-        # The tie-break can still see it, so SWEEP.6 stays OPEN for the other
-        # site and for liquidity_mapper.
-        sweep = None
-        if required_side:
-            # ⚠️ LEG TWO REQUIRES A REJECTION AT THE SITE. A tine TOUCH is not
-            # one (operator, 2026-08-27), so touch events are never selected
-            # here - only a real sweep of the authorized side.
-            want_kind = "low_sweep" if required_side == "put" else "high_sweep"
-            _cands = [sw for sw in (getattr(liq_map, "sweeps", None) or [])
-                      if str(getattr(sw, "kind", "") or "") == want_kind
-                      and not getattr(sw, "touch", False)]
-            t.direction = required_side
-        else:
-            # ⚠️ THE FALLBACK IS NO LONGER `recent_sweep`. That field is the
-            # MAP's pick and is chosen by minutes, so leaving it here would
-            # have left the primary entry path on recency while leg two moved
-            # to distance - one rule with two answers, which is the split this
-            # repo keeps finding. Touch events stay eligible here (a tine
-            # TOUCH is a valid trigger outside leg two, r163).
-            _cands = list(getattr(liq_map, "sweeps", None) or [])
-        _ranked = [(r, sw) for r, sw in
-                   ((level_rank(s, price_now), s) for s in _cands)
-                   if r is not None]
-        if _ranked:
-            sweep = min(_ranked, key=lambda rs: rs[0])[1]
-        elif not required_side:
-            # every candidate had an unusable pool price - fall back to the
-            # map's own pick rather than going blind, and say so.
-            sweep = getattr(liq_map, "recent_sweep", None)
-            if sweep is not None:
-                logger.info("[sweep_cs] no candidate carried a usable pool "
-                            "price; falling back to the map's recent_sweep")
-        if not sweep:
-            t.hold(f"no {required_side + ' ' if required_side else ''}sweep on the "
-                   f"liquidity map to prepare — waiting for a named pool to be swept")
-            return prep
-        prep.sweep = sweep
-        _touch = bool(getattr(sweep, "touch", False))
-        t.check("sweep", 2.0 if _touch else 1.0, True)   # 2 = a tine TOUCH
-
-        # ── the declared conditions, each with its current reading ─────────
-        name = str(getattr(sweep, "swept_named_level", "") or "")
-        prep.name = name or "unnamed"
-        prep.cond("named", 1.0 if name else 0.0, self.CONDITIONS["named"], bool(name))
-        reclaimed = bool(getattr(sweep, "reclaimed", False))
-        prep.cond("reclaimed", 1.0 if reclaimed else 0.0, self.CONDITIONS["reclaimed"], reclaimed)
-        inval = bool(getattr(sweep, "invalidated", False))
-        prep.cond("invalidated", 1.0 if inval else 0.0, self.CONDITIONS["invalidated"], not inval)
-        # 🔴 r231 — `or 999` MADE THE FRESHEST SWEEP THE STALEST. `bars_ago`
-        # is an int field defaulting to 0 and SWP.10 counts it from the
-        # RECLAIM bar, so a sweep that reclaimed on the CURRENT bar is 0 —
-        # and `0 or 999` is 999. Twenty-six lines above, the selection loop
-        # takes `min(bars_ago)`: it hunts the freshest sweep on the board and
-        # this line converted exactly that winner into the stale sentinel and
-        # refused it. The two halves of one function contradicted each other,
-        # and 999 reads as missing data rather than as the best setup there
-        # was. Absent stays 999; ZERO now stays zero.
-        _ba = getattr(sweep, "bars_ago", None)
-        age = 999 if _ba is None else int(_ba)
-        prep.age = age
-        # 🔴 r241 - THE AGE GATE IS GONE. Operator, 2026-09-04: *"I don't give a
-        # rat's ass how old the level is, it's still a level. Why are we still
-        # measuring the age of them?"* Because I only half-shipped his 08-11
-        # ruling: SWP.5 said LIVENESS REPLACES THE CLOCK, r230 found it had
-        # never reached the code, and I raised the ceiling from 6 to 48 instead
-        # of removing the gate. That was my call, not his.
-        # 🔑 AGE MEASURES THE RAID, NOT THE LEVEL. A level swept at 09:45 that
-        # has held ever since is the SAME LEVEL at 13:00 - arguably a better
-        # one, having held longer. And levels are swept all day; the morning's
-        # is not the only one on the board.
-        # ⚠️ `invalidated` ALREADY ANSWERS THIS AND ANSWERS IT CORRECTLY - has
-        # price ACCEPTED back through the level. It fails 73% of the time,
-        # which is a market fact rather than a defect. `age` was a second,
-        # worse proxy for a question that gate already settles: two rules for
-        # one thing, which is the rot §35 names.
-        # 🔴 MEASURED FLEET-WIDE, 08-31..09-04: age failed 46,791 of 61,641
-        # (76%), and on 333 ticks - 26% of every tick that was ONE gate short -
-        # it was the ONLY thing refusing. Those are complete setups declined
-        # for being old.
-        # ⚠️ THE UNMEASURABLE CASE SURVIVES ON ITS OWN TERMS. `bars_ago` absent
-        # yields the 999 sentinel, and an unmeasurable sweep is NOT an old one:
-        # it refuses because the reclaim cannot be located at all, which is a
-        # data fault, not a staleness judgement. Silently admitting it would be
-        # the absent-is-not-zero failure this repo keeps paying for.
-        if age >= _AGE_UNMEASURABLE:
-            prep.structural.append(("sweep_unmeasurable",
-                f"bars_ago is the {_AGE_UNMEASURABLE} sentinel - the reclaim "
-                f"cannot be located, so this sweep is UNMEASURED rather than "
-                f"stale"))
-            return prep
-        rej = float(getattr(sweep, "rejection_pct", 0.0) or 0.0)
-        prep.rej = rej
-        prep.cond("rejection", rej, self.CONDITIONS["rejection"], rej >= MIN_REJECTION_PCT)
-        _max_rej = relaxed.widen(MAX_REJECTION_PCT, 3.0, name="pierce_ceiling")
-        prep.cond("pierce_depth", rej, f"<= {_max_rej*100:.3f}%", rej <= _max_rej)
-        # \U0001f511 r233 RECORD-ONLY - HOW OFTEN THE DEEP CASE ACTUALLY FIRES, and
-        # how far the chosen level sat from spot. Both GATE NOTHING and are
-        # written so the r233 rulings can be FITTED against outcomes instead of
-        # defended (WA \u00a731; same shape as r198's wing_stretch and r215's
-        # pin_dist_pct). `pierce_pts` is the width of the TESTED RANGE the
-        # strike must now clear; `level_dist_pts` is what the nearest-level
-        # rule was chosen on. Points AND percent, because points alone are not
-        # comparable across an $83 NFLX and a $7,700 SPX.
-        try:
-            _pp = float(getattr(sweep, "pool_price", 0.0) or 0.0)
-            _sx = float(getattr(sweep, "sweep_price", 0.0) or 0.0)
-            if _pp > 0 and _sx > 0:
-                t.check("pierce_pts", round(abs(_pp - _sx), 4), None)
-                t.check("level_dist_pts", round(abs(_pp - price_now), 4), None)
-                t.check("level_dist_pct",
-                        round(abs(_pp - price_now) / price_now * 100.0, 4), None)
-        except (TypeError, ValueError, ZeroDivisionError):
-            pass
-        b = boundary_from_sweep(getattr(sweep, "kind", ""))
-        if not b:
-            t.refuse("boundary", f"sweep kind '{getattr(sweep, 'kind', '')}' names no boundary")
-            prep.structural.append(("boundary", "unknown sweep kind"))
-            return prep
-        boundary, side = b
-        prep.boundary, prep.side = boundary, side
-        t.direction = side
-        pool = float(getattr(sweep, "pool_price", 0.0) or 0.0)
-        if pool <= 0:
-            prep.starved.append("pool_price")
-            t.starved("pool_price")
-            return prep
-        prep.pool = pool
-        t.anchor(trigger=pool, invalidation=pool)
-        _on_side = (price_now < pool) if boundary == "ceiling" else (price_now > pool)
-        prep.cond("side_of_pool", price_now - pool, self.CONDITIONS["side_of_pool"], _on_side)
-        _atr = safe_float(atr_pct)
-        prep.cond("atr_pct", _atr, self.CONDITIONS["atr_pct"],
-                  _atr is None or _atr <= ATR_MAX_PCT)
-
-        # ── structural: untradeable regardless of the trigger ─────────────
-        # a moving level's price drifts every bar: the lock is keyed by NAME
-        _spent, _spent_why = is_spent(_symbol_of(), side,
-                                      pool if not _touch else _name_key(name))
-        t.check("spent_level", 1.0 if _spent else 0.0, not _spent)
-        if _spent:
-            prep.structural.append(("spent_level", f"{name} {pool:.2f} is SPENT — {_spent_why}"))
-        _geo = t.level(pool, boundary, name or "pool", orb_high, orb_low,
-                       price_now)
-        if _geo is False:
-            prep.structural.append(("geometry", t.last_why))
-
-        # ── SELECTION — the trade, if the trigger fires next tick ──────────
-        if chain is None:
-            prep.starved.append("chain")
-        else:
-            _inc = float(getattr(config, "STRIKE_INCREMENT", 1) or 1)
-            prep.swept_px = float(getattr(sweep, "sweep_price", 0.0) or 0.0)
-            try:
-                _side_contracts = chain.puts if side == "put" else chain.calls
-            except Exception:                                  # noqa: BLE001
-                _side_contracts = None
-            _contracts = _side_contracts
-            if not _contracts:
-                prep.starved.append("chain")
-            else:
-                _ps = strike_beyond_sweep(prep.swept_px, pool, boundary == "ceiling",
-                                          contracts=_side_contracts, increment=_inc)
-                if _ps is None:
-                    prep.structural.append(("short_anchor",
-                        f"{name} swept to {prep.swept_px:.2f} and the {side} chain has no "
-                        f"strike beyond it — a chain problem, not a setup one"))
-                else:
-                    t.check("short_anchor", _ps, True)
-                    _short = cv.find_contract_at_strike(_contracts, _ps)
-                    if _short is None or not (getattr(_short, "mark", 0) or 0) > 0:
-                        prep.structural.append(("contract",
-                            f"no priced {side} contract at the pierced strike {_ps:.2f} — "
-                            f"the anchor is the trade"))
-                    else:
-                        t.check("contract", _short.strike, True)
-                        # 🔴 r219 — TWO CREDITS. `_credit` (bid/ask) is what R
-                        # is JUDGED on; `_fill` (mark) is what gets BOOKED.
-                        # Operator ruling 2026-09-02: "I have a ladder for live
-                        # offers, all paper needs to fill at mark, period."
-                        # \U0001f534 r234 - READ BY NAME. r219 added a fifth value and
-                        # missed two guard returns that still returned four,
-                        # so a short leg with no bid raised ValueError into
-                        # `_safe_strategy` and read as a clean DECLINE. A
-                        # NamedTuple makes that unrepresentable.
-                        _w = cv.search_wing(_contracts, _short, side, R_FLOOR,
-                                            r_floor_stop=R_FLOOR_STOP)
-                        _best_r, _long, _credit = _w.r, _w.long, _w.credit
-                        _bw, _fill = _w.width, _w.fill
-                        # \U0001f511 GATED ON THE STOP BASIS. The stop IS this trade's
-                        # designed exit (operator: "the only 2 ways I want out
-                        # is a 15% loss or a session hard close"), so R is
-                        # judged against the risk actually taken. `r_expiry`
-                        # rides alongside, record-only, so the basis change is
-                        # auditable from the tape rather than argued.
-                        t.check("r_expiry", _best_r, None)
-                        t.check("wing_r_best", _w.r_stop,
-                                _w.r_stop is not None and _w.r_stop >= R_FLOOR_STOP)
-                        if _long is None:
-                            # \u26a0\ufe0f r234 - NAME WHICH RUNG REFUSED IT. The bracket
-                            # can reject every candidate for SURVIVABILITY or
-                            # for the stop floor, and reporting that as "no
-                            # priceable wing" would blame the chain for a
-                            # decision the gate made.
-                            prep.structural.append(
-                                (_w.why_key or "wing",
-                                 (_w.why or f"no priceable protective wing beyond "
-                                            f"{_short.strike:.2f}")))
-                        elif _w.r_stop is None or _w.r_stop < R_FLOOR_STOP:
-                            prep.structural.append(("wing_r_best",
-                                f"no wing clears stop-basis R {R_FLOOR_STOP:.2f} — best is "
-                                f"{('n/a' if _w.r_stop is None else f'{_w.r_stop:.2f}')} "
-                                f"({_bw:.2f} wide, credit ${_credit:.2f}, expiry-basis R "
-                                f"{_best_r:.2f}){(' — ' + _w.why) if _w.why else ''}; "
-                                f"structure, not selection — relaxed does not waive it"))
-                        else:
-                            t.check("wing", _long.strike, True)
-                            t.credit_spread(_short.strike, _long.strike, _credit,
-                                            invalidation=pool, trigger=pool)
-                            if _credit <= 0:
-                                prep.structural.append(("credit",
-                                    f"{side} {_short.strike:.2f}/{_long.strike:.2f} pays no credit"))
-                            elif _fill is None:
-                                # ⚠️ NO MARK ON A LEG IS NOT A REASON TO BOOK
-                                # THE BID/ASK NUMBER. Substituting it is the
-                                # exact defect r219 removes, so refuse instead.
-                                prep.structural.append((
-                                    "fill_mark",
-                                    f"{side} {_short.strike:.2f}/"
-                                    f"{_long.strike:.2f} has no usable mark on "
-                                    f"one leg — the fill price is unknown"))
-                            else:
-                                # ⚠️ THE STOP IS DERIVED FROM WHAT WAS BOOKED,
-                                # not from the hurdle. A stop measured off a
-                                # credit the position never had is the same
-                                # basis error one layer down.
-                                # \U0001f534 r234 - THE ENGINE'S STOP, NOT A SECOND ONE.
-                                # This computed `credit * MAX_LOSS_PCT` - 15%
-                                # OF CREDIT - and fed it to stop_survivable,
-                                # while exit_engine:1818 fires at 15% OF RISK.
-                                # On the measured median that is 0.1455 against
-                                # 0.6045, 4.15x apart, and the forensics'
-                                # "risk-anchored room: median $0.605" matches
-                                # the ENGINE. Survivability was judged against
-                                # a stop four times tighter than the one that
-                                # exists, refusing structures that survive.
-                                # \u26a0\ufe0f AND THE CREDIT-ANCHORED FORM IS THE RULE
-                                # r155 DELETED - exit_engine's own fallback
-                                # warning names it: "15% OF CREDIT, which is
-                                # the inverted rule r155 replaced. The trade
-                                # will stop on noise."
-                                _stop_dist = _stop_distance_of(_bw, _fill)
-                                if _stop_dist is None:
-                                    _stop_dist = 0.0
-                                _stop_prem = _fill + _stop_dist
-                                _sv_ok, _sv_why = stop_survivable(
-                                    _stop_dist, getattr(_short, "bid", 0.0),
-                                    getattr(_short, "ask", 0.0))
-                                t.check("stop_vs_spread", round(_stop_dist, 4), _sv_ok, _sv_why)
-                                if not _sv_ok:
-                                    prep.structural.append(("stop_vs_spread", _sv_why))
-                                else:
-                                    prep.short, prep.long = _short, _long
-                                    # `prep.credit` becomes sig.entry_premium
-                                    # (line ~889) and therefore the booked
-                                    # fill. It is the MARK credit now.
-                                    prep.credit, prep.width = _fill, _bw
-                                    # ⚠️ BOTH NUMBERS RIDE THE PLAN. The line
-                                    # said "credit N (bid/ask)" and after r219
-                                    # N is the MARK — a label that is now a lie
-                                    # unless the judged credit travels with it.
-                                    prep.judged = _credit
-                                    prep.stop_prem, prep.stop_dist = _stop_prem, _stop_dist
-                                    prep.r = t.r
-                                    prep.r_stop_disp = _w.r_stop
-                                    prep.ready = True
-
-        # ── the narration: which of the three states is this tick ──────────
-        head = (f"{prep.name} {boundary} {pool:.2f} ({side} spread"
-                f"{', TOUCH of a moving tine' if _touch else ''})")
-        if prep.starved:
-            t.starved(*prep.starved)
-            return prep
-        if prep.structural:
-            gate, why = prep.structural[0]
-            t.refuse(gate, f"{head}: {why}")
-            return prep
-        if prep.unmet:
-            cur = "; ".join(f"{n}={_n(prep.conditions[n][0]) if isinstance(prep.conditions[n][0], (int, float)) else 'no'}"
-                            f" (need {prep.conditions[n][1]})" for n in prep.unmet)
-            t.hold(f"{head}: PREPARED — {prep.trade_line()}. Waiting on: {cur}")
-            return prep
-        t.note(f"{head}: all {len(self.CONDITIONS)} conditions true — {prep.trade_line()}")
-        return prep
-
-    # ══════════════════════════════════════════════════════════════════════
-    # THE STRATEGY — checks its conditions, executes the plan's variables.
-    # ══════════════════════════════════════════════════════════════════════
-    def generate_signal(self, *, liq_map, price_now: float, now_et: str,
-                        atr_pct: float = None, chain=None,
-                        orb_high: float = None, orb_low: float = None,
-                        required_side: str = "", **_ignored) -> Optional[Signal]:
-        """`required_side` is the condor's AUTHORIZATION (one vertical open ->
-        only the complementary-side sweep may fire). It narrows; it never
-        selects a level for this strategy."""
-        prep = self.prepare(liq_map=liq_map, price_now=price_now, now_et=now_et,
-                            atr_pct=atr_pct, chain=chain, orb_high=orb_high,
-                            orb_low=orb_low, required_side=required_side)
+    def generate_signal(self, *, price_now: float, now_et: str, atr_pct: float = None,
+                        chain=None, orb_high: float = None, orb_low: float = None,
+                        required_side: str = "", df_1m=None, **_ignored) -> Optional[Signal]:
+        prep = self.plan.prepare(price_now=price_now, now_et=now_et, atr_pct=atr_pct,
+                                 chain=chain, orb_high=orb_high, orb_low=orb_low,
+                                 df_1m=df_1m, required_side=required_side)
         if not prep.ready or prep.unmet or prep.structural or prep.starved:
-            return prep.tick.already()       # the plan wrote this tick's row
+            return prep.tick.already()
         if required_side and prep.side != required_side:
             return prep.tick.refuse("authorized_side",
                                     f"only a {required_side} sweep is authorized "
-                                    f"while the other vertical is open; this is "
-                                    f"a {prep.side}")
-
-        # ── EXECUTE the prepared trade — every variable is the plan's ───────
+                                    f"while the other vertical is open; this is a {prep.side}")
         sig = Signal(
             strategy_name=self.name,
             setup_type="sweep_credit_spread",
@@ -1278,14 +856,14 @@ class SweepCreditSpreadStrategy:
         sig.pool_price = prep.pool
         sig.boundary = prep.boundary
         sig.swept_level_name = prep.name
-        sig.sweep_age_bars = prep.age
-        sig.rejection_pct = prep.rej
+        sig.sweep_age_bars = 0
+        sig.rejection_pct = prep.rej_pct
+        sig.rejection_depth = prep.depth
+        sig.richness_at_entry = prep.richness
         sig.atr_pct_at_entry = atr_pct
         sig.max_loss_pct = MAX_LOSS_PCT
-        # a tine touch is classed as a FORK trigger under Rule 4; a real
-        # sweep as sweep_reversal. Leg two can only ever be the latter.
-        if getattr(prep.sweep, "touch", False):
-            sig.condor_trigger_source = f"{getattr(prep.sweep, 'timeframe', '') or '1h'}_fork"
+        if str(prep.name or "").startswith("fork1h/"):
+            sig.condor_trigger_source = "1h_fork"
             sig.touch_of_tine = True
         else:
             sig.condor_trigger_source = "sweep_reversal"
@@ -1301,8 +879,9 @@ class SweepCreditSpreadStrategy:
         sig.contract = prep.short
         sig.stop_premium = prep.stop_prem
         relaxed.tag(sig)
-        logger.info("[sweep_cs] FIRE  %s swept -> %s  %s  age %d bars  rejection %.3f%%",
-                    prep.name, prep.boundary, prep.trade_line(), prep.age, prep.rej * 100.0)
+        logger.info("[sweep_cs] FIRE  %s %.2f REJECTED (%s %.3f%%) -> %s  %s",
+                    prep.name, prep.pool, prep.depth, (prep.rej_pct or 0) * 100.0,
+                    prep.boundary, prep.trade_line())
         return prep.tick.take(sig)
 
 
