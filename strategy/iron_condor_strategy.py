@@ -1,5 +1,12 @@
 """
-strategy/iron_condor_strategy.py  v4.9
+strategy/iron_condor_strategy.py  v4.10
+v4.10 2026-09-09  OTV4TEST r10 — THE MANAGEMENT PLAN NAMES ITS WAIT. A lone
+      vertical's row now carries the complement it is waiting on, read from
+      the sweep plan's last preparation on the authorized side: "waiting on: a
+      sweep REJECTED below — london 713.50: would sell 713/712P for 0.19 (R
+      0.23)". `tested` is read by wick (condor_roll v4.7) when a frame is
+      passed. The entry path is retired in main.py; this class is the
+      MANAGEMENT PLAN for two paired verticals (PLAN_SPEC §35).
 v4.9  2026-08-27  r166: manage() takes ctx and writes the condor's r66 vector
       (VRP, channel over EM, fork) to strategy_note with outcome "manage" —
       that vector had stopped being recorded when r158 took the condor out of
@@ -371,7 +378,12 @@ class IronCondorStrategy(BaseOptionsStrategy):
         if not hasattr(self, "_mgmt_planner"):
             self._mgmt_planner = Plan("CondorManagement", self.MGMT_CHECKS, self_ledgers=True)
         t = self._mgmt_planner.tick(current_price)
-        legs = [r for r in pos_mgr.get_open_records() if r.get("is_condor_leg")]
+        # r10 — every open CREDIT VERTICAL is the plan's business, not only the
+        # ones already flagged as condor legs: a lone sweep or TCS vertical is
+        # the first leg of a condor that may form, and its row must say so.
+        from strategy.structure import is_credit_vertical as _is_cv
+        legs = [r for r in pos_mgr.get_open_records()
+                if r.get("is_condor_leg") or _is_cv(r)]
         t.check("legs", len(legs), len(legs) == 2)
         # r166 — the condor's r66 vector (VRP, channel over EM, fork) lives
         # again: written here every tick a leg is open, phase "manage".
@@ -385,8 +397,20 @@ class IronCondorStrategy(BaseOptionsStrategy):
                 pass
         if len(legs) < 2:
             if len(legs) == 1:
-                t.hold(f"lone {legs[0].get('option_side', '?')} vertical — managed as a "
-                       f"standalone on its 15% stop; not a condor")
+                _side = legs[0].get("option_side", "?")
+                _want, _why = self.authorize([_side])
+                _cand = ""
+                try:
+                    from strategy import sweep_plan as _sp
+                    _lp = getattr(_sp, "LAST_PREP", None)
+                    _c = (_lp.nearest_below if _want == "put" else _lp.nearest_above) if _lp else None
+                    if _c is not None:
+                        _cand = f" — {_c.line()}" + ("" if _c.sellable else " (no structure yet)")
+                except Exception:                               # noqa: BLE001
+                    _cand = ""
+                t.hold(f"lone {_side} vertical — managed as a standalone on its 15% stop; "
+                       f"waiting on: a sweep REJECTED {'below' if _want == 'put' else 'above'}"
+                       f"{_cand}")
                 return "LONE"
             t.hold("no credit verticals open — nothing to manage")
             return None
@@ -395,7 +419,7 @@ class IronCondorStrategy(BaseOptionsStrategy):
             return None
         rolled = any(r.get("is_broken_wing") for r in legs)
         t.check("rolled", 1.0 if rolled else 0.0, None)
-        tested, untested = classify_tested(legs, current_price)
+        tested, untested = classify_tested(legs, current_price, df_1m=df_1m)
         t.check("tested", 1.0 if tested else 0.0, None)
         banked = sum(float(l.get("credit_received", l.get("entry_premium", 0.0))) for l in legs)
         head = (" + ".join(f"{l.get('option_side','?')} {l.get('short_strike',0):g}/"

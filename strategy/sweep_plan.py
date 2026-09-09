@@ -1,5 +1,7 @@
 """
-strategy/sweep_plan.py  v1.0
+strategy/sweep_plan.py  v1.1
+v1.1  2026-09-09  OTV4TEST r10 — `LAST_PREP`: the most recent preparation, so the
+      condor's management plan can name the complement it is waiting on.
 v1.0  2026-09-08  OTV4TEST r5 — THE SWEEP CREDIT SPREAD PLAN (PLAN_SPEC §31),
       agreed with the operator 2026-09-08/09. The thesis: a previously held
       extreme is swept and rejected; THE LEVEL HOLDS TO THE CLOSE. Sell a
@@ -146,6 +148,9 @@ class SweepPreparation:
         return self.chosen.line() if self.chosen else "no trade prepared"
 
 
+LAST_PREP = None          # r10: the condor's management plan reads the complement from here
+
+
 class SweepPlan:
     name = "SweepCreditSpread"
     PLAN_CHECKS = ("entry_window", "price", "atr_pct", "levels_above", "levels_below",
@@ -202,8 +207,10 @@ class SweepPlan:
     def prepare(self, *, price_now, now_et, atr_pct=None, chain=None,
                 orb_high=None, orb_low=None, df_1m=None, required_side: str = "",
                 session_open_epoch: float = 0.0) -> SweepPreparation:
+        global LAST_PREP
         t = self.planner.tick(price_now)
         prep = SweepPreparation(t)
+        LAST_PREP = prep
         hm = _hm(now_et)
         if hm is not None and hm >= tuple(LATEST_ET):
             t.dormant("entry_window", f"past {LATEST_ET[0]:02d}:{LATEST_ET[1]:02d} ET — observing only")

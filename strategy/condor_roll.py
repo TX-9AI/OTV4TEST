@@ -1,5 +1,12 @@
 """
-strategy/condor_roll.py  v4.6
+strategy/condor_roll.py  v4.7
+v4.7  2026-09-09  OTV4TEST r10 — TESTED IS A WICK, NOT A DISTANCE (PLAN_SPEC §35).
+      `classify_tested` reads the closed 1m bar when a frame is given: a side
+      is TESTED when the bar's wick reached its short strike with the close
+      still inside (wicks are tests); a close beyond is the tent's business
+      (`_tent_breached`, unchanged). The one-strike proximity rule survives
+      only as the fallback when no tape is passed. `check_and_execute_roll`
+      takes `df_1m` and hands it through. Same grammar as every plan.
 v4.6  2026-08-26  r146 — THE ROLL HAS A PLAN. `check_and_execute_roll` writes
       a `CreditRoll` row through strategy/plan.py at every decision: HOLD
       (no paired condor / already final form / neither side tested / no
@@ -146,13 +153,28 @@ def _contract_at(contracts, strike: float):
 
 
 def classify_tested(legs: List[dict], current_price: float,
-                    proximity_strikes: int = 1) -> Tuple[Optional[dict], Optional[dict]]:
-    """Return (tested_leg, untested_leg). A side is 'tested' when price is within
-    proximity_strikes of that side's short strike (or beyond it)."""
+                    proximity_strikes: int = 1, df_1m=None) -> Tuple[Optional[dict], Optional[dict]]:
+    """Return (tested_leg, untested_leg). v4.7: with a frame, a side is TESTED
+    when the closed bar's wick reached its short strike and the close stayed
+    inside (wicks are tests); a close beyond is breached, not tested. Without
+    a frame, the old proximity rule."""
     call_leg = next((l for l in legs if l.get("option_side") == "call"), None)
     put_leg  = next((l for l in legs if l.get("option_side") == "put"),  None)
     if not (call_leg and put_leg):
         return None, None
+
+    try:
+        if df_1m is not None and len(df_1m) >= 2:
+            bar = df_1m.iloc[-2]
+            hi, lo, close = float(bar["high"]), float(bar["low"]), float(bar["close"])
+            ck, pk = float(call_leg["short_strike"]), float(put_leg["short_strike"])
+            if hi >= ck and close <= ck:
+                return call_leg, put_leg
+            if lo <= pk and close >= pk:
+                return put_leg, call_leg
+            return None, None
+    except Exception:                                           # noqa: BLE001
+        pass
 
     prox = proximity_strikes * STRIKE_INCREMENT
     if current_price >= call_leg["short_strike"] - prox:
@@ -236,7 +258,7 @@ def find_risk_free_roll(tested_leg: dict, untested_leg: dict, chain,
     return best
 
 
-def check_and_execute_roll(pos_mgr, chain, current_price: float, state) -> bool:
+def check_and_execute_roll(pos_mgr, chain, current_price: float, state, df_1m=None) -> bool:
     """If both condor verticals are open and one side is tested, roll the
     untested side into a broken wing — but ONLY if that roll makes the tested
     side risk-free. Returns True if a roll was executed."""
@@ -257,7 +279,7 @@ def check_and_execute_roll(pos_mgr, chain, current_price: float, state) -> bool:
         return False
     t.check("final_form", 0.0, True)
 
-    tested, untested = classify_tested(legs, current_price)
+    tested, untested = classify_tested(legs, current_price, df_1m=df_1m)
     if tested is None:
         t.check("tested", 0.0, False)
         t.hold("neither short strike tested at this price")
@@ -778,6 +800,17 @@ def _execute_tent(pos_mgr, winner: dict, keep: dict, hedge, hedge_ask: float,
     # structure's — three things that must move together or not at all.
     cum = float(keep.get("credit_received", keep.get("entry_premium", 0.0))) \
         + w_credit - float(fill.fill_price) - float(hedge_fill)
+    # OTV4TEST r10 — THE FINAL-FORM FLOOR IS MEASURED FROM WHERE THE STRUCTURE
+    # STANDS AT FORMATION, not from cumulative credit (operator 2026-09-09:
+    # "15% of wherever our credit is from that point, not including the
+    # previous rolls and other transactions"). The basis is the cost to close
+    # the tent as formed — the kept vertical's mark less the hedge's — and the
+    # floor is that basis grown 15%. Cumulative credit stays on the record as
+    # the account of what was collected; it is no longer the stop's basis.
+    _keep_mark = float(keep.get("current_premium") or keep.get("entry_premium") or 0.0)
+    form_basis = max(0.0, _keep_mark - float(hedge_fill))
+    if form_basis <= 0.05:
+        form_basis = max(0.05, cum)          # a degenerate basis falls back to the credit standing
     tl.log_exit(keep["trade_id"], exit_price=float(keep.get("entry_premium", 0.0)),
                 pnl_usd=0.0, exit_reason="tent_rebooked")
     pos_mgr.remove_record(keep["trade_id"])
@@ -792,8 +825,10 @@ def _execute_tent(pos_mgr, winner: dict, keep: dict, hedge, hedge_ask: float,
         lower_strike=float(getattr(hedge, "strike", 0.0) or 0.0),
         spread_width=float(keep.get("spread_width") or 0.0),
         credit_received=cum, contracts=qty,
-        entry_premium=cum,                       # the floor's basis
-        stop_premium=cum * (1 + TENT_FLOOR_PCT),
+        entry_premium=form_basis,                # r10: the floor's basis = the structure as formed
+        final_form_basis=form_basis,
+        cumulative_credit=cum,
+        stop_premium=form_basis * (1 + TENT_FLOOR_PCT),
         total_cost=abs(cum) * qty * CONTRACT_MULTIPLIER,
         max_loss=abs(float(keep.get("spread_width") or 0.0) - cum) * qty * CONTRACT_MULTIPLIER,
         short_symbol=keep.get("short_symbol"), long_symbol=keep.get("long_symbol"),

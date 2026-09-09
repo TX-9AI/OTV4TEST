@@ -1,5 +1,10 @@
 """
-execution/exit_engine.py  v4.14
+execution/exit_engine.py  v4.15
+v4.15 2026-09-09  OTV4TEST r10 — the tent floor's reason names its basis: 15% from
+      the structure AS FORMED (condor_roll v4.7 sets `entry_premium` to the
+      as-formed cost and keeps `cumulative_credit` alongside). Operator: "15%
+      of wherever our credit is from that point, not including the previous
+      rolls and other transactions."
 v4.14 2026-09-09  OTV4TEST r9 — THE TCS 15%-OF-CREDIT STOP IS LONE-ONLY: a hedged
       leg's sibling suppresses it (operator 2026-09-09), the same mechanism the
       sweep leg uses. Order for the TCS: hard close → 15% (lone) → the level
@@ -2203,7 +2208,8 @@ class ExitEngine:
             decision.should_exit = True
             decision.exit_reason = (
                 f"tent_floor pnl={pnl_pct:.1%} "
-                f"({TENT_FLOOR_PCT:.0%} of cumulative credit)")
+                f"({TENT_FLOOR_PCT:.0%} from the structure as formed, basis "
+                f"{entry_prem:.2f}; cumulative credit {float(record.get('cumulative_credit') or 0.0):.2f})")
             return decision
 
         return decision

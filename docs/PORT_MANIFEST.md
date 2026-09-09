@@ -1,4 +1,6 @@
-# PORT_MANIFEST.md — OTV4TEST → options_trader_v4 — v0.1
+# PORT_MANIFEST.md — OTV4TEST → options_trader_v4 — v0.2
+v0.2  2026-09-09  OTV4TEST r10 — the r10 rows and the DEFECTS FOUND IN THE PREDECESSOR
+      section (eleven, one still open) — port these whether or not the rulings port.
 v0.1  2026-09-09  OTV4TEST r9 — opened. One line per file per revision, with the
       ruling it carries, so the back-port is a checklist and not archaeology.
       The predecessor is FROZEN at e955020 (r322) — checked 2026-09-09, zero
@@ -37,3 +39,21 @@ Legend: **N** new file · **M** modified · **T** test (new or re-pointed) · **
 | r9 | strategy/trend_credit_spread.py, data/derived_store.py, execution/exit_engine.py, main.py | M | strategy = bars + fire; latest_event(); 15% lone-only; windows read from the plans (HYG.5) |
 | r9 | tests/check_tcs_plan.py, check_tcs_fifty (retired into it), check_tcs_narrates, check_tcs_parked, check_plan_prepares | T | new / re-pointed |
 | r2–r9 | docs/PLAN_SPEC.md §29–§34, docs/TRADES.md, docs/BACKLOG.md | D | the specs; the fork's own backlog |
+| r10 | strategy/condor_roll.py, strategy/iron_condor_strategy.py, strategy/sweep_plan.py, execution/exit_engine.py, main.py | M | condor = management plan; tested by wick; the LONE row names its complement; entry retired; final-form floor from the structure as formed |
+| r10 | tests/check_condor_mgmt.py | T | new |
+
+## DEFECTS FOUND IN THE PREDECESSOR (port these whether or not the rulings port)
+
+| # | defect | where | fixed |
+|---|---|---|---|
+| 1 | TCS wrote no plan row on its common path — bare returns with the tick open; NOT ASKED all afternoon, every credit window (r238) | strategy/trend_credit_spread.py | r8 |
+| 2 | TCS `POP ≥ 0.70` was a config constant nothing read | strategy/trend_credit_spread.py | r9 (applied in tcs_plan) |
+| 3 | OI fetch lost the first batch of every cycle — "Event loop is closed", one `asyncio.run` per batch | data/open_interest.py | r6 |
+| 4 | ORB invalidated on a WICK to the 50 while the runaway armed on a close+hold — the band owned by nobody | analysis/orb_engine.py | r3 |
+| 5 | `finish_break` only on a LOSING runaway exit — a trail winner re-entered on the same standing state | database/trade_logger.py | r3 |
+| 6 | the lander's checks wrote `TestStrat` rows into the box's live plan_ledger (`_ledger_open` ignored a bound store) | strategy/plan.py | r6 |
+| 7 | main.py read the sweep's window from a module string ("14:00") and the TCS's from config — the remainder honoured a stale window | main.py | r9 |
+| 8 | `analysis/trade_readiness.py::_combine` defined nested, called at module level — NameError on every readiness path, masked by an import guard | analysis/trade_readiness.py | **OPEN** (HYG.1) |
+| 9 | `check_tcs_parked` P5b red before the fork touched TCS; outside the lander's set | tests/ | r9 |
+| 10 | the level engine never read a high or a low — a rejection was invisible to the derived layer | derived/levels.py | r3 (built) |
+| 11 | the condor management plan only recognised legs already flagged `is_condor_leg` — a lone sweep/TCS vertical read as "no credit verticals open" | strategy/iron_condor_strategy.py | r10 |

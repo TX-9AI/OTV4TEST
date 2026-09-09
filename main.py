@@ -1,5 +1,9 @@
 """
-main.py  v4.43
+main.py  v4.44
+v4.44 2026-09-09  OTV4TEST r10 — the roll is handed the 1m frame (tested by wick,
+      condor_roll v4.7); `IronCondorStrategy` is retired as an ENTRY — a condor
+      forms from two credit spreads — and its row says so instead of the
+      "dispatch gap" NOT ASKED. The management plan is unchanged in shape.
 v4.43 2026-09-09  OTV4TEST r9 — the TCS is handed `atm_iv` (its EM band) and
       the 1m frame (the frozen reference band); its trigger is the level
       store's ACCEPTED, not the ORB latch. `_credit_window_end` reads the
@@ -3957,10 +3961,12 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     # constructs nothing (r158). What remains here is the record that this
     # block once dispatched two fork strategies, and the reason it no longer
     # does.
-    if signal is not None:
-        _plan_skip("IronCondorStrategy", f"slot claimed by {signal.strategy_name}")
-    elif DIRECTIONAL_ONLY:
-        _plan_skip("IronCondorStrategy", "DIRECTIONAL_ONLY box")
+    # OTV4TEST r10 — the condor is NOT an entry. It FORMS when a second credit
+    # spread pairs with the first (sweep–sweep or TCS–sweep, 08-24); the
+    # fork-anchored premise is retired as a strategy. Hushed by the readers.
+    _plan_skip("IronCondorStrategy", "not an entry — a condor forms from two credit "
+                                     "spreads (sweep–sweep or TCS–sweep); retired as a "
+                                     "strategy, OTV4TEST r10")
 
     # ── TC.6 TREND CREDIT SPREAD ─────────────────────────────────────────────
     # v4.3: no longer deferred by condor_active. It fires when _can_open_credit_spread
@@ -4816,7 +4822,8 @@ def main_loop(state: BotState):
                     logger.warning(f"Condor management row failed: {_mg_err}")
                 try:
                     from strategy.condor_roll import check_and_execute_roll
-                    check_and_execute_roll(pos_mgr, ctx.get("chain"), ctx["price"], state)
+                    check_and_execute_roll(pos_mgr, ctx.get("chain"), ctx["price"], state,
+                                           df_1m=ctx.get("df_1m"))          # r10: tested by wick
                 except Exception as _roll_err:
                     logger.warning(f"Roll check failed: {_roll_err}")
 

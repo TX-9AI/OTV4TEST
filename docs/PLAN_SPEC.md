@@ -1341,3 +1341,28 @@ Purpose, his words: *"catch large moves in the afternoon on some macro catalyst 
 The EM gate is the first suspect either way (operator). Every fire carries the frozen band and the distance outside it (`em_ref_band`, `em_outside_by`); every miss carries how far inside it stayed (`outside_by` < 0 on the DECLINE row).
 
 **As built (OTV4TEST r9):** `strategy/tcs_plan.py` v1.0, `strategy/trend_credit_spread.py` v5.0, `data/derived_store.py` v4.4 (`latest_event`), `execution/exit_engine.py` v4.14, `main.py` v4.43 (HYG.5: the windows read from the plans). Hypotheticals: `check_tcs_plan` T1–T8, X1–X3; `check_tcs_narrates`; `check_tcs_fifty` retired into it.
+
+## 35. OTV4TEST r10 — THE CONDOR MANAGEMENT PLAN (agreed with the operator 2026-09-09)
+
+*"Permissive, opportunistic and resilient — with a final trick if more mundane defense (roll for a free leg) isn't possible: go inverted and buy a hedge leg on the other side."* **It is a management plan, not a strategy.** A condor is never entered; it FORMS when a second credit vertical pairs with the first — sweep–sweep or TCS–sweep, the complement always a sweep on the other side (TCS may be leg one, never leg two). The fork-anchored condor entry (`IronCondorStrategy` as a strategy) is retired; the 1h fork stays a legitimate level through the tines in the store, which the sweep reads.
+
+### 35.1 States and rows
+| state | the row says |
+|---|---|
+| nothing open | hushed |
+| one credit vertical open | *"lone call vertical — managed on its 15% stop; waiting on: a sweep REJECTED below — london 713.50: would sell 713/712P for 0.19 (R 0.23)"* — the complement read from the sweep plan's last preparation on the authorized side |
+| two verticals paired | the ladder, every rung disposed every tick: tested? rolled? breached? roll searched / best candidate / why not; invert available / not; tent priced / affordable / not |
+
+### 35.2 Tested, breached, accepted — fact events, not distances
+A side is **tested** when the closed 1m bar's wick reached its short strike with the close still inside (wicks are tests); **breached** when a 1m close lands beyond it; **accepted** on the second close. The roll runs on tested; the tent on breached; nothing on a wick alone. The old one-strike proximity rule survives only when no tape is passed.
+
+### 35.3 The ladder (TRADES §5, unchanged in shape)
+1. **Roll to risk-free** — close the untested vertical, re-open it closer, collect; when `total_credit ≥ tested_side_width` the tested side cannot lose. Smallest qualifying roll. First right of refusal; no competing % stop once formed.
+2. **Invert** — no roll clears the width → the untested side rolled adjacent to the tested short (shorts touching; a butterfly).
+3. **The tent** — already rolled, then a close beyond a short → take the profitable vertical off, buy a long of the *opposite* type equidistant from the remaining short; price is left under the tent. Priced before it is paid. It removes **reversal** risk and turns a reversal into unbounded upside; the tested side's loss stays capped at its wing — the row says exactly that.
+4. **Stop and page** — both risk reductions unavailable.
+
+### 35.4 The final-form floor — from where it stands
+After the tent the only exit is a **15% loss from the structure as formed** — the cost to close the tent at formation (kept vertical's mark less the hedge's), grown 15% — **not** 15% of cumulative credit. *"It's at a 15% loss from where it currently stands as formed. The entire premise has gone horribly wrong and we are lucky to be getting out at a 15% loss."* Cumulative credit stays on the record as the account of what was collected. 15:45 throughout.
+
+**As built (OTV4TEST r10):** `strategy/condor_roll.py` v4.7, `strategy/iron_condor_strategy.py` v4.10, `strategy/sweep_plan.py` v1.1, `execution/exit_engine.py` (tent floor wording), `main.py` v4.44. Hypotheticals: `check_condor_mgmt` C1–C7.

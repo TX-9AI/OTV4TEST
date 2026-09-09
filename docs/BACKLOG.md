@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.8
+# BACKLOG.md — OTV4TEST — v0.9
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -50,6 +50,12 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 | **TCS.1** | ⬜ **NICKEL CLOSE ON THE TCS — decide explicitly.** The 2026-08-14 ruling (no exit short of a breach or the hard close; EV measured held to expiry) stands in code; today's untangle listed a nickel in the exit order without revisiting that measurement. One ruling, one line in exit_engine. | 🔲 OPEN |
 | **TCS.2** | ⬜ **THE EM GATE IS THE FIRST SUSPECT** either way (operator). Read `em_outside_by` on fires and `outside_by` on DECLINEs for the first sessions before touching anything else. `ACCEPT_FRESH_BARS` = 3 is a prior. | 🔲 OPEN |
 
+### Condor (PLAN_SPEC §35)
+
+| id | item | state |
+|---|---|---|
+| **CND.1** | ⬜ **THE FIRST FORMED CONDOR IS THE TEST.** Every rung disposes every tick on the CondorManagement / CreditRoll rows; read the first real pairing end to end (formation row → tested by wick → roll search → whichever rung fires) before touching a number. The tent has no sample; each case is its own evidence. | 🔲 OPEN |
+
 ### Repo hygiene found on the way
 
 | id | item | state |
@@ -74,6 +80,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.9 — 2026-09-09 — OTV4TEST r10 — the condor management plan (PLAN_SPEC §35); the predecessor defect list in PORT_MANIFEST; CND.1 opened.**
 
 **v0.8 — 2026-09-09 — OTV4TEST r9 — the TCS on the accepted extreme outside the EM (PLAN_SPEC §34); PORT_MANIFEST opened; HYG.5 closed; TCS.1 opened.**
 
