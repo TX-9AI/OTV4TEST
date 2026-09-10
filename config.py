@@ -1,5 +1,8 @@
 """
-config.py  v4.17
+config.py  v4.18
+v4.18  2026-09-10  OTV4TEST r13 — `DB_PATH` honours `OT_TRADES_DB` so the lander's CHECK
+      phase can point every checker at a scratch trades.db (defect #12: a test
+      fixture landed as a live open position on the QQQ TEST box).
 v4.17  2026-09-08  OTV4TEST r2 — `ORB_MAX_RETEST_BARS` REMOVED with the stale
       re-arm it fed (orb_engine v4.12, operator's ruling 2026-09-08: while
       price is outside the range only a retest, a runaway or a close inside
@@ -1790,7 +1793,7 @@ NOTIFY_ON_CIRCUIT_BREAK     = True
 
 # ─── DATABASE & LOGGING ───────────────────────────────────────────────────────
 
-DB_PATH                     = os.path.expanduser("~/options-trader/trades.db")
+DB_PATH                     = os.environ.get("OT_TRADES_DB") or os.path.expanduser("~/options-trader/trades.db")   # r13: OT_TRADES_DB for checks
 # 🔴 r112 — ENV-OVERRIDABLE, AND THE FLAG BEATS BOTH. This was a bare literal,
 # so the only way to get DEBUG was to EDIT A TRACKED FILE on the box — and the
 # hotfix launcher runs `git checkout -- config.py` before every pull, which

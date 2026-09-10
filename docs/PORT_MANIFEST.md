@@ -1,4 +1,6 @@
-# PORT_MANIFEST.md — OTV4TEST → options_trader_v4 — v0.4
+# PORT_MANIFEST.md — OTV4TEST → options_trader_v4 — v0.5
+v0.5  2026-09-10  OTV4TEST r13 — defect #12 (a checker's fixture landed as a live open
+      position) and the structural fix: the lander's CHECKs run on scratch stores.
 v0.4  2026-09-09  OTV4TEST r12 — anchors (record only) and HYG.1 closed; defect #8 fixed.
 v0.3  2026-09-09  OTV4TEST r11 — the r11 rows (two-rung ladder, widened-wing roll, group floor).
 v0.2  2026-09-09  OTV4TEST r10 — the r10 rows and the DEFECTS FOUND IN THE PREDECESSOR
@@ -52,6 +54,7 @@ Legend: **N** new file · **M** modified · **T** test (new or re-pointed) · **
 | r12 | strategy/liquidity_hunt.py, execution/handoff.py | N | the hunt (bias from liquidity, A1/A2, known-runway strike) and the grant |
 | r12 | execution/position_manager.py, execution/entry_engine.py, execution/exit_engine.py, main.py | M | the hunt never blocks; target-wick exit + grant; the sweep on a grant |
 | r12 | tests/check_liquidity_hunt.py | T | new |
+| r13 | config.py, tools/land.sh, tests/check_standing_offer.py | M | **FIX** — defect #12; CHECKs on scratch stores |
 
 ## DEFECTS FOUND IN THE PREDECESSOR (port these whether or not the rulings port)
 
@@ -68,3 +71,4 @@ Legend: **N** new file · **M** modified · **T** test (new or re-pointed) · **
 | 9 | `check_tcs_parked` P5b red before the fork touched TCS; outside the lander's set | tests/ | r9 |
 | 10 | the level engine never read a high or a low — a rejection was invisible to the derived layer | derived/levels.py | r3 (built) |
 | 11 | the condor management plan only recognised legs already flagged `is_condor_leg` — a lone sweep/TCS vertical read as "no credit verticals open" | strategy/iron_condor_strategy.py | r10 |
+| 12 | `check_standing_offer` S5 adopts a fixture fill into the LIVE trade logger — run by the lander on the QQQ TEST box it wrote `orb-T1` (CALL 196 ×10, spot 197.15) as an open trade and the bot RESUMED a phantom position on restart. Same class as #6. Fix: the checker binds a temp logger; structurally, the lander runs every CHECK with `OT_TRADES_DB`/`OT_DERIVED_DB` on scratch files (config v4.18 honours `OT_TRADES_DB`). **Port both halves; the fixture is identical on mainline.** | tests/check_standing_offer.py, tools/land.sh (control's twin), config.py | r13 |

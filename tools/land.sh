@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# tools/land.sh — v1.11
+# tools/land.sh — v1.12
+# v1.12 (2026-09-10) — OTV4TEST r13. CHECKs run with OT_TRADES_DB and OT_DERIVED_DB
+#   pointed at scratch files: a checker can never reach the box's live stores again
+#   (check_standing_offer S5 landed a fixture as a live open position on 2026-09-10).
 # v1.11 (2026-09-08) — OTV4TEST r1. `LEDGER <path>` in a half's land.spec names
 #   the revision ledger that half appends to. ABSENT MEANS docs/GENESIS.md, so
 #   every mainline half is byte-for-byte unaffected. The isolated fork passes
@@ -466,7 +469,11 @@ land_one() {
     # The general rule: a CHECK is arbitrary code and gets a clean slate of
     # everything that names this delivery.
     pb_step "$(basename "$chk")"
-    if ( cd "$repo" && env -u LAND_ARCHIVE -u LAND_STAGE python3 "$chk" ) >/dev/null 2>&1; then
+    # r13 — CHECKS NEVER TOUCH THE BOX'S STORES. A test fixture (check_standing_offer
+    # S5) landed as a live open position on 2026-09-10; every checker now runs
+    # with the trades and derived stores pointed at scratch files, whatever it does.
+    _scratch="$(mktemp -d /tmp/land-check.XXXXXX)"
+    if ( cd "$repo" && env -u LAND_ARCHIVE -u LAND_STAGE OT_TRADES_DB="$_scratch/trades.db" OT_DERIVED_DB="$_scratch/derived_store.db" python3 "$chk" ) >/dev/null 2>&1; then
       pb_clear
       echo "  check: $chk PASS"
     else

@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.12
+# BACKLOG.md — OTV4TEST — v0.13
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -73,6 +73,7 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 |---|---|---|
 | **HYG.2** | ⬜ **DOC STRIP — PROPOSED, NOT RULED.** FORK_BRIEF §3.6 proposes removing `ROADMAP.md`, `PORT_STATE.md`, `INHERITED_FINDINGS.md`, `HANDOFF.md`, `VISION.md` (mainline history with no fork consumer). `BACKLOG.md` was ruled: restarted blank (this file). The rest await the operator; deletion is a revision with a ledger row, and `FILE_MAP.md` is checked for links first. | 🔲 OPEN |
 | **HYG.1** | ✅ (r12) `_combine` and `momentum_val` dedented out of `ramp()`; every readiness path had raised NameError behind the import guard. Predecessor defect #8; ports as a fix. | ✅ r12 |
+| **HYG.6** | ✅ (r13) **A CHECKER'S FIXTURE BECAME A LIVE POSITION.** `check_standing_offer` S5 adopted `orb-T1` into the box's trades.db during r12's land; the bot resumed and "managed" a phantom CALL 196 until it was voided by hand. Fixed twice: the checker binds a temp logger, and `land.sh` runs every CHECK with `OT_TRADES_DB`/`OT_DERIVED_DB` on scratch files so no checker can reach a live store again. Defect #12 in the manifest — the fixture is identical on mainline; port both halves. | ✅ r13 |
 | **HYG.4** | ✅ (r6) **A TEST WROTE INTO THE BOX'S LIVE PLAN LEDGER.** `TestStrat` rows (WIPED_BY_RESTART, TRIGGERED) in the corpus on 2026-09-09, from the lander's checks: `Plan._ledger_open` resolved the registry's live ledger even when a test had bound its own store. Closed: a bound store never reaches the box's ledger. The existing rows are history; delete by hand if they offend. | ✅ r6 |
 | **HYG.3** | ⬜ **`tests/check_ledger_parity.py` READS THE FROZEN LEDGER.** It opens `docs/GENESIS.md` (mainline, frozen here) and this backlog; on the fork the revision it should reconcile against is `docs/GENESIS-TEST.md`. Not run by the lander today; repoint before relying on it. | 🔲 OPEN |
 
@@ -87,6 +88,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.13 — 2026-09-10 — OTV4TEST r13 — defect #12: a checker's fixture became a live phantom position; the lander now runs every CHECK on scratch stores (HYG.6).**
 
 **v0.12 — 2026-09-10 — OTV4TEST r12 (re-cut, superseding the unlanded anchors archive) — anchors (§36), HYG.1 closed, AND the liquidity hunt with the handoff grant (§37). HUNT.1 opened.**
 

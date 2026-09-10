@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""tests/check_standing_offer.py  v1.1
+"""tests/check_standing_offer.py  v1.2
+v1.2  2026-09-10  OTV4TEST r13 — S5 adopts its fixture fill into a TEMP trade logger, never
+      the box's. Predecessor defect #12.
 THE ORB STANDING OFFER: one order, supervised from both branches, and the
 BROKER declares the position.
 
@@ -157,8 +159,13 @@ def main():
           f"keep={keep!r} short50={bool(sh50)} shortstruct={bool(shst)}")
 
     # ── S5: adoption is idempotent ─────────────────────────────────────────
-    from database.trade_logger import get_trade_logger
-    tl = get_trade_logger()
+    import tempfile as _tf
+    import database.trade_logger as _TL
+    # r13 — a TEMP logger for this test's life: S5's adopt_fill wrote orb-T1 into the
+    # box's LIVE trades.db when the lander ran this check (2026-09-10) and the bot
+    # resumed a phantom position. The temp file dies with the process.
+    _TL._trade_logger = _TL.TradeLogger(db_path=os.path.join(_tf.mkdtemp(), 'trades.db'))
+    tl = _TL.get_trade_logger()
     ok4 = ro.adopt_fill(row, 4, paper=True)
     got = [r for r in tl.get_open_trades_live()
            if str(r.get("trade_id")) == "orb-T1"]
