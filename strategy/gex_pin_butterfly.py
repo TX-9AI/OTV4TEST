@@ -1,5 +1,7 @@
 """
-strategy/gex_pin_butterfly.py  v5.0
+strategy/gex_pin_butterfly.py  v5.1
+v5.1  2026-09-09  OTV4TEST r12 — anchors on the row (record only): GEX at the pin, VWAP
+      distance to the pin, OI at the pin.
 v5.0  2026-09-09  OTV4TEST r6 — THE BUTTERFLY ON THE OPERATOR'S RULINGS
       (PLAN_SPEC §32). Anchor = the pin only; regime PINNING; reachable = EM
       0.30–1.00, FIRM (no live relaxed call was left here after r321 —
@@ -612,6 +614,13 @@ class GEXPinButterflyStrategy:
         pin = self._smoothed_pin(pin_raw)
         t.check("pin_raw", pin_raw or None)
         t.check("pin_persist_ticks", float(self._persist), self._persist >= PERSIST_TICKS)
+        try:                                        # r12 — ANCHORS, record only
+            from derived import anchors as _A
+            _A.stamp(t, gex_at_pin=_A.gex_at(pin or None),
+                     vwap_minus_pin=(lambda v: None if (v is None or not pin) else v - pin)(_A.vwap()),
+                     oi_at_pin=_A.oi_at(pin or None, chain))
+        except Exception:                           # noqa: BLE001
+            pass
         prep.cond("pin_persistence", float(self._persist),
                   f">= {PERSIST_TICKS} ticks at one strike (smoothed over {SMOOTH_WINDOW})",
                   self._persist >= PERSIST_TICKS)

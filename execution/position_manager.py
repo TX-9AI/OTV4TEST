@@ -1,5 +1,8 @@
 """
-execution/position_manager.py  v4.8
+execution/position_manager.py  v4.9
+v4.9  2026-09-10  OTV4TEST r12 — has_blocking_position(): THE LIQUIDITY HUNT BLOCKS
+      NOTHING (PLAN_SPEC §37), the butterfly's rule applied to a second strategy,
+      so the hunt and the ORB run the same break side by side.
 v4.8  2026-08-31  r197 — has_blocking_position(): A BUTTERFLY BLOCKS NOTHING.
       r161 exempted it from the single-position rule on ENTRY; nothing made
       that reciprocal, so an open butterfly still threw the box into the
@@ -214,6 +217,16 @@ class PositionManager:
             return 0
 
     @staticmethod
+    def _is_liquidity_hunt(record) -> bool:
+        """OTV4TEST r12 — the liquidity hunt runs in PARALLEL with the ORB and
+        never blocks (PLAN_SPEC §37); reads the ROW, like the butterfly."""
+        try:
+            return bool(record.get("is_liquidity_hunt", 0)) or \
+                str(record.get("strategy") or "") == "LiquidityHunt"
+        except Exception:                                       # noqa: BLE001
+            return False
+
+    @staticmethod
     def _is_butterfly(record) -> bool:
         """A GEX pin butterfly. Reads the ROW, not the strategy name.
 
@@ -254,7 +267,8 @@ class PositionManager:
         # would answer "nothing blocks" on a box that restarted holding an ORB
         # position — and let a credit trade open against it.
         self.has_open_position()
-        return any(not self._is_butterfly(r) for r in self._open_records)
+        return any(not (self._is_butterfly(r) or self._is_liquidity_hunt(r))
+                   for r in self._open_records)
 
     def has_open_position(self) -> bool:
         if self._open_records:

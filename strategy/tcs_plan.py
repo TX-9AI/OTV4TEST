@@ -1,5 +1,6 @@
 """
-strategy/tcs_plan.py  v1.0
+strategy/tcs_plan.py  v1.1
+v1.1  2026-09-09  OTV4TEST r12 — anchors on the chosen structure (record only).
 v1.0  2026-09-09  OTV4TEST r9 — THE TREND CREDIT SPREAD PLAN (PLAN_SPEC §34),
       agreed with the operator 2026-09-09. The purpose, his words: *"catch
       large moves in the afternoon on some macro catalyst good or bad, and let
@@ -375,6 +376,10 @@ class TCSPlan:
             prep.short, prep.long, prep.credit, prep.width = cand.short, cand.long, cand.credit, cand.width
             prep.r, prep.stop_dist, prep.pop, prep.richness = cand.r, cand.stop_dist, cand.pop, cand.richness
             t.credit_spread(cand.short.strike, cand.long.strike, cand.credit, invalidation=cand.price)
+            # r12 — ANCHORS, record only: vanna at the accepted extreme, aggressor share through it
+            from derived import anchors as _A
+            _A.stamp(t, vanna_at_level=_A.vanna_at(cand.price), charm_at_short=_A.charm_at(cand.short.strike),
+                     aggressor_at_level=_A.aggressor_share(cand.price), fork15=_A.fork_dir("15m"))
         if prep.starved:
             t.starved(*prep.starved); return prep
         if prep.structural:

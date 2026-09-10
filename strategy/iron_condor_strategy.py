@@ -1,5 +1,7 @@
 """
-strategy/iron_condor_strategy.py  v4.11
+strategy/iron_condor_strategy.py  v4.12
+v4.12 2026-09-09  OTV4TEST r12 — anchors on the formed row (record only): GEX between the
+      shorts, VWAP distance.
 v4.11 2026-09-09  OTV4TEST r11 — THE LADDER IS TWO RUNGS AND THE ROLL IS PREPARED
       AHEAD (PLAN_SPEC §35 v2). Operator's picture: the "trick" is rung 1 at
       its limit — the untested side re-sold at the tested short's own strike
@@ -439,6 +441,15 @@ class IronCondorStrategy(BaseOptionsStrategy):
 
         # ── rung 2b: the tent, only on an already-rolled structure ─────────
         t.check("breached", 0.0, None)              # r11: the tent rung is retired
+        try:                                        # r12 — ANCHORS, record only
+            from derived import anchors as _A
+            _cl = next((l for l in legs if l.get("option_side") == "call"), None)
+            _pl = next((l for l in legs if l.get("option_side") == "put"), None)
+            if _cl and _pl:
+                _A.stamp(t, gex_between_shorts=_A.gex_between(_pl.get("short_strike"), _cl.get("short_strike")),
+                         vwap_minus_price=(lambda v: None if v is None else v - current_price)(_A.vwap()))
+        except Exception:                           # noqa: BLE001
+            pass
         if rolled:
             # r11 — FINAL FORM. No further roll exists: the risk-free side is at
             # the body and cannot add credit. The row says where the floor is,

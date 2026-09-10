@@ -1,4 +1,5 @@
-# PORT_MANIFEST.md — OTV4TEST → options_trader_v4 — v0.3
+# PORT_MANIFEST.md — OTV4TEST → options_trader_v4 — v0.4
+v0.4  2026-09-09  OTV4TEST r12 — anchors (record only) and HYG.1 closed; defect #8 fixed.
 v0.3  2026-09-09  OTV4TEST r11 — the r11 rows (two-rung ladder, widened-wing roll, group floor).
 v0.2  2026-09-09  OTV4TEST r10 — the r10 rows and the DEFECTS FOUND IN THE PREDECESSOR
       section (eleven, one still open) — port these whether or not the rulings port.
@@ -44,6 +45,13 @@ Legend: **N** new file · **M** modified · **T** test (new or re-pointed) · **
 | r10 | tests/check_condor_mgmt.py | T | new |
 | r11 | strategy/condor_roll.py, strategy/iron_condor_strategy.py, execution/exit_engine.py, database/trade_logger.py, strategy/sweep_plan.py, strategy/sweep_credit_spread.py, main.py | M | two-rung ladder: the roll widens its wing (iron fly at the limit), prepared every tick; tent and invert retired; group final-form floor (3 new trade columns); complement at least as rich as leg one; whipsaw named |
 | r11 | tests/check_condor_mgmt.py R1–R6, check_plan_prepares M5 | T | new / re-derived |
+| r12 | derived/anchors.py | N | record-only anchor reads (surface, VWAP, forks, tines, prints, OI) |
+| r12 | strategy/orb_plan.py, runaway_plan.py, sweep_plan.py, tcs_plan.py, gex_pin_butterfly.py, iron_condor_strategy.py | M | anchors stamped on the row; runaway reads participation |
+| r12 | analysis/trade_readiness.py | M | **FIX** — `_combine`/`momentum_val` dedented (defect #8) |
+| r12 | tests/check_anchors.py | T | new |
+| r12 | strategy/liquidity_hunt.py, execution/handoff.py | N | the hunt (bias from liquidity, A1/A2, known-runway strike) and the grant |
+| r12 | execution/position_manager.py, execution/entry_engine.py, execution/exit_engine.py, main.py | M | the hunt never blocks; target-wick exit + grant; the sweep on a grant |
+| r12 | tests/check_liquidity_hunt.py | T | new |
 
 ## DEFECTS FOUND IN THE PREDECESSOR (port these whether or not the rulings port)
 
@@ -56,7 +64,7 @@ Legend: **N** new file · **M** modified · **T** test (new or re-pointed) · **
 | 5 | `finish_break` only on a LOSING runaway exit — a trail winner re-entered on the same standing state | database/trade_logger.py | r3 |
 | 6 | the lander's checks wrote `TestStrat` rows into the box's live plan_ledger (`_ledger_open` ignored a bound store) | strategy/plan.py | r6 |
 | 7 | main.py read the sweep's window from a module string ("14:00") and the TCS's from config — the remainder honoured a stale window | main.py | r9 |
-| 8 | `analysis/trade_readiness.py::_combine` defined nested, called at module level — NameError on every readiness path, masked by an import guard | analysis/trade_readiness.py | **OPEN** (HYG.1) |
+| 8 | `analysis/trade_readiness.py::_combine` defined nested, called at module level — NameError on every readiness path, masked by an import guard | analysis/trade_readiness.py | r12 |
 | 9 | `check_tcs_parked` P5b red before the fork touched TCS; outside the lander's set | tests/ | r9 |
 | 10 | the level engine never read a high or a low — a rejection was invisible to the derived layer | derived/levels.py | r3 (built) |
 | 11 | the condor management plan only recognised legs already flagged `is_condor_leg` — a lone sweep/TCS vertical read as "no credit verticals open" | strategy/iron_condor_strategy.py | r10 |

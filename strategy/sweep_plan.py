@@ -1,5 +1,7 @@
 """
-strategy/sweep_plan.py  v1.2
+strategy/sweep_plan.py  v1.3
+v1.3  2026-09-09  OTV4TEST r12 — anchors on the chosen structure (record only): GEX at the
+      level, OI at the short, aggressor share at the level, charm at the short, nearest tine.
 v1.2  2026-09-09  OTV4TEST r11 — `complement_richness`: as a condor's second leg the
       structure must be at least as rich as leg one, or it is REJECTED by name.
 v1.1  2026-09-09  OTV4TEST r10 — `LAST_PREP`: the most recent preparation, so the
@@ -355,6 +357,12 @@ class SweepPlan:
             t.check("stop_premium", chosen.stop_prem, None)
             t.credit_spread(chosen.short.strike, chosen.long.strike, chosen.credit,
                             invalidation=chosen.price)
+            # r12 — ANCHORS, record only: is the pool a gamma wall; who traded the rejection;
+            # charm's sign into the close (the thesis is HOLDS TO THE CLOSE)
+            from derived import anchors as _A
+            _A.stamp(t, gex_at_level=_A.gex_at(chosen.price), oi_at_short=_A.oi_at(chosen.short.strike, chain),
+                     aggressor_at_level=_A.aggressor_share(chosen.price), charm_at_short=_A.charm_at(chosen.short.strike),
+                     tine_to_level=_A.nearest_tine(chosen.price))
         if prep.starved:
             t.starved(*prep.starved); return prep
         if prep.structural:

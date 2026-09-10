@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.10
+# BACKLOG.md — OTV4TEST — v0.12
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -28,7 +28,7 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 
 | id | item | state |
 |---|---|---|
-| **RUN.6** | ⬜ **PARTICIPATION IS NOT WIRED INTO THE STRENGTH READ.** §30.3 names three components; only pace and acceptance are measured at acceptance. The prints stream (aggressor side, r64) and `tape_at_level` exist but are not reachable from the strategy path; `runaway_plan.prepare(participation=...)` accepts the value and records None. Wire it as a dial, then re-read the band prior. | 🔲 OPEN |
+| **RUN.6** | ⬜ (half, r12: participation is now READ from the prints at the boundary and recorded on the row; the composite still uses pace + acceptance until the first fires are scored) **PARTICIPATION IS NOT WIRED INTO THE STRENGTH READ.** §30.3 names three components; only pace and acceptance are measured at acceptance. The prints stream (aggressor side, r64) and `tape_at_level` exist but are not reachable from the strategy path; `runaway_plan.prepare(participation=...)` accepts the value and records None. Wire it as a dial, then re-read the band prior. | 🔲 OPEN |
 | **RUN.7** | ⬜ **WOULD-HAVE-FLOORED WATCH.** The runaway has no premium stop by ruling; `exit_engine` records `_would_have_floored` the first time the old 20% floor would have fired while the thesis held. After the first sessions: how many trades, and did the structure exits recover them or not? A percent under the structure is a question, not a bar, until this is read. | 🔲 OPEN |
 | **RUN.8** | ⬜ **THE FIZZLE PRIORS ARE UNMEASURED.** "Two events, or one event plus one dial", the 0.5× range-contraction line and the acc_recent < 0.5 read are declared priors; every read lands on the record (`_fizzle_read`). Score them against RAN (not 5% green) once fires exist; kill, keep, or codify. | 🔲 OPEN |
 | **SWP.1** | ⬜ **REJECTION_FRESH_BARS = 3 IS A PRIOR.** "Decide quickly" needed a number; 3 bars is mine, config-overridable (`SWEEP_CS_REJECTION_FRESH_BARS`), recorded on every fire and every stale note. After the first sessions: did any fire beyond 1–2 bars, and did a 4th-bar rejection ever matter? | 🔲 OPEN |
@@ -57,6 +57,12 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 | **CND.2** | ⬜ **THE TENT CODE IS UNCALLED, NOT DELETED.** `check_and_execute_tent`, `_tent_breached`, `_execute_tent`, `_tent_close_all` and `_evaluate_tent` remain in the tree with no caller after r11. Delete them with the port (a dead branch reads as live). | 🔲 OPEN |
 | **CND.1** | ⬜ **THE FIRST FORMED CONDOR IS THE TEST.** Every rung disposes every tick on the CondorManagement / CreditRoll rows; read the first real pairing end to end (formation row → tested by wick → roll search → whichever rung fires) before touching a number. The tent has no sample; each case is its own evidence. | 🔲 OPEN |
 
+### The liquidity hunt (PLAN_SPEC §37)
+
+| id | item | state |
+|---|---|---|
+| **HUNT.1** | ⬜ **THE FIRST WEEK IS THE TEST.** Per morning: the bias row, A1/A2, reached-the-level, the grant's fate. `HANDOFF_TTL_TICKS` = 8 is a prior. If the predecessor gets the hunt (otv4 r325), the ORB there needs the rejection mark (bars from a rejection at its level to its exit — the give-back window) so the comparison is fair. | 🔲 OPEN |
+
 ### Repo hygiene found on the way
 
 | id | item | state |
@@ -65,8 +71,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 
 | id | item | state |
 |---|---|---|
-| **HYG.1** | ⬜ **`analysis/trade_readiness.py::_combine` IS UNBOUND.** pyflakes over the tree (FORK_BRIEF §3.7) found `_combine` defined NESTED inside `ramp()` (indentation) and called five times at module level — a NameError on every readiness path, masked because the engine is log-only and import-guarded in main.py. Two more undefined names sit in tests (`check_management_plan.py:302 esrc`, `scrub_headers.py:285 s2`). Not fixed in r2 (not the asked-for change); a `check_undefined_names.py` gate (undefined-name only, never unused-import) is the fix's companion. | 🔲 OPEN |
 | **HYG.2** | ⬜ **DOC STRIP — PROPOSED, NOT RULED.** FORK_BRIEF §3.6 proposes removing `ROADMAP.md`, `PORT_STATE.md`, `INHERITED_FINDINGS.md`, `HANDOFF.md`, `VISION.md` (mainline history with no fork consumer). `BACKLOG.md` was ruled: restarted blank (this file). The rest await the operator; deletion is a revision with a ledger row, and `FILE_MAP.md` is checked for links first. | 🔲 OPEN |
+| **HYG.1** | ✅ (r12) `_combine` and `momentum_val` dedented out of `ramp()`; every readiness path had raised NameError behind the import guard. Predecessor defect #8; ports as a fix. | ✅ r12 |
 | **HYG.4** | ✅ (r6) **A TEST WROTE INTO THE BOX'S LIVE PLAN LEDGER.** `TestStrat` rows (WIPED_BY_RESTART, TRIGGERED) in the corpus on 2026-09-09, from the lander's checks: `Plan._ledger_open` resolved the registry's live ledger even when a test had bound its own store. Closed: a bound store never reaches the box's ledger. The existing rows are history; delete by hand if they offend. | ✅ r6 |
 | **HYG.3** | ⬜ **`tests/check_ledger_parity.py` READS THE FROZEN LEDGER.** It opens `docs/GENESIS.md` (mainline, frozen here) and this backlog; on the fork the revision it should reconcile against is `docs/GENESIS-TEST.md`. Not run by the lander today; repoint before relying on it. | 🔲 OPEN |
 
@@ -81,6 +87,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.12 — 2026-09-10 — OTV4TEST r12 (re-cut, superseding the unlanded anchors archive) — anchors (§36), HYG.1 closed, AND the liquidity hunt with the handoff grant (§37). HUNT.1 opened.**
 
 **v0.10 — 2026-09-09 — OTV4TEST r11 — the condor ladder is two rungs (PLAN_SPEC §35 v2): the roll widens its wing, prepared every tick; the tent and invert retired; the group final-form floor; the whipsaw named; the complement rich or not taken. CND.2 opened.**
 

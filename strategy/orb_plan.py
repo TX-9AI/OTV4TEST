@@ -1,5 +1,7 @@
 """
-strategy/orb_plan.py  v1.0
+strategy/orb_plan.py  v1.1
+v1.1  2026-09-09  OTV4TEST r12 — anchors stamped on the prepared row (record only):
+      VWAP distance, aggressor share at the boundary, nearest tine to the target, 15m fork.
 v1.0  2026-09-08  OTV4TEST r2 — THE ORB PLAN. Agreed with the operator on
       2026-09-08, one part at a time (PLAN_SPEC §29). The plan holds the
       chain and selects; the strategy holds nothing but its bars and fires.
@@ -344,6 +346,13 @@ class ORBPlan:
         t.check("floor_premium", prep.floor_premium, None)
         t.check("size_provisional", prep.size_provisional, prep.size_provisional > 0)
         t.debit = prep.premium
+        # r12 — ANCHORS, record only (derived/anchors.py): does a target under a
+        # tine get reached; does the boundary's tape lean the break's way.
+        from derived import anchors as _A
+        _A.stamp(t, vwap_minus_price=(lambda v: None if v is None else v - price_now)(_A.vwap()),
+                 aggressor_at_boundary=_A.aggressor_share(prep.boundary),
+                 tine_to_target=_A.nearest_tine(prep.target_100),
+                 fork15=_A.fork_dir("15m"))
 
         if armed:
             prep.waiting_on = "retest"

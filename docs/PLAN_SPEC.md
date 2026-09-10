@@ -1373,3 +1373,40 @@ After the roll the structure is **final form** and the only exit is a **15% loss
 As a condor's second leg the sweep must be **at least as rich (credit ÷ width) as leg one** — a comparison, not an invented number — or it is REJECTED by name (`complement_richness`). Leg one is either fine or stopped; nothing else about it enters the authorization.
 
 **As built (OTV4TEST r10 + r11):** `strategy/condor_roll.py` v4.8, `strategy/iron_condor_strategy.py` v4.11, `strategy/sweep_plan.py` v1.2, `strategy/sweep_credit_spread.py` v6.1, `execution/exit_engine.py` v4.16, `database/trade_logger.py` v4.14, `main.py` v4.45. Hypotheticals: `check_condor_mgmt` C1–C7, R1–R6.
+
+## 36. OTV4TEST r12 — ANCHORS: RECORDED, NEVER DECIDED ON (operator 2026-09-09)
+
+*"Record in our newly crafted plans, not to decide, but to see if they offer fitting anchors we can tie to later."* `derived/anchors.py` reads the stores that already exist — surface (charm, vanna, GEX per strike), indicators (VWAP), forks (direction), levels (the 1h tines), the prints (aggressor share of size at a level), the chain in hand (OI) — and every plan stamps 3–5 of them on its row as record-only checks (`anchor_*`, verdict None). Scored later against fires, DECLINEs and HOLDs alike; `fire_snapshot` alone could only ever see the fires. A None is a coverage fact, never a failure; nothing here reaches a refuse, a hold or an unmet (`check_anchors` A5).
+
+| plan | anchors | the question they will answer |
+|---|---|---|
+| ORB | VWAP distance, aggressor share at the boundary, nearest 1h tine to the 100% target, 15m fork | does a target under a tine get reached; does the boundary's tape lean the break's way |
+| runaway | **participation** (aggressor share at the boundary — RUN.6, read now, recorded only), charm and vanna at the target strike, 15m fork, VWAP distance | do runs into positive charm fizzle earlier |
+| sweep | GEX at the rejected level, OI at the short, aggressor share at the level, charm at the short, nearest tine | is the pool a gamma wall; who traded the rejection; does charm's sign into the close agree with "holds to the close" |
+| TCS | vanna at the accepted extreme, charm at the short, aggressor share through the extreme, 15m fork | |
+| butterfly | GEX at the pin, VWAP distance to the pin, OI at the pin | |
+| condor | GEX between the shorts, VWAP distance | pinning support for "stays between" |
+
+## 37. OTV4TEST r12 — THE LIQUIDITY HUNT AND THE HANDOFF GRANT (operator 2026-09-10)
+
+From the predecessor's own ledger: the ORB break-and-retest risks $71 to make $37; the momentum trade pays ~2:1 with the least give-back over ~300 trades. *"Under most circumstances price is going to go towards where the liquidity is."* So the hunt trades the break TOWARD the nearest liquidity level instead of waiting for a retest — and runs **beside** the ORB, never in its slot, so the two are compared on the same range, the same levels, the same fills.
+
+### 37.1 The spec
+| part | definition |
+|---|---|
+| bias | at 09:35, the nearest live named level OUTSIDE the range — measured from the range edge — above vs below. The nearer side is the market's intent. *"Some of the earliest moves of the session are fake-outs and do not represent the intent."* |
+| A1 | a 1m close outside the range on the bias side → long/short toward the level |
+| A2 | a far-side break that closes back INSIDE the range → entered on that close, from the far boundary, direction = bias. *"Taking out a previous session high from the lower bound of the opening range."* The whole range is runway |
+| not traded | a far-side break that does not fail — recorded as "broke away from the liquidity" |
+| target | the level. Runway known at entry → the strike is the gamma pick over that runway (the runaway's search with `run` = distance to the level), teenie gate |
+| exits | the target WICKED with the close short of it → off, **handoff granted to the sweep** · the target ACCEPTED → over-delivered, hold on the runaway's exits · thesis dead = a close back through the ENTRY boundary (A1: the range edge; A2: the far boundary) · fizzle · 15:45 · no premium stop |
+| limits | one hunt per break key; morning 09:35–11:30; env sizing |
+| slot | exempt on entry and not counted as blocking (the butterfly's rule) — an ORB and a hunt may both be long the same break |
+
+### 37.2 The handoff grant (`execution/handoff.py`)
+The slot rule is binary; instead of more exceptions the handing-off strategy writes an explicit token — *from LiquidityHunt, to SweepCreditSpread, at level L, side S, good for N ticks* (`HANDOFF_TTL_TICKS` = 8, a prior). The sweep's entry consults it: with a live grant naming it the slot yields — an open ORB does not block — and every other bar the sweep has still applies. Grants expire on their own; **an expired grant is a finding.** The sweep's fill carries the grant it fired on.
+
+### 37.3 What the week answers
+Per box per morning: was the bias right (reached the level / didn't), which entry paid (A1 vs A2), how many hunts handed off and what the sweep did with the grant. The ORB beside it is the control. Read in R and reached-the-level counts first; the sweep P&L after granted handoffs will need more than a week.
+
+**As built (OTV4TEST r12):** `strategy/liquidity_hunt.py` v1.0, `execution/handoff.py` v1.0, `execution/position_manager.py` v4.9, `execution/entry_engine.py` v4.9, `execution/exit_engine.py` v4.17, `main.py` v4.46. Hypotheticals: `check_liquidity_hunt` H1–H10.

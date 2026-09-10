@@ -1,5 +1,7 @@
 """
-execution/entry_engine.py  v4.8
+execution/entry_engine.py  v4.9
+v4.9  2026-09-10  OTV4TEST r12 — the record carries `is_liquidity_hunt` (the slot rule
+      reads the row, like `is_butterfly`).
 v4.8  2026-09-04  r240 — 🔴 THE ORB BOUNDS ARE WRITTEN BY CAPABILITY,
       NOT BY NAME — rebuilding r226, which was cut on 2026-09-03 and NEVER
       LANDED (no commit on any branch; its BACKLOG entry reached git only
@@ -308,6 +310,7 @@ class EntryEngine:
             setup_score       = None,
             option_side       = signal.option_side if not signal.is_butterfly else signal.butterfly_direction,
             is_butterfly      = signal.is_butterfly,
+            is_liquidity_hunt = bool(getattr(signal, "is_liquidity_hunt", False)),   # r12 (hunt)
             strike            = signal.strike if not signal.is_butterfly else signal.center_contract.strike,
             expiry            = signal.expiry if not signal.is_butterfly else signal.center_contract.expiry,
             contracts         = filled_qty,

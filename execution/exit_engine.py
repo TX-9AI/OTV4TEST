@@ -1,5 +1,12 @@
 """
-execution/exit_engine.py  v4.16
+execution/exit_engine.py  v4.17
+v4.17 2026-09-10  OTV4TEST r12 — THE LIQUIDITY HUNT'S EXITS (PLAN_SPEC §37): routed to
+      the runaway's family (thesis-dead on a close back through the entry
+      boundary, fizzle, backstop, no premium stop) with one exit of its own
+      in front: the target level WICKED with the close short of it takes the
+      hunt off and writes a HANDOFF GRANT to the sweep (execution/handoff.py).
+      A close beyond the target is acceptance — over-delivered — and the
+      runaway's hold logic keeps it.
 v4.16 2026-09-09  OTV4TEST r11 — THE FINAL-FORM FLOOR ON A ROLLED STRUCTURE. After
       a risk-free roll both legs carry `final_form_group` and `final_form_basis`
       (condor_roll v4.8: the cost to close the structure as formed). A hedged
@@ -990,6 +997,8 @@ class ExitEngine:
             # already treats 0.0 as INERT and refuses to let an inert stop look
             # like a passing check.
             return self._evaluate_orb(record, current_premium, df_1m, df_5m)
+        elif strategy == "LiquidityHunt":                       # r12: the runaway's family
+            return self._evaluate_orb(record, current_premium, df_1m, df_5m)
         else:
             # Unknown directional strategies take the sweep rules (25% stop,
             # hard close — survivable defaults), but NEVER silently: an
@@ -1060,7 +1069,16 @@ class ExitEngine:
         #     regardless of trail state. As of v3.3, record['stop_premium'] is
         #     IMMUTABLE (set once at entry; trails persist in trail_stop), so
         #     this check is truthful: it fires only at the real -25% floor.
-        _is_runaway = record.get("strategy") == "RunawayContinuation"
+        _is_runaway = record.get("strategy") in ("RunawayContinuation", "LiquidityHunt")
+        _is_hunt = record.get("strategy") == "LiquidityHunt"
+        # r12 — THE HUNT TAKES OFF AT ITS TARGET'S WICK, and hands off on its rejection
+        if _is_hunt:
+            _ht = self._hunt_at_target(record, df_1m)
+            if _ht:
+                decision.should_exit = True
+                decision.exit_reason = _ht
+                logger.info("HUNT: %s %s", trade_id[:8], _ht)
+                return decision
         # ── v4.12: REJECTED HANDOFF — a pool on our side rejected on a close ──
         _ho = self._rejected_handoff(record, direction)
         if _ho:
@@ -1272,6 +1290,30 @@ class ExitEngine:
             pass
         return 0.0
 
+    def _hunt_at_target(self, record, df_1m) -> str:
+        """The hunt's own take-off: the closed bar WICKED its target level with
+        the close short of it -> off (the reversal is the sweep's trade, and
+        the grant is written). A close BEYOND the target = accepted: hold on
+        the runaway's exits (nothing returned here)."""
+        try:
+            tgt = float(record.get("underlying_target") or 0.0)
+            if tgt <= 0 or df_1m is None or len(df_1m) < 2:
+                return ""
+            bar = df_1m.iloc[-2]
+            hi, lo, close = float(bar["high"]), float(bar["low"]), float(bar["close"])
+            d = str(record.get("direction") or "")
+            wicked = (hi >= tgt and close < tgt) if d == "long" else (lo <= tgt and close > tgt)
+            if wicked:
+                from execution import handoff as _H
+                _H.grant("LiquidityHunt", "SweepCreditSpread", tgt,
+                         "call" if d == "long" else "put",
+                         why=f"target {tgt:.2f} wicked (close {close:.2f}) — the reversal is the sweep's")
+                return (f"hunt_target_wicked: target {tgt:.2f} reached on a wick, close {close:.2f} "
+                        f"— off; handoff granted to the sweep")
+        except Exception as exc:                                # noqa: BLE001
+            logger.debug("hunt target read failed: %s", exc)
+        return ""
+
     def _rejected_handoff(self, record, direction) -> str:
         """A pool on the trade's side, beyond the entry, REJECTED on a close
         since entry (derived/levels v4.1). Returns the exit reason or ""."""
@@ -1310,6 +1352,11 @@ class ExitEngine:
                 return ""
             width = hi - lo
             tp50 = hi + width / 2 if direction == "long" else lo - width / 2
+            if record.get("strategy") == "LiquidityHunt":
+                # r12 — the hunt's thesis line is its ENTRY BOUNDARY (A1: the range
+                # edge it broke; A2: the far boundary it re-entered), carried in
+                # underlying_stop. The 50% level means nothing to it.
+                tp50 = float(record.get("underlying_stop") or 0.0) or tp50
             last_close = float(df_1m.iloc[-2]["close"])
             lost = last_close < tp50 if direction == "long" else last_close > tp50
             if lost:
@@ -1374,6 +1421,8 @@ class ExitEngine:
                 return f"runaway_fizzle: {'; '.join(events + dials)}"
             # ── structure backstop: a close back through the boundary ──
             boundary = hi if direction == "long" else lo
+            if record.get("strategy") == "LiquidityHunt":
+                boundary = float(record.get("underlying_stop") or 0.0) or boundary   # r12: its entry boundary
             crossed = last_close < boundary if direction == "long" else last_close > boundary
             if crossed:
                 return (f"runaway_backstop: 1m close {last_close:.2f} through the ORB boundary "

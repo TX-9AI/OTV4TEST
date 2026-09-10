@@ -1,5 +1,8 @@
 """
-strategy/runaway_plan.py  v1.0
+strategy/runaway_plan.py  v1.1
+v1.1  2026-09-09  OTV4TEST r12 — participation read from the prints at the boundary
+      (record only; the composite is unchanged) and anchors stamped: charm/vanna at
+      the target strike, 15m fork, VWAP distance.
 v1.0  2026-09-08  OTV4TEST r3 — THE RUNAWAY PLAN (PLAN_SPEC §30), agreed with
       the operator 2026-09-08. The intent, his words: *"catch an early high
       velocity move from the market open where there's a lot of participation
@@ -302,6 +305,11 @@ class RunawayPlan:
         # strength, measured once and frozen; the band follows it
         m = self._measure(key, orb, df_1m, direction)
         prep.strength, prep.pace, prep.acceptance = m["strength"], m["pace"], m["acceptance"]
+        # r12 — participation READ from the prints at the boundary (RUN.6, record only
+        # this revision: the composite still uses pace + acceptance)
+        from derived import anchors as _A
+        if participation is None:
+            participation = _A.aggressor_share(prep.boundary)
         prep.participation = participation
         prep.band = m["band"]
         t.check("strength", prep.strength, None)
@@ -350,6 +358,10 @@ class RunawayPlan:
                     prep.considered, prep.r = n, t.r
                     t.note(why)
 
+        # r12 — ANCHORS, record only: dealer flow at the target strike, the 15m fork
+        _k = float(getattr(prep.contract, "strike", 0) or 0) if prep.contract is not None else None
+        _A.stamp(t, charm_at_strike=_A.charm_at(_k), vanna_at_strike=_A.vanna_at(_k),
+                 fork15=_A.fork_dir("15m"), vwap_minus_price=(lambda v: None if v is None else v - price_now)(_A.vwap()))
         if prep.starved:
             t.starved(*prep.starved)
             return prep

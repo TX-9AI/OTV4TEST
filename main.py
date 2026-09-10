@@ -1,5 +1,11 @@
 """
-main.py  v4.45
+main.py  v4.46
+v4.46 2026-09-10  OTV4TEST r12 — THE LIQUIDITY HUNT AND THE HANDOFF GRANT (PLAN_SPEC
+      §37). The hunt is asked every tick beside the ORB — from the no-position
+      chain and from the position-open branch — and executed ADDITIVE; it takes
+      no slot (position_manager v4.9). On its target's wick it writes a grant;
+      `_attempt_sweep_on_grant` lets the sweep enter on a live grant even while
+      an ORB is open, the grant answering the slot question only.
 v4.45 2026-09-09  OTV4TEST r11 — the tent call is gone (the ladder is two rungs);
       the sweep's complement is handed the open leg's richness so "the second
       leg is rich or we don't take it" is a bar the plan reports.
@@ -1194,6 +1200,8 @@ from strategy.orb_strategy import ORBStrategy
 from strategy.runaway_continuation import RunawayContinuationStrategy
 from strategy.sweep_credit_spread import SweepCreditSpreadStrategy
 from strategy.gex_pin_butterfly import GEXPinButterflyStrategy
+from strategy.liquidity_hunt import LiquidityHunt                       # OTV4TEST r12
+from execution import handoff as _handoff                              # OTV4TEST r12
 from config import SWEEP_SETUP_FLOOR
 from utils import mem_trace          # MEM.2 — in-process tracemalloc, env-gated
 
@@ -1242,6 +1250,7 @@ _orb_strategy     = ORBStrategy()
 _runaway_strategy = RunawayContinuationStrategy()
 _sweep_cs_strategy = SweepCreditSpreadStrategy()
 _gex_bfly_strategy = GEXPinButterflyStrategy()
+_liquidity_hunt = LiquidityHunt()                                      # OTV4TEST r12
 _iron_condor_strategy = IronCondorStrategy()
 # TC.6 — trend credit spread. Sits with the other strategy instances and is
 # UNGUARDED on purpose: it imports only config + IronCondorStrategy, both
@@ -3670,6 +3679,12 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
         orb_sig = None
     if orb_sig:
         signal = orb_sig
+    # OTV4TEST r12 — THE LIQUIDITY HUNT runs beside the ORB, never in its slot
+    # (PLAN_SPEC §37): asked every tick, executed additive, so both can be long
+    # the same break. That is the paired comparison.
+    _attempt_hunt(ctx, ms, state, orb=orb, chain=chain,
+                  now_hhmm=(_now_disp.strftime("%H:%M") if _now_disp else ""),
+                  atr_pct=float(getattr(ctx.get("vol"), "atr_pct", 0.0) or 0.0))
         # 🔴 r195 — THE ENGINE NO LONGER RE-ARMS HERE, AND THAT WAS THE BUG.
         # `mark_triggered()` fired the moment the SIGNAL existed, which
         # re-armed the engine and `_rearm()` WIPES ORBData — direction,
@@ -4040,6 +4055,48 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
             return
 
     _execute_entry_signal(signal, ctx, ms, state, _sigj)
+
+
+def _attempt_hunt(ctx, ms, state, *, orb, chain, now_hhmm, atr_pct) -> None:
+    """OTV4TEST r12 — ask the liquidity hunt's plan (dormant outside 09:35–11:30)
+    and on a fire execute it ADDITIVE: it takes no slot and is not counted as
+    blocking (position_manager v4.9)."""
+    try:
+        _handoff.tick()
+        _pm = get_position_manager(state.paper_trading)
+        if any(str(r.get("strategy") or "") == "LiquidityHunt" for r in _pm.get_open_records()):
+            _plan_skip("LiquidityHunt", "a hunt is already open on this box")
+            return
+        sig = _safe_strategy("LiquidityHunt", lambda: _liquidity_hunt.generate_signal(
+            orb=orb, price_now=ctx["price"], now_et=now_hhmm, atr_pct=atr_pct,
+            chain=chain, df_1m=ctx.get("df_1m"), atm_iv=ctx.get("atm_iv")), ctx)
+        if sig is not None:
+            _execute_entry_signal(sig, ctx, ms, state, None, additive=True)
+    except Exception as exc:                                   # noqa: BLE001
+        logger.warning("[hunt] attempt failed: %s", exc)
+
+
+def _attempt_sweep_on_grant(ctx, ms, state) -> None:
+    """OTV4TEST r12 — a live handoff grant naming the sweep lets it enter while
+    another position is open; every other bar the sweep has still applies."""
+    try:
+        g = _handoff.live("SweepCreditSpread")
+        if g is None:
+            return
+        _pm = get_position_manager(state.paper_trading)
+        if any(str(r.get("strategy") or "") == "SweepCreditSpread" for r in _pm.get_open_records()):
+            return
+        sig = _safe_strategy("SweepCreditSpread", lambda: _sweep_cs_strategy.generate_signal(
+            price_now=ctx["price"], now_et=now_et().strftime("%H:%M"),
+            atr_pct=float(getattr(ctx.get("vol"), "atr_pct", 0.0) or 0.0),
+            chain=ctx.get("chain"), orb_high=ctx.get("orb_high"), orb_low=ctx.get("orb_low"),
+            df_1m=ctx.get("df_1m"), required_side=g["side"]), ctx)
+        if sig is not None:
+            sig.handoff_grant = f"{g['from']}→{g['to']} at {g['level']:.2f}, tick {_handoff.age(g)} of {g['ttl']}"
+            _handoff.consume(g)
+            _execute_condor_leg(sig, state, ctx)
+    except Exception as exc:                                   # noqa: BLE001
+        logger.warning("[handoff] sweep on grant failed: %s", exc)
 
 
 def _attempt_butterfly(ctx, ms, state, *, additive: bool) -> None:
@@ -4947,6 +5004,12 @@ def main_loop(state: BotState):
                 # plan runs every tick of its slot, and a fire is ADDED to
                 # whatever is open.
                 _attempt_butterfly(ctx, ms, state, additive=True)
+                # OTV4TEST r12 — the hunt beside whatever is open; and the sweep on a
+                # LIVE HANDOFF GRANT even while an ORB is open (the slot yields)
+                _attempt_hunt(ctx, ms, state, orb=get_orb_engine().data, chain=ctx.get("chain"),
+                              now_hhmm=now_et().strftime("%H:%M"),
+                              atr_pct=float(getattr(ctx.get("vol"), "atr_pct", 0.0) or 0.0))
+                _attempt_sweep_on_grant(ctx, ms, state)
                 # ── 🔴 r197 — A BUTTERFLY BLOCKS NOTHING ──────────────────
                 # Operator, 2026-08-31: butterflies "are a rare opportunistic
                 # setup that does not affect our other trades. The only thing
