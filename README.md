@@ -1,149 +1,70 @@
-# options_trader_v4
+# OTV4TEST — the plan/strategy untangle, in isolation
 
-**`README.md` v1.1 · 2026-08-29 — what this repo is, what it refuses to be, and where to read next.**
+**`README.md` v2.0 · 2026-09-11 (OTV4TEST r14) — what this repo is, how it is laid out, how work lands. Supersedes the mainline README (v1.1) the fork inherited.**
 
-**Vertigo Capital · a structure-first options trading fleet.**
-**Opened 2026-08-19. Successor to `options_trader_v3`.**
+**What this repo is.** A fork of `TX-9AI/options_trader_v4` (from `e955020`, mainline r322)
+where the trading path is being re-wired so that **plans decide and strategies execute** —
+the division of labour the operator designed and the predecessor never quite coded.
+It runs on one segregated box (the QQQ TEST instance: no fleet tag, S3 masked, its own
+lander and ledger) and trades paper head-to-head against the predecessor's QQQ instance on
+the same tape. If it demonstrates a superior edge, its changes port forward — to the
+predecessor as fixes (already in progress, `docs/PORT_MANIFEST.md`) and to **otv5** as the
+layout.
 
----
+**The layering** (the operator's words, `docs/FORK_BRIEF.md`): information layers off the
+feed (IL1 primary, IL2 derived, IL3 the shadow observer) → a decision layer where each
+**plan** searches the chain and the levels for the nearest setup that would clear the
+strategy's bars, ahead of time → an execution layer where the **strategy** fires when price
+action satisfies the plan's completed vectors. A strategy holds no chain and picks no strike.
 
-## WHAT THIS IS
+## The six trades, as specced here (`docs/PLAN_SPEC.md`)
 
-A fleet of independent per-symbol trading bots that fire on **what price is
-doing** — swing sequence, channel position, whether the last break held,
-distance to prior-session extremes, the impulse character of the entry bar —
-shaped by derived cues (delta, gamma, VWAP, pitchfork, ADX, volume, volatility,
-GEX) and by the options chain.
+| trade | plan | strategy | spec |
+|---|---|---|---|
+| ORB break + retest | `strategy/orb_plan.py` | `strategy/orb_strategy.py` | §29 |
+| Runaway (momentum) | `strategy/runaway_plan.py` | `strategy/runaway_continuation.py` | §30 |
+| Sweep credit spread | `strategy/sweep_plan.py` | `strategy/sweep_credit_spread.py` | §31 |
+| GEX pin butterfly | inside `strategy/gex_pin_butterfly.py` (BFLY.2) | same file | §32 |
+| Trend credit spread | `strategy/tcs_plan.py` | `strategy/trend_credit_spread.py` | §34 |
+| Condor (a management plan, not a strategy) | `strategy/iron_condor_strategy.py::manage` + `strategy/condor_roll.py` | — | §35 |
+| Liquidity hunt (beside the ORB, never in its slot) | `strategy/liquidity_hunt.py` | same file | §37 |
 
-**Each box trades standalone.** Control (`1-REPORTER`) orchestrates, verifies and
-reports, but **no box requires control to be reachable in order to trade.** That
-independence is a feature, not an accident of the architecture.
+Two primitives the plans share: **the rejection fact** (`derived/levels.py` emits
+WICKED / REJECTED / ACCEPTED on closed 1m bars for every live level, the 1h tines
+included; §30.1) and **the handoff grant** (`execution/handoff.py`; §37.2). Anchors —
+derivatives recorded on every plan row, never decided on — are §36.
 
-**Fleet: 15 boxes. Collection and trading are the SAME SET.** The panel is
-`selector.PANEL` in `day_trader_pro` — named there and nowhere else, so this
-file does not carry a symbol list that can go stale.
-
-🔴 **THIS LINE READ "15 traders, 29 collectors, collection is fleet-wide"
-UNTIL 2026-08-29, AND IT HAD BEEN FALSE SINCE 2026-08-20**, when the pare
-TERMINATED the other 14 instances rather than stopping them. r74 corrected the
-same sentence in `docs/ROADMAP.md` (S.4) and `WORKING_AGREEMENT.md` (§30) on
-2026-08-22 and missed this copy — three documents carrying one fact, and the
-one on the front page was the one that rotted.
-
-The principle it carried is unchanged and still right: **a box that stops
-collecting is a box whose pitchfork and ADX warm-up depth quietly dies.**
-DXFeed history is same-evening only, so that depth cannot be recovered
-afterwards; pruning stays disabled specifically so it accumulates.
-
-⚠️ **AND THE CONSEQUENCE THAT OUTLIVES THE CORRECTION:** fleet-wide
-open-interest accumulation — which the GEX butterfly's unpark waits on — now
-runs across 15 symbols instead of 29. Half the breadth, so a longer clock. Any
-unpark date derived from the 29-symbol assumption is wrong.
-
----
-
-## WHAT THIS IS NOT, AND WHY
-
-OTV4 exists because OTV3's central premise was **measured false**, not because it
-was abandoned. The evidence is in `docs/INHERITED_FINDINGS.md` and it is the
-reason for every structural choice here.
-
-**There is no regime-conviction gate.** OTV3's classifier picked the correct
-side on **44.9% of 715 directional trades** — 95% CI [41.3%, 48.6%], **entirely
-below a coin flip**. Puts were **34.2%**. The strategy most dependent on it lost
-**$5,872** across 660 trades.
-
-**There is no setup scorer, and there is no longer one to delete.** OTV3's was
-built before it was earned and inverted: over 619 trades **A-grade lost $8,244**
-at 1.5× size while **B-grade made +$1,893** — it SELECTED LOSERS. It was ported
-into v4 anyway and removed at **r152**: `risk/setup_scorer.py` is gone and
-nothing imports it, pinned by `tests/check_conviction_removed.py` (S1—S4).
-
-🔴 **WHY IT COULD NEVER HAVE WORKED, WHICH IS THE PART WORTH KEEPING:** about
-90% of the grade was ONE COLUMN PRINTED TWICE — two of its four dimensions
-had identical medians AND identical spreads over 619 trades — and the other
-two measured 1.000 on every one of those trades. **The sum never measured
-anything.** A scorer here has to be earned from evidence that a grade predicts
-dollars, not assembled from dimensions that look reasonable.
-
-**Regime labels inform; they never authorise.** The vocabulary survives —
-in-channel, breakout, compression, ranging, breakout-volatile, trending — rebuilt
-**from structure first**. Any setup may read one. **No setup may require one.**
-
----
-
-## SUCCESS
-
-**Dollars. P&L and return on risk.** A demonstrable edge, evidenced by **not
-losing money over a measurable period** — long enough that variance cannot
-explain it.
-
-⚠️ **A HIGH WIN RATE IS NOT THE TARGET.** There will be bad trades and bad days;
-the requirement is that they are overshadowed. The edge lives in **stop
-discipline and management of winners**, and OTV3 proved that twice:
-`orb_trail_stop` **95% win / 107 trades / +$37,848**, `theta_bleed` **100% /
-107** — while grading entries harder made money *worse*.
-
-See `docs/VISION.md`.
-
----
-
-## LAYOUT
+## Layout
 
 ```
-analysis/       structure, levels, pitchfork, ORB geometry, chain-derived inputs
-data/           feed, candle store, options chain, GEX, macro, derived store
-derived/        the derived layer - character, levels, plans, notes, counterfactual
-strategy/       the trade constructions, and the PLAN each one declares
-execution/      entry dispatch, exits, ladders, fills, reconciliation
-risk/           loss caps, session gating, sizing
-database/       trade logger and schema
-warehouse/      S3 push, retention purge, box-side self close
-notifications/  Telegram - an emergency-services channel, nothing routine
-shadow/         the in-session observer (disposition open: docs/BACKLOG.md ASK.2)
-utils/          time, math, latches
-deploy/         systemd units and timers
-tools/          on-box operator utilities (manifold health, status probes)
-tests/          ⚠️ EVERY test and harness lives here. CONTROL ONLY - see §34.
-docs/           working agreement, roadmap, backlog, genesis, the maps
+main.py            the bot (systemd: optionsbot)        config.py        every declared value
+devtools.sh        the box menu (registry-rendered)      setup_ec2.sh     first-boot provisioning
+requirements.txt   floors for a fresh venv
+analysis/  data/  database/  derived/  execution/  notifications/  risk/  shadow/
+strategy/          plans and strategies                  utils/  warehouse/
+tools/             operator readers (status, query, eod_summary, debug_status) and studies
+deploy/            systemd units, installers, push/snapshot/configure, the lander's twin
+tests/             hypotheticals — every check_*.py drives real code on hand-built ticks
+docs/              PLAN_SPEC · TRADES · WORKING_AGREEMENT · GENESIS-TEST (this fork's ledger)
+                   · GENESIS (frozen lineage) · FORK_BRIEF · PORT_MANIFEST · BACKLOG
 ```
 
-⚠️ **THIS TABLE IS ORIENTATION, NOT AUTHORITY.** `docs/FILE_MAP.md` is
-generated from the real import graph and the land gate fails on drift; this one
-is written by hand and was missing five directories until 2026-08-29. When the
-two disagree, the generated map is right.
+## How work lands
 
----
+Every revision is a tarball with a `land.spec` (`REPO` markers, `BASE`, `REV`, `LEDGER
+docs/GENESIS-TEST.md`, `DESC`, `POS`/`NEG` content assertions, `CHECK` lines). The box menu's
+**LAND** runs the archive's own `land.sh`: base must match HEAD, content gate, every CHECK
+(on scratch stores — a checker can never reach the live DB), maps regenerated, a ledger
+row appended, the discipline gate, commit, push. **BAKE** pulls, proves the tree imports,
+restarts. Cite revisions by prefix: `OTV4TEST r14`, never a bare `r14`.
 
-## DOCTRINE
+The rules are `docs/WORKING_AGREEMENT.md`. The one that governs everything else: no claim
+without a source — read, queried, told, or inferred, and said which.
 
-`docs/WORKING_AGREEMENT.md` carried over from OTV3 and **has been added to ever
-since** — §26 through §37 are v4-era, written between 2026-08-19 and 08-24. It
-was earned: most of its sections exist because something broke in a way that
-cost a session. Read it before writing code.
+## Reading a session
 
-Then `docs/BACKLOG.md` for what is open, `docs/GENESIS.md` for why each
-revision exists, and `docs/PLAN_SPEC.md` + `docs/TRADES.md` for what the
-strategies actually do.
-
-**The measurement tooling carries over too, and that is deliberate.** The probes
-in `tests/` are what proved OTV3's model broken. **They will judge this one
-identically.**
-
----
-
-## CHANGELOG
-
-v1.1  2026-08-29  r185 — backlog DOC.4. THE FLEET COUNT WAS FALSE FOR NINE
-      DAYS ON THE PAGE MOST LIKELY TO BE READ FIRST. Corrected, with the
-      reason it survived r74's sweep recorded in place. Four further staleness
-      fixes found reading the file end to end, which §5 requires of any edit:
-      the setup scorer is DELETED (r152), not merely absent; the LAYOUT table
-      was missing five of fifteen directories and now says plainly that
-      `docs/FILE_MAP.md` outranks it; WORKING_AGREEMENT no longer "carries
-      over verbatim" (§26-§37 are v4-era); and a reading order was added.
-      A version line was added at the top so this file is visible to
-      `check_land_discipline.py` at all — it carried no version in either
-      place, which is why nothing ever flagged the drift.
-
-v1.0  2026-08-19  Written at the v3 — v4 split.
+`tools/query.py` (menu: query.py) — trades, then DECISIONS: one row per plan saying what it
+is waiting on, or which bar refused it, or that it fired; plans outside their window are
+hushed on the readers but recorded. `tools/status.py` for the live position. The sensors
+in the menu read the derived stores directly (plan rows, level events, anchors).
+A NO PLAN or NOT ASKED for an in-window strategy is a wiring defect, not a market fact.

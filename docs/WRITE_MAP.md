@@ -13,9 +13,9 @@ Regenerated in the land gate; a stale map fails `--check`.
 
 | table | created by | written by | read by |
 |---|---|---|---|
-| `gate_disposition` | `analysis/gate_report.py` | `analysis/gate_report.py` (insert) | `query.py`, `tests/check_audit_20260823.py` |
+| `gate_disposition` | `analysis/gate_report.py` | `analysis/gate_report.py` (insert) | `tests/check_audit_20260823.py`, `tools/query.py` |
 | `plan_check` | `strategy/plan.py` | `strategy/plan.py` (insert) | `strategy/sweep_credit_spread.py`, `tests/check_chain_ordering.py`, `tests/check_plan_prepares.py`, `tests/check_plan_wiring.py`, `tests/check_tick_join.py` |
-| `plan_tick` | `strategy/plan.py` | `strategy/plan.py` (insert), `tests/check_tick_join.py` (insert) | `main.py`, `query.py`, `tests/check_butterfly_foundational.py`, `tests/check_butterfly_legs.py`, `tests/check_chain_ordering.py`, `tests/check_condor_mgmt.py`, `tests/check_liquidity_hunt.py`, `tests/check_management_plan.py`, `tests/check_not_asked_reasons.py`, `tests/check_orb_plan.py`, `tests/check_orb_sequence.py`, `tests/check_plan_prepares.py`, `tests/check_plan_signal.py`, `tests/check_plan_wiring.py`, `tests/check_runaway_plan.py`, `tests/check_tcs_narrates.py`, `tests/check_tcs_plan.py` |
+| `plan_tick` | `strategy/plan.py` | `strategy/plan.py` (insert), `tests/check_tick_join.py` (insert) | `main.py`, `tests/check_butterfly_foundational.py`, `tests/check_butterfly_legs.py`, `tests/check_chain_ordering.py`, `tests/check_condor_mgmt.py`, `tests/check_liquidity_hunt.py`, `tests/check_management_plan.py`, `tests/check_not_asked_reasons.py`, `tests/check_orb_plan.py`, `tests/check_orb_sequence.py`, `tests/check_plan_prepares.py`, `tests/check_plan_signal.py`, `tests/check_plan_wiring.py`, `tests/check_runaway_plan.py`, `tests/check_tcs_narrates.py`, `tests/check_tcs_plan.py`, `tools/query.py` |
 | `resting_orders` | `execution/resting_orders.py` | `execution/resting_orders.py` (insert/update) | — |
 
 ## derived_store.db
@@ -26,13 +26,13 @@ Regenerated in the land gate; a stale map fails `--check`.
 | `character_ledger` | `derived/character_engine.py` | `derived/character_engine.py` (insert/update) | — |
 | `exit_counterfactual` | `derived/counterfactual.py` | `derived/counterfactual.py` (insert) | — |
 | `fire_snapshot` | `data/derived_store.py` | `data/derived_store.py` (insert) | `tests/edge_scan.py` |
-| `fork_series` | `data/derived_store.py` | `data/derived_store.py` (insert) | `derived/anchors.py`, `main.py`, `query.py`, `status.py`, `tests/check_derived_layer.py` |
+| `fork_series` | `data/derived_store.py` | `data/derived_store.py` (insert) | `derived/anchors.py`, `main.py`, `tests/check_derived_layer.py`, `tools/query.py`, `tools/status.py` |
 | `indicator_series` | `data/derived_store.py` | `data/derived_store.py` (insert) | `derived/anchors.py` |
 | `level_event` | `data/derived_store.py` | `data/derived_store.py` (insert), `tests/check_plan_prepares.py` (update), `tests/check_runaway_plan.py` (delete) | `tests/check_level_rejection.py` |
 | `level_ledger` | `data/derived_store.py` | `data/derived_store.py` (insert) | `derived/anchors.py`, `derived/levels.py`, `tests/check_level_rejection.py` |
-| `plan_ledger` | `derived/plan_ledger.py` | `derived/plan_ledger.py` (insert/update), `tests/check_purge_pushed.py` (update) | `query.py`, `tests/check_audit_20260823.py`, `tests/check_butterfly_legs.py`, `tests/check_missed_inert.py`, `tests/check_plan_lifecycle.py`, `tests/edge_scan.py` |
+| `plan_ledger` | `derived/plan_ledger.py` | `derived/plan_ledger.py` (insert/update), `tests/check_purge_pushed.py` (update) | `tests/check_audit_20260823.py`, `tests/check_butterfly_legs.py`, `tests/check_missed_inert.py`, `tests/check_plan_lifecycle.py`, `tests/edge_scan.py`, `tools/query.py` |
 | `strategy_note` | `derived/notes.py` | `derived/notes.py` (insert) | `tests/check_management_plan.py`, `tests/check_tick_join.py` |
-| `surface_series` | `data/derived_store.py` | `data/derived_store.py` (insert) | `derived/anchors.py`, `main.py`, `query.py` |
+| `surface_series` | `data/derived_store.py` | `data/derived_store.py` (insert) | `derived/anchors.py`, `main.py`, `tools/query.py` |
 
 ## feed_store.db
 
@@ -55,8 +55,8 @@ Regenerated in the land gate; a stale map fails `--check`.
 
 | table | created by | written by | read by |
 |---|---|---|---|
-| `circuit_breaker_events` | `database/trade_logger.py` | `database/trade_logger.py` (insert) | `query.py` |
-| `trades` | `database/trade_logger.py`, `tests/check_condor_stop_suppression.py` | `database/trade_logger.py` (insert/update), `tests/check_condor_pairing.py` (insert), `tests/check_dashboards_multi_position.py` (insert), `tests/check_one_per_session.py` (insert), `tests/check_orb_geometry.py` (insert) | `derived/counterfactual.py`, `eod_summary.py`, `main.py`, `notifications/alert_manager.py`, `query.py`, `status.py`, `tests/edge_scan.py`, `tests/entry_profile.py`, `tests/eod_compare.py`, `tests/exit_record.py`, `tests/exit_replay.py`, `tests/orb_bleed_study.py`, `tests/r_ledger.py`, `tests/rejection_ledger.py`, `tests/stop_sweep.py`, `warehouse/s3_push.py` |
+| `circuit_breaker_events` | `database/trade_logger.py` | `database/trade_logger.py` (insert) | `tools/query.py` |
+| `trades` | `database/trade_logger.py`, `tests/check_condor_stop_suppression.py` | `database/trade_logger.py` (insert/update), `tests/check_condor_pairing.py` (insert), `tests/check_dashboards_multi_position.py` (insert), `tests/check_one_per_session.py` (insert), `tests/check_orb_geometry.py` (insert) | `derived/counterfactual.py`, `main.py`, `notifications/alert_manager.py`, `tests/edge_scan.py`, `tests/entry_profile.py`, `tests/eod_compare.py`, `tests/exit_record.py`, `tests/exit_replay.py`, `tests/orb_bleed_study.py`, `tests/r_ledger.py`, `tests/rejection_ledger.py`, `tests/stop_sweep.py`, `tools/eod_summary.py`, `tools/query.py`, `tools/status.py`, `warehouse/s3_push.py` |
 
 ## Flags
 

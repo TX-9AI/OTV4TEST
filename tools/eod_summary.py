@@ -1,5 +1,6 @@
 """
-eod_summary.py  v4.1
+tools/eod_summary.py  v4.2
+v4.2  2026-09-11  OTV4TEST r14 — moved from the repo root to tools/ (root cleanup); no behaviour change.
 v4.1  2026-08-25  r65 EXORCISM: every mention of the retired classification
       system removed - identifiers, comments, docstrings, schema. The word
       does not appear in this tree. Full accounting: REMOVAL_LOG (delivery).
@@ -55,7 +56,7 @@ sys.path.insert(0, INSTALL_DIR)
 # Reuse query.py's resolved DB path + live instrument/mode so this matches the
 # dashboard. Fall back gracefully if imported outside the install dir.
 try:
-    from query import DB_PATH, INSTRUMENT, PAPER_TRADING, now_et
+    from tools.query import DB_PATH, INSTRUMENT, PAPER_TRADING, now_et   # r14: tools/
 except Exception:  # noqa: BLE001
     # Fallback with NO tzdata dependency (fresh boxes may lack zoneinfo data).
     # ET date via fixed EDT offset — matches the '-4 hours' SQL date filter,

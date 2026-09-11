@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tests/check_imports.py  v4.1
+tests/check_imports.py  v4.2
+v4.2  2026-09-11  OTV4TEST r14 — tools.debug_status joins NOISY (it shells out at import; was skipped as a root file).
 v4.1  2026-08-25  r65 EXORCISM: every mention of the retired classification
       system removed - identifiers, comments, docstrings, schema. The word
       does not appear in this tree. Full accounting: REMOVAL_LOG (delivery).
@@ -52,9 +53,12 @@ SKIP_DIRS = {".git", "__pycache__", "tests", "deploy", "reports",
 # shell-out. Importing them is not a useful signal and their output drowns the
 # report. Listed explicitly so the skip is visible rather than a silent filter.
 NOISY = {
-    "stress_theta_bleed",   # runs its theta-bleed harness on import
-    "utils.check_sdk",      # dumps the entire TastyTrade SDK surface
-    "debug_status",         # shells out to `sudo` at import
+    "tools.stress_theta_bleed",   # runs its theta-bleed harness on import (tools/ since r14)
+    "utils.check_sdk",            # dumps the entire TastyTrade SDK surface
+    "tools.debug_status",         # shells out to `sudo` at import (tools/ since r14)
+    # the pre-r14 root copies: the lander runs CHECKs BEFORE its DEL lines, so on
+    # the landing that moves them both copies exist for one run. Harmless after.
+    "stress_theta_bleed", "debug_status",
 }
 
 

@@ -1,5 +1,6 @@
 """
-status.py  v4.5
+tools/status.py  v4.6
+v4.6  2026-09-11  OTV4TEST r14 — moved from the repo root to tools/ (root cleanup); no behaviour change.
 v4.5  2026-09-01  r212 (chunk D) — THE PLAN COLLAPSE GOES WITH ITS PREMISE.
       r199 saw two rows for one strategy at one trigger, called them
       duplicates and merged them for display; r211 kept the merge while the

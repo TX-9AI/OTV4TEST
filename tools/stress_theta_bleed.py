@@ -1,5 +1,6 @@
 """
-stress_theta_bleed.py  v4.0
+tools/stress_theta_bleed.py  v4.1
+v4.1  2026-09-11  OTV4TEST r14 — moved from the repo root to tools/ (root cleanup); no behaviour change.
 Stress harness for the theta-bleed exit.
 
 v4.0  2026-08-19  Ported from options_trader_v3 at the OTV4 split.

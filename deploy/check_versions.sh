@@ -1,6 +1,7 @@
 #!/bin/bash
 # ==========================================================================
-# check_versions.sh  v4.2
+# deploy/check_versions.sh  v4.3
+# v4.3  2026-09-11  OTV4TEST r14 — moved from the repo root to deploy/ (root cleanup); no behaviour change.
 # v4.2  2026-09-08  r322 — 🔴 THE COMMENT MARKERS. r65 wrote its changelog
 #       entry into this header WITHOUT them, so lines 4-6 were SHELL, not
 #       prose: `v4.1: command not found`, then a syntax error on the
@@ -402,7 +403,7 @@
 # Excludes: venv, __pycache__, .git, *.pem, trades.db*, bot.log, snapshots
 # Run from ~/options-trader
 # ==========================================================================
-cd "$(dirname "$0")" || exit 1
+cd "$(dirname "$0")/.." || exit 1
 
 echo ""
 echo "============================================================"
@@ -489,7 +490,7 @@ check "analysis/orb_engine.py"           "_rearm"                       "v3.9 ti
 check "analysis/orb_engine.py"           "bars_since_break"             "v3.9 timeout counts deduped 1m bars, not 15s loop ticks"
 
 # status v1.12 (2026-07-20) — daily-loss banner reads the LIVE unit env
-check "status.py"                        "get_runtime_env"              "v1.12 loss-limit read via runtime env (false \$200 HALT fix)"
+check "tools/status.py"                        "get_runtime_env"              "v1.12 loss-limit read via runtime env (false \$200 HALT fix)"
 
 # main v4.0 / L2.5 (2026-07-21) — the Layer-2 label drives live trading
 # REMOVED 2026-08-20 with main.py v4.2: this canary asserted the PRESENCE of
@@ -529,7 +530,7 @@ check "tests/test_a2_cooccurrence_slim.py" "covers_every_field_the_source_reads"
 check "tests/pitchfork_filter_audit.py"  "ACCEL/held bar"               "v1.5 exposure denominator (per-birth is confounded by lifetime)"
 
 # ── pull_today_ohlc v1.3 (2026-08-04) — the guard that ate the backfill ───
-check "pull_today_ohlc.sh"               'BOT=$(systemctl is-active optionsbot' "v1.3 guard reads optionsbot, not just the clock"
+check "deploy/pull_today_ohlc.sh"               'BOT=$(systemctl is-active optionsbot' "v1.3 guard reads optionsbot, not just the clock"
 
 
 # CV.1 (2026-08-10) — CANARY REMOVED, NOT SILENTLY DROPPED. It pinned
@@ -639,7 +640,7 @@ else
     echo "  ✗ STALE:   only $_n_ab of 2 plan-death paths emit condor_abandon — the CANCEL branch is 23 of 23 deaths, so losing it makes item AI unmeasurable again"
     MISS=$((MISS+1))
 fi
-check "pull_today_ohlc.sh"               'OT_PULL_RTH_GUARD:-1'         "v1.5 guard back ON by default (v3.10 fixed the real cause)"
+check "deploy/pull_today_ohlc.sh"               'OT_PULL_RTH_GUARD:-1'         "v1.5 guard back ON by default (v3.10 fixed the real cause)"
 check "tests/test_candle_feed_once_exempt.py" "both_gates_go_through_the_one_predicate"  "v1.0 BOTH gates pinned to the shared predicate"
 _n_once=$(grep -c "self._idle_outside_session(once)" data/candle_feed.py 2>/dev/null || echo 0)
 if [ "$_n_once" = "2" ]; then
@@ -649,7 +650,7 @@ else
     MISS=$((MISS+1))
 fi
 check "tests/test_pull_ohlc_guard.sh"    "THE CASE IT EXISTS FOR"       "v1.2 guard decision table covered (guard ON by default)"
-if grep -q '\[ "$FEED" = "active" \] && \[ "$POSTCLOSE" = "0" \]; then' pull_today_ohlc.sh 2>/dev/null; then
+if grep -q '\[ "$FEED" = "active" \] && \[ "$POSTCLOSE" = "0" \]; then' deploy/pull_today_ohlc.sh 2>/dev/null; then
     echo "  ✗ STALE:   pull_today_ohlc guard is back to the clock-only form — every sat-out box backfill wakes will write a header-only csv and that session's tape is gone at midnight"
     MISS=$((MISS+1))
 else
@@ -828,8 +829,8 @@ check "analysis/signal_journal.py"       "def journal"                  "v1.0 si
 check "risk/setup_scorer.py"             "_journal_scored"              "v1.3 scorer emits scored events (REJECTs included)"
 check "analysis/orb_engine.py"           "retest_depth_px"              "v3.7 defect-G retest depth measurement"
 check "main.py"                          "condor_leg"                   "v3.9 condor conviction journaled at fire time"
-check "status.py"                        "ORB High"                    "Structured ORB display"
-check "status.py"                        "No Trade"                    "No Trade display string"
+check "tools/status.py"                        "ORB High"                    "Structured ORB display"
+check "tools/status.py"                        "No Trade"                    "No Trade display string"
 check "notifications/alert_manager.py"   "send_shutdown_alert"          "Shutdown alert method"
 check "notifications/alert_manager.py"   "INSTRUMENT"                   "Ticker in alerts"
 check "risk/setup_scorer.py"             "return None"                  "Grade C elimination (returns None)"
@@ -843,8 +844,8 @@ check "execution/exit_engine.py"         "_find_1m_fvgs"                "1m FVG 
 check "execution/position_manager.py"    "notify_position_closed"       "ORB re-arm hook on position close"
 check "config.py"                        "BUTTERFLY_WING_SPX"           "Butterfly config constants"
 check "config.py"                        "BUTTERFLY_ENTRY_START_ET"     "Butterfly noon entry window"
-check "push.sh"                          "Detected malformed remote"    "Self-healing remote URL"
-check "push.sh"                          "diverged"                    "Diverged history handling"
+check "deploy/push.sh"                          "Detected malformed remote"    "Self-healing remote URL"
+check "deploy/push.sh"                          "diverged"                    "Diverged history handling"
 check "setup_ec2.sh"                     'GITHUB_REPO#https://'         "GitHub URL normalization"
 
 # ── AUDIT A2 (2026-08-15) — the six unbaked-queue fixes ──────────────────────

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# install_eod_bot.sh  v4.0
+# deploy/install_eod_bot.sh  v4.1
+# v4.1  2026-09-11  OTV4TEST r14 — moved from the repo root to deploy/ (root cleanup); no behaviour change.
 # Installs the EOD bot.
 #
 # v4.0  2026-08-19  Ported from options_trader_v3 at the OTV4 split.
@@ -23,7 +24,7 @@
 # ==========================================================================
 set -uo pipefail
 DIR=/home/ubuntu/options-trader
-WORKER="$DIR/eod_bot.sh"
+WORKER="$DIR/deploy/eod_bot.sh"
 [ -f "$WORKER" ] || { echo "🚨 $WORKER missing — git pull first."; exit 1; }
 INSTR=$(systemctl show optionsbot -p Environment --value 2>/dev/null | tr ' ' '\n' | grep '^OT_INSTRUMENT=' | head -1 | cut -d= -f2-)
 [ -n "$INSTR" ] || { echo "🚨 OT_INSTRUMENT not found in optionsbot unit"; exit 1; }

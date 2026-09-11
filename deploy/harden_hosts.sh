@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# harden_hosts.sh  v4.0
+# deploy/harden_hosts.sh  v4.1
+# v4.1  2026-09-11  OTV4TEST r14 — moved from the repo root to deploy/ (root cleanup); no behaviour change.
 # Host hardening for a fleet box.
 #
 # v4.0  2026-08-19  Ported from options_trader_v3 at the OTV4 split.

@@ -1,5 +1,6 @@
 """
-query.py  v4.10
+tools/query.py  v4.11
+v4.11  2026-09-11  OTV4TEST r14 — moved from the repo root to tools/ (root cleanup); no behaviour change.
 v4.10 2026-09-09  OTV4TEST r8 — NOT ASKED rows are hushed too. Operator: "Not asked
       is exactly what I don't want to know … until we have an open vertical
       spread, then it needs to let me know it's looking for a complementary

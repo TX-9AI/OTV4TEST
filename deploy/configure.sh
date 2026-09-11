@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# configure.sh  v4.4
+# deploy/configure.sh  v4.5
+# v4.5  2026-09-11  OTV4TEST r14 — moved from the repo root to deploy/ (root cleanup); no behaviour change.
 #
 # v4.4  2026-08-31  r203 — THE r201 SPOT HINT WAS BROKEN AND BAKED. It read a
 #   `data/` subdirectory that does not exist, and `2>/dev/null` made the

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# install_candle_feed.sh  v4.0
+# deploy/install_candle_feed.sh  v4.1
+# v4.1  2026-09-11  OTV4TEST r14 — moved from the repo root to deploy/ (root cleanup); no behaviour change.
 # Installs the candle-feed service.
 #
 # v4.0  2026-08-19  Ported from options_trader_v3 at the OTV4 split.

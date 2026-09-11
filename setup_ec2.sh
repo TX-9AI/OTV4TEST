@@ -1,6 +1,8 @@
 #!/bin/bash
 # ==========================================================================
-# setup_ec2.sh  v4.0
+# setup_ec2.sh  v4.1
+# v4.1  2026-09-11  OTV4TEST r14 — the helper scripts it names live in deploy/ and the
+#       readers in tools/ (root cleanup); harden_hosts.sh is called from deploy/.
 # EC2 instance provisioning for a fleet box.
 #
 # v4.0  2026-08-19  Ported from options_trader_v3 at the OTV4 split.
@@ -312,8 +314,8 @@ sudo systemctl enable ${SERVICE_NAME}
 # Stop package upgrades (unattended-upgrades -> needrestart) from restarting the
 # bot mid-session, and move the apt schedule out of RTH. See harden_hosts.sh.
 # Invoked with `bash` so it runs before the chmod +x pass later in this script.
-if [ -f "$INSTALL_DIR/harden_hosts.sh" ]; then
-    if bash "$INSTALL_DIR/harden_hosts.sh"; then
+if [ -f "$INSTALL_DIR/deploy/harden_hosts.sh" ]; then
+    if bash "$INSTALL_DIR/deploy/harden_hosts.sh"; then
         print_ok "Host hardening applied (needrestart shield + apt timers off-RTH)."
     else
         print_warn "harden_hosts.sh reported an issue — review before market open."
@@ -375,15 +377,15 @@ if [ "$STATUS" = "active" ]; then
     echo -e "  Telegram:    chat ${TELEGRAM_CHAT_ID}"
     echo ""
     echo -e "  Commands:"
-    echo -e "    python status.py                   — live status"
-    echo -e "    python query.py                    — performance dashboard"
+    echo -e "    python tools/status.py             — live status"
+    echo -e "    python tools/query.py              — performance dashboard"
     echo -e "    journalctl -u ${SERVICE_NAME} -f   — live logs"
     echo -e "    journalctl -u candle-feed -f       — feed logs"
-    echo -e "    bash configure.sh                  — change settings"
-    echo -e "    bash push.sh                       — push changes to GitHub"
-    echo -e "    bash snapshot.sh                   — snapshot bot state"
+    echo -e "    bash deploy/configure.sh           — change settings"
+    echo -e "    bash deploy/push.sh                — push changes to GitHub"
+    echo -e "    bash deploy/snapshot.sh            — snapshot bot state"
     echo ""
-    echo -e "${GREEN}  Run 'python status.py' to verify the bot is running correctly.${RESET}"
+    echo -e "${GREEN}  Run 'python tools/status.py' to verify the bot is running correctly.${RESET}"
     echo ""
 else
     echo ""

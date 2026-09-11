@@ -1,6 +1,7 @@
 #!/bin/bash
 # ==========================================================================
-# install.sh  v4.1
+# deploy/install.sh  v4.2
+# v4.2  2026-09-11  OTV4TEST r14 — moved from the repo root to deploy/ (root cleanup); no behaviour change.
 # v4.1 (2026-09-07) - r303 / DEP.8. WHAT SHIPS IS DECLARED, WHAT LANDED IS
 #   VERIFIED. `docs/` joins `tests/` as control-only. New TRADER_DIRS and
 #   _verify_trader: a SHORT checkout is fatal at install time rather than at

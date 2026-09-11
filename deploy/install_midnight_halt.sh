@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# options_trader_v4/install_midnight_halt.sh — v1.0
+# deploy/install_midnight_halt.sh — v1.1
+# v1.1  2026-09-11  OTV4TEST r14 — moved from the repo root to deploy/ (root cleanup); no behaviour change.
 # v1.0 (2026-09-06) — r289 / EOD.3. Installs the midnight ET backstop.
 #
 # Operator: *"I do sometimes work on them late & might forget. So I want another

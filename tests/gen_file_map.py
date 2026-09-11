@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tests/gen_file_map.py  v4.4
+tests/gen_file_map.py  v4.5
+v4.5  2026-09-11  OTV4TEST r14 — the operator readers are entry points under tools/.
 v4.4  2026-09-08  OTV4TEST r1 - docs/GENESIS-TEST.md JOINS THE EXCLUSION. The
       fork keeps its own ledger and the lander appends to it BETWEEN
       regenerating this map and verifying it, which is the exact reason
@@ -106,8 +107,8 @@ SKIP_DIRS = {".git", "__pycache__", "deploy", "reports", "blind_tapes", "venv"}
 # full path, as `shadow/observer.py` and `data/candle_feed.py` already do.
 ENTRY_POINTS = {
     # operator / CLI
-    "main.py", "query.py", "status.py", "debug_status.py",
-    "eod_summary.py", "stress_theta_bleed.py",
+    "main.py", "tools/query.py", "tools/status.py", "tools/debug_status.py",
+    "tools/eod_summary.py", "tools/stress_theta_bleed.py",      # r14: root cleanup
     # systemd-launched services
     "shadow/observer.py",          # shadow-observer.service
     "shadow/trading_day.py",       # shadow-start.service ExecCondition

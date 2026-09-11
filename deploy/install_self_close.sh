@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# options_trader_v4/install_self_close.sh — v1.0
+# deploy/install_self_close.sh — v1.1
+# v1.1  2026-09-11  OTV4TEST r14 — moved from the repo root to deploy/ (root cleanup); no behaviour change.
 # v1.0 (2026-08-25) — THE BOX CLOSES ITSELF IF NOBODY ELSE DID.
 #
 # 🔑 TWO MODES, ONE OUTCOME. With control enabled the conductor closes the fleet

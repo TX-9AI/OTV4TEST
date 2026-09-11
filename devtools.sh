@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# devtools.sh  v2.3  — OTV4TEST box menu
+# devtools.sh  v2.4  — OTV4TEST box menu
+# v2.4  2026-09-11  OTV4TEST r14 — the operator readers live in tools/ (root cleanup);
+#       REINSTALL TIMERS added under GIT & LAND for the one-time unit rewrite.
 # v2.3  2026-09-09  OTV4TEST r8 — BAKE runs `systemctl daemon-reload` before the
 #       restart (the unit file changed on disk and systemd said so at r7's bake).
 # v2.2  2026-09-09  OTV4TEST r7 — PLAN ROWS and PLAN BOARD hush DORMANT rows
@@ -66,11 +68,11 @@ _ask_day() {    # prompts; ENTER = today in ET
 }
 
 # ── STATUS ─────────────────────────────────────────────────────────────────
-run_status()    { "$PY" status.py; pause; }
-run_query()     { "$PY" query.py; pause; }
-run_decisions() { "$PY" query.py --decisions; pause; }
-run_debug()     { "$PY" debug_status.py; pause; }
-run_eod()       { "$PY" eod_summary.py; pause; }
+run_status()    { "$PY" tools/status.py; pause; }
+run_query()     { "$PY" tools/query.py; pause; }
+run_decisions() { "$PY" tools/query.py --decisions; pause; }
+run_debug()     { "$PY" tools/debug_status.py; pause; }
+run_eod()       { "$PY" tools/eod_summary.py; pause; }
 
 # ── SENSORS (this box's derived stores; read-only) ─────────────────────────
 s_manifold() { echo; echo "  Per-stream bulbs from tools/manifold_health.py."; "$PY" tools/manifold_health.py; pause; }
@@ -205,6 +207,7 @@ trades_taken()  { echo; _sql "$TRADES_DB" "SELECT substr(entry_time,1,16) AS ent
 git_pull()  { echo "[pull] git pull --ff-only"; git pull --ff-only; pause; }
 git_state() { git -C "$REPO" log -3 --oneline | cut -c1-110; echo; git -C "$REPO" status -s; echo; tail -1 docs/GENESIS-TEST.md | cut -c1-120; pause; }
 mi_land()   { land_tarball; pause; }
+mi_reinstall_timers() { bash "$REPO/deploy/reinstall_timers.sh"; pause; }
 mi_bake()   { bake; pause; }
 
 bake() {
@@ -257,11 +260,11 @@ land_tarball() {
 # ── THE MENU IS DATA — numbers are assigned at render time ─────────────────
 MENU=(
   "SECTION|STATUS (this box)"
-  "ITEM|status.py              live bot status snapshot|run_status"
-  "ITEM|query.py               performance dashboard|run_query"
+  "ITEM|tools/status.py        live bot status snapshot|run_status"
+  "ITEM|tools/query.py         performance dashboard|run_query"
   "ITEM|DECISIONS NOW          (enter on / exit on, live snapshot)|run_decisions"
-  "ITEM|debug_status.py        raw debug dump|run_debug"
-  "ITEM|eod_summary.py         end-of-day summary|run_eod"
+  "ITEM|tools/debug_status.py  raw debug dump|run_debug"
+  "ITEM|tools/eod_summary.py   end-of-day summary|run_eod"
 
   "SECTION|SENSORS (this box's derived stores; read-only)"
   "ITEM|Manifold health board|s_manifold"
@@ -311,6 +314,7 @@ MENU=(
   "ITEM|git pull --ff-only|git_pull"
   "ITEM|LAND a tarball from ~   (verify -> commit -> push; appends docs/GENESIS-TEST.md)|mi_land"
   "ITEM|BAKE                    (pull --ff-only, check_imports, restart the bot)|mi_bake"
+  "ITEM|REINSTALL TIMERS        (one-time, after r14: units point at deploy/ and tools/)|mi_reinstall_timers"
 )
 
 menu_render() {

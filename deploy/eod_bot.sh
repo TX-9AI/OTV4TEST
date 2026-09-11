@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# eod_bot.sh  v4.0
+# deploy/eod_bot.sh  v4.1
+# v4.1  2026-09-11  OTV4TEST r14 — moved from the repo root to deploy/ (root cleanup); no behaviour change.
 # End-of-day bot wrapper.
 #
 # v4.0  2026-08-19  Ported from options_trader_v3 at the OTV4 split.
@@ -25,8 +26,8 @@ DIR=/home/ubuntu/options-trader
 PY="$DIR/venv/bin/python"; [ -x "$PY" ] || PY=/usr/bin/python3
 cd "$DIR" || { echo "🚨 $DIR not found"; exit 9; }
 echo "=== $(date '+%F %T %Z') eod_bot start ==="
-echo "[1/2] P&L writer (eod_summary.py)"
-"$PY" eod_summary.py || echo "🚨 eod_summary failed"
+echo "[1/2] P&L writer (tools/eod_summary.py)"
+"$PY" tools/eod_summary.py || echo "🚨 eod_summary failed"
 echo "[2/2] full-session OHLC (pull_today_ohlc.sh __work)"
-bash "$DIR/pull_today_ohlc.sh" __work || echo "🚨 pull_today_ohlc failed"
+bash "$DIR/deploy/pull_today_ohlc.sh" __work || echo "🚨 pull_today_ohlc failed"
 echo "=== $(date '+%F %T %Z') eod_bot done ==="

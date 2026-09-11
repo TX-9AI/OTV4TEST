@@ -1,6 +1,7 @@
 #!/bin/bash
 # ==========================================================================
-# snapshot.sh  v4.0
+# deploy/snapshot.sh  v4.1
+# v4.1  2026-09-11  OTV4TEST r14 — moved from the repo root to deploy/ (root cleanup); no behaviour change.
 # Snapshots a directory into a repo-ready tarball.
 #
 # v4.0  2026-08-19  Ported from options_trader_v3 at the OTV4 split.
@@ -126,7 +127,7 @@ if [[ "${1:-}" != "--no-status" ]]; then
         echo ""
         cd "$BOT_DIR"
         source "$BOT_DIR/venv/bin/activate" 2>/dev/null || true
-        python status.py 2>/dev/null || echo "  (status.py unavailable)"
+        python tools/status.py 2>/dev/null || echo "  (tools/status.py unavailable)"
         echo ""
         echo "=========================================="
         echo "  Service Environment (secrets redacted)"

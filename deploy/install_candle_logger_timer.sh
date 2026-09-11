@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# install_candle_logger_timer.sh  v4.0
+# deploy/install_candle_logger_timer.sh  v4.1
+# v4.1  2026-09-11  OTV4TEST r14 — moved from the repo root to deploy/ (root cleanup); no behaviour change.
 # Installs the candle-logger timer.
 #
 # v4.0  2026-08-19  Ported from options_trader_v3 at the OTV4 split.
@@ -35,7 +36,7 @@ DIR=/home/ubuntu/options-trader
 SVC=/etc/systemd/system/candle-logger.service
 TMR=/etc/systemd/system/candle-logger.timer
 BOTUNIT=optionsbot
-WORKER="$DIR/pull_today_ohlc.sh"
+WORKER="$DIR/deploy/pull_today_ohlc.sh"
 
 # ── Sanity: the worker the service calls must be present on this box ───────────
 [ -f "$WORKER" ] || { echo "🚨 $WORKER missing — sync the repo (git pull) before installing."; exit 1; }
@@ -94,4 +95,4 @@ sudo systemctl start --no-block candle-logger.service 2>/dev/null || true
 
 echo "✅ candle-logger.timer enabled on $(hostname) (instrument=${INSTRUMENT}, v$([ "$IS_V3" = 1 ] && echo 3 || echo 2))"
 systemctl list-timers candle-logger.timer --no-pager 2>/dev/null | sed -n '1,2p'
-echo "   validate today's output (give it ~60s):  bash ~/options-trader/pull_today_ohlc.sh --check"
+echo "   validate today's output (give it ~60s):  bash ~/options-trader/deploy/pull_today_ohlc.sh --check"

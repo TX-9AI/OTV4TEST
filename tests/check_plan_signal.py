@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""check_plan_signal.py — v1.3
+"""check_plan_signal.py — v1.4
+v1.4  2026-09-11  OTV4TEST r14 — reads query.py under tools/ (root cleanup).
 v1.3  2026-09-09  OTV4TEST r8 — PS8 reads the hushed line's new label (NOT ASKED joins it).
 v1.2  2026-09-09  OTV4TEST r7 — PS8: readers hush DORMANT, the writer keeps it.
 v1.1  2026-09-08  OTV4TEST r2 — PS3 reads `strategy/orb_plan.py`, where the ORB
@@ -131,7 +132,7 @@ def main():
               not bad_call)
 
     # PS8 (OTV4TEST r7) — the READERS hush dormant plans; the record keeps them.
-    qsrc = open(os.path.join(_root, "query.py"), encoding="utf-8").read()
+    qsrc = open(os.path.join(_root, "tools", "query.py"), encoding="utf-8").read()
     psrc = open(os.path.join(_root, "strategy", "plan.py"), encoding="utf-8").read()
     dsrc = open(os.path.join(_root, "devtools.sh"), encoding="utf-8").read()
     check("PS8 query.py DECISIONS lists dormant strategies as one hushed line, not a block each",

@@ -1,6 +1,7 @@
 #!/bin/bash
 # ==========================================================================
-# install_tooling.sh  v4.2
+# deploy/install_tooling.sh  v4.3
+# v4.3  2026-09-11  OTV4TEST r14 — moved from the repo root to deploy/ (root cleanup); no behaviour change.
 # v4.2  2026-09-08  r322 — 🔴 THE COMMENT MARKERS. r65 wrote its changelog
 #       entry into this header WITHOUT them, so lines 4-6 were SHELL, not
 #       prose: `v4.1: command not found`, then a syntax error on the

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""tests/check_dashboards_multi_position.py  v1.1
+"""tests/check_dashboards_multi_position.py  v1.2
+v1.2  2026-09-11  OTV4TEST r14 — reads the operator readers under tools/ (root cleanup).
 v1.1  2026-09-01  r211 — D3/D4/D5 RE-DERIVED. Chunk C reduced status.py's
       open-position block to a bare count on the operator's ruling, so
       asserting BOTH files carry the summed exposure was asserting a
@@ -54,8 +55,8 @@ def check(label, cond, detail=""):
 
 
 def main():
-    st = open(os.path.join(_root, "status.py"), encoding="utf-8").read()
-    qy = open(os.path.join(_root, "query.py"), encoding="utf-8").read()
+    st = open(os.path.join(_root, "tools", "status.py"), encoding="utf-8").read()
+    qy = open(os.path.join(_root, "tools", "query.py"), encoding="utf-8").read()
 
     # ── D1: the LIMIT 1 is gone from the open-position reads ──────────────
     # ⚠️ Scoped to the OPEN query specifically. `LIMIT 1` is legitimate
@@ -145,7 +146,7 @@ def main():
         con.close()
 
         import importlib.util as u
-        sp = u.spec_from_file_location("_st", os.path.join(_root, "status.py"))
+        sp = u.spec_from_file_location("_st", os.path.join(_root, "tools", "status.py"))
         m = u.module_from_spec(sp)
         try:
             sp.loader.exec_module(m)

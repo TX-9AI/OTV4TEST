@@ -1,4 +1,6 @@
-# PORT_MANIFEST.md — OTV4TEST → options_trader_v4 — v0.5
+# PORT_MANIFEST.md — OTV4TEST → options_trader_v4 — v0.6
+v0.6  2026-09-11  OTV4TEST r14 — the root cleanup is LAYOUT, for otv5, not for the
+      predecessor's fixes port: it moves 21 files and changes no behaviour.
 v0.5  2026-09-10  OTV4TEST r13 — defect #12 (a checker's fixture landed as a live open
       position) and the structural fix: the lander's CHECKs run on scratch stores.
 v0.4  2026-09-09  OTV4TEST r12 — anchors (record only) and HYG.1 closed; defect #8 fixed.
@@ -55,6 +57,7 @@ Legend: **N** new file · **M** modified · **T** test (new or re-pointed) · **
 | r12 | execution/position_manager.py, execution/entry_engine.py, execution/exit_engine.py, main.py | M | the hunt never blocks; target-wick exit + grant; the sweep on a grant |
 | r12 | tests/check_liquidity_hunt.py | T | new |
 | r13 | config.py, tools/land.sh, tests/check_standing_offer.py | M | **FIX** — defect #12; CHECKs on scratch stores |
+| r14 | 21 root files → tools/ and deploy/; requirements.txt; README.md; deploy/reinstall_timers.sh; devtools.sh | M/N | **LAYOUT** (otv5) — no behaviour change; not part of the fixes port |
 
 ## DEFECTS FOUND IN THE PREDECESSOR (port these whether or not the rulings port)
 

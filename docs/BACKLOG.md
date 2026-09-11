@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.13
+# BACKLOG.md — OTV4TEST — v0.14
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -63,6 +63,13 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 |---|---|---|
 | **HUNT.1** | ⬜ **THE FIRST WEEK IS THE TEST.** Per morning: the bias row, A1/A2, reached-the-level, the grant's fate. `HANDOFF_TTL_TICKS` = 8 is a prior. If the predecessor gets the hunt (otv4 r325), the ORB there needs the rejection mark (bars from a rejection at its level to its exit — the give-back window) so the comparison is fair. | 🔲 OPEN |
 
+### Layout (for otv5)
+
+| id | item | state |
+|---|---|---|
+| **LAY.1** | ✅ (r14) **THE ROOT IS FIVE FILES**: `main.py`, `config.py`, `devtools.sh`, `setup_ec2.sh`, `requirements.txt` (+ README). Operator readers → `tools/`; installers, workers and the push/snapshot/configure scripts → `deploy/`. Every caller re-pointed (devtools, eod_bot, the three timer installers, snapshot, push, setup_ec2, check_versions, the file-map entry points, four checkers). `gen_file_map --check`: the same 2 known orphans as before, none new. Three timers' units point at moved paths → `deploy/reinstall_timers.sh`, run once from the menu after the bake. | ✅ r14 |
+| **LAY.2** | ⬜ **`deploy/` is now installers AND units AND ops scripts.** Fine for one box; otv5 may want `deploy/units/`, `deploy/install/`, `ops/`. Decide at the port, not here. | 🔲 OPEN |
+
 ### Repo hygiene found on the way
 
 | id | item | state |
@@ -88,6 +95,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.14 — 2026-09-11 — OTV4TEST r14 — ROOT CLEANUP: five files at the root, readers in tools/, installers and workers in deploy/, requirements.txt, a README that says what the repo is. One-time REINSTALL TIMERS on the box.**
 
 **v0.13 — 2026-09-10 — OTV4TEST r13 — defect #12: a checker's fixture became a live phantom position; the lander now runs every CHECK on scratch stores (HYG.6).**
 
