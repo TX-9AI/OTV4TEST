@@ -1,4 +1,8 @@
-# PORT_MANIFEST.md — OTV4TEST → options_trader_v4 — v0.6
+# PORT_MANIFEST.md — OTV4TEST → options_trader_v4 — v0.7
+v0.7  2026-09-12  OTV4TEST r15 — CORRECTION: the predecessor is NOT frozen (r325→r364, 37
+      commits, under Claude Code on the controller). The back-port is a merge now;
+      `derived/levels.py` is the first file both sides changed on purpose, and the
+      fork took mainline's shape for it (levels v4.3 / forks v4.2) so otv5 inherits one.
 v0.6  2026-09-11  OTV4TEST r14 — the root cleanup is LAYOUT, for otv5, not for the
       predecessor's fixes port: it moves 21 files and changes no behaviour.
 v0.5  2026-09-10  OTV4TEST r13 — defect #12 (a checker's fixture landed as a live open
@@ -58,6 +62,7 @@ Legend: **N** new file · **M** modified · **T** test (new or re-pointed) · **
 | r12 | tests/check_liquidity_hunt.py | T | new |
 | r13 | config.py, tools/land.sh, tests/check_standing_offer.py | M | **FIX** — defect #12; CHECKs on scratch stores |
 | r14 | 21 root files → tools/ and deploy/; requirements.txt; README.md; deploy/reinstall_timers.sh; devtools.sh | M/N | **LAYOUT** (otv5) — no behaviour change; not part of the fixes port |
+| r15 | derived/levels.py, derived/forks.py, derived/registry.py, strategy/liquidity_hunt.py, strategy/sweep_plan.py | M | **PORTED FROM MAINLINE r364** (pools by side, tines at read, the board) — already on the predecessor; no back-port needed |
 
 ## DEFECTS FOUND IN THE PREDECESSOR (port these whether or not the rulings port)
 

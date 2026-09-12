@@ -1,5 +1,9 @@
 """
-strategy/liquidity_hunt.py  v1.0
+strategy/liquidity_hunt.py  v1.1
+v1.1  2026-09-12  OTV4TEST r15 — the bias is read off the LEVEL BOARD (PLAN_SPEC §38):
+      held levels beyond the range ordered outward plus the rails computed at this
+      read, never a stale tine row; `board_state` is a check so silence is never
+      clearance. The PDH/PDL ladder is now visible (levels v4.3).
 v1.0  2026-09-10  OTV4TEST r12 — THE LIQUIDITY HUNT (PLAN_SPEC §37). Operator,
       2026-09-10, from the predecessor's own numbers: the ORB break-and-retest
       risks $71 to make $37; the momentum trade pays ~2:1 with the least
@@ -110,7 +114,8 @@ class HuntPreparation:
 
 class LiquidityHunt:
     name = "LiquidityHunt"
-    PLAN_CHECKS = ("entry_window", "price", "atr_pct", "orb_range", "nearest_above", "nearest_below",
+    PLAN_CHECKS = ("entry_window", "price", "atr_pct", "orb_range", "board_state", "board_above",
+                   "board_below", "fork_built", "nearest_above", "nearest_below",
                    "above_em", "below_em", "bias", "break_state", "fake_seen", "fake_failed",
                    "entry", "break_finished", "runway", "considered", "spread_rejected",
                    "contract", "leverage", "debit", "stop_premium")
@@ -130,6 +135,24 @@ class LiquidityHunt:
             return get_derived_store()
         except Exception:                                       # noqa: BLE001
             return None
+
+    def _board(self, price_now, hi, lo) -> dict:
+        """The LevelEngine's board when one is built; else a board assembled from
+        the store alone (tests bind a store; the fork's rails need the engine)."""
+        try:
+            from derived.registry import level_engine
+            eng = level_engine()
+            if eng is not None and getattr(eng, "_store", None) is not None:
+                return eng.board(price_now, hi, lo)
+        except Exception:                                       # noqa: BLE001
+            pass
+        store = self._store_()
+        if store is None:
+            return {"state": "no_store", "above": [], "below": [], "tines": [], "fork": "absent",
+                    "count": {"above": 0, "below": 0, "tines": 0}}
+        from derived.levels import LevelEngine
+        eng = LevelEngine(store, _symbol_of(), forks=None)
+        return eng.board(price_now, hi, lo)
 
     # ── the plan ──────────────────────────────────────────────────────────
     def prepare(self, *, orb, price_now, now_et, atr_pct=None, chain=None, df_1m=None,
@@ -157,13 +180,21 @@ class LiquidityHunt:
         if hi <= 0 or lo <= 0 or hi <= lo:
             prep.starved.append("opening_range"); t.starved("opening_range"); return prep
         t.check("orb_range", round(hi - lo, 4), True)
-        store = self._store_()
-        if store is None:
-            prep.starved.append("level_store"); t.starved("level_store"); return prep
-        sym = _symbol_of()
-        levels = store.live_levels(sym)
-        above = sorted([l for l in levels if float(l["price"]) > hi], key=lambda l: float(l["price"]))
-        below = sorted([l for l in levels if float(l["price"]) < lo], key=lambda l: -float(l["price"]))
+        # r15 — THE LEVEL BOARD (PLAN_SPEC §38): held levels beyond the range,
+        # ordered outward, plus the fork's rails computed at this read. Four empty
+        # answers stay distinct; nothing here is silence-as-clearance.
+        b = self._board(price_now, hi, lo)
+        t.check("board_state", {"ok": 1.0, "no_store": -1.0, "no_range": 0.0}.get(b.get("state"), None),
+                b.get("state") == "ok")
+        if b.get("state") != "ok":
+            prep.starved.append(f"level_board:{b.get('state')}"); t.starved("level_board"); return prep
+        tines_up = [dict(x) for x in b["tines"] if x["price"] > hi]
+        tines_dn = [dict(x) for x in b["tines"] if x["price"] < lo]
+        above = sorted(b["above"] + tines_up, key=lambda l: float(l["price"]))
+        below = sorted(b["below"] + tines_dn, key=lambda l: -float(l["price"]))
+        t.check("board_above", b["count"]["above"], None)
+        t.check("board_below", b["count"]["below"], None)
+        t.check("fork_built", 1.0 if b["fork"] == "built" else 0.0, None)
         na = above[0] if above else None
         nb = below[0] if below else None
         prep.above, prep.below = na, nb

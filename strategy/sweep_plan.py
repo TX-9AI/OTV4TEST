@@ -1,5 +1,7 @@
 """
-strategy/sweep_plan.py  v1.3
+strategy/sweep_plan.py  v1.4
+v1.4  2026-09-12  OTV4TEST r15 — the rails come from `tines_now` (never a stored row); the
+      PDH/PDL ladder is visible now that pools are classified by side (levels v4.3).
 v1.3  2026-09-09  OTV4TEST r12 — anchors on the chosen structure (record only): GEX at the
       level, OI at the short, aggressor share at the level, charm at the short, nearest tine.
 v1.2  2026-09-09  OTV4TEST r11 — `complement_richness`: as a condor's second leg the
@@ -242,6 +244,16 @@ class SweepPlan:
             prep.starved.append("level_store"); t.starved("level_store"); return prep
         sym = _symbol_of()
         levels = store.live_levels(sym)
+        # r15 — the rails are read, not stored (levels v4.3): add them from the engine
+        try:
+            from derived.registry import level_engine
+            _eng = level_engine()
+            if _eng is not None:
+                for t_ in _eng.tines_now(price_now):
+                    levels.append({"level_id": _eng._lid(sym, t_["provenance"], 0.0), "price": t_["price"],
+                                   "kind": t_["kind"], "provenance": t_["provenance"], "timeframe": "1h", "touches": 0})
+        except Exception:                                       # noqa: BLE001
+            pass
         above = sorted([l for l in levels if l["kind"] == "resistance" and float(l["price"]) > price_now],
                        key=lambda l: float(l["price"]))[:LEVELS_EACH_SIDE]
         below = sorted([l for l in levels if l["kind"] == "support" and float(l["price"]) < price_now],

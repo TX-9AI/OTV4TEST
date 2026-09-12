@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.14
+# BACKLOG.md — OTV4TEST — v0.15
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -57,6 +57,13 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 | **CND.2** | ⬜ **THE TENT CODE IS UNCALLED, NOT DELETED.** `check_and_execute_tent`, `_tent_breached`, `_execute_tent`, `_tent_close_all` and `_evaluate_tent` remain in the tree with no caller after r11. Delete them with the port (a dead branch reads as live). | 🔲 OPEN |
 | **CND.1** | ⬜ **THE FIRST FORMED CONDOR IS THE TEST.** Every rung disposes every tick on the CondorManagement / CreditRoll rows; read the first real pairing end to end (formation row → tested by wick → roll search → whichever rung fires) before touching a number. The tent has no sample; each case is its own evidence. | 🔲 OPEN |
 
+### Levels (PLAN_SPEC §38)
+
+| id | item | state |
+|---|---|---|
+| **LVL.1** | ✅ (r15) **THE LADDER COULD NOT LEAVE THE LEDGER; THE TINE ROWS WENT STALE.** Pools written `high`/`low`, filtered out by `live_levels()`; tine rows never retired. Found by the OTV4 thread on mainline's warehouse (786 rows, 2026-09-11), verified here by reading. Fixed: pools by side; tines computed at read; the board. | ✅ r15 |
+| **LVL.2** | ⬜ **SIDE-BY-KIND vs SIDE-BY-PRICE.** The sweep and TCS plans still test `kind == "resistance"` as a side; the hunt compares prices. After a level is crossed, kind is its *role* and price is its *side* — the TCS relies on that (a high accepted is the level it sells against); the sweep's read is fine while it also compares price. Worth its own row before otv5. | 🔲 OPEN |
+
 ### The liquidity hunt (PLAN_SPEC §37)
 
 | id | item | state |
@@ -95,6 +102,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.15 — 2026-09-12 — OTV4TEST r15 — the level board and the two defects under it (PLAN_SPEC §38), mainline r364's fix in its own shape. LVL.1 closed; HUNT.1's clock restarts.**
 
 **v0.14 — 2026-09-11 — OTV4TEST r14 — ROOT CLEANUP: five files at the root, readers in tools/, installers and workers in deploy/, requirements.txt, a README that says what the repo is. One-time REINSTALL TIMERS on the box.**
 

@@ -1410,3 +1410,15 @@ The slot rule is binary; instead of more exceptions the handing-off strategy wri
 Per box per morning: was the bias right (reached the level / didn't), which entry paid (A1 vs A2), how many hunts handed off and what the sweep did with the grant. The ORB beside it is the control. Read in R and reached-the-level counts first; the sweep P&L after granted handoffs will need more than a week.
 
 **As built (OTV4TEST r12):** `strategy/liquidity_hunt.py` v1.0, `execution/handoff.py` v1.0, `execution/position_manager.py` v4.9, `execution/entry_engine.py` v4.9, `execution/exit_engine.py` v4.17, `main.py` v4.46. Hypotheticals: `check_liquidity_hunt` H1–H10.
+
+## 38. OTV4TEST r15 — THE LEVEL BOARD, AND THE TWO DEFECTS UNDER IT (from the OTV4 thread, 2026-09-12, mainline r364)
+
+Found on mainline's warehouse and verified here by reading: **(1) pools were written with the detector's word** — `high`/`low` — and `live_levels()` filters `support`/`resistance`, so PDH, PDL and the whole R1/R2/R3 ladder were invisible to the hunt, the sweep and the TCS; **(2) a tine row went stale the moment a fork died** — nothing retired a level that stopped being sourced. Both fixed in mainline r364's shape so otv5 gets one implementation:
+
+- **a pool is classified by side at write** — above the live price is resistance, below is support; with no price, the formation. The biography still retires it (ACCEPTED_THROUGH, TRAVERSED).
+- **a tine is never stored.** `tines_now(price)` computes the rails from the fork the ForkEngine holds *right now* — with a rate, `bars_to_contact`, None when diverging — and a failed build clears the held fork, so a dead structure yields nothing on the next read. *"As long as there's a fork present, there should be a map of its points. And if the fork stops emitting, then the map has to go with it."* The fork's emitter reads the rails beside the ledger's levels and drops their pierce state when the fork goes.
+- **`board(price, orb_high, orb_low, limit=3)`** — the levels beyond the opening range, up to three each side ordered outward (monotone by construction), the rails, four distinct empty answers (`no_store`, `no_range`, no fork, no level that side), `count` never padded. The hunt reads it for its bias; the sweep reads the rails through it. VWAP is not a level a trade contends with.
+
+**What this changes on the tape:** from r15 the hunt and the sweep can see the ladder. Every row before r15 that said *"NO live level outside the range"* or chose a generic zone level was reading a door the ladder could not pass. HUNT.1's first week starts here, not at r12.
+
+**Predecessor status (correction to the manifest):** mainline is no longer frozen — 37 commits, r325→r364, under Claude Code on the controller. The back-port is a merge now, and the level engine is the first file where both sides changed the same thing on purpose.

@@ -1,6 +1,20 @@
 """
-derived/levels.py  v4.2
+derived/levels.py  v4.3
 Owns `level_ledger` and `level_event`. Tier 3 — stateful; the object has a biography.
+v4.3  2026-09-12  OTV4TEST r15 — TWO LEVEL DEFECTS, mainline r364's fix ported in its
+      own shape (one implementation for otv5). (1) A POOL IS CLASSIFIED BY SIDE:
+      the detector wrote "high"/"low" and `live_levels()` filters
+      support/resistance, so PDH/PDL and the whole R1/R2/R3 ladder were
+      invisible to the hunt, the sweep and the TCS — above the live price is
+      resistance, below is support, formation as the fallback. (2) A TINE IS
+      NEVER STORED: `_tines()` is gone from `_sources()`; `tines_now(price)`
+      computes the rails from the fork the ForkEngine holds right now (with a
+      rate: `bars_to_contact`), and a dead fork yields nothing on the next read
+      — there is no row to go stale. The emitter reads the tines beside the
+      ledger's levels and drops their pierce state when the fork goes. (3)
+      `board(price, orb_high, orb_low, limit)` — the level board the plans read
+      (PLAN_SPEC §38): held levels beyond the opening range ordered outward,
+      the rails, four distinct empty answers, `count` never padded.
 v4.2  2026-09-08  OTV4TEST r5 — THREE RULINGS FROM THE SWEEP UNTANGLE.
       · THE 1H PITCHFORK'S TINES ARE LEVELS. Moving ones (time + slope), so
         they are keyed on the TINE, not the price: `fork1h/upper`,
@@ -160,42 +174,108 @@ class LevelEngine(DerivedEngine):
                 p = _f(getattr(liq, attr, None))
                 if p and p > 0:
                     out.append((prov, p, kind, "1d" if "prev" in prov else "session", live))
+            # r15 (mainline r364, LVL.2): a pool is classified by SIDE at write —
+            # above the live price is resistance, below is support; with no price,
+            # the formation ("high"→resistance). The detector wrote "high"/"low"
+            # and live_levels() filters support/resistance, so PDH/PDL and the
+            # whole R1/R2/R3 ladder were INVISIBLE to the hunt, the sweep and the
+            # TCS (measured on mainline's warehouse, 786 rows, 2026-09-11).
+            _px_now = _f(ctx.get("price"))
             for pool in (getattr(liq, "pools", None) or []):
                 p = _f(getattr(pool, "price", None))
                 if p and p > 0:
+                    _formed = str(getattr(pool, "kind", "") or "")
+                    if _px_now and _px_now > 0:
+                        _side = "resistance" if p > _px_now else "support"
+                    else:
+                        _side = "resistance" if _formed == "high" else "support"
                     out.append((str(getattr(pool, "name", None) or "pool"), p,
-                                str(getattr(pool, "kind", "") or ""),
+                                _side,
                                 str(getattr(pool, "timeframe", "") or ""), 0))
         # VWAP is a level too and belongs in the same walk — operator.
         if vol is not None:
             p = _f(getattr(vol, "vwap", None))
             if p and p > 0:
                 out.append(("vwap", p, "dynamic", "session", 1))
-        # v4.2 — the 1h fork's tines, priced at the frame's current bar
-        for prov, p, kind in self._tines(ctx):
-            out.append((prov, p, kind, "1h", 1))
+        # r15 — tines are NOT sources any more: never stored, computed at read
+        # (`tines_now`); the emitter reads them beside the ledger's levels.
         return out
 
-    def _tines(self, ctx: dict):
-        """(provenance, price_now, kind) for the 1h fork's three tines, kind by
-        the tine rule; empty when no fork is built."""
+    def tines_now(self, price: float):
+        """The 1h fork's rails at THIS read, from the fork the ForkEngine holds
+        right now — never a stored row (mainline r364, the operator's rule: "as
+        long as there's a fork present, there should be a map of its points. And
+        if the fork stops emitting, then the map has to go with it"). A dead
+        fork yields [] on the next read; there is no row to go stale.
+        A tine has a RATE: `bars_to_contact` is the convergence at a standing
+        price — None when diverging, never a negative time. Kind by the tine
+        rule: upper resistance, lower support, median by the side price is on."""
         fe = self._forks
-        fork = getattr(fe, "last_forks", {}).get("1h") if fe is not None else None
+        fork = (getattr(fe, "last_forks", {}) or {}).get("1h") if fe is not None else None
         if fork is None:
             return []
-        idx = float(getattr(fe, "last_idx", {}).get("1h", 0) or 0)
-        price = _f(ctx.get("price")) or 0.0
+        idx = _f((getattr(fe, "last_idx", {}) or {}).get("1h")) or 0.0
+        slope = _f(getattr(fork, "slope", None)) or 0.0
         out = []
+        for name, fn in (("fork1h/upper", "upper_at"), ("fork1h/median", "median_at"),
+                         ("fork1h/lower", "lower_at")):
+            try:
+                p = _f(getattr(fork, fn)(idx))
+            except Exception:                                   # noqa: BLE001
+                continue
+            if not p or p <= 0:
+                continue
+            gap = p - (price or 0.0)
+            bars = None
+            if slope and price:
+                b = -gap / slope
+                bars = round(b, 2) if b > 0 else None
+            out.append({"provenance": name, "price": p,
+                        "kind": "resistance" if name.endswith("upper") else
+                                ("support" if name.endswith("lower") else
+                                 ("resistance" if price and price < p else "support")),
+                        "slope_per_bar": slope, "bars_to_contact": bars,
+                        "dist_pct": (abs(gap) / price * 100.0) if price else None})
+        return out
+
+    def board(self, price: float, orb_high=None, orb_low=None, limit: int = 3):
+        """THE LEVEL BOARD (mainline r364, PLAN_SPEC §38): the held levels beyond
+        the OPENING RANGE — up to `limit` above orb_high and below orb_low,
+        ordered outward from the edge (monotone by construction) — plus the
+        fork's rails when it exists. Four answers stay distinct: no_store,
+        no_range, no fork, no level that side; fewer than three is an answer
+        (`count`), never padded. VWAP is not a level a trade contends with."""
+        out = {"state": "ok", "above": [], "below": [], "tines": [], "fork": "absent",
+               "as_of": time.time()}
+        if self._store is None or not price:
+            out["state"] = "no_store"
+            return out
+        if not (orb_high and orb_low and orb_high > orb_low):
+            out["state"] = "no_range"
+            return out
         try:
-            up, md, lo = float(fork.upper_at(idx)), float(fork.median_at(idx)), float(fork.lower_at(idx))
+            rows = self._store.conn.execute(
+                "SELECT price, kind, provenance, touch_count, is_live_session, level_id"
+                " FROM level_ledger WHERE symbol=? AND retired_ts IS NULL"
+                " AND kind IN ('support','resistance')", (self.symbol,)).fetchall()
         except Exception:                                       # noqa: BLE001
-            return []
-        if up > 0:
-            out.append(("fork1h/upper", up, "resistance"))
-        if lo > 0:
-            out.append(("fork1h/lower", lo, "support"))
-        if md > 0 and price > 0:
-            out.append(("fork1h/median", md, "resistance" if price < md else "support"))
+            out["state"] = "no_store"
+            return out
+        above = sorted([r for r in rows if r[0] > orb_high], key=lambda r: r[0] - orb_high)
+        below = sorted([r for r in rows if r[0] < orb_low], key=lambda r: orb_low - r[0])
+
+        def fmt(r, edge):
+            return {"price": r[0], "kind": r[1], "provenance": r[2], "touches": r[3],
+                    "live": bool(r[4]), "level_id": r[5],
+                    "dist_pct": abs(r[0] - edge) / edge * 100.0}
+        out["above"] = [fmt(r, orb_high) for r in above[:limit]]
+        out["below"] = [fmt(r, orb_low) for r in below[:limit]]
+        out["tines"] = self.tines_now(price)
+        for t_ in out["tines"]:
+            t_["level_id"] = self._lid(self.symbol, t_["provenance"], 0.0)
+        out["fork"] = "built" if out["tines"] else "absent"
+        out["count"] = {"above": len(out["above"]), "below": len(out["below"]),
+                        "tines": len(out["tines"])}
         return out
 
     @staticmethod
@@ -315,18 +395,29 @@ class LevelEngine(DerivedEngine):
             return 0                                 # one closed bar, once
         self._last_bar_ts = bar_ts
         written = 0
-        for prov, lvl, kind, tf, live in self._sources(ctx):
+        _px = _f(ctx.get("price")) or close
+        # r15 — the tines are read, not stored: they join the ledger's levels here
+        # for the emitter only, and vanish with the fork (their pierce state too)
+        _tines = self.tines_now(_px)
+        _tine_names = {t_["provenance"] for t_ in _tines}
+        for k in [k for k in self._pierce if any(k.endswith(f":{n}:0.00") for n in ("fork1h/upper", "fork1h/median", "fork1h/lower"))]:
+            if not any(k.endswith(f":{n}:0.00") for n in _tine_names):
+                self._pierce.pop(k, None)
+        srcs = [(p_, l_, k_, t_, v_) for p_, l_, k_, t_, v_ in self._sources(ctx)]
+        srcs += [(t_["provenance"], t_["price"], t_["kind"], "1h", 1) for t_ in _tines]
+        for prov, lvl, kind, tf, live in srcs:
             if kind not in ("support", "resistance"):
                 continue                             # VWAP is crossed, not swept
             lid = self._lid(sym, prov, lvl)
-            st = self._live.get(lid)
-            if st is None or st["retired"]:
-                continue
             if self._is_tine(prov):
                 orb = ctx.get("orb")
                 lo_, hi_ = (_f(getattr(orb, "orb_low", None)), _f(getattr(orb, "orb_high", None))) if orb is not None else (None, None)
                 if lo_ and hi_ and lo_ <= lvl <= hi_:
                     continue                   # a tine inside the range, this bar
+            else:
+                st = self._live.get(lid)
+                if st is None or st["retired"]:
+                    continue
             tol = lvl * TOUCH_TOL_PCT
             # the CLOSE keeps the touch tolerance (inside it is noise, as
             # derive() counts touches); the WICK does not — a wick through

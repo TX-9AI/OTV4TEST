@@ -1,5 +1,7 @@
 """
-derived/forks.py  v4.1
+derived/forks.py  v4.2
+v4.2  2026-09-12  OTV4TEST r15 — a failed build clears `last_forks[tf]`/`last_idx[tf]`
+      (ported from mainline r364): the level map dies with the fork.
 v4.1  2026-09-08  OTV4TEST r5 — the engine KEEPS the last built fork per frame
       (`last_forks[tf]`) and the frame's current bar index (`last_idx[tf]`) so
       derived/levels can ask where a tine IS at the bar — the tines are moving
@@ -107,8 +109,15 @@ class ForkEngine(DerivedEngine):
                 fork = pf.build_fork_contained(sym, df, tf, atr)
             except Exception as exc:                            # noqa: BLE001
                 logger.debug("fork build raised for %s %s: %s", sym, tf, exc)
-            self.last_forks[tf] = fork
-            self.last_idx[tf] = len(df) - 1
+            # r15 (mainline r364's rule): a failed build CLEARS the held fork, so a
+            # dead structure cannot be served one tick later — "if the fork stops
+            # emitting, then the map has to go with it… out of sight, out of mind."
+            if fork is not None:
+                self.last_forks[tf] = fork
+                self.last_idx[tf] = len(df) - 1
+            else:
+                self.last_forks.pop(tf, None)
+                self.last_idx.pop(tf, None)
             reason = None
             try:
                 reason = pf.last_reject_reason()

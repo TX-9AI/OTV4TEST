@@ -1,5 +1,7 @@
 """
-derived/registry.py  v4.1
+derived/registry.py  v4.2
+v4.2  2026-09-12  OTV4TEST r15 — `level_engine()`: the plans read the level board from the
+      one engine build_engines() made.
 v4.1  2026-09-08  OTV4TEST r5 — the level engine is handed the fork engine so the
       1h tines are levels in the store (moving, keyed on the tine).
 Builds the engine set for one box. The single place main.py touches.
@@ -22,6 +24,14 @@ import logging
 from typing import List
 
 logger = logging.getLogger(__name__)
+
+
+_LEVELS = {"engine": None}       # r15: the one LevelEngine, for plans that read the board
+
+
+def level_engine():
+    """The LevelEngine built by build_engines(), or None before it runs."""
+    return _LEVELS["engine"]
 
 
 def build_engines(symbol: str) -> List:
@@ -53,6 +63,7 @@ def build_engines(symbol: str) -> List:
 
     forks = ForkEngine(store, symbol)
     levels = LevelEngine(store, symbol, forks=forks)      # r5: tines are levels
+    _LEVELS["engine"] = levels                            # r15: the board's owner
     return [
         IndicatorEngine(store, symbol),
         forks,

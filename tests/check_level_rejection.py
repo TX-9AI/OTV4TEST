@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_level_rejection.py  v1.1
+tests/check_level_rejection.py  v1.2
+v1.2  2026-09-12  OTV4TEST r15 — L10 pools by side, L11 tines never stored / dead fork empty,
+      L12 the board contract. Born red at r14 on L10, L11 and L12.
 v1.1  2026-09-08  OTV4TEST r5 — T1–T3: the 1h tines as moving levels keyed on the
       tine, the tine rule (a bottom tine is never a ceiling), and TRAVERSED
       retirement of any level inside the opening range.
@@ -183,6 +185,46 @@ def main():
     check("T3 a level inside the opening range is retired TRAVERSED", r and r[0] == "TRAVERSED", str(r))
     ev3 = [e for e in eng3.last_events if e["price"] == 705.5]
     check("T3b ...and emits no events", ev3 == [], str(ev3))
+
+    # ── r15: the two defects the OTV4 thread found (mainline r364), on the fork ──
+    class _Pool:
+        def __init__(s, name, price, kind): s.name, s.price, s.kind, s.timeframe = name, price, kind, "day"
+    class _Liq3(_Liq):
+        pools = [_Pool("PDH", 108.0, "high"), _Pool("PDL", 92.0, "low"), _Pool("NY High (R1)", 103.0, "high")]
+    eng4 = LevelEngine(store, "TST4")
+    eng4.derive({"symbol": "TST4", "price": 100.0, "liq_map": _Liq3(), "vol": None,
+                 "df_1m": _df1([(100.0, 100.2, 99.8, 100.1), (100.1, 100.3, 99.9, 100.2)], "10:20"),
+                 "df_5m": _df5(100.0), "orb": None})
+    kinds = {r[0]: r[1] for r in store.conn.execute("SELECT provenance, kind FROM level_ledger WHERE symbol='TST4'")}
+    check("L10 pools are classified by SIDE at write: PDH/R1 above price -> resistance, PDL below -> support (was high/low, invisible)",
+          kinds.get("PDH") == "resistance" and kinds.get("NY High (R1)") == "resistance" and kinds.get("PDL") == "support", str(kinds))
+    check("L10b ...and live_levels() now returns the ladder",
+          {l["provenance"] for l in store.live_levels("TST4")} >= {"PDH", "PDL", "NY High (R1)"})
+    # L11: a tine is never stored; a dead fork yields nothing on the next read
+    class _FE2:
+        last_forks = {"1h": _Fork()}; last_idx = {"1h": 10}
+    eng5 = LevelEngine(store, "TST5", forks=_FE2())
+    eng5.derive({"symbol": "TST5", "price": 705.0, "liq_map": _Liq(), "vol": None,
+                 "df_1m": _df1([(705.0, 705.2, 704.8, 705.1), (705.1, 705.3, 704.9, 705.2)], "10:30"),
+                 "df_5m": _df5(705.0), "orb": None})
+    n_tine_rows = store.conn.execute("SELECT COUNT(*) FROM level_ledger WHERE symbol='TST5' AND provenance LIKE 'fork1h/%'").fetchone()[0]
+    check("L11 a tine is NEVER a stored level (no fork1h/* row in the ledger)", n_tine_rows == 0, str(n_tine_rows))
+    tn = eng5.tines_now(705.0)
+    check("L11b tines_now serves the rails with a rate while the fork is built",
+          len(tn) == 3 and {x["provenance"] for x in tn} == {"fork1h/upper", "fork1h/median", "fork1h/lower"}
+          and all("bars_to_contact" in x for x in tn), str([(x["provenance"], x["price"]) for x in tn]))
+    _FE2.last_forks.pop("1h"); _FE2.last_idx.pop("1h")
+    check("L11c ...and a DEAD fork yields nothing on the next read — no stale row, no stale encounter",
+          eng5.tines_now(705.0) == [])
+    # L12: the board
+    eng6 = LevelEngine(store, "TST4")
+    bd = eng6.board(100.0, orb_high=101.0, orb_low=99.0)
+    check("L12 board: held levels beyond the range ordered outward, count never padded, four distinct empties",
+          bd["state"] == "ok" and [x["provenance"] for x in bd["above"]] == ["NY High (R1)", "PDH", "prev_day"]
+          and [x["provenance"] for x in bd["below"]] == ["PDL"] and bd["count"] == {"above": 3, "below": 1, "tines": 0}
+          and bd["fork"] == "absent", str({k: bd[k] for k in ("state", "count", "fork")}))
+    check("L12b board with no range -> no_range, not an empty ladder", eng6.board(100.0, None, None)["state"] == "no_range")
+    check("L12c board with no store -> no_store", LevelEngine(None, "X").board(100.0, 101.0, 99.0)["state"] == "no_store")
 
     print()
     if FAILED:

@@ -272,7 +272,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `derived/levels.py`
 - **calls:** `config.py`, `derived/base.py`
-- **called by:** `derived/registry.py`, `execution/exit_engine.py`, `tests/check_level_rejection.py`
+- **called by:** `derived/registry.py`, `execution/exit_engine.py`, `strategy/liquidity_hunt.py`, `tests/check_level_rejection.py`
 
 ### `derived/notes.py`
 - **calls:** `analysis/order_flow.py`, `derived/base.py`, `strategy/plan.py`
@@ -288,7 +288,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `derived/registry.py`
 - **calls:** `data/derived_store.py`, `derived/character_engine.py`, `derived/counterfactual.py`, `derived/forks.py`, `derived/indicators.py`, `derived/levels.py`, `derived/notes.py`, `derived/plan_ledger.py`, `derived/plans.py`, `derived/snapshot.py`, `derived/surface.py`
-- **called by:** `database/trade_logger.py`, `main.py`, `strategy/iron_condor_strategy.py`, `strategy/plan.py`, `tests/check_butterfly_legs.py`, `tests/check_derived_layer.py`, `tools/status.py`
+- **called by:** `database/trade_logger.py`, `main.py`, `strategy/iron_condor_strategy.py`, `strategy/liquidity_hunt.py`, `strategy/plan.py`, `strategy/sweep_plan.py`, `tests/check_butterfly_legs.py`, `tests/check_derived_layer.py`, `tools/status.py`
 
 ### `derived/snapshot.py`
 - **calls:** `derived/base.py`, `strategy/gex_pin_butterfly.py`
@@ -435,7 +435,7 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** `main.py`, `tests/check_audit_20260823.py`, `tests/check_condor_mgmt.py`, `tests/check_entry_windows.py`, `tests/check_plan_prepares.py`
 
 ### `strategy/liquidity_hunt.py`
-- **calls:** `config.py`, `data/derived_store.py`, `strategy/__init__.py`, `strategy/base_strategy.py`, `strategy/gex_pin_butterfly.py`, `strategy/plan.py`, `strategy/relaxed.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`, `utils/math_utils.py`
+- **calls:** `config.py`, `data/derived_store.py`, `derived/levels.py`, `derived/registry.py`, `strategy/__init__.py`, `strategy/base_strategy.py`, `strategy/gex_pin_butterfly.py`, `strategy/plan.py`, `strategy/relaxed.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`, `utils/math_utils.py`
 - **called by:** `main.py`, `tests/check_liquidity_hunt.py`
 
 ### `strategy/management.py`
@@ -475,7 +475,7 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** `database/trade_logger.py`, `main.py`, `strategy/liquidity_hunt.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_age_gate_gone.py`, `tests/check_atr_units.py`, `tests/check_chain_ordering.py`, `tests/check_dispatch.py`, `tests/check_entry_windows.py`, `tests/check_plan_prepares.py`, `tests/check_pool_geometry.py`, `tests/check_strike_beyond.py`, `tests/check_structure_viable.py`, `tests/check_sweep_liveness.py`, `tests/check_sweep_spread.py`, `tests/stress_entry_path.py`
 
 ### `strategy/sweep_plan.py`
-- **calls:** `config.py`, `data/derived_store.py`, `derived/__init__.py`, `derived/anchors.py`, `strategy/__init__.py`, `strategy/credit_vertical.py`, `strategy/criteria.py`, `strategy/plan.py`, `strategy/relaxed.py`, `strategy/sweep_credit_spread.py`, `utils/math_utils.py`
+- **calls:** `config.py`, `data/derived_store.py`, `derived/__init__.py`, `derived/anchors.py`, `derived/registry.py`, `strategy/__init__.py`, `strategy/credit_vertical.py`, `strategy/criteria.py`, `strategy/plan.py`, `strategy/relaxed.py`, `strategy/sweep_credit_spread.py`, `utils/math_utils.py`
 - **called by:** `main.py`, `strategy/iron_condor_strategy.py`, `strategy/sweep_credit_spread.py`, `tests/check_condor_mgmt.py`, `tests/check_plan_prepares.py`
 
 ### `strategy/tcs_plan.py`
