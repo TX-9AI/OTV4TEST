@@ -1,4 +1,20 @@
-# PORT_MANIFEST.md — OTV4TEST → options_trader_v4 — v0.7
+# PORT_MANIFEST.md — OTV4TEST → options_trader_v4 — v0.8
+v0.8  2026-09-12  OTV4TEST r16 — THE DIRECTION OF TRAVEL INVERTS, AND THE RANGE LABEL WAS
+      WRONG. (1) v0.7 said the predecessor moved `r325→r364`; the first commit past the
+      fork point is **r324**. The count of 37 is right. (2) **THE BACK-PORT IS LARGELY
+      DONE AND THIS FILE DID NOT KNOW.** Mainline r324 is titled *"PORT.1: FIXES-ONLY
+      PARITY WITH OTV4TEST"* and carried FIVE of the twelve defects below into the
+      predecessor on 2026-09-09, with an explicit ruling naming the five it would NOT
+      take so the control arm keeps behaving as it did at r322. (3) **ELEVEN of the 37
+      touch the execution path**, and one of those (r364) this fork already absorbed at
+      r15 — so the surface is ten, not thirty-seven. The CND commits r346/r348/r361 are
+      docs-only and do NOT collide with the fork's condor rewrite; that was read off
+      commit-subject prefixes on a first pass and is corrected here. (4) The traffic that
+      matters now runs the OTHER WAY: mainline r340 is a defect this fork still carries
+      (BACKLOG PRE.1). (5) Under the operator's 2026-09-12 ruling the supersede is IN
+      PLACE — this box perfects the EXECUTION, mainline protects the INFRASTRUCTURE — so
+      a fork-only store with no push stage on mainline is a handover item (PRE.3), not a
+      job for this box.
 v0.7  2026-09-12  OTV4TEST r15 — CORRECTION: the predecessor is NOT frozen (r325→r364, 37
       commits, under Claude Code on the controller). The back-port is a merge now;
       `derived/levels.py` is the first file both sides changed on purpose, and the
@@ -68,15 +84,40 @@ Legend: **N** new file · **M** modified · **T** test (new or re-pointed) · **
 
 | # | defect | where | fixed |
 |---|---|---|---|
-| 1 | TCS wrote no plan row on its common path — bare returns with the tick open; NOT ASKED all afternoon, every credit window (r238) | strategy/trend_credit_spread.py | r8 |
+| 1 | TCS wrote no plan row on its common path — bare returns with the tick open; NOT ASKED all afternoon, every credit window (r238) | strategy/trend_credit_spread.py | r8 · ✅ **ON MAINLINE at r324** |
 | 2 | TCS `POP ≥ 0.70` was a config constant nothing read | strategy/trend_credit_spread.py | r9 (applied in tcs_plan) |
-| 3 | OI fetch lost the first batch of every cycle — "Event loop is closed", one `asyncio.run` per batch | data/open_interest.py | r6 |
+| 3 | OI fetch lost the first batch of every cycle — "Event loop is closed", one `asyncio.run` per batch | data/open_interest.py | r6 · ✅ **ON MAINLINE at r324** |
 | 4 | ORB invalidated on a WICK to the 50 while the runaway armed on a close+hold — the band owned by nobody | analysis/orb_engine.py | r3 |
 | 5 | `finish_break` only on a LOSING runaway exit — a trail winner re-entered on the same standing state | database/trade_logger.py | r3 |
-| 6 | the lander's checks wrote `TestStrat` rows into the box's live plan_ledger (`_ledger_open` ignored a bound store) | strategy/plan.py | r6 |
+| 6 | the lander's checks wrote `TestStrat` rows into the box's live plan_ledger (`_ledger_open` ignored a bound store) | strategy/plan.py | r6 · ✅ **ON MAINLINE at r324** |
 | 7 | main.py read the sweep's window from a module string ("14:00") and the TCS's from config — the remainder honoured a stale window | main.py | r9 |
-| 8 | `analysis/trade_readiness.py::_combine` defined nested, called at module level — NameError on every readiness path, masked by an import guard | analysis/trade_readiness.py | r12 |
+| 8 | `analysis/trade_readiness.py::_combine` defined nested, called at module level — NameError on every readiness path, masked by an import guard | analysis/trade_readiness.py | r12 · ✅ **ON MAINLINE at r324** |
 | 9 | `check_tcs_parked` P5b red before the fork touched TCS; outside the lander's set | tests/ | r9 |
 | 10 | the level engine never read a high or a low — a rejection was invisible to the derived layer | derived/levels.py | r3 (built) |
-| 11 | the condor management plan only recognised legs already flagged `is_condor_leg` — a lone sweep/TCS vertical read as "no credit verticals open" | strategy/iron_condor_strategy.py | r10 |
+| 11 | the condor management plan only recognised legs already flagged `is_condor_leg` — a lone sweep/TCS vertical read as "no credit verticals open" | strategy/iron_condor_strategy.py | r10 · ✅ **ON MAINLINE at r324** |
 | 12 | `check_standing_offer` S5 adopts a fixture fill into the LIVE trade logger — run by the lander on the QQQ TEST box it wrote `orb-T1` (CALL 196 ×10, spot 197.15) as an open trade and the bot RESUMED a phantom position on restart. Same class as #6. Fix: the checker binds a temp logger; structurally, the lander runs every CHECK with `OT_TRADES_DB`/`OT_DERIVED_DB` on scratch files (config v4.18 honours `OT_TRADES_DB`). **Port both halves; the fixture is identical on mainline.** | tests/check_standing_offer.py, tools/land.sh (control's twin), config.py | r13 |
+
+## WHAT THE PREDECESSOR DID AFTER THE SPLIT — r324 → r364 (read 2026-09-12, OTV4TEST r16)
+
+37 commits, `e955020..upstream/main` (`6e193b98`). **Eleven touch the execution path**
+(`strategy/ execution/ analysis/ derived/ risk/ main.py config.py`); the other 26 are
+reporting, S3, shadow, ops and docs — mainline's infrastructure, which is mainline's to
+protect.
+
+| mainline | what it did | collides with | verdict here |
+|---|---|---|---|
+| **r324** | PORT.1 — fixes-only parity: took five fork defects (TCS narration, OI event loop, bound test store, `trade_readiness` dedent, lone-vertical recognition) and **named the five it refuses** — the ORB's close-based runaway invalidation, `finish_break` on any exit, the rejection fact, windows read from plans, and `TCS_MIN_POP` — so the predecessor keeps trading as it did at r322 and stays a valid control arm | the fork's r6/r8/r10/r12 | ✅ nothing owed — this is the fork's own work arriving there |
+| **r340** | RPT.24 — a single-leg entry recorded `symbol = INSTRUMENT` and nothing naming the option, so ORB and Runaway were never replayable | `execution/entry_engine.py::_record_kwargs`, shared | 🔴 **THE FORK CARRIES IT** — BACKLOG **PRE.1** |
+| **r341** | PLN.1 — the condor slipped r213's net; the panel accuses a dispatch bug that does not exist | `strategy/plan.py`, shared | ⬜ unassessed — PRE.2 |
+| **r344** | RPT.26 — `is_short_position` had no writer; credit MFE/MAE swapped in every report | reporting layer | ⬜ unassessed, likely mainline-only — PRE.2 |
+| **r345** | RPT.27 — the exit path resolved every credit spread as a LONG (SELL_TO_CLOSE instead of buying back) | `execution/exit_engine.py` | ✅ **does not apply** — `_close_vertical` hardcodes the actions; the fork's bare flag reads are both on the adopted path, which has a writer |
+| **r351 / r353** | TCS.1 — the wing floor was never recorded, then moved 1.00 → 0.75 on a measured study | mainline's r238-era TCS | ⬜ the CONSTANT does not port (the fork rewrote TCS at r9 with `TCS_R_FLOOR_EXPIRY`); the **evidence** does — "the wing floor is the most common last refusal in the book" is worth testing against this fork's TCS |
+| **r352** | BFLY.15 — the pin was chosen in percent of spot and judged in expected moves, so the selector handed the strategy candidates it was required to refuse | `strategy/gex_pin_butterfly.py` | ⬜ unassessed — the fork's fly is still one file (BFLY.2) |
+| **r355 / r356** | CHR.1 / CHR.2 — the character engine turned on; half of it had never measured anything | `analysis/character.py`, `derived/character_engine.py` | ⬜ unassessed — character is not wired into any fork trade |
+| **r364** | LVL — pools by side, tines computed at read, the board | `derived/levels.py` etc. | ✅ **already absorbed** at OTV4TEST r15, in mainline's own shape |
+
+⚠️ **THE CONDOR COLLISION WAS OVERSTATED ON FIRST READING AND IS NOT ONE.** r346, r348
+and r361 carry `CND` subjects and touch `docs/BACKLOG.md` and `docs/GENESIS.md` ONLY.
+Reading a collision off a commit-subject prefix is the same class of error as reading a
+backlog state off its prose (BACKLOG HYG.7) — the diff is the evidence, the subject line
+is commentary.

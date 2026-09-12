@@ -964,7 +964,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/exit_replay.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `devtools.sh`
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/BACKLOG.md`
 
 ### `tests/fees.py`
 - **calls:** `strategy/structure.py`
