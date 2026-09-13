@@ -1,5 +1,11 @@
 """
-main.py  v4.46
+main.py  v4.47
+v4.47 2026-09-13  OTV4TEST r20 — THE ORB IS PASSED NO LEVEL SURFACE. Operator's
+      ruling: levels out of the ORB trade entirely. The `liq_map` argument is
+      gone from the ORB's `generate_signal` call site; the sweep's own call
+      sites are UNTOUCHED, because the sweep genuinely trades off sweeps at
+      levels. Everything else reading `ctx["liq_map"]` — the ledger feed, the
+      board, `publish_tines` — is unchanged.
 v4.46 2026-09-10  OTV4TEST r12 — THE LIQUIDITY HUNT AND THE HANDOFF GRANT (PLAN_SPEC
       §37). The hunt is asked every tick beside the ORB — from the no-position
       chain and from the position-open branch — and executed ADDITIVE; it takes
@@ -3665,7 +3671,8 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
         orb           = orb,
         ms            = ms,
         vol_state     = ctx["vol"],
-        liq_map       = ctx["liq_map"],
+        # r20 — the ORB is passed NO level surface. Operator's ruling; the sweep's
+        # own call sites keep theirs, because the sweep genuinely trades levels.
         chain         = chain,
         macro         = macro,
         current_price = ctx["price"],

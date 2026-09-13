@@ -1,5 +1,28 @@
 """
-strategy/orb_strategy.py  v4.6
+strategy/orb_strategy.py  v4.7
+v4.7  2026-09-13  OTV4TEST r20 — THE ORB KNOWS NOTHING ABOUT LEVELS. Operator:
+      "I want levels taken out of the orb trade entirely — that was to prevent
+      fake-outs, but proved ineffective for the task." The same ruling he gave
+      mainline at r365. SIX EXCISIONS: the `LiquidityMap` import, the `liq_map`
+      parameter, the `_analyze_liquidity` call and the 88-line method, every
+      consumer of its result (the pool-in-path note, the named-level confluence
+      and the `conviction += 0.15` riding on it, the path-clear and unnamed-
+      cluster notes, the target-adjusted note), and `break_level`, whose only
+      consumer was that method. 407 lines to 305; pyflakes reports zero
+      undefined names and no new warning.
+      🔑 MEASURED BEFORE REMOVAL, AND INERT HERE WHERE IT WAS NOT ON MAINLINE.
+      There a pool just beyond the TP re-derived the CONTRACT through the global
+      strike increment, firing on 10 of 115 ORB trades (8.7%%). Here OTV4TEST r2
+      had already moved strike selection into `orb_plan`, so `contract` comes
+      from `prep` and no pool has touched it since; Rule 3's target adjustment
+      was explicitly RECORDED, NOT APPLIED since r193; and `signal.conviction`
+      has NO READER in the decision path (main.py: "DO NOT REINTRODUCE A
+      CONVICTION GATE", pinned by tests/check_conviction_removed.py). What
+      changes is notes and one log line.
+      ⚠️ THE PARAMETER IS REMOVED, NOT IGNORED, so a caller still passing
+      `liq_map` raises rather than being silently disregarded — mainline's r365
+      found exactly that hiding in a test harness that DRIVES the function while
+      three source-shape gates stayed green.
 v4.6  2026-09-08  OTV4TEST r2 — THE STRATEGY IS THE SPEC; THE PLAN SELECTS.
       Agreed with the operator part by part on 2026-09-08 (PLAN_SPEC §29).
       `generate_signal()` no longer touches the chain, picks a strike, prices
@@ -74,6 +97,14 @@ repo-wide v3.0 bump: Yahoo-Finance purge & data stream
         mapping optimization (all market data now flows from the single
         shared TastyTrade candle feed — see data/candle_feed.py). No logic
         change in this file.
+⬛ SUPERSEDED 2026-09-13 (OTV4TEST r20) — THE THREE RULES BELOW ARE GONE AND
+THIS FILE READS NO LEVELS AT ALL. Operator: "I want levels taken out of the orb
+trade entirely — that was to prevent fake-outs, but proved ineffective for the
+task." Kept, struck, per the r240 precedent: a rule a later ruling contradicts
+is a wrong answer rather than history, and this is WHY the ORB looked as it did
+for the whole of v3 and v4. Rule 2 was already record-only from r193; Rule 3's
+target adjustment was recorded and never applied here; Rule 1's confluence
+carried a conviction bump that nothing in the decision path read.
 Liquidity-aware ORB logic:
 RULE 1 — Named level IS the break level (catalyst, not obstacle):
   If the ORB high/low sits within 0.15% of a named pool (PDH, PDL, session H/L),
@@ -108,7 +139,6 @@ from strategy.orb_plan import ORBPlan
 from analysis.orb_engine import ORBData
 from analysis.market_state import MarketState
 from analysis.volatility_engine import VolatilityState
-from analysis.liquidity_mapper import LiquidityMap
 from data.options_chain import OptionsChain
 from data.macro_data import MacroSnapshot
 from config import FED_DAY_ORB_BOOST, MAX_LOSS_PCT
@@ -177,7 +207,9 @@ def _confirmed_epoch(orb) -> float:
 class ORBStrategy(BaseOptionsStrategy):
     """
     Opening Range Breakout strategy.
-    Liquidity-aware: distinguishes catalyst sweeps from obstacle sweeps.
+    ⚠️ KNOWS NOTHING ABOUT LEVELS (r20, operator's ruling). It reads no pool, no
+    ladder and no fork rail; the break, the retest and the plan's contract are
+    the whole trade.
     """
 
     # RECORD ONLY. ORB opens its own plan_ledger rows (main.py's open_plan
@@ -212,7 +244,6 @@ class ORBStrategy(BaseOptionsStrategy):
                         orb: ORBData,
                         ms: MarketState,
                         vol_state: VolatilityState,
-                        liq_map: LiquidityMap,
                         chain: OptionsChain,
                         macro: MacroSnapshot,
                         current_price: float,
@@ -227,8 +258,10 @@ class ORBStrategy(BaseOptionsStrategy):
           3. this confirmation has not already produced an order
           4. a contract with a live quote exists at the 100% target strike
         Nothing else. No R hurdle, no geometry, no ATR, no confluence gate.
-        `ms`, `vol_state`, `liq_map` and `macro` are read for NOTES on the
-        signal only (they gate nothing and may be None).
+        `ms`, `vol_state` and `macro` are read for NOTES on the signal only
+        (they gate nothing and may be None). ⚠️ `liq_map` IS GONE (r20) — not
+        ignored, REMOVED from the signature, so a caller still passing it fails
+        loudly instead of being silently disregarded.
         """
         prep = self.plan.prepare(orb=orb, chain=chain, price_now=current_price,
                                  now_hhmm=now_hhmm, offer_working=offer_working)
@@ -237,7 +270,6 @@ class ORBStrategy(BaseOptionsStrategy):
 
         t = prep.tick
         direction, option_side, contract = prep.direction, prep.side, prep.contract
-        break_level = prep.boundary
         target_100, target_50 = prep.target_100, prep.target_50
 
         signal = OptionsSignal(
@@ -268,31 +300,21 @@ class ORBStrategy(BaseOptionsStrategy):
         # ── NOTES — describe the setup; none of them authorises it ─────────
         self._add_confluence(signal, f"ORB break confirmed ({direction})")
         self._add_confluence(signal, "Break+retest pattern (1m body/wick rules)")
-        liq_result = None
-        if liq_map is not None:
-            try:
-                liq_result = self._analyze_liquidity(orb, liq_map, current_price,
-                                                     direction, break_level)
-            except Exception as exc:                            # noqa: BLE001
-                logger.warning("ORB liquidity notes unavailable: %s", exc)
-        if liq_result:
-            if liq_result["block"]:
-                logger.info("ORB pool in path (RECORDED, not a block): %s",
-                            liq_result["block_reason"])
-            if liq_result["break_is_named_level"]:
-                self._add_confluence(signal, f"ORB break through named level "
-                                             f"{liq_result['break_level_name']} — sweep catalyst")
-                signal.conviction += 0.15
-            if liq_result["path_clear"]:
-                self._add_confluence(signal, "Liquidity path clear to target")
-            if liq_result["unnamed_in_path"] > 0:
-                signal.notes += (f" | {liq_result['unnamed_in_path']} unnamed liq "
-                                 f"cluster(s) in path (logged, no grade impact)")
-            if liq_result.get("target_adjusted"):
-                # RECORDED, NOT APPLIED (r193): the target stays the measured move.
-                signal.notes += (f" | Pool {liq_result['target_adj_reason']} at "
-                                 f"{liq_result.get('adjusted_target', 0.0):.2f} just beyond TP "
-                                 f"(RECORDED ONLY — target stays {target_100:.2f})")
+        # 🔴 r20 — THE ORB KNOWS NOTHING ABOUT LEVELS. Operator, 2026-09-13:
+        # "I want levels taken out of the orb trade entirely — that was to
+        # prevent fake-outs, but proved ineffective for the task." Same ruling
+        # he gave mainline at r365. What stood here: the `_analyze_liquidity`
+        # call, the pool-in-path note, the named-level confluence and the
+        # `conviction += 0.15` that rode on it, the path-clear and unnamed-
+        # cluster notes, and the target-adjusted note.
+        # 🔑 MEASURED BEFORE REMOVAL, AND IT IS INERT ON THIS FORK, WHICH IS NOT
+        # TRUE OF MAINLINE: there, a pool just beyond the TP re-derived the
+        # CONTRACT and that branch fired on 10 of 115 ORB trades (8.7%). Here
+        # OTV4TEST r2 already moved strike selection into `orb_plan`, so
+        # `contract` comes from `prep` and no pool has touched it since; and the
+        # only other effect, `signal.conviction`, has NO READER in the decision
+        # path (main.py: "DO NOT REINTRODUCE A CONVICTION GATE", pinned by
+        # tests/check_conviction_removed.py). Notes and one log line change.
         _vwap = getattr(vol_state, "price_vs_vwap", "") if vol_state is not None else ""
         if direction == "long" and _vwap == "ABOVE":
             self._add_confluence(signal, "Above VWAP — bullish bias")
@@ -316,92 +338,3 @@ class ORBStrategy(BaseOptionsStrategy):
         )
         return t.take(signal)
 
-    # ─── Liquidity Analysis ───────────────────────────────────────────────────
-
-    def _analyze_liquidity(self, orb, liq_map, current_price,
-                            direction, break_level) -> dict:
-        result = {
-            "break_is_named_level": False,
-            "break_level_name":     "",
-            "block":                False,
-            "block_reason":         "",
-            "path_clear":           True,
-            "named_in_path":        0,
-            "unnamed_in_path":      0,
-            # v-namelevels 2026-07-28: identities, not just counts. "1 named
-            # level(s)" told us NOTHING when this gate held an AVGO ORB entry for
-            # 6 straight ticks (90s) and the trade filled 1.4pt late at the low.
-            "named_in_path_detail":   [],   # [(name, price), ...] in the fakeout zone
-            "unnamed_in_path_detail": [],   # [price, ...] equal-H/L clusters (metric only)
-            "target_adjusted":      False,
-            "adjusted_target":      orb.target_100pct,
-            "target_adj_reason":    "",
-        }
-
-        orb_width  = orb.orb_width
-        target_100 = orb.target_100pct
-        target_50  = orb.target_50pct
-
-        for pool in liq_map.pools:
-            if pool.swept:
-                continue
-
-            pool_price = pool.price
-            is_named   = pool.is_named
-            pool_name  = pool.name or "unnamed"
-
-            prox = abs(pool_price - break_level) / max(break_level, 1)
-            if is_named and prox <= BREAK_LEVEL_PROXIMITY_PCT:
-                result["break_is_named_level"] = True
-                result["break_level_name"]     = pool_name
-                continue
-
-            is_obstacle_kind = (
-                (direction == "long"  and pool.kind == "high") or
-                (direction == "short" and pool.kind == "low")
-            )
-            if not is_obstacle_kind:
-                continue
-
-            in_danger_zone = (
-                (direction == "long"  and current_price < pool_price < target_50) or
-                (direction == "short" and target_50 < pool_price < current_price)
-            )
-            if in_danger_zone and is_named:
-                result["named_in_path"] += 1
-                result["named_in_path_detail"].append((pool_name, float(pool_price)))
-                result["path_clear"]     = False
-
-            in_full_path = (
-                (direction == "long"  and current_price < pool_price < target_100) or
-                (direction == "short" and target_100 < pool_price < current_price)
-            )
-            if in_full_path and not is_named:
-                # v-obs: equal-H/L (unnamed) clusters are LOW QUALITY and no longer
-                # penalize the ORB — they do NOT flip path_clear. We still COUNT them
-                # (metric only) so we can later study whether they matter at scale.
-                # Only NAMED pools (PDH/PDL/session) affect path_clear / grade.
-                result["unnamed_in_path"] += 1
-                result["unnamed_in_path_detail"].append(float(pool_price))
-
-            adj_zone_long  = (direction == "long"  and
-                              target_100 < pool_price < target_100 + orb_width * BEYOND_TP_ADJUSTMENT_WIDTHS)
-            adj_zone_short = (direction == "short" and
-                              target_100 - orb_width * BEYOND_TP_ADJUSTMENT_WIDTHS < pool_price < target_100)
-
-            if is_named and (adj_zone_long or adj_zone_short) and not result["target_adjusted"]:
-                result["target_adjusted"]   = True
-                result["adjusted_target"]   = pool_price
-                result["target_adj_reason"] = pool_name
-
-        if result["named_in_path"] > 0 and not result["break_is_named_level"]:
-            result["block"]        = True
-            _named = ", ".join(f"{n}@{px:.2f}" for n, px in result["named_in_path_detail"]) \
-                     or "(unidentified)"
-            result["block_reason"] = (
-                f"Named pool in fakeout zone (entry→50%TP): "
-                f"{result['named_in_path']} named level(s): {_named} "
-                f"[entry={current_price:.2f} 50%TP={target_50:.2f} dir={direction}]"
-            )
-
-        return result

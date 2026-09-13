@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
-"""tests/check_orb_window.py  v1.0
+"""tests/check_orb_window.py  v1.1
+v1.1  2026-09-13  OTV4TEST r20 — W5 RE-DERIVED and W6 WIDENED to "no level
+      surface reaches this file at all"; W7/W7b ADDED (the contract comes from
+      the plan, no strike re-derived, and the conviction bump is gone).
+      🔑 THE ASSERTIONS RUN ON TOKENISED CODE, comments and strings removed.
+      §20 says scope a canary to a definition rather than a mention, but this
+      file's changelog and its struck doctrine block are REQUIRED to name
+      `select_orb_strike` and `conviction += 0.15` in order to describe removing
+      them — so even a shaped pattern matched the documentation, and W7/W7b went
+      red on their own prose on the first run. Mainline r365 hit this identically.
+      Tokenising ends the class: the changelog can now say anything.
+      Born red at 98eea8d on W6, W7 and W7b.
 THE ORB ENTRY WINDOW IS 11:30, IT AGREES WITH THE DEBIT BLOCK, AND EVERY COPY
 OF IT AGREES WITH config.
 
@@ -80,19 +91,50 @@ def main():
     check("W4 orb_engine compares against the imported constant",
           "(now.hour, now.minute) >= ORB_NO_ENTRY_AFTER_ET" in eng)
 
-    # ── W5/W6: the pool records but does not steer ────────────────────────
-    # ⚠️ Shape of the ASSIGNMENT, not a mention: orb_strategy's v4.3 changelog
-    # and the notes line both name `adjusted_target` while describing the
-    # change, so a bare string match would go red on its own documentation
-    # (WORKING_AGREEMENT §20).
-    st = open(os.path.join(_root, "strategy", "orb_strategy.py"),
-              encoding="utf-8").read()
-    check("W5 the target is the pure measured move, not a pool",
-          "target_100 = orb.target_100pct" in st
-          and 'target_100 = liq_result.get("adjusted_target"' not in st)
-    check("W6 pool presence is still RECORDED — the study stays possible",
-          'result["target_adjusted"]   = True' in st
-          and "RECORDED ONLY" in st)
+    # ── W5/W6/W7: the ORB knows NOTHING about levels (r20) ────────────────
+    # ⚠️ ANCHORED ON CODE SHAPE, NEVER ON A MENTION. v4.7's changelog and the
+    # struck doctrine block both have to NAME pools and levels in order to
+    # describe removing them, so a bare string match would go red on this
+    # file's own documentation — WORKING_AGREEMENT §20, and mainline's r365
+    # watched its first version of W7 do exactly that.
+    # 🔑 MATCH THE CODE, NOT THE PROSE. §20 says scope a canary to the shape of
+    # a DEFINITION rather than a mention — but this file's changelog and its
+    # struck doctrine block are REQUIRED to name `select_orb_strike` and
+    # `conviction += 0.15` in order to describe removing them, so even a shaped
+    # pattern matches the documentation. W7 and W7b both went red on exactly
+    # that on their first run, which is mainline r365's experience repeated.
+    # So the comments and strings are TOKENIZED OUT and the assertions run
+    # against executable text alone. The changelog can then say anything.
+    def _code_only(src: str) -> str:
+        import io, tokenize
+        out = []
+        try:
+            for tok in tokenize.generate_tokens(io.StringIO(src).readline):
+                if tok.type in (tokenize.COMMENT, tokenize.STRING):
+                    continue
+                out.append(tok.string)
+        except Exception:                                       # noqa: BLE001
+            return src                                # never hide a parse error
+        return " ".join(out)
+
+    _raw = open(os.path.join(_root, "strategy", "orb_strategy.py"),
+                encoding="utf-8").read()
+    st = _code_only(_raw)
+    check("W5 the target is the plan's measured move — an ASSIGNMENT, not a pool",
+          "target_100 , target_50 = prep . target_100 , prep . target_50" in st
+          and "adjusted_target\"]" not in st)
+    check("W6 no level surface reaches this file at all: no import, no parameter, no method",
+          "LiquidityMap" not in st
+          and "liq_map:" not in st
+          and "def _analyze_liquidity" not in st
+          and "liq_result" not in st,
+          "one of: LiquidityMap import / liq_map param / _analyze_liquidity / liq_result")
+    check("W7 the contract comes from the PLAN on every path — no strike is re-derived here",
+          "contract = prep . direction , prep . side , prep . contract" in st
+          and "round_to_strike" not in st
+          and "select_orb_strike" not in st)
+    check("W7b ...and the conviction bump that rode on a named level is gone",
+          "conviction+=0.15" not in st.replace(" ", ""))
 
     print()
     if _fails:

@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_orb_sequence.py  v1.2
+tests/check_orb_sequence.py  v1.3
+v1.3  2026-09-13  OTV4TEST r20 — the `liq_map=None` kwarg dropped from every
+      `ORBStrategy.generate_signal` call; nothing else changed. The parameter is
+      REMOVED rather than ignored, so a harness still passing it raises — which
+      is how mainline r365 found a live call site that three source-shape gates
+      had missed, because this kind of check DRIVES the function.
 v1.2  2026-09-08  OTV4TEST r3 — S11b drives the acceptance (close + hold), since the
       runaway invalidation is no longer a wick to the 50 (orb_engine v4.13).
 v1.1  2026-09-04  r235 — S4's fixtures set the SEQS, not the bare
@@ -182,7 +187,7 @@ def main() -> int:
         d.order_placed_seq = 1        # …and it already fired
         P.begin_tick()
         sig = strat.generate_signal(orb=d, ms=None, vol_state=None,
-                                    liq_map=None, chain=None, macro=None,
+                                    chain=None, macro=None,
                                     current_price=705.90)
         P.close_tick(st, "TEST")
         # ⚠️ `sig is None` ALONE IS NOT THE PROOF, and at r206 it passes for an

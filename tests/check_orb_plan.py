@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_orb_plan.py  v1.1
+tests/check_orb_plan.py  v1.2
+v1.2  2026-09-13  OTV4TEST r20 — the `liq_map=None` kwarg dropped from every
+      `ORBStrategy.generate_signal` call; nothing else changed. The parameter is
+      REMOVED rather than ignored, so a harness still passing it raises — which
+      is how mainline r365 found a live call site that three source-shape gates
+      had missed, because this kind of check DRIVES the function.
 v1.1  2026-09-08  OTV4TEST r3 — P10 drives the acceptance (close + hold): the runaway
       invalidation is a close, not a wick (orb_engine v4.13).
 v1.0  2026-09-08  OTV4TEST r2 — THE ORB PLAN, ON HYPOTHETICALS (PLAN_SPEC §29).
@@ -358,7 +363,7 @@ def main():
     ch14 = _chain()
     P.begin_tick()
     strat = ORBStrategy()
-    sig = strat.generate_signal(orb=e11._data, ms=None, vol_state=None, liq_map=None,
+    sig = strat.generate_signal(orb=e11._data, ms=None, vol_state=None,
                                 chain=ch14, macro=None, current_price=707.95,
                                 now_hhmm="09:48")
     P.close_tick(st, "TEST")
@@ -375,7 +380,7 @@ def main():
     e11._data.order_placed = True
     e11._data.order_placed_seq = e11._data.confirmation_seq
     P.begin_tick()
-    sig2 = strat.generate_signal(orb=e11._data, ms=None, vol_state=None, liq_map=None,
+    sig2 = strat.generate_signal(orb=e11._data, ms=None, vol_state=None,
                                  chain=ch14, macro=None, current_price=707.95,
                                  now_hhmm="09:48")
     P.close_tick(st, "TEST")
@@ -391,7 +396,7 @@ def main():
     e12 = _retest(_break(_engine_with_range(), "long"), "long")
     P.begin_tick()
     sig3 = ORBStrategy().generate_signal(orb=e12._data, ms=None, vol_state=_Vol(),
-                                         liq_map=None, chain=_chain(), macro=None,
+                                         chain=_chain(), macro=None,
                                          current_price=707.95, now_hhmm="09:48")
     P.close_tick(st, "TEST")
     check("P15 🔴 a 0.01% ATR session still fires — ORB has no ATR read",
