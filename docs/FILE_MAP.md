@@ -488,7 +488,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/butterfly_plan.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `BACKLOG.md`, `docs/BACKLOG.md`, `docs/HANDOFF_NOW.md`, `docs/PLAN_SPEC.md`
+- **called by:** (not imported) — referenced in `BACKLOG.md`, `docs/BACKLOG.md`, `docs/PLAN_SPEC.md`
 
 ### `tests/cascade_harness.py`
 - **calls:** (none)
@@ -680,7 +680,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_level_rejection.py`
 - **calls:** `data/derived_store.py`, `derived/levels.py`
-- **called by:** (not imported) — referenced in `devtools.sh`, `docs/PLAN_SPEC.md`, `docs/PORT_MANIFEST.md`
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/BACKLOG.md`, `docs/PLAN_SPEC.md`, `docs/PORT_MANIFEST.md`
 
 ### `tests/check_liquidity_hunt.py`
 - **calls:** `data/derived_store.py`, `execution/__init__.py`, `execution/exit_engine.py`, `execution/handoff.py`, `execution/position_manager.py`, `strategy/__init__.py`, `strategy/liquidity_hunt.py`, `strategy/plan.py`
@@ -984,7 +984,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/gen_write_map.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `tools/land.sh`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `tools/land.sh`
 
 ### `tests/gex_from_chains.py`
 - **calls:** (none)
@@ -1060,7 +1060,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tools/check_land_discipline.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `docs/WORKING_AGREEMENT.md`, `tools/land.sh`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/WORKING_AGREEMENT.md`, `tools/land.sh`
 
 ### `tools/debug_status.py`
 - **calls:** `config.py`

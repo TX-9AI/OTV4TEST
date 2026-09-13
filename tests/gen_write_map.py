@@ -1,8 +1,22 @@
 #!/usr/bin/env python3
 """
-tests/gen_write_map.py  v4.1
+tests/gen_write_map.py  v4.2
 Generates docs/WRITE_MAP.md — what every box writes, and who writes it.
 
+v4.2  2026-09-13  OTV4TEST r18 — A TABLE NAMED THROUGH A CONSTANT WAS INVISIBLE,
+      AND FOUR MORE WERE "(unattributed)" ONLY BECAUSE NOBODY ADDED THE LINE.
+      `derived/base.py` writes `CREATE TABLE IF NOT EXISTS {STATUS_TABLE}`, so
+      `derived_engine_status` — written by every derived engine every tick, read
+      by `tools/manifold_health.py` — appeared NOWHERE, while the flag list
+      reported "No writer (0): none" and the header reported 29 tables. The map
+      that exists to make a table with no writer visible was itself blind to a
+      writer with no literal. Module constants are now resolved into their own
+      placeholders; the substitution is conservative and an unresolvable name
+      simply stays invisible, which is the old behaviour rather than a wrong one.
+      Plus `gate_disposition`/`plan_check`/`plan_tick` -> derived_store.db and
+      `resting_orders` -> resting_orders.db, all four verified against the live
+      files on the box — the last of which is a FOURTH database the map had
+      never named.
 v4.1  2026-08-26  r146 — THE MAP WAS ORDER-DEPENDENT AND FAILED THE GATE ON
       CONTROL WHILE PASSING IN THE SANDBOX. `scan()` recorded a READ only if
       the table's creator/writer had ALREADY been scanned, and `_files()`
@@ -56,6 +70,32 @@ RE_DELETE = re.compile(r"DELETE\s+FROM\s+([a-z_]+)", re.I)
 RE_SELECT = re.compile(r"FROM\s+([a-z_]+)", re.I)
 RE_DBFILE = re.compile(r"([a-z_]+)\.db")
 
+# r18 — A TABLE NAMED THROUGH A CONSTANT WAS INVISIBLE, AND THE MAP SAID SO
+# NOWHERE. Every pattern above requires a LITERAL table name, so
+# `CREATE TABLE IF NOT EXISTS {STATUS_TABLE}` in `derived/base.py` matched
+# nothing: `derived_engine_status` — written by every derived engine on every
+# tick and read by `tools/manifold_health.py` — was absent from a document
+# whose flag list reported "No writer (0): none".
+# 🔑 THE FAILURE RENDERED AS A SMALLER, PLAUSIBLE COUNT rather than an error,
+# which is this repo's most-repeated defect shape (WORKING_AGREEMENT §35).
+# So module-level `NAME = "table_name"` constants are resolved and substituted
+# into their own `{NAME}` placeholders before anything is matched.
+# ⚠️ DELIBERATELY CONSERVATIVE: only a bare uppercase assignment to a single
+# lowercase identifier, only inside a `{...}` placeholder, only in the file
+# that declares it. An unresolvable name substitutes nothing and the table goes
+# back to being invisible — which is the old behaviour, never a wrong answer.
+RE_CONST = re.compile(r"^([A-Z][A-Z0-9_]*)\s*=\s*[\"']([a-z_][a-z0-9_]*)[\"']\s*$", re.M)
+
+
+def _resolve_consts(src: str) -> str:
+    """Substitute this module's own `NAME = "table"` constants into `{NAME}`."""
+    consts = dict(RE_CONST.findall(src))
+    if not consts:
+        return src
+    for name, val in consts.items():
+        src = src.replace("{" + name + "}", val)
+    return src
+
 # Which database each table lives in. Derived from the module that CREATEs it,
 # so a table moving file moves here automatically.
 DB_OF_DIR = {
@@ -72,9 +112,18 @@ DB_OF_DIR = {
 # run of this generator listed four tables as "(unattributed)". Reporting them
 # as homeless would be wrong; guessing silently would be worse. This is the
 # explicit mapping, and it is the ONE hand-maintained thing here.
+# r18 — THE FOUR "(unattributed)" TABLES WERE ALL RESOLVABLE, AND ONE OF THEM
+# NAMED A FOURTH DATABASE THE MAP NEVER MENTIONED. Verified by reading the live
+# files on the box, not inferred: `gate_disposition`, `plan_check` and
+# `plan_tick` are in `derived_store.db`; `resting_orders` is in its own
+# `data/resting_orders.db`. An "(unattributed)" heading reads as "nobody knows",
+# when in fact nobody had added the line.
 DB_OF_PREFIX = {
     "derived/": "derived_store.db",
     "analysis/tenor_publish.py": "feed_store.db",
+    "analysis/gate_report.py": "derived_store.db",
+    "strategy/plan.py": "derived_store.db",
+    "execution/resting_orders.py": "resting_orders.db",
 }
 
 
@@ -91,7 +140,8 @@ def scan():
     sources = {}
     for rel in _files():
         try:
-            sources[rel] = open(os.path.join(ROOT, rel), encoding="utf-8").read()
+            sources[rel] = _resolve_consts(
+                open(os.path.join(ROOT, rel), encoding="utf-8").read())
         except Exception:                                       # noqa: BLE001
             continue
     for rel, src in sources.items():

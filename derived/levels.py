@@ -1,6 +1,59 @@
 """
-derived/levels.py  v4.3
+derived/levels.py  v4.5
 Owns `level_ledger` and `level_event`. Tier 3 — stateful; the object has a biography.
+v4.5  2026-09-13  OTV4TEST r18 — THE ACCOUNTING RAN PER TICK, NOT PER BAR, AND
+      TWO TRADES WERE FIRING ON A WORD THAT DID NOT MEAN WHAT IT SAID. `derive()`
+      is called EVERY TICK and the touch/acceptance block had NO BAR GUARD AT ALL
+      (the one at `_derive_events` covers only WICKED/REJECTED). Three defects,
+      each proven by DRIVING this engine rather than reading it, and each fixed
+      to the operator's ruling of 2026-09-13.
+      (1) A TOUCH WAS A POLL. One 5m bar polled 20 times scored touch_count=20.
+      On this box: QQQ:PDH (R1):717.52 logged 399 touches in a 390-bar session,
+      and 566 of 607 levels (93%) logged zero. RULED: one per CLOSED BAR. The
+      guard is PER LEVEL, so a level created mid-session counts from its own
+      first bar instead of inheriting someone else's.
+      (2) ACCEPT_CLOSES=2 COUNTED TICKS AGAINST A 5m CLOSE. The same close was
+      re-read every tick, so the SECOND TICK always satisfied it — ~15 seconds
+      and ONE close, not two. Operator on moving to two 5m bars: "Hell no. 10
+      minutes leaves us nothing actionable, the move is already long over."
+      RULED and BUILT: the accounting runs on the CLOSED 1m BAR — the same bar
+      the rejection fact already used, so this engine is finally on ONE CLOCK —
+      which makes the same ACCEPT_CLOSES=2 mean TWO MINUTES, deterministic
+      rather than accidental, and it is a real config key now.
+      (3) THE RUN NEVER RESET ON AN INSIDE CLOSE. Only a touch — within
+      TOUCH_TOL_PCT — cleared `beyond`, so a close that was plainly inside left
+      the run standing: two excursions NINETY MINUTES APART, price six points
+      inside for an hour between them, retired the level as ACCEPTED. RULED:
+      a close back inside breaks the run.
+      ⚠️ WHY THIS WAS NEVER COSMETIC: the runaway ARMS on ACCEPTED (§30), the
+      TCS TRIGGERS on it (§34), and acceptance RETIRES the level — pulling it
+      off the very board r15 had just repaired. Nothing flagged any of it:
+      every gate was green and every existing level check passed.
+      🔑 SUPERSEDES r18's bar_ts fix by subsuming it: the ACCEPTED row is
+      stamped with the closed 1m bar it was judged on, so the literal "5m" is
+      gone for a better reason than the one r18 gave.
+v4.4  2026-09-13  OTV4TEST r18 — THE ACCEPTED FACT COULD NOT SAY WHICH BAR MADE
+      IT. The ACCEPTED emit site passed the literal string "5m" as `bar_ts` —
+      the column whose declared job is "the CLOSED 1m bar that produced it" —
+      while the WICKED and REJECTED sites both passed a real timestamp. All 10
+      ACCEPTED rows on this box carried `bar_ts='5m'`; all 76 WICKED/REJECTED
+      rows carried a bar. TWO CONSEQUENCES, BOTH SILENT. (1) `level_event`'s
+      PRIMARY KEY is (symbol, level_id, bar_ts, event) and `insert_level_event`
+      is INSERT OR IGNORE, so a SECOND acceptance of the same level was dropped
+      with no error — the ledger under-reported acceptances and the under-report
+      was invisible. (2) `tcs_plan` keys its once-per-event latch on
+      (level_id, bar_ts); with `bar_ts` constant that latch degenerated from
+      ONCE PER ACCEPTANCE to ONCE PER LEVEL FOR THE LIFE OF THE PROCESS.
+      `sweep_plan` uses the identical idiom on REJECTED and was always correct —
+      only the TCS's upstream fact was stamped with a constant.
+      ⚠️ FRESHNESS WAS NEVER AFFECTED: `accepted_age_bars` is computed from
+      `ts_epoch`, so ACCEPT_FRESH_BARS always read true. The defect is identity,
+      not staleness, which is why nothing looked wrong.
+      🔑 ACCEPTANCE IS JUDGED ON THE 5m CLOSE (the block above says why), so the
+      stamp is the 5m bar's own timestamp — the bar that decided. The fallback
+      when no frame is present carries the tick clock rather than a constant, so
+      a degenerate tick can never collapse onto a key that already exists.
+      FORWARD-ONLY: the 10 rows already written keep `bar_ts='5m'`.
 v4.3  2026-09-12  OTV4TEST r15 — TWO LEVEL DEFECTS, mainline r364's fix ported in its
       own shape (one implementation for otv5). (1) A POOL IS CLASSIFIED BY SIDE:
       the detector wrote "high"/"low" and `live_levels()` filters
@@ -101,12 +154,28 @@ logger = logging.getLogger(__name__)
 
 # A close beyond by less than this is inside the noise of the level itself.
 TOUCH_TOL_PCT = 0.0015
-# Closes through required before the level is retired. Inherited from the
-# sweep rules, where it was MEASURED rather than chosen.
-ACCEPT_CLOSES = 2
-# v4.1 — pierce depth bands, from the sweep's own ceiling (strict / relaxed x3).
+# CLOSED 1m BARS beyond required before the level is retired ACCEPTED_THROUGH.
+# Inherited from the sweep rules, where it was MEASURED rather than chosen.
+# ⚠️ r18 — THE UNIT USED TO BE A LIE. This counted TICKS against a 5m close,
+# so the second poll of the SAME bar satisfied it: ~15 seconds, one close, not
+# two. It is now what the name says — two CLOSED 1m BARS, so 2 minutes — and it
+# is a real key, so the operator can drop it to 1 without a redeploy.
 try:
     import config as _cfg
+    ACCEPT_CLOSES = int(getattr(_cfg, "LEVEL_ACCEPT_CLOSES", 2))
+except Exception:                                               # noqa: BLE001
+    _cfg = None
+    ACCEPT_CLOSES = 2
+# v4.1 — pierce depth bands, from the sweep's own ceiling (strict / relaxed x3).
+# 🔴 r18 — THIS KEY DID NOT EXIST IN config.py AND THE DEFAULT WAS WHAT RAN.
+# `SWEEP_CS_MAX_REJECTION_PCT` was never defined, so every pierce band on every
+# box came from the literal below — while `SWEEP_MIN_REJECTION_PCT = 0.003` sat
+# in config with ZERO readers. A live threshold from a getattr default with a
+# differently-named orphan beside it is the same defect the predecessor found at
+# 15x; ours was 1.20x, which is why nobody saw it. The key is now DEFINED at the
+# value that was already running, so this changes no behaviour and makes the
+# knob real. The orphan is named in config so the next reader is not misled.
+try:
     SHALLOW_PIERCE_PCT = float(getattr(_cfg, "SWEEP_CS_MAX_REJECTION_PCT", 0.0025))
 except Exception:                                               # noqa: BLE001
     SHALLOW_PIERCE_PCT = 0.0025
@@ -307,6 +376,28 @@ class LevelEngine(DerivedEngine):
         except Exception:                                       # noqa: BLE001
             pass
 
+        # ── r18 — THE ACCOUNTING RUNS ON A CLOSED 1m BAR, NOT ON A TICK ──
+        # Operator's rulings, 2026-09-13. `derive()` is called EVERY TICK and the
+        # touch/acceptance block had no bar guard at all, so both counters
+        # advanced ~4x a minute: one 5m bar polled 20 times scored 20 "touches",
+        # and ACCEPT_CLOSES=2 was satisfied by the SECOND TICK re-reading the
+        # SAME close — 15 seconds, not the two closes the constant names.
+        # 🔑 THE BAR IS THE 1m CLOSE, THE SAME ONE THE REJECTION FACT USES.
+        # Acceptance read `df_5m` and was the only part of this engine on a
+        # different clock. Operator on two 5m bars: *"Hell no. 10 minutes leaves
+        # us nothing actionable, the move is already long over."* On closed 1m
+        # bars the same ACCEPT_CLOSES=2 is TWO MINUTES and is now deterministic
+        # rather than accidental — and it is a real config key, so it moves
+        # without a redeploy.
+        acc_bar_ts, bar_close = "", None
+        d1 = ctx.get("df_1m")
+        try:
+            if d1 is not None and len(d1) >= 2:
+                acc_bar_ts = str(d1.index[-2])          # [-2] = the CLOSED bar
+                bar_close = float(d1.iloc[-2]["close"])
+        except Exception:                                       # noqa: BLE001
+            acc_bar_ts, bar_close = "", None
+
         now = time.time()
         written = 0
         self.last_events = []
@@ -337,27 +428,43 @@ class LevelEngine(DerivedEngine):
                 continue
 
             tol = lvl_price * TOUCH_TOL_PCT
-            if kind == "resistance":
-                accepted = close > lvl_price + tol
-            elif kind == "support":
-                accepted = close < lvl_price - tol
-            else:
-                accepted = False               # VWAP is crossed, not broken
+            # ⚠️ ONE CLOSED BAR, ONCE — per level, so a level created mid-session
+            # starts counting from ITS first bar rather than inheriting a guard.
+            # Everything below this line is bar-rate; everything above is tick-rate.
+            if acc_bar_ts and st.get("last_bar") != acc_bar_ts:
+                st["last_bar"] = acc_bar_ts
+                bc = bar_close if bar_close is not None else close
+                if kind == "resistance":
+                    accepted = bc > lvl_price + tol
+                elif kind == "support":
+                    accepted = bc < lvl_price - tol
+                else:
+                    accepted = False           # VWAP is crossed, not broken
 
-            if accepted:
-                st["beyond"] += 1
-                if st["beyond"] >= ACCEPT_CLOSES:
-                    st["retired"] = now
-                    st["reason"] = "ACCEPTED_THROUGH"
-                    self._pierce.pop(lid, None)
-                    self._emit(store, sym, lid, lvl_price, kind, prov, "5m", now,
-                               "ACCEPTED", {"pierce_pct": 0.0, "depth": "accepted",
-                                            "closes_back": 0}, close)
-            elif abs(close - lvl_price) <= tol:
-                # Held at the level — that is a TOUCH.
-                st["touches"] += 1
-                st["last_touch"] = now
-                st["beyond"] = 0               # the run of acceptance is broken
+                if accepted:
+                    st["beyond"] += 1
+                    if st["beyond"] >= ACCEPT_CLOSES:
+                        st["retired"] = now
+                        st["reason"] = "ACCEPTED_THROUGH"
+                        self._pierce.pop(lid, None)
+                        self._emit(store, sym, lid, lvl_price, kind, prov,
+                                   acc_bar_ts, now, "ACCEPTED",
+                                   {"pierce_pct": 0.0, "depth": "accepted",
+                                    "closes_back": 0}, bc)
+                elif abs(bc - lvl_price) <= tol:
+                    # Held at the level — that is a TOUCH. ONE per closed bar
+                    # (operator, 2026-09-13), never one per poll.
+                    st["touches"] += 1
+                    st["last_touch"] = now
+                    st["beyond"] = 0           # the run of acceptance is broken
+                else:
+                    # 🔴 A CLOSE BACK INSIDE BREAKS THE RUN (operator, 2026-09-13).
+                    # Until now ONLY a touch — within TOUCH_TOL_PCT of the level —
+                    # reset `beyond`, so a close that was plainly, obviously inside
+                    # left the run standing. Two excursions NINETY MINUTES APART,
+                    # with price six points inside for an hour in between, read as
+                    # "two consecutive closes beyond" and retired the level.
+                    st["beyond"] = 0
 
             store.upsert_level((lid, sym, lvl_price, kind, prov, tf,
                                 st["created"], st["touches"], st["last_touch"],

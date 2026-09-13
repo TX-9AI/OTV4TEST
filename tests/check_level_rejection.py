@@ -1,6 +1,17 @@
 #!/usr/bin/env python3
 """
-tests/check_level_rejection.py  v1.2
+tests/check_level_rejection.py  v1.4
+v1.4  2026-09-13  OTV4TEST r18 — R1/R1b/R2/R2b/R2c/R3/R3b: the operator's three
+      rulings. A touch is ONE PER CLOSED BAR (a single bar polled 20x scored 20);
+      ACCEPT_CLOSES counts CLOSED 1m BARS, not ticks (the second poll of one bar
+      satisfied it — 15 seconds, one close); and a close back INSIDE breaks the
+      run (only a touch reset it, so two excursions 90 minutes apart accepted).
+      All seven born red at r17 AND at r18.
+v1.3  2026-09-13  OTV4TEST r18 — L13/L13b/L13c: the ACCEPTED fact names the BAR
+      that made it, and a second acceptance of the same level on a later bar is
+      KEPT. The emit site passed the literal "5m" as `bar_ts`; the PK is
+      (symbol, level_id, bar_ts, event) under INSERT OR IGNORE, so the second
+      acceptance was dropped silently. Born red at r17 on all three.
 v1.2  2026-09-12  OTV4TEST r15 — L10 pools by side, L11 tines never stored / dead fork empty,
       L12 the board contract. Born red at r14 on L10, L11 and L12.
 v1.1  2026-09-08  OTV4TEST r5 — T1–T3: the 1h tines as moving levels keyed on the
@@ -56,10 +67,10 @@ def _df1(rows, start="09:40"):
         index=pd.date_range(f"2026-09-08 {start}", periods=len(rows), freq="1min"))
 
 
-def _df5(close):
+def _df5(close, bar5="09:35"):
     import pandas as pd
     return pd.DataFrame([{"open": close, "high": close, "low": close, "close": close}],
-                        index=pd.date_range("2026-09-08 09:35", periods=1, freq="5min"))
+                        index=pd.date_range(f"2026-09-08 {bar5}", periods=1, freq="5min"))
 
 
 def main():
@@ -70,9 +81,9 @@ def main():
     store = DerivedStore(path=os.path.join(tempfile.mkdtemp(), "derived.db"))
     eng = LevelEngine(store, "TEST")
 
-    def tick(rows, start, price=705.0, close5=705.0):
+    def tick(rows, start, price=705.0, close5=705.0, bar5="09:35"):
         ctx = {"symbol": "TEST", "price": price, "liq_map": _Liq(), "vol": None,
-               "df_1m": _df1(rows, start), "df_5m": _df5(close5)}
+               "df_1m": _df1(rows, start), "df_5m": _df5(close5, bar5)}
         eng.derive(ctx)
         return [e["event"] + ":" + e["depth"] for e in eng.last_events
                 if e["kind"] == "resistance"], eng.last_events
@@ -225,6 +236,123 @@ def main():
           and bd["fork"] == "absent", str({k: bd[k] for k in ("state", "count", "fork")}))
     check("L12b board with no range -> no_range, not an empty ladder", eng6.board(100.0, None, None)["state"] == "no_range")
     check("L12c board with no store -> no_store", LevelEngine(None, "X").board(100.0, 101.0, 99.0)["state"] == "no_store")
+
+    # ── r18: L13 — THE ACCEPTED FACT NAMES THE BAR THAT MADE IT ──
+    # The emit site passed the literal "5m" where `bar_ts` belongs, so every
+    # ACCEPTED row in the box's ledger was stamped with a TIMEFRAME instead of
+    # a BAR. Two consequences, both silent, both driven here.
+    accs = store.conn.execute(
+        "SELECT bar_ts FROM level_event WHERE event='ACCEPTED'").fetchall()
+    check("L13 the ACCEPTED row carries a BAR, never the literal '5m'",
+          bool(accs) and all(a[0] != "5m" for a in accs), str([a[0] for a in accs]))
+    check("L13b ...and it is the CLOSED 1m bar the acceptance was judged on (r18: was 5m)",
+          bool(accs) and all(a[0].startswith("2026-09-08 09:5") for a in accs),
+          str([a[0] for a in accs]))
+
+    # L13c THE CONSEQUENCE: level_event's PK is (symbol, level_id, bar_ts, event)
+    # under INSERT OR IGNORE, so with `bar_ts` constant a SECOND acceptance of the
+    # same level was dropped with no error. Two engines over one store is the real
+    # case — a bake re-creates the level and it is accepted again on a later bar.
+    # ⚠️ r18 — THIS FIXTURE WAS WRONG THE MOMENT THE BAR GUARD LANDED. It fed
+    # both engines the SAME 1m bar timestamps, so the second acceptance collided
+    # on the key the test exists to prove is no longer constant. Distinct bars now.
+    import tempfile as _tf0
+
+    class _Liq2:
+        prev_day_high = 500.00
+        prev_day_low = 490.00
+        pools = []
+
+    def _accept_at(eng_, m0):
+        """Two CONSECUTIVE closed 1m bars beyond 500 -> one acceptance."""
+        import pandas as pd
+        for m in (m0, m0 + 1):
+            idx = pd.date_range(f"2026-09-08 10:{m:02d}", periods=2, freq="1min")
+            d1 = pd.DataFrame([{"open": 502.0, "high": 502.0, "low": 502.0, "close": 502.0}] * 2,
+                              index=idx)
+            eng_.derive({"symbol": "TST5", "price": 502.0, "liq_map": _Liq2(),
+                         "vol": None, "df_1m": d1, "df_5m": _df5(502.0)})
+
+    _accept_at(LevelEngine(store, "TST5"), 10)     # bars 10:10 / 10:11
+    _accept_at(LevelEngine(store, "TST5"), 40)     # bars 10:40 / 10:41 — a bake later
+    n = store.conn.execute(
+        "SELECT COUNT(*) FROM level_event WHERE symbol='TST5' AND event='ACCEPTED'").fetchone()[0]
+    check("L13c a SECOND acceptance of the same level on a later bar is KEPT, not IGNORED",
+          n == 2, f"{n} ACCEPTED row(s) for TST5 — one means the primary key collapsed them")
+
+    # ══ r18: THE OPERATOR'S THREE RULINGS, 2026-09-13 ═══════════════════
+    # Each drives the REAL engine. All three FAIL at r18 (and at r17): the
+    # touch/acceptance block ran per TICK against a 5m close with no bar guard.
+    import tempfile as _tf
+
+    class _L2:
+        prev_day_high = 810.00
+        prev_day_low = 800.00
+        pools = []
+
+    def _eng2():
+        return LevelEngine(DerivedStore(path=os.path.join(_tf.mkdtemp(), "r.db")), "TST6")
+
+    def _poll(eng_, bar1, close1, price=None):
+        """One tick. `bar1` names the CLOSED 1m bar; `close1` is its close."""
+        import pandas as pd
+        idx = pd.date_range(f"2026-09-08 {bar1}", periods=2, freq="1min")
+        d1 = pd.DataFrame([{"open": close1, "high": close1, "low": close1, "close": close1},
+                           {"open": close1, "high": close1, "low": close1, "close": close1}],
+                          index=idx)
+        eng_.derive({"symbol": "TST6", "price": price if price is not None else close1,
+                     "liq_map": _L2(), "vol": None, "df_1m": d1, "df_5m": _df5(close1)})
+
+    # ── R1: A TOUCH IS ONE PER CLOSED BAR, NEVER ONE PER POLL ──
+    e = _eng2()
+    for _ in range(20):
+        _poll(e, "09:40", 810.00)                     # ONE bar, polled 20 times
+    tc = e._store.conn.execute(
+        "SELECT touch_count FROM level_ledger WHERE price=810.0").fetchone()[0]
+    check("R1 a touch is ONE PER CLOSED BAR — one bar polled 20x scores 1, not 20",
+          tc == 1, f"touch_count={tc} after 20 polls of a single bar")
+
+    # ...and genuinely distinct bars DO accrue
+    e2 = _eng2()
+    for m in range(40, 45):
+        _poll(e2, f"09:{m}", 810.00)
+    tc2 = e2._store.conn.execute(
+        "SELECT touch_count FROM level_ledger WHERE price=810.0").fetchone()[0]
+    check("R1b ...and five DISTINCT closed bars holding at the level score 5",
+          tc2 == 5, f"touch_count={tc2}")
+
+    # ── R2: ACCEPTANCE COUNTS CLOSED 1m BARS, NOT TICKS ──
+    e3 = _eng2()
+    for i in range(6):
+        _poll(e3, "09:40", 812.00)                    # ONE bar beyond, polled 6x
+    n = e3._store.conn.execute(
+        "SELECT COUNT(*) FROM level_event WHERE event='ACCEPTED'").fetchone()[0]
+    check("R2 ONE closed bar beyond, polled 6x, does NOT accept (it did at r18: 2nd tick)",
+          n == 0, f"{n} ACCEPTED after 6 polls of ONE bar beyond")
+    _poll(e3, "09:41", 812.00)                        # the SECOND closed bar
+    n2 = e3._store.conn.execute(
+        "SELECT COUNT(*) FROM level_event WHERE event='ACCEPTED'").fetchone()[0]
+    check("R2b ...and the SECOND closed bar beyond accepts — ACCEPT_CLOSES means bars",
+          n2 == 1, f"{n2} ACCEPTED after a second distinct bar")
+    row = e3._store.conn.execute(
+        "SELECT bar_ts FROM level_event WHERE event='ACCEPTED'").fetchone()
+    check("R2c ...stamped with that bar, never the literal '5m'",
+          row and row[0].startswith("2026-09-08 09:41"), str(row))
+
+    # ── R3: A CLOSE BACK INSIDE BREAKS THE RUN ──
+    e4 = _eng2()
+    _poll(e4, "09:40", 812.00)                        # beyond  (run = 1)
+    _poll(e4, "09:41", 804.00)                        # plainly INSIDE, not a touch
+    _poll(e4, "09:42", 812.00)                        # beyond  (run must be 1 again)
+    n3 = e4._store.conn.execute(
+        "SELECT COUNT(*) FROM level_event WHERE event='ACCEPTED'").fetchone()[0]
+    check("R3 a close back INSIDE breaks the acceptance run — two excursions is not acceptance",
+          n3 == 0, f"{n3} ACCEPTED across two excursions split by an inside close")
+    _poll(e4, "09:43", 812.00)                        # now two CONSECUTIVE
+    n4 = e4._store.conn.execute(
+        "SELECT COUNT(*) FROM level_event WHERE event='ACCEPTED'").fetchone()[0]
+    check("R3b ...and two CONSECUTIVE closes beyond still accept",
+          n4 == 1, f"{n4} ACCEPTED")
 
     print()
     if FAILED:

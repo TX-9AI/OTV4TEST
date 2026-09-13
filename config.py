@@ -1,5 +1,18 @@
 """
-config.py  v4.18
+config.py  v4.19
+v4.19  2026-09-13  OTV4TEST r18 — TWO KEYS THAT WERE BEING READ AND WERE NEVER
+       DEFINED, PLUS A LABEL ON THE ORPHAN BESIDE THEM (CFG.1).
+       `derived/levels.py` read `getattr(_cfg, "SWEEP_CS_MAX_REJECTION_PCT",
+       0.0025)` and THAT KEY DID NOT EXIST HERE, so every pierce band on the box
+       ran on the literal default — while `SWEEP_MIN_REJECTION_PCT = 0.003` sat
+       in this file with ZERO READERS. The predecessor shipped the same shape at
+       15x; ours was 1.20x, which is exactly why nobody saw it. Both keys are
+       DEFINED AT THE VALUE THAT WAS ALREADY RUNNING, so this changes no
+       behaviour and makes the knobs real; the orphan is labelled in place
+       rather than deleted (the r231 precedent: a stated prior, not a policy).
+       `LEVEL_ACCEPT_CLOSES` is new and carries the operator's ruling — closed
+       1m bars beyond a level before it retires ACCEPTED_THROUGH, so acceptance
+       can be loosened to 1 without a redeploy.
 v4.18  2026-09-10  OTV4TEST r13 — `DB_PATH` honours `OT_TRADES_DB` so the lander's CHECK
       phase can point every checker at a scratch trades.db (defect #12: a test
       fixture landed as a live open position on the QQQ TEST box).
@@ -1163,7 +1176,23 @@ SWEEP_SETUP_FLOOR_SHORT = float(
 # OT_CONT_HANDOFF_IN_COMPRESSION=1 restores the old behaviour.
 CONT_HANDOFF_BLOCK_COMPRESSION = os.environ.get(
     "OT_CONT_HANDOFF_IN_COMPRESSION", "0").strip().lower() in ("0", "false", "no", "off")
+# ⚠️ OTV4TEST r18 — THIS CONSTANT HAS NO READERS IN THE TREE. Verified
+# 2026-09-13: the live pierce bands come from SWEEP_CS_MAX_REJECTION_PCT below,
+# which until r18 was NOT DEFINED ANYWHERE and therefore ran on the getattr
+# default in derived/levels.py. Two similarly-named values, one live and unnamed
+# and one named and dead, is how the predecessor shipped a threshold 15x off.
+# Left in place as a stated prior, NOT a policy (the r231 precedent) — but it is
+# labelled now, so the next reader does not tune the one nothing reads.
 SWEEP_MIN_REJECTION_PCT     = 0.003
+# OTV4TEST r18 — DEFINED AT THE VALUE THAT WAS ALREADY RUNNING, so this
+# changes no behaviour; it makes the knob real. derived/levels.py reads it for
+# the shallow band and takes 3x for the deep band.
+SWEEP_CS_MAX_REJECTION_PCT  = 0.0025
+# OTV4TEST r18 — CLOSED 1m BARS beyond a level before it retires
+# ACCEPTED_THROUGH. Operator ruled two 5m bars out ("10 minutes leaves us
+# nothing actionable"); on 1m closes the same 2 is TWO MINUTES. Drop to 1 for a
+# faster, looser acceptance without a redeploy.
+LEVEL_ACCEPT_CLOSES         = 2
 SWEEP_MAX_AGE_BARS          = 8
 # Entry-window tuning (separate pass from detection). The recovery window is now
 # ATR-aware: a fast reversal on a volatile name that has already moved isn't

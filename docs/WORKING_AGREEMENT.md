@@ -1,6 +1,6 @@
 # WORKING_AGREEMENT.md — how we operate (read this first, every new thread)
 
-**`WORKING_AGREEMENT.md` v4.9 · 2026-09-08 — §0 plus 39 sections. See the CHANGELOG at the foot.**
+**`WORKING_AGREEMENT.md` v4.11 · 2026-09-13 — §0 plus 40 sections. See the CHANGELOG at the foot.**
 
 > 🔴 **§0 IS THE FLOOR — AN ATTESTATION, NOT A TIP. Read it first, every thread.**
 > The operator ordered it once before and was told it existed. It did not.
@@ -231,6 +231,16 @@ layer** vs. a direct prompt. Nested quotes collide with that wrapping.
   `options-trader-v3`), and **`~/day_trader_pro`** = the reporter + devtools service
   menu (`./dev*`), the replay harness, the diary, `reports/`, `fleet_trades_<date>.json`.
   The control box has NO running-bot `trades.db` of its own.
+- 🔴 **QQQ-TEST (this fork's box), ADDED 2026-09-13 (OTV4TEST r18).** The repo is
+  **`~/options-trader`** — same path as a bot box, because it IS a bot box: it
+  runs `optionsbot.service` and `candle-feed.service` on QQQ in paper. What is
+  different is that it is **SEGREGATED FROM CONTROL** (r1): it cannot reach
+  `day_trader_pro`, so it carries its own `tools/land.sh`, its own ledger and
+  its own `devtools.sh`. ⚠️ **It is also NOT provisioned like a fleet box** —
+  measured on the box 2026-09-13, the only project units installed are
+  `optionsbot`, `candle-feed` and a masked `s3-push`. There is no `ot-eod`, no
+  `candle-logger`, no `eod-bot`, no `shadow-observer`, no `midnight-halt`. Do
+  not assume a timer exists here because an installer for it does.
 - **The trap:** `~/options-trader` exists on **bot boxes**, NOT on the control box.
   Sending `cd ~/options-trader` while the user is on the *control* box fails (this
   happened, repeatedly). Always resolve the path to the box the user is actually on:
@@ -308,6 +318,18 @@ yet," that is the correct discipline — capture it in OBSERVATIONS.md and let i
 ---
 
 ## 13. The control box already has a devtools SERVICE MENU. Use it before building.
+
+🔴 **SCOPE, ADDED 2026-09-13 (OTV4TEST r18): THIS SECTION IS ABOUT CONTROL, AND
+THE FORK BOX CANNOT REACH IT.** QQQ-TEST is segregated from `day_trader_pro` by
+design (r1), so every number and label below is unreachable from here and citing
+one to the operator while he is on this box is the §3 trap wearing a menu. **On
+this box the menu is `./devtools.sh` in the repo root (v3.0, r17)** — SENSORS,
+DEBUG / LOGS, the R SUITE, GIT & LAND and CLAUDE CODE, all running locally
+against this box's own stores. The rule below still holds in its general form:
+**check whether a menu item already does it before writing a one-off** — just
+read the menu that is actually in front of you. Fleet wrangling is deliberately
+absent here and always will be.
+
 On the control box (`~/day_trader_pro`, run `./dev*`), the **devtools service menu**
 (v1.22 as of 2026-07-24) already exposes most of what we reach for. Before writing a
 query or script, check whether a menu option does it. Reference (numbers may drift —
@@ -780,7 +802,14 @@ proving itself.
 3. **`docs/BACKLOG.md`** — what is open, what was ruled, what is closed and by
    which revision. **This is the only place open work survives a thread.**
 4. **`docs/GENESIS.md`** — one line per revision, and *why*, which the diff
-   cannot tell you.
+   cannot tell you. 🔴 **ON THIS FORK THAT FILE IS FROZEN AND THE LIVE LEDGER IS
+   `docs/GENESIS-TEST.md`** (r1, corrected here 2026-09-13 / r18). `GENESIS.md`
+   is kept unedited as the lineage record of exactly where OTV4TEST came from;
+   nothing appends to it here. Read the fork's ledger for what happened on this
+   box, and the frozen one only to learn what it inherited. ⚠️ This is the §25
+   failure repeating in a new spelling: the rule whose whole job is to stop
+   documents going unread spent seventeen revisions pointing a new thread at the
+   wrong ledger.
 
 Then, by question: `PLAN_SPEC.md` and `TRADES.md` for what the strategies do,
 `FILE_MAP.md` and `WRITE_MAP.md` (both **generated**, both gated) for what calls
@@ -1018,9 +1047,21 @@ both the Genesis line and the commit subject:
 
     REV="r27"; DESC="what it did and why, in a full sentence"
     ...
-    printf '| **%s** | %s |\n' "$REV" "$DESC" >> docs/GENESIS.md
+    printf '| **%s** | %s |\n' "$REV" "$DESC" >> "$LEDGER"
     ...
-    git commit -m "OTV4 $REV: $DESC"
+    git commit -m "$REV: $DESC"
+
+🔴 **CORRECTED 2026-09-13 (OTV4TEST r18) — THE SKETCH NAMED A FILE AND A PREFIX
+THE TOOL DOES NOT USE.** It read `>> docs/GENESIS.md` and
+`git commit -m "OTV4 $REV: $DESC"`. Verified against the lander itself: the
+ledger comes from the half's `LEDGER` field (`tools/land.sh:346-347`, absent
+means `docs/GENESIS.md` so mainline is unaffected, and this fork passes
+`docs/GENESIS-TEST.md`), and the subject is `"$rev: $desc"` with **no repo
+prefix** (`tools/land.sh:579`). A new thread writing the sketch's version by
+hand would append to the FROZEN ledger and write a subject no commit here has.
+⚠️ Same class as §25's four-month-dead `docs/README.md` and §17's citation of a
+test file that did not exist: **a doctrine document naming a path is a path that
+rots**, and this one sat inside the section whose whole subject is the ledger.
 
 ⚠️ **ONE SOURCE, SO THEY CANNOT DIVERGE.** Written by hand in two places they
 drift, or one gets forgotten — and a Genesis line that disagrees with its own
@@ -1229,7 +1270,172 @@ directions.
 
 ---
 
+## 38. HOW THE ASSISTANT IS PERMITTED TO WORK — ACCESS, AUTHORITY, AND WHAT STAYS THE OPERATOR'S.
+
+Added 2026-09-13 (OTV4TEST r18) from the operator's own
+`ASSISTANT_PERMISSIONS.md`, at his instruction: *"add the sticky parts to the
+working agreement."* **PORTED, NOT COPIED** — that document was written for the
+control box and says so in its own closing section; the specifics below are
+this box's.
+
+### 38.0 THE PREMISE
+
+The assistant works **directly on the box**. The operator is no longer the
+go-between for every read and every command.
+
+🔑 **ACCESS REMOVES THE EXCUSE FOR GUESSING. IT DOES NOT REMOVE THE NEED FOR THE
+OPERATOR'S JUDGMENT.** Reading and running are cheap and safe, so they are open.
+Deciding what *changes* — what gets traded, committed or deleted — stays with
+him. The point is to cut transport overhead while keeping every human checkpoint
+that has actually caught a mistake.
+
+⚠️ **THIS IS §0 WITH THE ALIBI REMOVED.** Every incident in §0.3 happened with
+the answering file already in the repo. When the assistant had to ask, "I
+assumed" was expensive; now it is indefensible. **If a file settles the
+question, open it before answering.**
+
+### 38.1 FREE — no need to ask
+
+Read any file at any revision · run any report, study, checker or read-only menu
+item · query the ledgers, the data stores and the logs · write freely to scratch
+space · **build delivery packages and run their gates.**
+
+### 38.2 GRANTED — the assistant's to exercise
+
+- **This box's services.** Start, stop, restart, and bake, through the project's
+  own tools and their scoping flags.
+- **The commit and the deploy, ONCE THE OPERATOR HAS APPROVED THE CONTENTS.**
+  ⚠️ **TIMING IS THE ASSISTANT'S CALL; CONTENTS ARE NOT.**
+- **Adding safety checks.** New checkers may be added to the landing sequence
+  when the assistant finds a need nothing covers. A gate is never *removed* this
+  way — see §38.4.
+
+⚠️ **WHAT THIS BOX DOES NOT HAVE.** The source document grants cloud-storage
+reads "from the control machine" and fleet fan-out. **Neither exists here**: this
+box is segregated from control (§3, §13) and is masked from S3. A grant that
+names an unreachable capability is not a grant; it is a §25 rot waiting to be
+cited. Nothing here reaches another machine.
+
+### 38.3 RESERVED — always the operator's
+
+- **WHAT GETS COMMITTED.** The assistant describes the change: what each file
+  does, what the checks reported, and **what was proven failing before the fix.**
+  His *"yes"* on that description is what releases the commit.
+  🔴 **ONE DELIVERY, ONE DESCRIPTION, ONE YES.** A second delivery needs a second
+  description and a second yes. An approval does not roll forward.
+- **ANYTHING THAT CHANGES BEHAVIOUR WITH REAL CONSEQUENCES** — thresholds, gates,
+  entry/exit logic, position size — is brought as a **proposal**, never landed on
+  the assistant's own reading.
+  ⚠️ **AND WHETHER SOMETHING IS BEHAVIOUR-CHANGING IS MEASURED, NOT ASSERTED:
+  read the code path and count how often it actually fires before calling
+  anything "record-only".**
+  🔴 **ON THIS FORK THAT CLASS INCLUDES THE §36 FOUNDATIONAL DEFINITIONS** —
+  what a touch *is*, what ACCEPTED *means*, what breaks a run. Proven on
+  2026-09-13: three such definitions were wrong in `derived/levels.py` and every
+  one of them silently redefined a trade's trigger. **A definition is not a
+  tidy-up.** The assistant brings the ruling; the operator makes it.
+- **DISK AND STORAGE CHANGES ARE NAMED BEFORE THEY RUN** — resizes, swap,
+  partitions, space reclaims — *even when the command would otherwise be free.*
+  A cleanup looks harmless until the thing deleted turns out to have been
+  evidence. That has happened.
+- **DESTRUCTIVE OR STRUCTURAL:** systemd services and timers, and **any push
+  that is not part of an approved delivery.**
+
+### 38.4 REFUSED — by anyone, including the operator
+
+**Bypassing `tools/land.sh` or its gates.** They protect both sides. A gate in
+the way is **extended, or argued about with the operator — never skipped.**
+`--no-verify` and every flag like it are not an escape hatch.
+
+⚠️ **A CHECK THAT CAN BE SKIPPED WHEN INCONVENIENT GETS SKIPPED EXACTLY WHEN IT
+MATTERS.** §35 already records the one sanctioned exception and why it went the
+other way: a GENESIS-only hand edit needed `--no-verify` and therefore landed
+with **no gate run at all**, which is why shipping the correction is now the
+better route.
+
+### 38.5 THE DEFAULT IS "NOT GRANTED YET" — AND THAT IS TEMPORARY
+
+Anything not listed is **not granted yet**. The assistant asks rather than
+inferring from a nearby rule. **Absence means "ask", not "forbidden forever"**,
+and the list is expected to grow.
+
+### 38.6 THE OPERATOR'S GRANT IS NOT THE TOOL'S PERMISSION RULE
+
+The written grant and the tool's own settings (`~/.claude/settings.json`) are
+**separate systems**. A permission this document describes but the machine does
+not hold surfaces at the worst moment: *after* the work and *after* the approval.
+
+- If a granted action is refused, **the rule is missing.** Say so plainly and
+  **propose the exact rule text.**
+- 🔴 **THE ASSISTANT NEVER GRANTS ITSELF A PERMISSION.** That attempt is
+  correctly refused as self-modification. **The list is worth something precisely
+  because a human wrote it.**
+- **Rules match exact commands.** A granted command wrapped in extra syntax — a
+  `cd` in front, a redirect behind — may not match and will be refused. **The fix
+  is to run the approved form exactly, never to find another route around the
+  refusal.**
+
+### 38.7 STANDING SAFETY RULES THAT COME WITH THE ACCESS
+
+- **NEVER PRINT CREDENTIALS.** §18a is the full rule and the incident behind it.
+  The general form belongs here: **ask what a command prints on the WIDEST input,
+  not the value being looked for.**
+- **NO SILENT ACTION.** Anything run unattended leaves a record the operator can
+  read afterwards. **A run nobody can reconstruct cannot be told apart from one
+  that never happened.**
+- **THE ASSISTANT DOES NOT RUN CONTINUOUSLY.** *"I'll keep an eye on it"* is
+  false. Recurring work is a **timer the operator installs**, proposed with its
+  schedule, its command, and what it will report. ⚠️ See BOX.1: this box has
+  almost no timers, and a previous revision assumed three that never existed.
+- **REPORT OUTCOMES FAITHFULLY.** BUILT, PUSHED and BAKED are three claims and
+  are never merged (§18). **A check that could not run is reported as NOT RUN,
+  never as passed.** Reds are shown, not tidied away (§0.5).
+
+### 38.8 THE DELIVERY LOOP, END TO END
+
+1. Build in a scratch copy and **prove it: a new check must FAIL on the old code
+   before it passes on the new** (§0.6).
+2. Run every gate.
+3. Stage the archive and its `land.spec` (§15).
+4. **Describe it to the operator.**
+5. **His yes.**
+6. Land through `tools/land.sh` — all gates rerun — commit, push, bake when it
+   makes sense, and **verify on the box that it actually took effect** (§6).
+7. Update the record with what was proven, **including what went wrong on the
+   way** (§35: a ledger that only lists successes is a marketing page).
+
+---
+
 ## CHANGELOG
+
+**v4.11 — 2026-09-13 — OTV4TEST r18 — §38 ADDED: HOW THE ASSISTANT IS
+PERMITTED TO WORK.** The operator's own `ASSISTANT_PERMISSIONS.md`, at his
+instruction to *"add the sticky parts"*. **Ported, not copied** — that document
+was written for the control box and its own closing section says to swap in the
+target project's specifics, so §38.2 records plainly that this box has **no
+fleet fan-out and no S3**, and a grant naming an unreachable capability is a §25
+rot waiting to happen. Two additions are this fork's, both earned today: the
+behaviour-changing class **includes the §36 FOUNDATIONAL DEFINITIONS**, because
+three of them were wrong in `derived/levels.py` and each silently redefined a
+trade's trigger; and §38.7's "does not run continuously" cites BOX.1, where a
+revision assumed three timers this box has never had.
+🔑 **§38.0 IS §0 WITH THE ALIBI REMOVED:** every incident in §0.3 happened with
+the answering file already in the repo. When asking was expensive, "I assumed"
+was expensive. With direct access it is indefensible.
+
+**v4.10 — 2026-09-13 — OTV4TEST r18 — FOUR OBSOLETE REFERENCES, ALL FACTUAL, NO
+RULING TOUCHED.** This file had **zero** occurrences of "OTV4TEST" or
+"GENESIS-TEST" after seventeen fork revisions, so the document every new thread
+reads first still described only mainline. §35's canonical land header named
+`docs/GENESIS.md` and an `OTV4 ` commit prefix — **both verified wrong against
+`tools/land.sh:346` and `:579`**; a thread following it by hand would append to
+the frozen ledger. §25's reading order sent the same thread to the same frozen
+file. §13 pointed at control's devtools menu, which this box cannot reach by
+design. §3's box list did not mention this box at all, and now records what is
+actually installed on it — three units, measured, not assumed.
+⚠️ **DELIBERATELY FACTS ONLY.** v4.8 records that rewriting standing doctrine in
+this file is the operator's decision and not an adjacent change; nothing here
+changes a rule, only the paths, filenames and box facts the rules point at.
 
 **v4.9 — 2026-09-08 — r320 — §35: GENESIS MAY SHIP TO CORRECT ITSELF.**
 

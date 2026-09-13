@@ -7,16 +7,7 @@ Regenerated in the land gate; a stale map fails `--check`.
 
 ⚠️ **A table with no writer is an orphan. A table nobody reads is dead weight.** Both are visible here and in neither the schema nor the call graph alone.
 
-**29 tables.**
-
-## (unattributed)
-
-| table | created by | written by | read by |
-|---|---|---|---|
-| `gate_disposition` | `analysis/gate_report.py` | `analysis/gate_report.py` (insert) | `tests/check_audit_20260823.py`, `tools/query.py` |
-| `plan_check` | `strategy/plan.py` | `strategy/plan.py` (insert) | `strategy/sweep_credit_spread.py`, `tests/check_chain_ordering.py`, `tests/check_plan_prepares.py`, `tests/check_plan_wiring.py`, `tests/check_tick_join.py` |
-| `plan_tick` | `strategy/plan.py` | `strategy/plan.py` (insert), `tests/check_tick_join.py` (insert) | `main.py`, `tests/check_butterfly_foundational.py`, `tests/check_butterfly_legs.py`, `tests/check_chain_ordering.py`, `tests/check_condor_mgmt.py`, `tests/check_liquidity_hunt.py`, `tests/check_management_plan.py`, `tests/check_not_asked_reasons.py`, `tests/check_orb_plan.py`, `tests/check_orb_sequence.py`, `tests/check_plan_prepares.py`, `tests/check_plan_signal.py`, `tests/check_plan_wiring.py`, `tests/check_runaway_plan.py`, `tests/check_tcs_narrates.py`, `tests/check_tcs_plan.py`, `tools/query.py` |
-| `resting_orders` | `execution/resting_orders.py` | `execution/resting_orders.py` (insert/update) | — |
+**30 tables.**
 
 ## derived_store.db
 
@@ -24,13 +15,17 @@ Regenerated in the land gate; a stale map fails `--check`.
 |---|---|---|---|
 | `character_axis_sample` | `derived/character_engine.py` | `derived/character_engine.py` (insert) | — |
 | `character_ledger` | `derived/character_engine.py` | `derived/character_engine.py` (insert/update) | — |
+| `derived_engine_status` | `derived/base.py` | `derived/base.py` (insert) | `tools/manifold_health.py` |
 | `exit_counterfactual` | `derived/counterfactual.py` | `derived/counterfactual.py` (insert) | — |
 | `fire_snapshot` | `data/derived_store.py` | `data/derived_store.py` (insert) | `tests/edge_scan.py` |
 | `fork_series` | `data/derived_store.py` | `data/derived_store.py` (insert) | `derived/anchors.py`, `main.py`, `tests/check_derived_layer.py`, `tools/query.py`, `tools/status.py` |
+| `gate_disposition` | `analysis/gate_report.py` | `analysis/gate_report.py` (insert) | `tests/check_audit_20260823.py`, `tools/query.py` |
 | `indicator_series` | `data/derived_store.py` | `data/derived_store.py` (insert) | `derived/anchors.py` |
 | `level_event` | `data/derived_store.py` | `data/derived_store.py` (insert), `tests/check_plan_prepares.py` (update), `tests/check_runaway_plan.py` (delete) | `tests/check_level_rejection.py` |
 | `level_ledger` | `data/derived_store.py` | `data/derived_store.py` (insert) | `derived/anchors.py`, `derived/levels.py`, `tests/check_level_rejection.py` |
+| `plan_check` | `strategy/plan.py` | `strategy/plan.py` (insert) | `strategy/sweep_credit_spread.py`, `tests/check_chain_ordering.py`, `tests/check_plan_prepares.py`, `tests/check_plan_wiring.py`, `tests/check_tick_join.py` |
 | `plan_ledger` | `derived/plan_ledger.py` | `derived/plan_ledger.py` (insert/update), `tests/check_purge_pushed.py` (update) | `tests/check_audit_20260823.py`, `tests/check_butterfly_legs.py`, `tests/check_missed_inert.py`, `tests/check_plan_lifecycle.py`, `tests/edge_scan.py`, `tools/query.py` |
+| `plan_tick` | `strategy/plan.py` | `strategy/plan.py` (insert), `tests/check_tick_join.py` (insert) | `main.py`, `tests/check_butterfly_foundational.py`, `tests/check_butterfly_legs.py`, `tests/check_chain_ordering.py`, `tests/check_condor_mgmt.py`, `tests/check_liquidity_hunt.py`, `tests/check_management_plan.py`, `tests/check_not_asked_reasons.py`, `tests/check_orb_plan.py`, `tests/check_orb_sequence.py`, `tests/check_plan_prepares.py`, `tests/check_plan_signal.py`, `tests/check_plan_wiring.py`, `tests/check_runaway_plan.py`, `tests/check_tcs_narrates.py`, `tests/check_tcs_plan.py`, `tools/query.py` |
 | `strategy_note` | `derived/notes.py` | `derived/notes.py` (insert) | `tests/check_management_plan.py`, `tests/check_tick_join.py` |
 | `surface_series` | `data/derived_store.py` | `data/derived_store.py` (insert) | `derived/anchors.py`, `main.py`, `tools/query.py` |
 
@@ -50,6 +45,12 @@ Regenerated in the land gate; a stale map fails `--check`.
 | `session_summary` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `tests/check_manifold_windows.py` (update) | — |
 | `theo_series` | `data/candle_feed.py` | `data/candle_feed.py` (insert) | — |
 | `underlying_series` | `data/candle_feed.py` | `data/candle_feed.py` (insert) | — |
+
+## resting_orders.db
+
+| table | created by | written by | read by |
+|---|---|---|---|
+| `resting_orders` | `execution/resting_orders.py` | `execution/resting_orders.py` (insert/update) | — |
 
 ## trades.db
 
