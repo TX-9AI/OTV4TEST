@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_prepares.py  v1.15
+tests/check_plan_prepares.py  v1.16
+v1.16 2026-09-13  OTV4TEST r24 — SPENT AND FINISHED ARE REAL ROWS. S7/T7 write a closed sweep
+      row that exited on its breach (the r5 rule: spent on acceptance only)
+      instead of calling the deleted `mark_spent`; R11 writes a closed runaway
+      row instead of `finish_break`; R13 is re-derived from a pin on the hook's
+      source to the rule itself — a WINNING runaway exit finishes its break.
+      And every runaway call passes a frame: entry now needs the CLOSED BAR to
+      prove the 50 is held (a live tick always has one; none means no entry),
+      so the frame's closes sit at each case's own price and no case changes
+      meaning. B1b narrowed to the 2026-09-01 trade's own 1-wide (still refused
+      at 40%), and B1c added: the wider floor admits that ladder's 2-wide.
 v1.15  2026-09-09  OTV4TEST r11 — M5 re-derived: a rolled structure is FINAL FORM with one
       floor; the tent rung is retired (PLAN_SPEC §35 v2).
 v1.14  2026-09-09  OTV4TEST r9 — the TCS constant patching is gone with the TCS rewrite
@@ -180,6 +190,32 @@ def _row(st, strat, ts):
 
 
 def main():
+
+    # ── r24: a TEMP trade book for this check's life ─────────────────────
+    # One-per-break and the spent lock are READ from trades.db now (DEC.1), so
+    # the fixtures are real closed rows in a real TradeLogger's table — and the
+    # book is scratch, so nothing here can read or write the box's (r13).
+    import tempfile as _tfb
+    import database.trade_logger as _TLB
+
+    def _bind_book():
+        _TLB._trade_logger = _TLB.TradeLogger(os.path.join(_tfb.mkdtemp(), "book.db"))
+        return _TLB._trade_logger
+
+    def _book_row(**kv):
+        c = _TLB.get_trade_logger()._connect()
+        try:
+            c.execute(f"INSERT INTO trades ({','.join(kv)}) VALUES ({','.join('?' * len(kv))})",
+                      tuple(kv.values()))
+            c.commit()
+        finally:
+            c.close()
+
+    def _now_iso(minutes_ago=0):
+        from datetime import datetime, timedelta, timezone
+        return (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
+
+    _bind_book()
     from strategy import plan as P
     st = _Store()
     P.bind_store(st)
@@ -257,13 +293,16 @@ def main():
     check("S6 call vertical open (put authorized): only supports are prepared, the put fires",
           sig is not None and sig.option_side == "put")
     P.begin_tick(7.0)
-    sw.mark_spent("TST", "put", 96.0, "breach accepted earlier")
+    _book_row(trade_id="sw-s7", symbol="TST", strategy="SweepCreditSpread", option_side="put",
+              pool_price=96.0, swept_level_name="ny", status="closed", pnl_usd=-20.0,
+              entry_time=_now_iso(30), exit_time=_now_iso(20),
+              exit_reason="sweep_breach_accepted: 2 closes beyond the pool 96.00 — the level is SPENT")
     _reject(lid_ny, 96.0, "support", "ny", bar="10:35")
     sig = S.generate_signal(chain=_Chain(good_puts), **common)
     r7 = _row(st, "SweepCreditSpread", 7.0)
     check("S7 a spent pool -> DECLINE spent_level even with the trigger true",
           sig is None and r7 and r7[0] == "DECLINE" and r7[1].startswith("spent_level"), str(r7))
-    sw._SPENT.clear()
+    _bind_book()
     P.begin_tick(8.0)
     _ds.conn.execute("UPDATE level_event SET ts_epoch = ts_epoch - 3600"); _ds.conn.commit()
     _reject(lid_ny, 96.0, "support", "ny", age_s=600.0, bar="10:20")
@@ -420,13 +459,26 @@ def main():
     # ── B1b (r208) — the 2026-09-01 fly is refused, and the row names WHICH
     # bound refused it. "No fly" and "no fly that can hold its stop" are
     # different facts and the fit has to tell them apart.
+    # ⚠️ r24 — THE 40% FLOOR (operator ruling) made this ladder's 2-wide wing
+    # survivable: 99/101/103 debit 0.64 against a four-leg spread of 0.08 has a
+    # stop of 0.16 at 25% (exactly 2.0x, refused) and 0.256 at 40% (3.2x, taken).
+    # The 2026-09-01 trade itself was the 1-WIDE (debit 0.18, R 4.6): its stop is
+    # 0.072 at 40% against the same 0.08 spread, still under 1x. So B1b is the
+    # real trade alone, and B1c records what the wider floor now admits.
     P.begin_tick(20.5)
-    sig_bad = B.generate_signal(gex=_GEX(), chain=_Chain([], calls_unsurvivable), **bcommon)
+    sig_bad = B.generate_signal(gex=_GEX(), chain=_Chain([], [c for c in calls_unsurvivable
+                                                           if 100 <= c.strike <= 102]), **bcommon)
     rb1b = _row(st, "GEXPinButterfly", 20.5)
     check("B1b the 2026-09-01 fly is REFUSED and the row names the bound",
           sig_bad is None and rb1b and rb1b[0] == "DECLINE"
           and "wing_search" in rb1b[1] and "clear their own spread" in rb1b[1],
           str(rb1b)[:120])
+    P.begin_tick(20.7)
+    sig_c = B.generate_signal(gex=_GEX(), chain=_Chain([], calls_unsurvivable), **bcommon)
+    rb1c = _row(st, "GEXPinButterfly", 20.7)
+    check("B1c (r24) the 40% floor admits the 2-wide on the same ladder: 99/101/103 at 3.2x its spread",
+          sig_c is not None and rb1c and rb1c[0] == "TAKE" and "buy 99/101/103" in rb1c[1],
+          str(rb1c)[:120])
     P.begin_tick(21.0)
     sig = B.generate_signal(gex=_GEX(), chain=_Chain([], calls_good), **bcommon)
     rb2 = _row(st, "GEXPinButterfly", 21.0)
@@ -572,7 +624,10 @@ def main():
     check("T6 an ACCEPTED (retired) tine is not in play — a stale REJECTED on it does not fire",
           sigt is None and rt6 and rt6[0] == "HOLD", str(rt6))
     _ds.upsert_level((tine_id, "TST", 100.6, "resistance", "fork1h/upper", "1h", _now - 3600, 0, None, 0, None, None, 1))
-    sw.mark_spent("TST", "call", sw.tine_spent_key("fork1h/upper"), "breach accepted")
+    _book_row(trade_id="sw-t7", symbol="TST", strategy="SweepCreditSpread", option_side="call",
+              pool_price=100.6, swept_level_name="fork1h/upper", status="closed", pnl_usd=-15.0,
+              entry_time=_now_iso(30), exit_time=_now_iso(20),
+              exit_reason="sweep_breach_accepted: 2 closes beyond the pool — the level is SPENT")
     P.begin_tick(33.0)
     _reject(tine_id, 100.6, "resistance", "fork1h/upper", bar="10:43")
     sig7 = S2.generate_signal(chain=_Chain([], calls_t), price_now=99.6, now_et="10:43",
@@ -580,7 +635,7 @@ def main():
     rt7 = _row(st, "SweepCreditSpread", 33.0)
     check("T7 a spent tine stays SPENT by name although its price has moved",
           sig7 is None and rt7 and rt7[0] == "DECLINE" and "spent_level" in rt7[1], str(rt7))
-    sw._SPENT.clear()
+    _bind_book()
     # ── TCS (r164) — the plan prepares off the ORB bound; the vote fires it ──
     import strategy.trend_credit_spread as tcs
     TC = tcs.TrendCreditSpread(); TC.planner.symbol = "TST"   # constructs; pinned in check_tcs_plan
@@ -620,6 +675,24 @@ def main():
     # ── THE RUNAWAY (r165) — gamma does the heavy lifting ────────────────
     import strategy.runaway_continuation as rw
     RW = rw.RunawayContinuationStrategy(); RW.planner.symbol = "TST"
+    # r24 — entry needs the CLOSED BAR to prove the 50 is held NOW. Every call below
+    # that passes no frame gets one whose closes sit at that call's own price, dated
+    # today (the book's rows are today's), so no case changes meaning.
+    _rw_gen = RW.generate_signal
+
+    def _bars_at(px):
+        import pandas as pd
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        d = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+        return pd.DataFrame([{"open": px, "high": px, "low": px, "close": px}] * 5,
+                            index=pd.date_range(f"{d} 10:00", periods=5, freq="1min"))
+
+    def _gen_with_bars(**kw):
+        if kw.get("df_1m") is None and kw.get("price_now") is not None:
+            kw["df_1m"] = _bars_at(float(kw["price_now"]))
+        return _rw_gen(**kw)
+    RW.generate_signal = _gen_with_bars
 
     class _ORB:
         def __init__(self, state="OPEN_LONG", hi=101.0, lo=100.0, tp=101.5, inval="", bd="",
@@ -714,7 +787,9 @@ def main():
           "spread gate is what keeps the leverage score off the teenies",
           sig is not None and sig.strike == 102.0, str(sig and sig.strike))
     # one runaway per break: a floor stop-out finishes (long, 101.0)
-    rwmod.finish_break("long", 101.0)
+    _book_row(trade_id="rw-r11", symbol="TST", strategy="RunawayContinuation", option_side="call",
+              orb_range_high=101.0, orb_range_low=100.0, status="closed", pnl_usd=-30.0,
+              entry_time=_now_iso(12), exit_time=_now_iso(6), exit_reason="runaway_thesis_dead")
     P.begin_tick(59.0)
     sig = RW.generate_signal(orb=_ORB(accepted=True), atr_pct=0.14, price_now=101.9,
                              now_et="10:15", chain=_Chain([], [real]))
@@ -726,10 +801,13 @@ def main():
                              chain=_Chain([], [_G(106, 0.95, 0.46, 0.050)]))
     check("R12 (r174) a NEW break at a new boundary is a new trade",
           sig is not None, str(sig and sig.strike))
-    rwmod.FINISHED_BREAKS.clear()
-    src_tl = open(os.path.join(_root, "database", "trade_logger.py"), encoding="utf-8").read()
-    check("R13 (OTV4TEST r3) the exit hook finishes the break on ANY runaway exit (source pin)",
-          "finish_break(_dir, _bnd)" in src_tl and 'or "Runaway" in _strat' in src_tl)
+    _bind_book()
+    _book_row(trade_id="rw-r13", symbol="TST", strategy="RunawayContinuation", option_side="call",
+              orb_range_high=102.25, orb_range_low=100.0, status="closed", pnl_usd=+180.0,
+              entry_time=_now_iso(12), exit_time=_now_iso(6), exit_reason="orb_trail_stop pnl=33.0%")
+    check("R13 (OTV4TEST r3, read from the book since r24) a WINNING runaway exit finishes its break too",
+          isinstance(rwmod.break_last_exit("long", 102.25), float))
+    _bind_book()
 
     os.environ["OT_RELAXED_ENTRY"] = "0"
     P.begin_tick(56.0)

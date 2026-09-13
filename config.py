@@ -1,5 +1,12 @@
 """
-config.py  v4.19
+config.py  v4.20
+v4.20  2026-09-13  OTV4TEST r24 — `BUTTERFLY_STOP_LOSS_PCT` 0.25 -> 0.40, THE OPERATOR'S
+       RULING. A fly's maximum loss is already its debit, and on 2026-09-11 the
+       25% floor came within 2 cents of cutting a fly that was worth +182% at
+       the 15:45 flatten (713/715/717P, entry 0.39, floor 0.29, worst 0.31 two
+       minutes in — mostly the three-leg bid/ask). Operator: "Widen it to 40%."
+       One key, read by the butterfly's signal AND by its wing-search
+       feasibility check, so the entry gate and the exit agree.
 v4.19  2026-09-13  OTV4TEST r18 — TWO KEYS THAT WERE BEING READ AND WERE NEVER
        DEFINED, PLUS A LABEL ON THE ORPHAN BESIDE THEM (CFG.1).
        `derived/levels.py` read `getattr(_cfg, "SWEEP_CS_MAX_REJECTION_PCT",
@@ -808,7 +815,7 @@ SWEEP_CS_TAKE_PROFIT_PCT = None
 # credit vertical - `strategy/structure.py` classifies it TREND_PARTICIPATION so
 # that routing happens by DERIVATION from persisted columns, not a flag.
 # Debit positions keep the ladder because they decay; verticals do not.
-BUTTERFLY_STOP_LOSS_PCT = 0.25   # pin plays keep the tight floor (see above)
+BUTTERFLY_STOP_LOSS_PCT = 0.40   # OTV4TEST r24, operator: "Widen it to 40%." (was 0.25)
 # Max-loss stop applied to an ADOPTED position (one discovered open at the
 # broker on a LIVE restart with no DB plan). Defaults to the same threshold
 # every strategy already respects, so an adopted position exits at the same

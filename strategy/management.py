@@ -1,5 +1,11 @@
 """
-strategy/management.py  v2.2
+strategy/management.py  v2.3
+v2.3  2026-09-13  OTV4TEST r24 — THE DECLARATIONS MATCH THE ROWS AGAIN. The sweep's
+      premium stop is the credit plus 15% OF THE RISK (PLAN_SPEC §31) — this
+      line read "credit x (1 + max_loss_pct)", the inverted rule the stamp was
+      still writing — and the butterfly's floor is 40% (operator's ruling).
+      The plan still acts on each record's own `stop_premium`, so a position
+      opened before r24 keeps the floor it was opened with.
 v2.2  2026-08-27  r169: the butterfly declares exactly two exits — the 25%
       floor and the 15:45 flatten; the target no longer fires for it.
 v2.1  2026-08-27  r168: the runaway declares NO structure stop — its floor is
@@ -96,7 +102,7 @@ EXIT_CONDITIONS: Dict[str, Dict[str, str]] = {
         "target":         "premium >= target_premium",
     },
     "SweepCreditSpread": {
-        "premium_stop":   "spread value >= stop_premium (credit x (1 + max_loss_pct))",
+        "premium_stop":   "spread value >= stop_premium (credit + 15% of the risk, width - credit)",
         "acceptance":     "a 1m close through the swept pool (the level failed)",
         "nickel":         "spread value <= the nickel — let it go",
     },
@@ -111,7 +117,7 @@ EXIT_CONDITIONS: Dict[str, Dict[str, str]] = {
     "GEXPinButterfly": {
         # r169 — operator: "1545 flatten or 25% loss. Whichever comes first."
         # No target, no max hold: a pin pays into the close.
-        "stop":           "fly value <= entry x (1 - 25%)",
+        "stop":           "fly value <= entry x (1 - 40%)",          # r24: operator, was 25%
         "flatten":        "the 15:45 hard close",
     },
 }

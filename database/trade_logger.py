@@ -1,5 +1,11 @@
 """
-database/trade_logger.py  v4.14
+database/trade_logger.py  v4.15
+v4.15 2026-09-13  OTV4TEST r24 — THE CLOSE HOOK NO LONGER WRITES DECISION STATE INTO MEMORY.
+      It finished runaway breaks in a set a restart wiped, and it spent sweep
+      levels through a read of `is_credit_vertical` — not a column — that raised
+      on every close. Both facts are now READ by the plans from this table; the
+      hook logs them. Operator's rule (DEC.1): nothing a trade decides on lives
+      only in memory.
 v4.14  2026-09-09  OTV4TEST r11 — three columns for the condor's final form:
       `final_form_basis`, `final_form_group`, `cumulative_credit` (migrated in
       place, like every column since v3). Written by condor_roll v4.8 on a
@@ -767,87 +773,26 @@ class TradeLogger:
         # ⚠️ LOSSES ONLY. A level that PAID is not discredited by paying.
         try:
             _strat = self._get_field(trade_id, "strategy") or ""
-            if float(pnl_usd or 0.0) < 0 or "Runaway" in _strat:   # v4.12: any runaway exit
-                # r167 — operator: a lone credit spread that stops out marks the
-                # level it sold at FINISHED for the session — "do not sell
-                # another one at that level". Any credit vertical, not only the
-                # sweep: TCS's level is the ORB bound it sold against.
-                # r174 — a runaway floor stop-out FINISHES its break for the
-                # session (operator: one runaway per break, even on relaxed).
-                if "Runaway" in _strat:
-                    # 🔴 r223 — THIS GUARD HAS NEVER FIRED. `direction` is a
-                    # DECLARED COLUMN THAT NOTHING WRITES (trade_logger:261;
-                    # the only other reference in this file is this read), so
-                    # `_dir` was always "" — which meant (a) `_dir == "long"`
-                    # was False and the hook took `orb_range_LOW` as a LONG's
-                    # boundary, and (b) it keyed `("", 710.20)` while
-                    # `prepare()` checks `("long", 711.66)`. The keys could
-                    # never match. Measured on QQQ 2026-09-03: FIVE runaway
-                    # entries in 29 minutes, three stopping at -21%, -21% and
-                    # -32%, every one after a stop that should have finished
-                    # the break.
-                    # ⚠️ AND `except Exception: pass` GUARANTEED THE SILENCE.
-                    # The success path logs; the failure path said nothing for
-                    # a week. The except now names the fault.
-                    # 🔑 DIRECTION COMES FROM `option_side`, WHICH THE RUNAWAY
-                    # ACTUALLY SETS (runaway_continuation:575) — a call is a
-                    # long break, a put is a short one. `orb_range_high/low`
-                    # are set too (581/582); only `direction` was missing.
-                    try:
-                        _side = str(self._get_field(trade_id, "option_side")
-                                    or "").lower()
-                        _dir = "long" if _side.startswith("c") else (
-                            "short" if _side.startswith("p") else "")
-                        if not _dir:
-                            logger.warning(
-                                "[spent] runaway %s stopped out but option_side "
-                                "is %r — CANNOT key the break, so it is NOT "
-                                "finished and another entry is possible",
-                                trade_id, _side)
-                            raise ValueError("no option_side")
-                        _bnd = (self._get_field(trade_id, "orb_range_high")
-                                if _dir == "long"
-                                else self._get_field(trade_id, "orb_range_low"))
-                        if not _bnd:
-                            logger.warning(
-                                "[spent] runaway %s stopped out but its ORB "
-                                "boundary is empty — break NOT finished",
-                                trade_id)
-                            raise ValueError("no boundary")
-                        from strategy.runaway_continuation import finish_break
-                        finish_break(_dir, _bnd)
-                        logger.info(f"[spent] runaway break FINISHED "
-                                    f"{_dir} @ {float(_bnd):.2f} — one per break")
-                    except Exception as _fbexc:                 # noqa: BLE001
-                        logger.warning("[spent] could NOT finish the runaway "
-                                       "break (%s) — another entry on this "
-                                       "break is still possible", _fbexc)
-                _is_cv = bool(self._get_field(trade_id, "is_credit_vertical")) \
-                    or "Sweep" in _strat or "TrendCredit" in _strat
-                if _is_cv:
-                    _pool = self._get_field(trade_id, "pool_price") \
-                        or self._get_field(trade_id, "underlying_stop")
-                    _side = self._get_field(trade_id, "option_side") or ""
-                    _sym  = self._get_field(trade_id, "symbol") or ""
-                    # r163 — a MOVING level (a fork tine) is keyed by NAME, since
-                    # its price drifts every bar; the sweep plan reads the same key.
-                    _lvl_name = self._get_field(trade_id, "swept_level_name") or ""
-                    if str(_lvl_name).startswith("fork1h/"):
-                        from strategy.sweep_credit_spread import tine_spent_key
-                        _pool = tine_spent_key(_lvl_name)          # r5: keyed on the tine
-                    elif "tine" in _lvl_name:
-                        from strategy.sweep_credit_spread import _name_key
-                        _pool = _name_key(_lvl_name)
-                    if _pool and "sweep_breach_accepted" in str(exit_reason or ""):
-                        from strategy.sweep_credit_spread import mark_spent
-                        mark_spent(_sym, _side, float(_pool),
-                                   f"breach accepted {exit_reason} "
-                                   f"pnl=${float(pnl_usd):+.2f}")
+            # 🔴 OTV4TEST r24 (DEC.1) — NOTHING IS REMEMBERED HERE ANY MORE. This hook
+            # used to WRITE a finished runaway break and a spent sweep level into
+            # per-process state. The runaway set was wiped by every restart
+            # (2026-09-09 11:28: a spent break re-bought four seconds after a
+            # bake), and the sweep write read `is_credit_vertical` — NOT A COLUMN
+            # — so it raised on every close and never marked anything (2026-09-11
+            # 12:04: a "SPENT" level sold again). The plans now READ both facts
+            # from this very row (`break_last_exit`, `is_spent`), so the only job
+            # left here is to say so in the log, where a person can see it.
+            if "Runaway" in _strat:
+                logger.info("[spent] runaway %s closed — its break is finished "
+                            "(the plan reads it from trades.db)", trade_id[:8])
+            elif ("Sweep" in _strat or "TrendCredit" in _strat) and \
+                    str(exit_reason or "").startswith(("sweep_breach_accepted", "tcs_breach")):
+                logger.info("[spent] %s %s closed (%s) — its level is SPENT for the day "
+                            "(the plan reads it from trades.db)", _strat, trade_id[:8],
+                            str(exit_reason or "")[:48])
         except Exception as exc:                               # noqa: BLE001
-            # ⚠️ NEVER RAISE INTO THE CLOSE PATH — but say so. A silent failure
-            # here means the level re-arms and nobody knows why.
-            logger.warning("[sweep_cs] could not mark the level spent for %s: "
-                           "%s", trade_id[:8], exc)
+            logger.warning("[spent] could not report the spent state for %s: %s",
+                           trade_id[:8], exc)
 
     def log_accretion(self, trade_id: str, contracts: int,
                       entry_premium: float, max_loss: float,

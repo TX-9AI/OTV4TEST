@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_butterfly_legs.py  v2.3
+tests/check_butterfly_legs.py  v2.4
+v2.4  2026-09-13  OTV4TEST r24 — B2b: the signal generate_signal emits carries the
+      operator's 40% floor (was 25%), asserted against the RULED 0.40, not
+      against config — reading config back would only prove config agrees
+      with itself. Born red at 21257bf.
 v2.3  2026-09-09  OTV4TEST r6 — BEST-R pick, OI on the fixture, persistence bar set to 1 here.
 v2.2  r208: THE BUTTERFLY PINS ARE RE-DERIVED, NOT PATCHED. B1-B3 encoded a
       world that no longer exists — a wing COMPUTED from WING_EM_FRAC and
@@ -156,6 +160,12 @@ def main():
           and sig_ok.upper_contract.strike == 102.0
           and sig_ok.butterfly_direction == "call" and sig_ok.net_debit > 0,
           f"legs={sig_ok and (sig_ok.lower_contract.strike, sig_ok.center_contract.strike, sig_ok.upper_contract.strike)}")
+
+    check("B2b (r24) the fired fly carries the operator's 40% floor: stop = debit x 0.60",
+          sig_ok is not None and abs(float(sig_ok.stop_loss_pct) - 0.40) < 1e-9
+          and abs(float(sig_ok.stop_premium()) - float(sig_ok.net_debit) * 0.60) < 1e-9,
+          f"stop_loss_pct={sig_ok and sig_ok.stop_loss_pct} stop={sig_ok and sig_ok.stop_premium()} "
+          f"debit={sig_ok and sig_ok.net_debit}")
 
     # ── B3 — nothing clears R: refused, with the best R on the record ─────
     calls_fat = [_C(k, m, spread=0.005) for k, m in

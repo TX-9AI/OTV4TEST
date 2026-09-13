@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
-tests/check_runaway_break_key.py  v1.0
+tests/check_runaway_break_key.py  v1.1
+v1.1  2026-09-13  OTV4TEST r24 — K3/K4 DRIVE `break_last_exit`, NOT THE DELETED HOOK. The
+      close hook no longer writes a finished break into memory; the plan READS
+      it from trades.db. So the audible-failure rule is asserted on the reader:
+      an unreadable book returns "unreadable" and says so (K3), a row it cannot
+      key is named and does NOT finish a break (K4), and a CALL row finishes the
+      LONG break at orb_range_high while a PUT row does not (K5).
 v1.0  2026-09-03  r223 — THE ONE-RUNAWAY-PER-BREAK GUARD HAS NEVER FIRED.
 
 🔴 `direction` IS A DECLARED COLUMN THAT NOTHING WRITES. trade_logger:261
@@ -57,27 +63,8 @@ def main():
               if "direction" in ln and "=" in ln
               and not ln.strip().startswith("#")
               and "_get_field" not in ln and "option_side" not in ln]
-    check("K0 nothing writes trades.direction (the hook must derive it)",
+    check("K0 nothing writes trades.direction (the reader must derive it)",
           not writes, str(writes[:2]))
-
-    # ── the hook, driven with a stubbed field reader ─────────────────────
-    class _TL(TL.TradeLogger):
-        def __init__(self, fields):
-            self._f = fields
-        def _get_field(self, trade_id, name):
-            return self._f.get(name)
-
-    def run_hook(fields, pnl=-204.0):
-        RC.FINISHED_BREAKS.clear()
-        tl = _TL(fields)
-        # call only the hook body via the real method
-        TL.TradeLogger._finish_spent_levels(tl, "t1", pnl) \
-            if hasattr(TL.TradeLogger, "_finish_spent_levels") else None
-        return set(RC.FINISHED_BREAKS)
-
-    # The hook lives inline in log_exit, so drive it through the real path if
-    # it is not factored out — otherwise assert on the derivation directly.
-    have_helper = hasattr(TL.TradeLogger, "_finish_spent_levels")
 
     # ── K1 — a CALL stop keys the LONG break at the ORB HIGH ────────────
     # 🔴 THE DEFECT: with `direction` empty the hook used orb_range_LOW.
@@ -101,22 +88,60 @@ def main():
     check("K2b the pre-r223 key ('' , orb_low) matched neither",
           old_key != prepare_key, f"{old_key} vs {prepare_key}")
 
-    # ── K3 — the failure path is AUDIBLE ────────────────────────────────
-    # 🔴 `except Exception: pass` hid this for a week. A guard that cannot fire
-    # must SAY so, or the next reader assumes it is working.
-    # ⚠️ ANCHORED ON THE RUNAWAY BRANCH'S OWN `except`, not a byte window. The
-    # first draft scanned 2600 characters after the branch opened and caught a
-    # DIFFERENT hook's `except Exception: pass` — the credit-vertical one right
-    # beside it. A check that fails because of neighbouring code teaches
-    # nothing about the code it names.
-    check("K3 the runaway branch's except NAMES the fault",
-          "except Exception as _fbexc" in src
-          and "could NOT finish the runaway" in src,
-          "the silence is the reason nobody noticed for a week")
+    # ── K3/K4/K5 (r24) — the READER is audible, keyed right, and never silent ──
+    import tempfile
+    from datetime import date
+    records = []
 
-    # ── K4 — an unkeyable exit is reported, not assumed finished ────────
-    check("K4 a missing option_side or boundary is named in the log",
-          "CANNOT key the break" in src and "boundary is empty" in src)
+    class _Catch(logging.Handler):
+        def emit(self, rec):
+            records.append((rec.levelno, rec.getMessage()))
+    _lg = logging.getLogger("strategy.runaway_continuation")
+    _h = _Catch(); _lg.addHandler(_h); _lg.setLevel(logging.INFO)
+    day = date(2026, 9, 8)
+
+    class _Unreadable(TL.TradeLogger):
+        def __init__(self):
+            pass
+        def _connect(self):
+            raise RuntimeError("disk gone")
+    TL._trade_logger = _Unreadable()
+    got = RC.break_last_exit("long", 711.66, day)
+    check("K3 an unreadable book returns 'unreadable' and the fault is NAMED at WARNING",
+          got == "unreadable" and any(lv >= logging.WARNING and "unreadable" in m for lv, m in records),
+          f"got={got!r} logs={records[-1:]}")
+
+    def _row(**kv):
+        c = TL.get_trade_logger()._connect()
+        try:
+            c.execute(f"INSERT INTO trades ({','.join(kv)}) VALUES ({','.join('?' * len(kv))})",
+                      tuple(kv.values()))
+            c.commit()
+        finally:
+            c.close()
+
+    TL._trade_logger = TL.TradeLogger(os.path.join(tempfile.mkdtemp(), "k.db"))
+    records.clear()
+    _row(trade_id="k4", strategy="RunawayContinuation", option_side="", orb_range_high=711.66,
+         orb_range_low=710.20, entry_time="2026-09-08T14:00:00+00:00",
+         exit_time="2026-09-08T14:05:00+00:00", status="closed")
+    got = RC.break_last_exit("long", 711.66, day)
+    check("K4 a row with no option_side is NAMED and does NOT finish the break",
+          got is None and any("CANNOT key a break" in m for _, m in records),
+          f"got={got!r} logs={records[-1:]}")
+
+    _row(trade_id="k5p", strategy="RunawayContinuation", option_side="put", orb_range_high=711.66,
+         orb_range_low=711.66, entry_time="2026-09-08T14:10:00+00:00",
+         exit_time="2026-09-08T14:12:00+00:00", status="closed")
+    got_put = RC.break_last_exit("long", 711.66, day)
+    _row(trade_id="k5c", strategy="RunawayContinuation", option_side="CALL", orb_range_high=711.66,
+         orb_range_low=710.20, entry_time="2026-09-08T14:20:00+00:00",
+         exit_time="2026-09-08T14:25:00+00:00", status="closed")
+    got_call = RC.break_last_exit("long", 711.66, day)
+    check("K5 a CALL row finishes the LONG break at orb_range_HIGH; a PUT row does not",
+          got_put is None and isinstance(got_call, float),
+          f"put->{got_put!r} call->{got_call!r}")
+    _lg.removeHandler(_h)
 
     print()
     if _fails:

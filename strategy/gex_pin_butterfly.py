@@ -1,5 +1,9 @@
 """
-strategy/gex_pin_butterfly.py  v5.1
+strategy/gex_pin_butterfly.py  v5.2
+v5.2  2026-09-13  OTV4TEST r24 — THE FLOOR IS 40% (operator's ruling); both readers of
+      `BUTTERFLY_STOP_LOSS_PCT` — the signal's stop and the wing search's
+      stop-vs-spread feasibility — default to the ruled 0.40, so a box without
+      the key cannot disagree with one that has it.
 v5.1  2026-09-09  OTV4TEST r12 — anchors on the row (record only): GEX at the pin, VWAP
       distance to the pin, OI at the pin.
 v5.0  2026-09-09  OTV4TEST r6 — THE BUTTERFLY ON THE OPERATOR'S RULINGS
@@ -772,7 +776,7 @@ class GEXPinButterflyStrategy:
                             _rej_r += 1
                             continue
                         _b, _a = _structure_quote(_lo, center, _up)
-                        _sd = _d * float(getattr(config, "BUTTERFLY_STOP_LOSS_PCT", 0.25))
+                        _sd = _d * float(getattr(config, "BUTTERFLY_STOP_LOSS_PCT", 0.40))
                         _ok, _why = stop_survivable(_sd, _b, _a)
                         if (_a - _b) > 0:
                             _ratio = _sd / (_a - _b)
@@ -872,7 +876,7 @@ class GEXPinButterflyStrategy:
             expiry=getattr(prep.center, "expiry", ""),
             entry_premium=round(prep.debit, 4),
             contract=prep.center,
-            stop_loss_pct=float(getattr(config, "BUTTERFLY_STOP_LOSS_PCT", 0.25)),
+            stop_loss_pct=float(getattr(config, "BUTTERFLY_STOP_LOSS_PCT", 0.40)),
         )
         sig.center_strike = prep.pin
         sig.pin_concentration = prep.conc

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """check_structure_viable.py
+v1.2  2026-09-13  OTV4TEST r24: V8-V12 drive `is_spent` on REAL closed rows in a temp
+      trades.db — the `_SPENT` dict and `mark_spent` are deleted. V9 re-derived to
+      the fork's r5 ruling (spent on ACCEPTANCE only: a breach exit spends, V9b a
+      stop-out does not); this file's pre-fork V9 pinned r154's stop-out rule.
 v1.1  2026-08-27  r160: V6 re-pinned — no R hurdle in the sweep; survivability before READY. — v1.0
 
 🔴 A STRUCTURE THAT CANNOT SURVIVE ITS OWN BID-ASK IS NOT A BAD TRADE.
@@ -99,12 +103,31 @@ def main():
     # `LiquiditySweep.invalidated` (LIQ.3) answers "has the TAPE accepted
     # through" — it cannot answer "did WE already try this and lose".
     import strategy.sweep_credit_spread as scs
-    scs._SPENT.clear()
-    scs._SPENT_DAY = ""
+    import tempfile as _tfv
+    import database.trade_logger as _TLV
+    from datetime import datetime, timedelta, timezone
+    _TLV._trade_logger = _TLV.TradeLogger(os.path.join(_tfv.mkdtemp(), "v.db"))
+
+    def _row(**kv):
+        c = _TLV.get_trade_logger()._connect()
+        try:
+            c.execute(f"INSERT INTO trades ({','.join(kv)}) VALUES ({','.join('?' * len(kv))})",
+                      tuple(kv.values()))
+            c.commit()
+        finally:
+            c.close()
+    _t = lambda m: (datetime.now(timezone.utc) - timedelta(minutes=m)).isoformat()
     check("V8 a fresh level is not spent",
           not scs.is_spent("CVX", "put", 198.0)[0])
-    scs.mark_spent("CVX", "put", 198.0, "stopped out")
-    check("V9 a stopped-out level is spent",
+    _row(trade_id="v9b", symbol="CVX", strategy="SweepCreditSpread", option_side="put", pool_price=201.0,
+         status="closed", pnl_usd=-60.0, entry_time=_t(40), exit_time=_t(35),
+         exit_reason="premium_stop_15% pnl=-16.0%")
+    check("V9b (r5) a STOPPED-OUT level is NOT spent — acceptance only",
+          not scs.is_spent("CVX", "put", 201.0)[0])
+    _row(trade_id="v9", symbol="CVX", strategy="SweepCreditSpread", option_side="put", pool_price=198.0,
+         status="closed", pnl_usd=0.0, entry_time=_t(30), exit_time=_t(25),
+         exit_reason="sweep_breach_accepted: 2 closes beyond the pool 198.00 — the level is SPENT")
+    check("V9 a level whose sweep exited on its BREACH is spent (read from trades.db)",
           scs.is_spent("CVX", "put", 198.0)[0])
     # ⚠️ ROUNDED TO THE CENT — the pool is recomputed per tick and drifts in the
     # last decimal; an exact-float key would never match itself and the lock
@@ -114,7 +137,7 @@ def main():
     check("V11 the other side of the same price is a different level",
           not scs.is_spent("CVX", "call", 198.0)[0])
     check("V12 a different level is untouched",
-          not scs.is_spent("CVX", "put", 201.0)[0])
+          not scs.is_spent("CVX", "put", 202.0)[0])
 
     print()
     if _fails:

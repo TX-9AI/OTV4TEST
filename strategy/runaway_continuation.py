@@ -1,5 +1,11 @@
 """
-strategy/runaway_continuation.py  v5.0
+strategy/runaway_continuation.py  v5.1
+v5.1  2026-09-13  OTV4TEST r24 — ONE PER BREAK IS READ FROM trades.db. `FINISHED_BREAKS`
+      and `finish_break` are DELETED: a per-process set that a restart wiped,
+      which is how 2026-09-09's 11:28 bake let the runaway re-buy a spent break
+      four seconds later. `break_last_exit` derives the same fact from the rows
+      that already hold it (keyed as r223 fixed: side from option_side, boundary
+      from orb_range_high/low) and fails closed when the book is unreadable.
 v5.0  2026-09-08  OTV4TEST r3 — THE STRATEGY IS THE SPEC; THE PLAN SELECTS
       (PLAN_SPEC §30, agreed with the operator 2026-09-08). `prepare()` moved
       to `strategy/runaway_plan.py` and grew: the trigger is the engine's own
@@ -301,10 +307,20 @@ def runaway_confirmed(orb, price_now: float, prev_close: float,
     return prev_close < tp50 and price_now < tp50
 
 
-# ── ONE RUNAWAY PER BREAK (r174) ────────────────────────────────────────
-# Keyed (direction, boundary rounded to cents). Populated by trade_logger's
-# losing-exit hook; read by prepare(). Per-process: a restart clears it.
-FINISHED_BREAKS: set = set()
+# ── ONE RUNAWAY PER BREAK (r174) — READ FROM THE BOOK (OTV4TEST r24) ──────
+# 🔴 THE OPERATOR'S RULE (2026-09-13, DEC.1): *"I don't want anything that our
+# trades decide on to only live in memory… They already traded should already
+# survive a restart if it's in the trade log."* This was `FINISHED_BREAKS`, a
+# per-process set, and a restart wiped it: 2026-09-09 11:28:13 ET a bake, and
+# 4 s later the runaway re-bought a spent break — a long at 714.71, 3.66 below
+# its own 50, R 9.97, 24 contracts. The break had traded at 10:46; the fact was
+# in `trades.db` the whole time.
+# 🔑 NOW DERIVED, NOT MIRRORED: a runaway row today on this side and boundary IS
+# the finished break. Nothing is written anywhere to remember it — so a
+# restart, a bake, or a second process cannot disagree with the book.
+# ⚠️ KEYED EXACTLY AS r223 FIXED IT: direction from `option_side` (a call is a
+# long break, a put a short one — `direction` is a column nothing writes), the
+# boundary from `orb_range_high`/`orb_range_low`, rounded to the cent.
 
 
 def _break_key(direction: str, boundary) -> tuple:
@@ -314,9 +330,67 @@ def _break_key(direction: str, boundary) -> tuple:
         return (str(direction), None)
 
 
-def finish_break(direction: str, boundary) -> None:
-    """A floor stop-out finishes this break for the session."""
-    FINISHED_BREAKS.add(_break_key(direction, boundary))
+def break_last_exit(direction: str, boundary, session_date=None):
+    """What `trades.db` says about THIS break today. NEVER raises.
+
+      None          — no runaway has traded this break today: it may trade
+      "open"        — a runaway on this break is still open
+      "unreadable"  — the book could not be read; callers FAIL CLOSED
+      float         — the latest EXIT of a runaway on this break (UTC epoch)
+
+    ANY exit counts — a win finishes the break as surely as a stop (v4.12's
+    rule, unchanged here; only where the fact lives has changed).
+    """
+    from datetime import datetime, timedelta
+    try:
+        from zoneinfo import ZoneInfo
+        _et, _utc = ZoneInfo("America/New_York"), ZoneInfo("UTC")
+        day = session_date or datetime.now(_et).date()
+        bnd = round(float(boundary), 2)
+        lo = (datetime.combine(day, datetime.min.time(), _et)
+              - timedelta(hours=1)).astimezone(_utc).isoformat()
+        from database.trade_logger import get_trade_logger
+        conn = get_trade_logger()._connect()
+        try:
+            rows = conn.execute(
+                "SELECT entry_time, exit_time, status, option_side, orb_range_high, "
+                "orb_range_low FROM trades WHERE strategy='RunawayContinuation' "
+                "AND entry_time >= ?", (lo,)).fetchall()
+        finally:
+            conn.close()
+    except Exception as exc:                                    # noqa: BLE001
+        logger.warning("[runaway] break status unreadable from trades.db (%s) — "
+                       "failing closed", exc)
+        return "unreadable"
+    last = None
+    for et_, xt, status, side, hi, lo_ in rows:
+        sd = str(side or "").lower()
+        d = "long" if sd.startswith("c") else ("short" if sd.startswith("p") else "")
+        if not d or (hi if d == "long" else lo_) is None:
+            # ⚠️ NAMED, NEVER SILENT (r223's lesson): a runaway row that cannot be
+            # keyed cannot finish its break, so another entry is possible.
+            logger.warning("[runaway] a runaway row today has option_side=%r / boundary=%r — "
+                           "it CANNOT key a break, so that break is NOT finished", side,
+                           hi if d == "long" else lo_)
+            continue
+        if d != direction:
+            continue
+        b = hi if d == "long" else lo_
+        try:
+            if b is None or round(float(b), 2) != bnd:
+                continue
+            if datetime.fromisoformat(str(et_)).astimezone(_et).date() != day:
+                continue
+        except (TypeError, ValueError):
+            continue
+        if not xt:
+            return "open"
+        try:
+            ts = datetime.fromisoformat(str(xt)).timestamp()
+        except ValueError:
+            continue
+        last = ts if last is None else max(last, ts)
+    return last
 
 
 def gamma_leverage_pick(contracts, direction: str, spot: float, run: float,

@@ -1,5 +1,12 @@
 """
-strategy/sweep_credit_spread.py  v6.1
+strategy/sweep_credit_spread.py  v6.2
+v6.2  2026-09-13  OTV4TEST r24 — THE SPENT LOCK IS READ FROM trades.db. `_SPENT`, `_SPENT_DAY`
+      and `mark_spent` are DELETED: the dict's only writer raised "no such column:
+      is_credit_vertical" on every close, so no level was ever marked, and on
+      2026-09-11 the 12:04 spread re-sold the 717.05 level the 11:40 spread had
+      just exited as SPENT. `is_spent` now derives the lock from today's closed
+      sweep/TCS rows that exited on their BREACH (acceptance only, r5), same key,
+      and fails closed.
 v6.1  2026-09-09  OTV4TEST r11 — `complement_min_richness` passes through to the plan:
       as a condor's second leg the sweep must be at least as rich as leg one.
 v6.0  2026-09-09  OTV4TEST r5 — THE STRATEGY IS THE SPEC; THE PLAN SELECTS
@@ -710,8 +717,13 @@ def boundary_from_sweep(kind: str) -> Optional[tuple]:
 # KEYED BY (symbol, side, rounded pool) so the two sides of one price are
 # separate levels, and cleared daily — a level that failed this morning is not
 # thereby dead tomorrow.
-_SPENT: dict = {}
-_SPENT_DAY: str = ""
+# 🔴 OTV4TEST r24 — THE DICT IS GONE; THE LOCK IS READ FROM trades.db. `_SPENT`
+# lived in the process, and its only writer (trade_logger's close hook) read
+# `is_credit_vertical`, a column that does not exist, so it raised on EVERY
+# close — 16 times in bot.log — and the level was never marked. 2026-09-11:
+# the 11:40 spread exited "breach accepted … the level is SPENT", and at 12:04
+# the sweep sold the same 717.05 level again. Operator's rule (DEC.1): a fact
+# the trade log already holds is read from the trade log.
 
 
 _TINE_SPENT_KEYS = {"fork1h/upper": -1.0, "fork1h/median": -2.0, "fork1h/lower": -3.0}
@@ -719,7 +731,7 @@ _TINE_SPENT_KEYS = {"fork1h/upper": -1.0, "fork1h/median": -2.0, "fork1h/lower":
 
 def tine_spent_key(provenance: str) -> float:
     """A tine's price moves; SPENT is keyed on the TINE (r5). Returns the pool
-    key to pass to mark_spent/is_spent, or 0.0 for a non-tine."""
+    key to pass to is_spent, or 0.0 for a non-tine."""
     return _TINE_SPENT_KEYS.get(str(provenance or ""), 0.0)
 
 
@@ -731,38 +743,57 @@ def _spent_key(symbol: str, side: str, pool: float) -> tuple:
     return (symbol or "", side or "", round(float(pool or 0.0), 2))
 
 
-def mark_spent(symbol: str, side: str, pool: float, why: str = "") -> None:
-    """Record that a trade on this level closed at a loss. Called from the
-    exit path, not from here — the strategy cannot see its own outcome."""
-    global _SPENT_DAY
-    from datetime import datetime
-    try:
-        from config import ET
-        today = datetime.now(ET).strftime("%Y-%m-%d")
-    except Exception:                                          # noqa: BLE001
-        today = datetime.now().strftime("%Y-%m-%d")
-    if today != _SPENT_DAY:
-        _SPENT.clear()
-        _SPENT_DAY = today
-    k = _spent_key(symbol, side, pool)
-    if k not in _SPENT:
-        _SPENT[k] = why or "a trade on this level was stopped out"
-        logger.info("[sweep_cs] LEVEL SPENT %s %s %.2f — %s",
-                    symbol, side, pool or 0.0, _SPENT[k])
-
-
 def is_spent(symbol: str, side: str, pool: float):
-    """(spent, why). Day-scoped: cleared on the first call of a new day."""
-    from datetime import datetime
+    """(spent, why) — READ FROM trades.db, day-scoped. NEVER raises.
+
+    A level is SPENT for the session when a sweep or trend credit spread sold
+    against it today and CLOSED ON ITS BREACH (`sweep_breach_accepted` /
+    `tcs_breach` — the exit that itself says "the level is SPENT"). ACCEPTANCE
+    ONLY, per the r5 ruling: a stop-out is not the level giving way.
+    Keyed exactly as before: (symbol, side, pool rounded to the cent), with a
+    tine keyed on its NAME (r5) because its price moves.
+    ⚠️ FAILS CLOSED: an unreadable book reads as SPENT, never as "free to sell".
+    """
+    from datetime import datetime, timedelta
     try:
-        from config import ET
-        today = datetime.now(ET).strftime("%Y-%m-%d")
-    except Exception:                                          # noqa: BLE001
-        today = datetime.now().strftime("%Y-%m-%d")
-    if today != _SPENT_DAY:
-        return False, ""
-    k = _spent_key(symbol, side, pool)
-    return (k in _SPENT), _SPENT.get(k, "")
+        from zoneinfo import ZoneInfo
+        _et, _utc = ZoneInfo("America/New_York"), ZoneInfo("UTC")
+        today = datetime.now(_et).date()
+        lo = (datetime.combine(today, datetime.min.time(), _et)
+              - timedelta(hours=1)).astimezone(_utc).isoformat()
+        from database.trade_logger import get_trade_logger
+        conn = get_trade_logger()._connect()
+        try:
+            rows = conn.execute(
+                "SELECT entry_time, symbol, option_side, pool_price, underlying_stop, "
+                "swept_level_name, exit_reason, pnl_usd FROM trades "
+                "WHERE strategy IN ('SweepCreditSpread','TrendCreditSpread') "
+                "AND exit_time IS NOT NULL AND entry_time >= ?", (lo,)).fetchall()
+        finally:
+            conn.close()
+    except Exception as exc:                                    # noqa: BLE001
+        logger.warning("sweep_cs: spent state unreadable from trades.db (%s) — the "
+                       "level reads SPENT (fails closed)", exc)
+        return True, f"trade book unreadable ({type(exc).__name__}) — fails closed"
+    want = _spent_key(symbol, side, pool)
+    for et_, sym, sd, pp, us, name, why, pnl in rows:
+        try:
+            if datetime.fromisoformat(str(et_)).astimezone(_et).date() != today:
+                continue
+        except (TypeError, ValueError):
+            continue
+        nm = str(name or "")
+        key_pool = (tine_spent_key(nm) or (_name_key(nm) if "tine" in nm else 0.0)
+                    or pp or us or 0.0)
+        if _spent_key(sym, sd, key_pool) != want:
+            continue
+        reason = str(why or "")
+        # ⚠️ ACCEPTANCE ONLY — the r5 ruling ("spent on acceptance only"). A
+        # stop-out on noise does not discredit the level; the level giving way does.
+        if reason.startswith("sweep_breach_accepted") or reason.startswith("tcs_breach"):
+            return True, (f"breach accepted on this level today ({reason[:50]}, "
+                          f"pnl ${float(pnl or 0.0):+.0f})")
+    return False, ""
 
 
 def _sweep_at_level(liq_map, level: float, side: str = ""):
@@ -891,7 +922,7 @@ class SweepCreditSpreadStrategy:
 
 def _name_key(name: str) -> float:
     """A stable numeric key for a MOVING level's spent lock: the level's price
-    drifts every bar, so `mark_spent`/`is_spent` (keyed by rounded price) are
+    drifts every bar, so `is_spent` (keyed by rounded price) are
     given a hash of the NAME instead. Deterministic across restarts."""
     import zlib
     return float(zlib.crc32((name or "").encode("utf-8")) % 1_000_000)

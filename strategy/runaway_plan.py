@@ -1,5 +1,15 @@
 """
-strategy/runaway_plan.py  v1.1
+strategy/runaway_plan.py  v1.2
+v1.2  2026-09-13  OTV4TEST r24 — THE RUNAWAY CANNOT ENTER BELOW ITS OWN 50, AND ITS BREAK
+      STATE IS READ FROM THE BOOKS. (1) `runaway_confirmed` — last closed close
+      AND live price beyond the 50 — existed with no caller; wired, so the
+      session latch alone no longer admits a fill under the line (09-09 T2/T4/T5,
+      09-11 T6). (2) the run is SIGNED, which revives the `run <= 0` guard `abs()`
+      had disabled. (3) one-per-break and re-validation are derived every call
+      from trades.db (`break_last_exit`) and the closed 1m bars since that exit;
+      `_reval`/`_last_bar_ts` are gone, so a restart cannot re-open a spent
+      break (09-09 11:28, four seconds after a bake). Fails closed on an
+      unreadable book. check_runaway_plan R7/R8 re-derived, R14-R18 added.
 v1.1  2026-09-09  OTV4TEST r12 — participation read from the prints at the boundary
       (record only; the composite is unchanged) and anchors stamped: charm/vanna at
       the target strike, 15m fork, VWAP distance.
@@ -32,7 +42,7 @@ v1.0  2026-09-08  OTV4TEST r3 — THE RUNAWAY PLAN (PLAN_SPEC §30), agreed with
       ⚠️ The cutoffs and multipliers are CATEGORY 1 — a baseline so there is a
       starting point, not a fit. They are recorded on every row and fire.
 
-      ONE PER BREAK, ANY EXIT — `FINISHED_BREAKS` keyed on (direction,
+      ONE PER BREAK, ANY EXIT — read from trades.db since r24 (was `FINISHED_BREAKS`, keyed on (direction,
       boundary) as at r174, but a WIN finishes the break too (trade_logger
       v4.9). RE-VALIDATION ON ACTUAL (operator): after any exit the standing
       state never re-fires; the plan watches the closed bars and re-opens the
@@ -57,8 +67,8 @@ from typing import Optional
 import config
 from strategy.plan import Plan, _n
 from strategy.runaway_continuation import (
-    ATR_FLOOR_PCT, CUTOFF_ET, FINISHED_BREAKS, _break_key, gamma_leverage_pick,
-    target_delta,
+    ATR_FLOOR_PCT, CUTOFF_ET, _break_key, break_last_exit, gamma_leverage_pick,
+    runaway_confirmed, target_delta,
 )
 from utils.math_utils import safe_float
 
@@ -150,8 +160,9 @@ class RunawayPlan:
         self.planner = Plan(self.name, self.PLAN_CHECKS,
                             record_only=True, self_ledgers=True)
         self._frozen: dict = {}        # break key -> {"strength","pace","acceptance","band"}
-        self._reval: dict = {}         # break key -> {"lost": bool, "beyond": int}
-        self._last_bar_ts: str = ""
+        # r24 — NO re-validation state lives here: it is read from trades.db and
+        # the candles on every call (DEC.1). `_frozen` is keyed on the break AND
+        # its last exit, so a re-validated new move is measured anew.
 
     # ── strength, measured once per break ───────────────────────────────
     def _measure(self, key, orb, df_1m, direction):
@@ -183,38 +194,52 @@ class RunawayPlan:
         return out
 
     # ── re-validation on actual, after any exit ─────────────────────────
-    def _revalidate(self, key, tp50, direction, df_1m) -> str:
-        """Returns "" when the break may trade, else the reason it may not."""
-        if key not in FINISHED_BREAKS:
+    def _revalidate(self, key, tp50, direction, df_1m, last=None) -> str:
+        """"" when the break may trade, else the reason it may not.
+
+        🔴 r24 — DERIVED FROM THE BOOKS ON EVERY CALL, NOTHING REMEMBERED.
+        `last` is `break_last_exit()`'s answer from trades.db. The re-validation
+        walk runs over the CLOSED 1m bars since that exit: the 50 must be LOST on
+        a close, then two consecutive closes beyond it (a close back inside
+        resets the pair). The old version counted in a dict that a restart
+        emptied — and "not in the set" meant "may trade".
+        """
+        if last is None:
             return ""
-        st = self._reval.setdefault(key, {"lost": False, "beyond": 0})
+        if last == "unreadable":
+            return ("the trade book is unreadable — this break cannot be proven "
+                    "untraded, so it does not trade (fails closed)")
+        if last == "open":
+            return "a runaway on this break is still open"
         try:
             if df_1m is None or len(df_1m) < 2:
                 return "break finished — waiting for the 50 to be lost and re-accepted (no bars)"
-            bar_ts = str(df_1m.index[-2])
-            if bar_ts == self._last_bar_ts:
-                return ("break finished — waiting for the 50 to be lost on a close and "
-                        "re-accepted (close + hold)")
-            self._last_bar_ts = bar_ts
-            close = float(df_1m.iloc[-2]["close"])
-            beyond = close > tp50 if direction == "long" else close < tp50
-            if not st["lost"]:
-                if not beyond:
-                    st["lost"] = True
+            import pandas as pd
+            closed = df_1m.iloc[:-1]
+            cut = pd.Timestamp(float(last), unit="s", tz="UTC")
+            idx = closed.index
+            if getattr(idx, "tz", None) is None:
+                cut = cut.tz_convert("America/New_York").tz_localize(None)
+            else:
+                cut = cut.tz_convert(idx.tz)
+            closes = [float(c) for c in closed[idx >= cut]["close"]]
+            lost, pair = False, 0
+            for c in closes:
+                beyond = c > tp50 if direction == "long" else c < tp50
+                if not lost:
+                    lost = not beyond
+                    continue
+                if beyond:
+                    pair += 1
+                    if pair >= 2:
+                        return ""
+                else:
+                    pair = 0
+            if not lost:
                 return ("break finished — the 50 must be LOST on a close, then accepted "
-                        "again" if not st["lost"] else
-                        "the 50 was lost on a close — waiting for a fresh acceptance")
-            if beyond:
-                st["beyond"] += 1
-                if st["beyond"] >= 2:
-                    FINISHED_BREAKS.discard(key)
-                    self._reval.pop(key, None)
-                    self._frozen.pop(key, None)         # a new move: measure it anew
-                    logger.info("[runaway-plan] %s RE-VALIDATED — the 50 was lost and "
-                                "accepted again; the break may trade", key)
-                    return ""
+                        "again")
+            if pair:
                 return "the 50 re-crossed on a close — pending the hold"
-            st["beyond"] = 0
             return "the 50 was lost on a close — waiting for a fresh acceptance"
         except Exception as exc:                                # noqa: BLE001
             return f"re-validation unreadable: {exc}"
@@ -278,8 +303,16 @@ class RunawayPlan:
         t.anchor(trigger=prep.tp50)
         key = _break_key(direction, prep.boundary)
 
-        # one per break, any exit — and re-validation on actual
-        why_not = self._revalidate(key, prep.tp50, direction, df_1m)
+        # one per break, any exit — and re-validation on actual, both READ from
+        # trades.db and the candles (r24, DEC.1)
+        _sess = None
+        try:
+            _ix = df_1m.index[-1] if df_1m is not None and len(df_1m) else None
+            _sess = _ix.date() if _ix is not None and hasattr(_ix, "date") else None
+        except Exception:                                       # noqa: BLE001
+            _sess = None
+        last = break_last_exit(direction, prep.boundary, _sess)
+        why_not = self._revalidate(key, prep.tp50, direction, df_1m, last)
         t.check("break_finished", prep.boundary, not why_not)
         if why_not:
             prep.revalidation = why_not
@@ -291,7 +324,11 @@ class RunawayPlan:
         # the trigger: the 50 ACCEPTED (close + hold) — the engine's latch
         accepted = bool(getattr(orb, "fifty_accepted", False))
         t.check("fifty_accepted", prep.tp50, accepted)
-        run = abs(price_now - prep.boundary)
+        # 🔴 r24 — THE RUN HAS A SIGN. `abs()` counted a move AGAINST the break as a
+        # run: 2026-09-09 11:28, a LONG at 714.71 read "run 2.70" off a 717.41
+        # boundary, R 9.97 — and it disabled the `run <= 0` guard below, the one
+        # line written to refuse a price inside the boundary.
+        run = (price_now - prep.boundary) if direction == "long" else (prep.boundary - price_now)
         prep.run = run
         t.check("run", run, run > 0)
         head = (f"ORB broke {direction} at {prep.boundary:.2f}, run {_n(run)} to "
@@ -302,8 +339,26 @@ class RunawayPlan:
                    f"{' — price is beyond it now, pending the close' if beyond_now else ''}")
             return prep
 
-        # strength, measured once and frozen; the band follows it
-        m = self._measure(key, orb, df_1m, direction)
+        # 🔴 r24 — THE 50 MUST BE HELD *NOW*, NOT ONLY LATCHED. `fifty_accepted` is
+        # a session latch; three of 2026-09-09's four runaway longs and 09-11's
+        # 10:00 long filled UNDER their own 50 on it. `runaway_confirmed` — the
+        # last closed 1m close AND the live price beyond the 50 — existed in
+        # runaway_continuation and had NO CALLER. Wired here.
+        _prev = None
+        try:
+            if df_1m is not None and len(df_1m) >= 2:
+                _prev = float(df_1m.iloc[-2]["close"])
+        except Exception:                                       # noqa: BLE001
+            _prev = None
+        held = runaway_confirmed(orb, price_now, _prev, direction)
+        t.check("fifty_held_now", prep.tp50, held)
+        if not held:
+            t.hold(f"{head}: the 50 is accepted on the latch but NOT held now (last close "
+                   f"{_n(_prev)}, price {price_now:.2f}) — no entry on the wrong side of the 50")
+            return prep
+
+        # strength, measured once per move and frozen; the band follows it
+        m = self._measure((key, last if isinstance(last, float) else None), orb, df_1m, direction)
         prep.strength, prep.pace, prep.acceptance = m["strength"], m["pace"], m["acceptance"]
         # r12 — participation READ from the prints at the boundary (RUN.6, record only
         # this revision: the composite still uses pace + acceptance)

@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """
-tests/check_runaway_plan.py  v1.0
+tests/check_runaway_plan.py  v1.1
+v1.1  2026-09-13  OTV4TEST r24 — R7/R8 RE-DERIVED ON THE BOOKS, R14-R18 ADDED. One-per-break
+      and re-validation are read from trades.db and the closed bars since that
+      exit, so R7 writes a REAL closed runaway row instead of calling the deleted
+      `finish_break`, and R8 walks ONE continuous frame (lost, beyond, beyond)
+      instead of three disconnected ticks carried by a counter. R14/R15 (09-09
+      T5 and 09-11 T6 shapes) a latched 50 that is not held now does not enter;
+      R16 a FRESH plan instance — a restart — still sees the finished break;
+      R17 an unreadable book fails closed; R18 the run is signed.
 v1.0  2026-09-08  OTV4TEST r3 — THE RUNAWAY PLAN AND ITS EXITS, ON HYPOTHETICALS
       (PLAN_SPEC §30). Real engine, real plan, real strategy, real exit engine.
 
@@ -153,7 +161,32 @@ def main():
         print(f"\nFAIL — {len(FAILED)} check(s): {FAILED}")
         return 1
     import strategy.runaway_continuation as RC
-    RC.FINISHED_BREAKS.clear()
+
+    # ── r24: a TEMP trade book for this check's life ─────────────────────
+    # One-per-break and the spent lock are READ from trades.db now (DEC.1), so
+    # the fixtures are real closed rows in a real TradeLogger's table — and the
+    # book is scratch, so nothing here can read or write the box's (r13).
+    import tempfile as _tfb
+    import database.trade_logger as _TLB
+
+    def _bind_book():
+        _TLB._trade_logger = _TLB.TradeLogger(os.path.join(_tfb.mkdtemp(), "book.db"))
+        return _TLB._trade_logger
+
+    def _book_row(**kv):
+        c = _TLB.get_trade_logger()._connect()
+        try:
+            c.execute(f"INSERT INTO trades ({','.join(kv)}) VALUES ({','.join('?' * len(kv))})",
+                      tuple(kv.values()))
+            c.commit()
+        finally:
+            c.close()
+
+    def _now_iso(minutes_ago=0):
+        from datetime import datetime, timedelta, timezone
+        return (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
+
+    _bind_book()
 
     def prep_for(plan, orb, df, now="10:05", price=101.85, chain=None):
         P.begin_tick()
@@ -209,25 +242,71 @@ def main():
           and not getattr(sig, "underlying_stop", 0) and _last_row(st)[0] == "TAKE",
           f"sig={sig is not None} row={_last_row(st)[0]}")
 
-    # R7 break finished, any exit -> the standing state never re-fires
-    RC.finish_break("long", 101.0)
+    # R7 break finished, any exit -> the standing state never re-fires. The fact is
+    # a CLOSED RUNAWAY ROW in trades.db (09:40-09:41 ET on the fixture's day).
+    _book_row(trade_id="rw-r7", symbol="TEST", strategy="RunawayContinuation", option_side="call",
+              orb_range_high=101.0, orb_range_low=100.0, status="closed", pnl_usd=12.0,
+              entry_time="2026-09-08T13:40:00+00:00", exit_time="2026-09-08T13:41:00+00:00",
+              exit_reason="orb_trail_stop pnl=4.0%")
     p7 = prep_for(strat.plan, er._data, _rip_frame(), price=101.85)
     v, why = _last_row(st)
     check("R7 break finished -> HOLD naming re-validation, no fire",
           v == "HOLD" and "finished" in why and not p7.ready, f"{v}: {why[:100]}")
 
     # R8 re-validation on actual: lose the 50 on a close, then two closes beyond
-    frames = [
-        _frame([(101.7, 101.8, 101.2, 101.3), (101.3, 101.4, 101.2, 101.35)], "10:10"),   # lost
-        _frame([(101.3, 101.7, 101.25, 101.6), (101.6, 101.8, 101.5, 101.7)], "10:12"),   # beyond 1
-        _frame([(101.6, 101.8, 101.5, 101.7), (101.7, 101.9, 101.6, 101.85)], "10:14"),   # beyond 2
-    ]
+    # ⚠️ r24: ONE continuous frame since the exit, read whole every tick — the old
+    # version fed three disconnected 2-bar frames and relied on a counter carried
+    # between them in memory, which is exactly what a restart erased.
+    lost, b1, b2 = (101.7, 101.8, 101.2, 101.3), (101.3, 101.7, 101.25, 101.6), (101.6, 101.8, 101.5, 101.7)
+    forming = (101.7, 101.9, 101.6, 101.85)
+    frames = [_frame([lost, forming], "09:42"),
+              _frame([lost, b1, forming], "09:42"),
+              _frame([lost, b1, b2, forming], "09:42")]
     outs = [prep_for(strat.plan, er._data, f, price=101.85) for f in frames]
     check("R8 the 50 lost on a close then accepted on two closes -> the break trades again",
-          (not outs[0].ready) and (not outs[1].ready) and outs[2].ready
-          and ("long", 101.0) not in RC.FINISHED_BREAKS,
-          f"ready={[o.ready for o in outs]} finished={RC.FINISHED_BREAKS}")
-    RC.FINISHED_BREAKS.clear()
+          (not outs[0].ready) and (not outs[1].ready) and outs[2].ready,
+          f"ready={[o.ready for o in outs]} why={[o.revalidation for o in outs]}")
+
+    # ── R14-R18 (r24): below the 50, restart, unreadable book, signed run ──
+    _bind_book()
+    e14 = _break_long(_engine()); e14._data.bars_since_break = 2; e14._data.fifty_accepted = True
+    p14 = prep_for(RunawayPlan(), e14._data,
+                   _frame([(100.6, 101.3, 100.5, 101.2), (101.2, 101.7, 101.15, 101.65),
+                           (101.65, 101.7, 100.7, 100.8), (100.8, 100.9, 100.7, 100.8)], "09:50"),
+                   price=100.8)
+    v, why = _last_row(st)
+    check("R14 (09-09 T5) the 50 LATCHED but price below the boundary -> HOLD, no entry",
+          v == "HOLD" and "NOT held now" in why and not p14.ready, f"{v}: {why[:110]}")
+    check("R18 the run is SIGNED: a price back inside a long break has a negative run",
+          p14.run is not None and p14.run < 0, f"run={p14.run}")
+    p15 = prep_for(RunawayPlan(), e14._data,
+                   _frame([(100.6, 101.3, 100.5, 101.2), (101.2, 101.7, 101.15, 101.65),
+                           (101.65, 101.66, 101.4, 101.46), (101.46, 101.5, 101.4, 101.45)], "09:50"),
+                   price=101.45)
+    v, why = _last_row(st)
+    check("R15 (09-11 T6) between the boundary and the 50 on the latch -> HOLD, no entry",
+          v == "HOLD" and "NOT held now" in why and not p15.ready, f"{v}: {why[:110]}")
+    _book_row(trade_id="rw-r16", symbol="TEST", strategy="RunawayContinuation", option_side="call",
+              orb_range_high=101.0, orb_range_low=100.0, status="closed", pnl_usd=-40.0,
+              entry_time="2026-09-08T13:40:00+00:00", exit_time="2026-09-08T13:41:00+00:00",
+              exit_reason="runaway_thesis_dead")
+    p16 = prep_for(RunawayPlan(), e14._data, _rip_frame(), price=101.85)
+    v, why = _last_row(st)
+    check("R16 a FRESH plan instance (a restart) still sees the finished break in the book",
+          v == "HOLD" and "finished" in why and not p16.ready, f"{v}: {why[:110]}")
+
+    class _Unreadable(_TLB.TradeLogger):
+        def __init__(self):
+            pass
+        def _connect(self):
+            raise RuntimeError("the book is unreadable")
+    _TLB._trade_logger = _Unreadable()
+    p17 = prep_for(RunawayPlan(), e14._data, _rip_frame(), price=101.85)
+    v, why = _last_row(st)
+    check("R17 an unreadable trade book FAILS CLOSED -> HOLD, never a fire",
+          v == "HOLD" and "unreadable" in why and "fails closed" in why and not p17.ready,
+          f"{v}: {why[:110]}")
+    _bind_book()
 
     # R9 dormant outside the window, one row then silence
     def rows():

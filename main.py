@@ -1,5 +1,14 @@
 """
-main.py  v4.47
+main.py  v4.48
+v4.48 2026-09-13  OTV4TEST r24 — THE SWEEP'S PREMIUM STOP IS 15% OF RISK, AS SPECIFIED.
+      `_execute_condor_leg` stamped the sweep's `stop_premium` as 15% of the
+      CREDIT — the inverted rule r155 deleted — and the management plan acts on
+      the row, so that is the stop that fired: Friday's 12:04 spread (credit
+      0.25, stop 0.2875) was cut the same minute and then expired worthless.
+      `_sweep_stop_premium` computes credit + `criteria.stop_distance`, the one
+      definition the exit engine and entry feasibility already use; it fails
+      closed to the old stop, logged, when risk cannot be measured. TCS keeps no
+      stop; condor legs are unchanged. check_sweep_stop S1-S4.
 v4.47 2026-09-13  OTV4TEST r20 — THE ORB IS PASSED NO LEVEL SURFACE. Operator's
       ruling: levels out of the ORB trade entirely. The `liq_map` argument is
       gone from the ORB's `generate_signal` call site; the sweep's own call
@@ -2417,6 +2426,32 @@ def _supervise_credit_remainders(ctx: dict, state: BotState) -> None:
         logger.warning("remainder supervision skipped this tick: %s", exc)
 
 
+def _sweep_stop_premium(credit, width, pct_fallback) -> float:
+    """The sweep's premium stop: the credit PLUS 15% OF THE RISK (PLAN_SPEC §31).
+
+    🔴 OTV4TEST r24 — THE ROW CARRIED THE RULE r155 DELETED. This stamp wrote
+    `fill_credit * (1 + 0.15)` — fifteen percent of the CREDIT — while the spec
+    says "15% of risk", the exit engine computes `entry + risk * 0.15`
+    (exit_engine:2200) and entry feasibility judges survivability with
+    `criteria.stop_distance`. The management plan reads THIS number and acts
+    first, so the inverted stop is the one that fired. PROVEN ON 2026-09-11:
+    the 12:04 718/719 call spread, credit 0.25, row stop 0.2875, stopped the
+    same minute; replayed on real quotes its worst cost-to-close was 0.33,
+    under the spec's 0.3625, and it expired worthless for the full credit.
+    ⚠️ ONE DEFINITION: `criteria.stop_distance` — r234's rule that a second
+    spelling of 0.15 is how the first rots.
+    ⚠️ FAILS CLOSED: if the risk is unmeasurable the tighter credit-anchored stop
+    is kept and SAID, never a permissive 0.0 (WORKING_AGREEMENT §22).
+    """
+    from strategy.criteria import stop_distance
+    d = stop_distance(width, credit)
+    if d is None:
+        logger.warning("sweep stop: risk unmeasurable (width=%r credit=%r) — "
+                       "keeping the credit-anchored stop", width, credit)
+        return float(credit or 0.0) * (1 + float(pct_fallback or 0.0))
+    return float(credit) + float(d)
+
+
 def _execute_condor_leg(signal: "OptionsSignal", state: BotState,
                         ctx: dict = None):
     """
@@ -2611,6 +2646,8 @@ def _execute_condor_leg(signal: "OptionsSignal", state: BotState,
         # the 15:45 close. Writing a stop here is what made a $0.06 credit
         # closeable on one cent of widening.
         stop_premium     = (0.0 if _is_tcs
+                            else _sweep_stop_premium(fill_credit, spread_width, _stop_pct)
+                            if _is_sweep
                             else fill_credit * (1 + _stop_pct)),
         target_premium   = CONDOR_NICKEL_CLOSE,
         underlying_entry = getattr(signal, "underlying_entry", 0.0),

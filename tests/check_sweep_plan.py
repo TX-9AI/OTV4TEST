@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_sweep_plan.py  v1.0
+tests/check_sweep_plan.py  v1.1
+v1.1  2026-09-13  OTV4TEST r24 — X1 DRIVES THE RULE, NOT THE HOOK'S SOURCE. The spent lock is
+      read from trades.db now; X1 writes a breach exit and a stop-out as REAL
+      rows and asserts only the breach spends (the r5 rule this check was born
+      to hold).
 v1.0  2026-09-09  OTV4TEST r5 — THE SWEEP VERTICAL'S EXITS, ON HYPOTHETICALS
       (PLAN_SPEC §31.4), through the REAL `ExitEngine._evaluate_condor_leg`.
       The entry side (levels from the store, the REJECTED trigger, the anchor
@@ -88,11 +92,23 @@ def main():
     finally:
         XE.datetime, XE.is_hard_close_time = _real_dt, _real_hc
 
-    # X1: spent only on the breach exit (source pin on the hook, plus the rule)
-    src = open(os.path.join(_root, "database", "trade_logger.py"), encoding="utf-8").read()
-    check("X1 trade_logger marks SPENT only on sweep_breach_accepted",
-          '"sweep_breach_accepted" in str(exit_reason' in src and "stopped out" not in
-          src.split('"sweep_breach_accepted"')[1][:400])
+    # X1: spent only on the breach exit — driven on REAL rows (r24: read from trades.db)
+    import tempfile as _tfx
+    import database.trade_logger as _TLX
+    import strategy.sweep_credit_spread as _scs
+    from datetime import datetime, timedelta, timezone
+    _TLX._trade_logger = _TLX.TradeLogger(os.path.join(_tfx.mkdtemp(), "x.db"))
+    _c = _TLX.get_trade_logger()._connect()
+    _t = lambda m: (datetime.now(timezone.utc) - timedelta(minutes=m)).isoformat()
+    for tid, pool, why in (("x-stop", 96.0, "premium_stop_15% pnl=-16.0%"),
+                           ("x-breach", 97.0, "sweep_breach_accepted: 2 closes beyond the pool 97.00")):
+        _c.execute("INSERT INTO trades (trade_id, symbol, strategy, option_side, pool_price, status,"
+                   " pnl_usd, entry_time, exit_time, exit_reason) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                   (tid, "TST", "SweepCreditSpread", "put", pool, "closed", -25.0, _t(30), _t(20), why))
+    _c.commit(); _c.close()
+    check("X1 the level is SPENT only on sweep_breach_accepted — a stop-out does not spend it",
+          _scs.is_spent("TST", "put", 97.0)[0] and not _scs.is_spent("TST", "put", 96.0)[0],
+          f"breach={_scs.is_spent('TST', 'put', 97.0)} stop={_scs.is_spent('TST', 'put', 96.0)}")
 
     print()
     if FAILED:
