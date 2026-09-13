@@ -1,6 +1,45 @@
 """
-derived/levels.py  v4.5
+derived/levels.py  v4.6
 Owns `level_ledger` and `level_event`. Tier 3 — stateful; the object has a biography.
+v4.6  2026-09-13  OTV4TEST r19 — THE FORK PROJECTION IS SEPARATED FROM THE LEVEL
+      BOOK. Operator, 2026-09-13: "I want the session extremes separated from the
+      1-hr fork object... The job of the fork projection should be a co-informer
+      and not conjoined. The projection should only persist as long as the one
+      hour fork persists; if a new fork is born a new projection needs to be
+      graphed and plotted. There should be no drift from when triggers fired.
+      They should be recorded at the moment of the interaction and not in
+      hindsight." Four changes, one per clause.
+      (1) SEPARATION. `_sources()` SKIPS any pool flagged `moving`. `publish_tines`
+      puts every active rail on the map as a named pool, and this loop admitted
+      them into a book of HORIZONTAL levels where `_lid` bakes the price into the
+      id — so ONE rail became a NEW LEDGER ROW EVERY TIME IT DRIFTED A CENT.
+      Measured here: 22 simultaneously-live `1h upper tine` rows spanning 5.79
+      points, none retired, including four positions of a fork that had already
+      died and been superseded. Mainline reached the same fix from the other end
+      (r378: "main.py also stops admitting a MOVING tine into a book of
+      horizontal levels").
+      ⚠️ r15 BELIEVED IT HAD CLOSED THIS and pinned it with "no fork1h/* row in
+      the ledger" — but the mapper names its rails "1h upper tine", so
+      `_is_tine()` was False and they entered through the POOL door. The canary
+      was scoped to the name that had been REMOVED, not the one that REMAINED.
+      (2) IDENTITY. `_fork_key()` is the held fork's three anchors (p0/p1/p2).
+      `build_fork_contained` runs every derive, so the OBJECT is rebuilt
+      constantly; the anchors are what say whether it is the same fork.
+      (3) LIFETIME. On a change of `_fork_key` every tine pierce state is
+      dropped. r15 dropped state only when a tine NAME vanished — and a reborn
+      fork republishes the SAME three names at new prices, so that condition
+      could never fire and a dead fork's interaction state was inherited by its
+      successor.
+      (4) NO DRIFT. `tines_now(price, minutes_back)` walks the rail back along
+      its own slope, and the emitter reads it ONE BAR BACK because the extreme
+      being judged is on `df.index[-2]`, the last CLOSED bar. Mainline measured
+      the cost of getting this wrong (r377): for a clean touch the extreme sits
+      ON the rail, so the reported depth was slope x bars_since — THE STALENESS
+      OF THE TOUCH AND NOT ITS DEPTH, clearing the rejection floor on 57.9%% of
+      samples from drift alone. `minutes_back=0` is byte-identical to r15.
+      🔑 WHAT STAYS CONJOINED, DELIBERATELY: the rails are still READ beside the
+      ledger's levels by the emitter and the board. That is the co-informing.
+      What ends is the rail being STORED as though it were a level.
 v4.5  2026-09-13  OTV4TEST r18 — THE ACCOUNTING RAN PER TICK, NOT PER BAR, AND
       TWO TRADES WERE FIRING ON A WORD THAT DID NOT MEAN WHAT IT SAID. `derive()`
       is called EVERY TICK and the touch/acceptance block had NO BAR GUARD AT ALL
@@ -215,6 +254,7 @@ class LevelEngine(DerivedEngine):
         self._forks = forks              # v4.2: the ForkEngine, for tine prices
         self._live: dict = {}
         self._pierce: dict = {}          # level_id -> {"depth", "pierce_pct", "closes_back", "bar_ts"}
+        self._fork_seen = None           # r19: the anchors of the fork whose projection we hold
         self._last_bar_ts: str = ""
         self.last_events: list = []      # events emitted on the most recent derive()          # level_id -> mutable state
 
@@ -251,6 +291,27 @@ class LevelEngine(DerivedEngine):
             # TCS (measured on mainline's warehouse, 786 rows, 2026-09-11).
             _px_now = _f(ctx.get("price"))
             for pool in (getattr(liq, "pools", None) or []):
+                # 🔴 r19 — A MOVING RAIL IS NOT A LEVEL, AND IT NEVER ENTERS THIS
+                # BOOK. `publish_tines` puts every active fork rail on the map as
+                # a named pool with `moving=True`; this loop admitted them, and
+                # `_lid` bakes the price into the id, so ONE rail became a NEW
+                # LEDGER ROW EVERY TIME IT DRIFTED A CENT. Measured on this box:
+                # 22 simultaneously-live `1h upper tine` rows spanning 5.79
+                # points, none retired, including four positions of a fork that
+                # had already died and been superseded.
+                # ⚠️ r15 BELIEVED IT HAD CLOSED THIS. It removed `_tines()` from
+                # this function and pinned it with "no fork1h/* row in the
+                # ledger" — but the mapper's rails are named "1h upper tine",
+                # so `_is_tine()` returned False and they came in through the
+                # POOL door instead. A canary scoped to the name that was
+                # removed, not to the one that remained (§20, one level up).
+                # 🔑 THE OPERATOR'S RULE: the fork projection CO-INFORMS, it is
+                # not conjoined. Session extremes are stored and have a
+                # biography; the rails are a PROJECTION evaluated at a bar index
+                # and are served beside the ledger by `tines_now()`, living and
+                # dying with the fork that casts them.
+                if getattr(pool, "moving", False):
+                    continue
                 p = _f(getattr(pool, "price", None))
                 if p and p > 0:
                     _formed = str(getattr(pool, "kind", "") or "")
@@ -270,7 +331,7 @@ class LevelEngine(DerivedEngine):
         # (`tines_now`); the emitter reads them beside the ledger's levels.
         return out
 
-    def tines_now(self, price: float):
+    def tines_now(self, price: float, minutes_back: float = 0.0):
         """The 1h fork's rails at THIS read, from the fork the ForkEngine holds
         right now — never a stored row (mainline r364, the operator's rule: "as
         long as there's a fork present, there should be a map of its points. And
@@ -285,6 +346,18 @@ class LevelEngine(DerivedEngine):
             return []
         idx = _f((getattr(fe, "last_idx", {}) or {}).get("1h")) or 0.0
         slope = _f(getattr(fork, "slope", None)) or 0.0
+        # r19 — THE RAIL WHERE IT STOOD, NOT WHERE IT IS. `minutes_back` walks
+        # the rail back along its own slope so an interaction is measured at the
+        # instant it happened. The tines are parallel, so one slope moves all
+        # three. Operator: "There should be no drift from when triggers fired.
+        # They should be recorded at the moment of the interaction and not in
+        # hindsight." Mainline measured the cost of getting this wrong (r377):
+        # for a clean touch the extreme sits ON the rail, so the reported depth
+        # was slope x bars_since — THE STALENESS OF THE TOUCH, NOT ITS DEPTH.
+        # ⚠️ `minutes_back=0` is the live read and is byte-identical to r15's
+        # behaviour, which is what keeps the board unchanged.
+        back = (slope * (float(minutes_back or 0.0) / 60.0)) if slope else 0.0
+        fkey = self._fork_key()
         out = []
         for name, fn in (("fork1h/upper", "upper_at"), ("fork1h/median", "median_at"),
                          ("fork1h/lower", "lower_at")):
@@ -294,6 +367,7 @@ class LevelEngine(DerivedEngine):
                 continue
             if not p or p <= 0:
                 continue
+            p = p - back
             gap = p - (price or 0.0)
             bars = None
             if slope and price:
@@ -304,6 +378,8 @@ class LevelEngine(DerivedEngine):
                                 ("support" if name.endswith("lower") else
                                  ("resistance" if price and price < p else "support")),
                         "slope_per_bar": slope, "bars_to_contact": bars,
+                        "fork_key": fkey,          # r19: which projection this is
+                        "minutes_back": float(minutes_back or 0.0),
                         "dist_pct": (abs(gap) / price * 100.0) if price else None})
         return out
 
@@ -350,6 +426,30 @@ class LevelEngine(DerivedEngine):
     @staticmethod
     def _is_tine(prov: str) -> bool:
         return str(prov).startswith("fork1h/")
+
+    def _fork_key(self):
+        """The 1h fork's IDENTITY — its three anchors — or None if none is held.
+
+        🔑 r19 — A NEW FORK IS A NEW PROJECTION, AND THE OLD ONE'S STATE GOES
+        WITH IT. `build_fork_contained` runs every derive, so the Fork OBJECT is
+        rebuilt constantly; what says whether it is the SAME fork is `p0/p1/p2`.
+        ⚠️ r15's drop was keyed on the tine's NAME disappearing — and a reborn
+        fork publishes the SAME three names at new prices, so the condition could
+        never fire and a dead fork's pierce state was inherited by its successor.
+        The operator: "if a new fork is born a new projection needs to be
+        graphed and plotted."
+        """
+        fe = self._forks
+        fork = (getattr(fe, "last_forks", {}) or {}).get("1h") if fe is not None else None
+        if fork is None:
+            return None
+        key = []
+        for a in ("p0", "p1", "p2"):
+            piv = getattr(fork, a, None)
+            if piv is None:
+                return None
+            key.append((_f(getattr(piv, "idx", None)), _f(getattr(piv, "price", None))))
+        return tuple(key)
 
     def _lid(self, sym: str, prov: str, price: float) -> str:
         # a tine's identity is the tine; its price moves every bar
@@ -505,11 +605,26 @@ class LevelEngine(DerivedEngine):
         _px = _f(ctx.get("price")) or close
         # r15 — the tines are read, not stored: they join the ledger's levels here
         # for the emitter only, and vanish with the fork (their pierce state too)
-        _tines = self.tines_now(_px)
-        _tine_names = {t_["provenance"] for t_ in _tines}
-        for k in [k for k in self._pierce if any(k.endswith(f":{n}:0.00") for n in ("fork1h/upper", "fork1h/median", "fork1h/lower"))]:
-            if not any(k.endswith(f":{n}:0.00") for n in _tine_names):
+        # 🔴 r19 — THE PROJECTION LIVES AND DIES WITH ITS FORK. The rails are
+        # evaluated ONE BAR BACK because that is the bar whose extreme is being
+        # judged: `bar`/`hi`/`lo` below come from df.index[-2], the last CLOSED
+        # bar, so reading the rail at "now" measured the interaction against a
+        # rail that had already moved past it.
+        _tines = self.tines_now(_px, minutes_back=1.0)
+        _fkey = self._fork_key()
+        if _fkey != self._fork_seen:
+            # A NEW FORK (or none) — the old projection's interaction state is
+            # not inherited. r15 dropped state only when a tine NAME vanished,
+            # and a reborn fork republishes the same three names at new prices,
+            # so that condition could never fire: a dead fork's pierce state
+            # lived on inside its successor's rails.
+            if self._fork_seen is not None:
+                logger.info("[level] 1h fork replaced — dropping %d tine pierce "
+                            "state(s); a new projection starts clean",
+                            sum(1 for k in self._pierce if ":fork1h/" in k))
+            for k in [k for k in self._pierce if ":fork1h/" in k]:
                 self._pierce.pop(k, None)
+            self._fork_seen = _fkey
         srcs = [(p_, l_, k_, t_, v_) for p_, l_, k_, t_, v_ in self._sources(ctx)]
         srcs += [(t_["provenance"], t_["price"], t_["kind"], "1h", 1) for t_ in _tines]
         for prov, lvl, kind, tf, live in srcs:

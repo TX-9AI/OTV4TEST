@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """
-tests/check_level_rejection.py  v1.4
+tests/check_level_rejection.py  v1.5
+v1.5  2026-09-13  OTV4TEST r19 — F1/F1b/F2/F2b/F3/F3b/F4/F4b: the fork projection
+      is separated from the level book. A moving rail never reaches the ledger
+      (F1) while the static pool beside it still does (F1b, the control); the
+      rails are served as a projection carrying their fork (F2) and vanish with
+      it (F2b); the rail can be read WHERE IT STOOD (F3) with the live read
+      unchanged (F3b, the control); and a NEW fork with the SAME tine names
+      drops the old projection's state (F4b) while the same fork redrawn keeps
+      it (F4, the control). F1, F3 and F4b born red at r18.
 v1.4  2026-09-13  OTV4TEST r18 — R1/R1b/R2/R2b/R2c/R3/R3b: the operator's three
       rulings. A touch is ONE PER CLOSED BAR (a single bar polled 20x scored 20);
       ACCEPT_CLOSES counts CLOSED 1m BARS, not ticks (the second poll of one bar
@@ -353,6 +361,103 @@ def main():
         "SELECT COUNT(*) FROM level_event WHERE event='ACCEPTED'").fetchone()[0]
     check("R3b ...and two CONSECUTIVE closes beyond still accept",
           n4 == 1, f"{n4} ACCEPTED")
+
+    # ══ r19: THE FORK PROJECTION IS A CO-INFORMER, NOT A LEVEL ═════════════
+    # Operator, 2026-09-13: session extremes separated from the 1h fork object;
+    # the projection persists only as long as the fork; a new fork gets a new
+    # projection; and no drift — the interaction is recorded at the moment it
+    # happened, not in hindsight.
+    import tempfile as _tf2
+
+    class _Pivot:
+        def __init__(self, i, px): self.idx, self.price = i, px
+
+    class _Fork:
+        """A 1h fork. Its ANCHORS are its identity."""
+        def __init__(self, base=900.0, slope=0.06, anchors=(0, 1, 2)):
+            self.slope = slope
+            self.p0, self.p1, self.p2 = (_Pivot(a, base + a) for a in anchors)
+            self._b = base
+        def upper_at(self, i):  return self._b + 6.0 + self.slope * i
+        def median_at(self, i): return self._b + self.slope * i
+        def lower_at(self, i):  return self._b - 6.0 + self.slope * i
+
+    class _FE:
+        def __init__(self, fork): self.last_forks = {"1h": fork} if fork else {}; self.last_idx = {"1h": 100.0} if fork else {}
+
+    class _MovingPool:
+        """What publish_tines puts on the map: a named pool flagged moving."""
+        price, kind, name, timeframe, moving, is_named = 726.17, "high", "1h upper tine", "1h", True, True
+
+    class _StaticPool:
+        price, kind, name, timeframe, moving, is_named = 717.52, "high", "PDH (R1)", "1d", False, True
+
+    class _LiqP:
+        prev_day_high = 910.00
+        prev_day_low  = 900.00
+        pools = [_MovingPool(), _StaticPool()]
+
+    # ── F1: a MOVING rail never reaches the horizontal book ──
+    st7 = DerivedStore(path=os.path.join(_tf2.mkdtemp(), "f.db"))
+    e7 = LevelEngine(st7, "TST7", forks=_FE(_Fork()))
+    import pandas as _pd
+    _d1 = _pd.DataFrame([{"open": 905.0, "high": 905.0, "low": 905.0, "close": 905.0}] * 2,
+                        index=_pd.date_range("2026-09-08 09:40", periods=2, freq="1min"))
+    e7.derive({"symbol": "TST7", "price": 905.0, "liq_map": _LiqP(), "vol": None,
+               "df_1m": _d1, "df_5m": _df5(905.0)})
+    provs = [r[0] for r in st7.conn.execute(
+        "SELECT provenance FROM level_ledger WHERE symbol='TST7'").fetchall()]
+    check("F1 a MOVING rail never enters level_ledger — the projection is not a level",
+          "1h upper tine" not in provs, f"ledger holds {sorted(set(provs))}")
+    check("F1b ...and the STATIC named pool beside it still does — the control",
+          "PDH (R1)" in provs, f"ledger holds {sorted(set(provs))}")
+
+    # ── F2: the projection is served beside the ledger, scoped to its fork ──
+    fk = _Fork()
+    e8 = LevelEngine(DerivedStore(path=os.path.join(_tf2.mkdtemp(), "g.db")), "TST8", forks=_FE(fk))
+    t_live = e8.tines_now(905.0)
+    check("F2 the rails are SERVED as a projection, carrying the fork they came from",
+          len(t_live) == 3 and all(t.get("fork_key") is not None for t in t_live),
+          f"{len(t_live)} rails, fork_key={t_live[0].get('fork_key') if t_live else None}")
+    check("F2b a DEAD fork yields no projection at all — it goes with the fork",
+          LevelEngine(None, "X", forks=_FE(None)).tines_now(905.0) == [])
+
+    # ── F3: NO DRIFT — the rail where it STOOD when the extreme printed ──
+    now_rail  = e8.tines_now(905.0)[0]["price"]
+    back_rail = e8.tines_now(905.0, minutes_back=30.0)[0]["price"]
+    drift = now_rail - back_rail
+    check("F3 the rail can be read WHERE IT STOOD — 30 min back is not 'now'",
+          abs(drift - fk.slope * 0.5) < 1e-9 and drift > 0,
+          f"now {now_rail:.4f} vs 30m back {back_rail:.4f} — drift {drift:.4f}")
+    check("F3b ...and minutes_back=0 is byte-identical to the live read (r15 unchanged)",
+          e8.tines_now(905.0, minutes_back=0.0)[0]["price"] == now_rail)
+
+    # ── F4: A NEW FORK IS A NEW PROJECTION — the old state does not survive ──
+    # The interaction is REAL, not seeded: a bar wicks the upper rail and closes
+    # back inside, which is what creates tine pierce state in the first place.
+    def _wick(t0, hi):
+        return _pd.DataFrame(
+            [{"open": 905.0, "high": hi,   "low": 905.0, "close": 905.0},
+             {"open": 905.0, "high": 905.0, "low": 905.0, "close": 905.0}],
+            index=_pd.date_range(f"2026-09-08 {t0}", periods=2, freq="1min"))
+
+    fe = _FE(_Fork(base=900.0, anchors=(0, 1, 2)))
+    e9 = LevelEngine(DerivedStore(path=os.path.join(_tf2.mkdtemp(), "h.db")), "TST9", forks=fe)
+    key_before = e9._fork_key()
+    # a genuine pierce of the upper rail (~912), closing back inside
+    e9.derive({"symbol": "TST9", "price": 905.0, "liq_map": _LiqP(), "vol": None,
+               "df_1m": _wick("09:40", 912.9), "df_5m": _df5(905.0)})
+    made = [k for k in e9._pierce if ":fork1h/" in k]
+    check("F4 a real tine interaction creates projection state, and the SAME fork keeps it",
+          bool(made), f"pierce keys {list(e9._pierce)}")
+
+    # a NEW fork — DIFFERENT ANCHORS, the SAME three tine names
+    fe.last_forks["1h"] = _Fork(base=920.0, anchors=(9, 10, 11))
+    e9.derive({"symbol": "TST9", "price": 905.0, "liq_map": _LiqP(), "vol": None,
+               "df_1m": _wick("09:42", 905.0), "df_5m": _df5(905.0)})
+    check("F4b a NEW fork (new anchors, SAME tine names) drops the old projection's state",
+          not [k for k in e9._pierce if ":fork1h/" in k] and e9._fork_key() != key_before,
+          f"pierce keys {list(e9._pierce)}")
 
     print()
     if FAILED:
