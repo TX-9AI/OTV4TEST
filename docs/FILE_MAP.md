@@ -6,7 +6,7 @@ the canary fails on drift (WORKING_AGREEMENT 33).
 
 271 Python modules across 13 local packages.
 
-**Reached by:** 110 imported · 9 declared entry points · 61 referenced from a script, unit or doc but never imported · **91 by nothing here**.
+**Reached by:** 110 imported · 9 declared entry points · 62 referenced from a script, unit or doc but never imported · **90 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -1020,7 +1020,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/r_ledger.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `devtools.sh`, `docs/FORK_BRIEF.md`
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/BACKLOG.md`, `docs/FORK_BRIEF.md`
 
 ### `tests/rejection_ledger.py`
 - **calls:** (none)
@@ -1084,7 +1084,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tools/probe_aux_streams.py`
 - **calls:** `config.py`, `data/tasty_client.py`
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tools/query.py`
 - **calls:** `config.py`, `data/market_data.py`, `strategy/structure.py`
