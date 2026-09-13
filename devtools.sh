@@ -1,6 +1,23 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# devtools.sh  v2.4  — OTV4TEST box menu
+# devtools.sh  v3.0  — OTV4TEST box menu
+# v3.0  2026-09-13  OTV4TEST r17 — THE MENU IS READ ON A PHONE. Reformatted to
+#       control's shape: a 54-column rule, a title line, sections as " NAME:",
+#       items as "  NN) label" — and every line fits 54 columns, because a label
+#       that runs past the rule WRAPS in Termius and a wrapped menu is the one
+#       misread at 09:35 (items 41 and 43 wrapped at v2.4). Colour is control's
+#       exactly: the render prints PLAIN text and a sed pass paints the rules,
+#       the title and the section headers, suppressed when stdout is not a TTY,
+#       so no escape ever sits inside a label. NEW SECTION — CLAUDE CODE, adapted
+#       to this box: HAND OFF (a fresh thread bootstrapped from docs/HANDOFF.md —
+#       the operator's own brief, replacing the inherited v4 handoff of 2026-08-20
+#       which named PORT_STATE.md and was stale by its own header),
+#       REATTACH (the running session), RESUME (--continue), RESUME [other]
+#       (--resume). A one-time docs/HANDOFF_NOW.md, when present, is POINTED AT
+#       by one appended line rather than folded into the brief, so the brief never
+#       drifts and the note expires by being deleted. Claude runs inside tmux here, always, so a dropped mobile
+#       connection cannot kill a working thread; three of the four `exec`, which
+#       is why the section says these items END the menu.
 # v2.4  2026-09-11  OTV4TEST r14 — the operator readers live in tools/ (root cleanup);
 #       REINSTALL TIMERS added under GIT & LAND for the one-time unit rewrite.
 # v2.3  2026-09-09  OTV4TEST r8 — BAKE runs `systemctl daemon-reload` before the
@@ -257,44 +274,145 @@ land_tarball() {
   LAND_ARCHIVE="$arc" bash /tmp/fork_land/land.sh $halves
 }
 
+# ── CLAUDE CODE (this box) ───────────────────────────────────────────────────
+# Claude runs INSIDE TMUX on this box, always: the operator drives from a phone
+# and a dropped mobile connection must not kill a working thread (the same rule
+# that governs every long-running job here). The session name is fixed so
+# REATTACH always knows where to look.
+#   HAND OFF  a FRESH thread, bootstrapped with docs/HANDOFF.md so the
+#             introduction is not re-typed; kills this menu and every tmux
+#   REATTACH  the session that is already running; exits the menu, kills nothing
+#   RESUME    `claude --continue` — the last thread on this box
+#   RESUME [other]  `claude --resume` — its picker
+# ⚠️ THESE ITEMS END THE MENU. Three of them `exec` into Claude, so the menu
+# process is REPLACED, not suspended — there is no menu to come back to, which
+# is the honest behaviour rather than a shell stacked under a shell.
+CLAUDE_TMUX="${CLAUDE_TMUX:-claude}"
+CLAUDE_BOOTSTRAP="$REPO/docs/HANDOFF.md"
+CLAUDE_NOW="$REPO/docs/HANDOFF_NOW.md"
+
+_claude_bin() {
+  command -v claude 2>/dev/null || echo ""
+}
+
+_claude_guard() {
+  local bin; bin="$(_claude_bin)"
+  if [ -z "$bin" ]; then
+    echo "  claude is not on PATH on this box."
+    echo "  install it, or drive from control and ssh in."
+    pause; return 1
+  fi
+  return 0
+}
+
+_claude_kill_all_tmux() {
+  # HAND OFF and RESUME start a NEW thread: anything still running belongs to
+  # the old one, and a stale tmux is how two threads end up editing one tree.
+  if command -v tmux >/dev/null 2>&1; then
+    tmux kill-server >/dev/null 2>&1 || true
+  fi
+}
+
+mi_claude_handoff() {
+  _claude_guard || return
+  if [ ! -f "$CLAUDE_BOOTSTRAP" ]; then
+    echo "  no bootstrap at $CLAUDE_BOOTSTRAP — a fresh thread would start cold."
+    confirm "start it anyway?" || { pause; return; }
+  fi
+  echo "  HAND OFF: a FRESH Claude thread, bootstrapped from docs/HANDOFF.md."
+  echo "  This kills this menu and EVERY tmux session on the box."
+  confirm "proceed?" || { pause; return; }
+  _claude_kill_all_tmux
+  cd "$REPO" || exit 1
+  # ⚠️ THE PROMPT IS READ BY THE INNER SHELL, NOT THIS ONE. `\$(cat ...)` is
+  # escaped so tmux's shell does the substitution: the operator's text contains
+  # double quotes ("Vertigo Capital", "plans"), and expanding it HERE would end
+  # the argument at the first one and hand Claude a truncated brief.
+  # A ONE-TIME NOTE, WHEN ONE EXISTS. `docs/HANDOFF.md` is the standing brief and
+  # is passed verbatim; `docs/HANDOFF_NOW.md` is a per-handoff helper (state and
+  # open items) that the fresh thread is POINTED AT rather than fed — so the
+  # brief never drifts, and the note expires simply by being deleted.
+  if [ -f "$CLAUDE_NOW" ]; then
+    echo "  one-time note present: docs/HANDOFF_NOW.md (the thread will be pointed at it)"
+  fi
+  if [ -f "$CLAUDE_BOOTSTRAP" ]; then
+    exec tmux new-session -s "$CLAUDE_TMUX" \
+      "cd '$REPO' && claude \"\$(cat '$CLAUDE_BOOTSTRAP')\$([ -f '$CLAUDE_NOW' ] && printf '%s' '
+
+Also read docs/HANDOFF_NOW.md first — a one-time note for this handoff: where things stand, what to read on Monday, and the open items. Delete it once you have read it.')\"; exec bash"
+  else
+    exec tmux new-session -s "$CLAUDE_TMUX" "cd '$REPO' && claude; exec bash"
+  fi
+}
+
+mi_claude_reattach() {
+  if ! command -v tmux >/dev/null 2>&1; then echo "  tmux is not installed"; pause; return; fi
+  if ! tmux has-session -t "$CLAUDE_TMUX" 2>/dev/null; then
+    echo "  no running Claude session named '$CLAUDE_TMUX'."
+    echo "  HAND OFF starts a fresh one; RESUME continues the last thread."
+    pause; return
+  fi
+  exec tmux attach -t "$CLAUDE_TMUX"
+}
+
+mi_claude_resume() {
+  _claude_guard || return
+  echo "  RESUME: continue the LAST Claude thread on this box."
+  echo "  This kills this menu and EVERY tmux session."
+  confirm "proceed?" || { pause; return; }
+  _claude_kill_all_tmux
+  cd "$REPO" || exit 1
+  exec tmux new-session -s "$CLAUDE_TMUX" "claude --continue; exec bash"
+}
+
+mi_claude_resume_pick() {
+  _claude_guard || return
+  echo "  RESUME [other]: Claude's own thread picker."
+  echo "  This kills this menu and EVERY tmux session."
+  confirm "proceed?" || { pause; return; }
+  _claude_kill_all_tmux
+  cd "$REPO" || exit 1
+  exec tmux new-session -s "$CLAUDE_TMUX" "claude --resume; exec bash"
+}
+
 # ── THE MENU IS DATA — numbers are assigned at render time ─────────────────
 MENU=(
   "SECTION|STATUS (this box)"
-  "ITEM|tools/status.py        live bot status snapshot|run_status"
-  "ITEM|tools/query.py         performance dashboard|run_query"
-  "ITEM|DECISIONS NOW          (enter on / exit on, live snapshot)|run_decisions"
-  "ITEM|tools/debug_status.py  raw debug dump|run_debug"
-  "ITEM|tools/eod_summary.py   end-of-day summary|run_eod"
+  "ITEM|status.py            live bot status snapshot|run_status"
+  "ITEM|query.py             performance dashboard|run_query"
+  "ITEM|DECISIONS NOW        enter on / exit on, live|run_decisions"
+  "ITEM|debug_status.py      raw debug dump|run_debug"
+  "ITEM|eod_summary.py       end-of-day summary|run_eod"
 
   "SECTION|SENSORS (this box's derived stores; read-only)"
   "ITEM|Manifold health board|s_manifold"
-  "ITEM|Strategy notes        (what each engine SAW - signals, not trades)|s_notes"
-  "ITEM|PLAN BOARD            (every plan, every check, per tick)|s_plan_board"
-  "ITEM|PLAN ROWS             (the per-tick narrative, one strategy or all)|s_plan_rows"
-  "ITEM|Plan ledger           (intent + terminal reason)|s_plan_ledger"
-  "ITEM|Exit counterfactual   (flow vs the stop)|s_exit_cf"
-  "ITEM|Fire snapshot         (derived vector at entry)|s_fire_snapshot"
-  "ITEM|Surface               (charm / vanna / GEX)|s_surface"
-  "ITEM|Indicators            (ADX / ATR / VWAP series)|s_indicators"
-  "ITEM|Forks                 (built vs reject reason)|s_forks"
-  "ITEM|Levels                (touches + retirements)|s_levels"
-  "ITEM|LEVEL EVENTS          (WICKED / REJECTED / ACCEPTED - the rejection fact)|s_level_events"
-  "ITEM|Order flow            (aggression + depth)|s_order_flow"
+  "ITEM|Strategy notes       what each engine SAW|s_notes"
+  "ITEM|PLAN BOARD           every plan, every check|s_plan_board"
+  "ITEM|PLAN ROWS            the per-tick narrative|s_plan_rows"
+  "ITEM|Plan ledger          intent + terminal reason|s_plan_ledger"
+  "ITEM|Exit counterfactual  flow vs the stop|s_exit_cf"
+  "ITEM|Fire snapshot        derived vector at entry|s_fire_snapshot"
+  "ITEM|Surface              charm / vanna / GEX|s_surface"
+  "ITEM|Indicators           ADX / ATR / VWAP series|s_indicators"
+  "ITEM|Forks                built vs reject reason|s_forks"
+  "ITEM|Levels               touches + retirements|s_levels"
+  "ITEM|LEVEL EVENTS         the rejection fact|s_level_events"
+  "ITEM|Order flow           aggression + depth|s_order_flow"
 
   "SECTION|TESTS"
-  "ITEM|STANDING CHECKS       (what the lander runs; by hand between landings)|run_standing"
-  "ITEM|full pytest suite     the 5 audit-defect tests|run_suite"
-  "ITEM|market-data contract  standalone|run_contract"
-  "ITEM|ORB retest v3.3       standalone|run_orb"
-  "ITEM|verify_feed_v3.sh     ON-BOX, needs live services in RTH|run_feed_verify"
+  "ITEM|STANDING CHECKS      what the lander runs|run_standing"
+  "ITEM|full pytest suite    the 5 audit-defect tests|run_suite"
+  "ITEM|market-data contract standalone|run_contract"
+  "ITEM|ORB retest v3.3      standalone|run_orb"
+  "ITEM|verify_feed_v3.sh    ON-BOX, live services, RTH|run_feed_verify"
 
   "SECTION|DEBUG / LOGS (this box)"
-  "ITEM|Service status        (bot + feed)|svc_status"
-  "ITEM|Journal tail (last N)|log_journal_n"
-  "ITEM|Journal follow        (Ctrl-C to stop)|log_journal"
-  "ITEM|Feed health           (store freshness + last bar per interval)|feed_health"
-  "ITEM|Bot log tail (last 40)|log_bot_tail"
-  "ITEM|Bot log follow        (Ctrl-C to stop)|log_botfile"
+  "ITEM|Service status       bot + feed|svc_status"
+  "ITEM|Journal tail         last N|log_journal_n"
+  "ITEM|Journal follow       Ctrl-C to stop|log_journal"
+  "ITEM|Feed health          freshness + last bar|feed_health"
+  "ITEM|Bot log tail         last 40|log_bot_tail"
+  "ITEM|Bot log follow       Ctrl-C to stop|log_botfile"
 
   "SECTION|SERVICES (this box)"
   "ITEM|restart optionsbot|restart_bot"
@@ -303,31 +421,69 @@ MENU=(
   "ITEM|start optionsbot|start_bot"
 
   "SECTION|R SUITE (this box's trades.db)"
-  "ITEM|TRADES TAKEN          (one line per trade, phone width)|trades_taken"
-  "ITEM|R LEDGER              (R, expectancy, capture + selection vs extension)|r_ledger"
-  "ITEM|Stop / TP sweep       (R surface over excursions)|r_stop_sweep"
-  "ITEM|Exit replay           (trail fit on real premium paths)|r_exit_replay"
+  "ITEM|TRADES TAKEN         one line per trade|trades_taken"
+  "ITEM|R LEDGER             R, expectancy, capture|r_ledger"
+  "ITEM|Stop / TP sweep      R surface over excursions|r_stop_sweep"
+  "ITEM|Exit replay          trail fit on real paths|r_exit_replay"
   "ITEM|Edge scan|r_edge_scan"
+
+  "SECTION|CLAUDE CODE (these items END the menu)"
+  "ITEM|HAND OFF -> fresh Claude thread, bootstrapped|mi_claude_handoff"
+  "ITEM|REATTACH -> the running Claude session|mi_claude_reattach"
+  "ITEM|RESUME   -> the last Claude thread|mi_claude_resume"
+  "ITEM|RESUME [other] -> pick a Claude thread|mi_claude_resume_pick"
 
   "SECTION|GIT & LAND (this box - OTV4TEST only)"
   "ITEM|show commit / status / last ledger row|git_state"
   "ITEM|git pull --ff-only|git_pull"
-  "ITEM|LAND a tarball from ~   (verify -> commit -> push; appends docs/GENESIS-TEST.md)|mi_land"
-  "ITEM|BAKE                    (pull --ff-only, check_imports, restart the bot)|mi_bake"
-  "ITEM|REINSTALL TIMERS        (one-time, after r14: units point at deploy/ and tools/)|mi_reinstall_timers"
+  "ITEM|LAND a tarball from ~|mi_land"
+  "ITEM|BAKE   pull, check_imports, restart the bot|mi_bake"
+  "ITEM|REINSTALL TIMERS     one-time, after r14|mi_reinstall_timers"
 )
 
+# ── COLOUR, AS ON CONTROL ────────────────────────────────────────────────────
+# The render prints PLAIN text and a sed pass paints it, so no escape is ever
+# embedded in a label (a label with an escape in it breaks the width maths and
+# leaks into a pipe). Matched structurally: a full-width rule, the title line,
+# and a section header — one leading space, a capital, a trailing colon. Items
+# start with two spaces and a digit, so they never match. Colour is suppressed
+# when stdout is not a TTY, so piping the menu stays clean.
+_BLUE=$'\033[1;34m'
+_WHITE=$'\033[1;37m'
+_RST=$'\033[0m'
+_RULE="======================================================"
+
+_colorize() {
+  if [ -t 1 ]; then
+    sed -E -e "s/^(=+)$/${_BLUE}\1${_RST}/" \
+           -e "s/^(  OTV4TEST .*)$/${_WHITE}\1${_RST}/" \
+           -e "s/^( [A-Z][^:]*:)$/${_BLUE}\1${_RST}/"
+  else
+    cat
+  fi
+}
+
+# ⚠️ EVERY LINE FITS 54 COLUMNS. The operator reads this menu on a phone in
+# Termius; a label that runs past the rule wraps, and a wrapped menu is the one
+# that gets misread at 09:35. Keep labels short enough that "  NN) label" fits.
 menu_render() {
   local n=0 e kind rest label
-  echo
-  echo "═══ OTV4TEST devtools v2.0 — options-trader @ $(hostname) ═══════════════════"
-  echo "  bot=$(svc "$BOT")  feed=$(svc "$FEED")  $(git -C "$REPO" log -1 --oneline 2>/dev/null | cut -c1-40)"
+  printf '%s\n' "$_RULE"
+  printf '  OTV4TEST — devtools  v3.0   %s\n' "$(hostname -s)"
+  printf '  bot=%-8s feed=%-8s %s\n' "$(svc "$BOT")" "$(svc "$FEED")" \
+         "$(git -C "$REPO" log -1 --format='%h %s' 2>/dev/null | cut -c1-22)"
+  printf '%s\n' "$_RULE"
   for e in "${MENU[@]}"; do
     kind="${e%%|*}"; rest="${e#*|}"
-    if [ "$kind" = "SECTION" ]; then echo; echo "  $rest"
-    else n=$((n+1)); label="${rest%%|*}"; printf '  %2d) %s\n' "$n" "$label"; fi
+    if [ "$kind" = "SECTION" ]; then
+      printf '\n %s:\n' "$rest"
+    else
+      n=$((n+1)); label="${rest%%|*}"
+      printf '  %2d) %s\n' "$n" "$label"
+    fi
   done
-  echo; echo "   0) quit"
+  printf '\n   0) Exit\n'
+  printf '%s\n' "$_RULE"
 }
 menu_dispatch() {  # $1 = number -> runs the function at that position
   local n=0 e kind rest fn
@@ -340,12 +496,16 @@ menu_dispatch() {  # $1 = number -> runs the function at that position
   echo "unknown option: $1"
 }
 
-while true; do
-  menu_render
-  read -rp "select: " choice
+menu() {
+  clear
+  menu_render | _colorize
+  read -rp "Select: " choice
+  # 0 EXITS THE PROGRAM. `return` would only leave menu(); the caller loops.
+  if [ "$choice" = "0" ]; then exit 0; fi
   case "${choice:-}" in
-    0) exit 0 ;;
-    *[!0-9]*|"") echo "not a number" ;;
-    *) menu_dispatch "$choice" ;;
+    *[!0-9]*|"") echo "not a number"; pause ;;
+    *) menu_dispatch "$choice" || true ;;
   esac
-done
+}
+
+while true; do menu; done

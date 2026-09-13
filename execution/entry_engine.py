@@ -1,5 +1,9 @@
 """
-execution/entry_engine.py  v4.9
+execution/entry_engine.py  v4.10
+v4.10 2026-09-13  OTV4TEST r17 — PRE.1: `_record_kwargs` writes `option_symbol` from
+      the signal's contract. The shared factory never has; 19 of 21 rows on this
+      box carry NULL and no premium-path study can join them. Same one-line fix
+      as mainline r340, in the same ONE LINEAGE factory, so both paths get it.
 v4.9  2026-09-10  OTV4TEST r12 — the record carries `is_liquidity_hunt` (the slot rule
       reads the row, like `is_butterfly`).
 v4.8  2026-09-04  r240 — 🔴 THE ORB BOUNDS ARE WRITTEN BY CAPABILITY,
@@ -625,6 +629,16 @@ class EntryEngine:
         """
         return dict(
             symbol            = INSTRUMENT,
+            # 🔴 PRE.1 (r17) — THE ROW NAMED NO OPTION. `symbol` is the UNDERLYING;
+            # nothing here wrote the CONTRACT, so 19 of 21 rows in this box's
+            # trades.db carry a NULL `option_symbol` (every ORB, every runaway,
+            # all three hunts; only the credit path, which writes it on its own,
+            # carried one). A row with no option symbol joins to no quote_series,
+            # so every premium-path study REFUSES it — mainline measured
+            # exit_replay refusing 301 of 337 and fixed it at r340. FORWARD-ONLY:
+            # rows already in the book stay unreplayable. HUNT.1's first week
+            # opens Monday and every hunt fill would land unjoinable without this.
+            option_symbol     = str(getattr(getattr(signal, "contract", None), "symbol", "") or ""),
             strategy          = signal.strategy_name,
             setup_type        = signal.setup_type,
             direction         = signal.direction,
