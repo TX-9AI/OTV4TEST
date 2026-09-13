@@ -1,5 +1,16 @@
 """
-notifications/alert_manager.py  v4.2
+notifications/alert_manager.py  v4.3
+v4.3  2026-09-13  OTV4TEST r22 — THE BOOT ALERT CARRIES THE BOX'S PUBLIC IP.
+      Operator: the public IP changes on every stop/start, so getting onto a
+      misbehaving box meant the AWS console and its two-factor login first —
+      "a big goat rope when I need on there immediately". `send_startup_alert`
+      now appends `IP <address>`, or `IP unavailable (<reason>)` — a named
+      absence, never a silently missing field. Sourced from
+      checkip.amazonaws.com, verified to equal the console's Public IPv4 for
+      this instance; parsed as an IP rather than trusted as text; bounded at
+      3 s so it cannot hold the boot. IMDS was not used because it cannot be
+      exercised from this box's assistant session, and an untestable path does
+      not ship. check_startup_alert A1-A5.
 v4.2  2026-09-06  r292 / DEV.10 — `send_blind_alert`'s DRILL CALLER IS GONE.
       `tests/blind_alert_selftest.py` never existed in otv4: the devtools item
       shelling it answered "can't open file" on all fifteen boxes and STILL
@@ -133,12 +144,53 @@ repo-wide v3.0 bump: Yahoo-Finance purge & data stream
 """
 
 import html
+import ipaddress
 import logging
+import urllib.request
 from typing import Optional
 from utils.time_utils import fmt_et_short
 from config import INSTRUMENT
 
 logger = logging.getLogger(__name__)
+
+# ── OTV4TEST r22 — THE BOX'S PUBLIC IP, ON THE BOOT ALERT ───────────────────
+# Operator, 2026-09-13: the boot alert is how he learns a box is up, and the
+# public IP CHANGES ON EVERY STOP/START — so reaching the box meant fighting the
+# AWS console and its two-factor login first, at exactly the moment he needs to
+# be on the box NOW. The IP rides the alert so Termius can connect straight away.
+# 🔑 WHY checkip.amazonaws.com AND NOT THE INSTANCE METADATA SERVICE: IMDS is
+# the more authoritative source, but it could not be exercised from this box's
+# assistant session (the tool's permission layer refuses it), and a path that
+# cannot be tested here does not ship here. checkip is AWS-operated, plain text,
+# and was VERIFIED on 2026-09-13 to return exactly the Public IPv4 the EC2
+# console shows for i-0b071815bfb8e2d6a — i.e. the box egresses from its own
+# address, not a NAT, so this is the address that actually accepts SSH.
+# ⚠️ IT DEPENDS ON THE SAME EGRESS THE ALERT ITSELF NEEDS. If this lookup cannot
+# reach AWS, Telegram almost certainly cannot be reached either — so the lookup
+# adds no new way for the boot alert to go missing.
+PUBLIC_IP_URL = "https://checkip.amazonaws.com"
+PUBLIC_IP_TIMEOUT_S = 3.0
+
+
+def public_ip(timeout: Optional[float] = None, url: Optional[str] = None):
+    """(ip, None) on success, (None, reason) on failure. NEVER raises.
+
+    ⚠️ THE ANSWER IS PARSED AS AN IP ADDRESS, NOT TRUSTED AS TEXT. A captive
+    portal, a proxy error page or a truncated read would otherwise be pasted
+    straight into the alert — and a wrong address that LOOKS like an answer is
+    worse than one that says it is missing.
+    ⚠️ BOUNDED. It runs inline on the startup path, so it gives up after
+    PUBLIC_IP_TIMEOUT_S rather than holding the bot's boot.
+    """
+    try:
+        with urllib.request.urlopen(url or PUBLIC_IP_URL,
+                                    timeout=timeout or PUBLIC_IP_TIMEOUT_S) as r:
+            raw = r.read(64).decode("ascii", "replace").strip()
+        return str(ipaddress.ip_address(raw)), None
+    except ValueError:
+        return None, "reply was not an IP address"
+    except Exception as e:                                      # noqa: BLE001
+        return None, type(e).__name__
 
 
 class AlertManager:
@@ -182,9 +234,15 @@ class AlertManager:
                             restart_type: str = ""):
         mode = "PAPER" if paper else "LIVE"
         rt   = f" | {restart_type}" if restart_type else ""
+        # r22 — the address to SSH to, or a NAMED absence. Never silently
+        # omitted: "no IP field" and "lookup failed" must not look alike (§0.5).
+        ip, why = public_ip()
+        if ip is None:
+            logger.warning("startup alert: public IP unavailable (%s)", why)
+        ipf  = f" | IP {ip}" if ip else f" | IP unavailable ({why})"
         self._send(
             f"\U0001F680 OptionsBot [{mode}] STARTED | "
-            f"{instrument}{rt} | "
+            f"{instrument}{rt}{ipf} | "
             f"{fmt_et_short()}"
         )
 
