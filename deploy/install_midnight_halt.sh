@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
-# deploy/install_midnight_halt.sh — v1.1
+# deploy/install_midnight_halt.sh — v1.2
+# v1.2  2026-09-13  OTV4TEST r21 — DIR IS THE REPO ROOT. r14's line below says
+#       "moved ... no behaviour change"; THE MOVE WAS THE BEHAVIOUR CHANGE. `DIR`
+#       came from this script's own directory, so from deploy/ the unit named
+#       paths under deploy/. Rendered with sudo stubbed: the python fell back to
+#       PATH's python3 and the installer mkdir'd deploy/logs, but ExecStart named
+#       deploy/warehouse/midnight_halt.py, which DOES NOT EXIST. Never installed on
+#       this box, so it never fired broken — the first install would have made a
+#       timer that fails every midnight and pages nobody. Now resolves one level
+#       up, and check_midnight_halt M4 renders the unit and checks it.
 # v1.1  2026-09-11  OTV4TEST r14 — moved from the repo root to deploy/ (root cleanup); no behaviour change.
 # v1.0 (2026-09-06) — r289 / EOD.3. Installs the midnight ET backstop.
 #
@@ -18,11 +27,24 @@
 # on a Saturday as easily as a Tuesday. A Sunday afternoon spent on the fleet is
 # exactly the case the operator described.
 #
-# Run:  bash install_midnight_halt.sh
-#       bash install_midnight_halt.sh --rollback
+# Run:  bash deploy/install_midnight_halt.sh            (from anywhere — it finds the repo)
+#       bash deploy/install_midnight_halt.sh --rollback
 set -euo pipefail
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# 🔴 OTV4TEST r21 — THE REPO ROOT, NOT THIS SCRIPT'S OWN DIRECTORY. This line
+# read `dirname` alone, which was the repo root while the installer lived there.
+# r14 moved every installer into deploy/ and re-pointed three timer installers;
+# THIS ONE WAS MISSED. From deploy/ every path below resolved one level too deep.
+# RENDERED WITH `sudo` STUBBED, NOT REASONED (check_midnight_halt M4): two of the
+# three were rescued by accident — PY falls back to `command -v python3` and the
+# `mkdir -p "$DIR/logs"` below creates deploy/logs — but ExecStart named
+# deploy/warehouse/midnight_halt.py, WHICH DOES NOT EXIST. The timer would fire
+# every midnight, fail to find its script, and page nobody: a backstop the
+# operator believes he has and does not.
+# ⚠️ AND THE FALLBACK IS ITSELF A HAZARD: `command -v python3` resolves from the
+# INSTALLING shell's PATH, so the unit's interpreter depended on how the operator
+# happened to log in. At the root, $DIR/venv/bin/python exists and it never runs.
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PY="$DIR/venv/bin/python"
 [ -x "$PY" ] || PY="$(command -v python3)"
 

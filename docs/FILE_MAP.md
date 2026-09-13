@@ -6,7 +6,7 @@ the canary fails on drift (WORKING_AGREEMENT 33).
 
 270 Python modules across 13 local packages.
 
-**Reached by:** 110 imported · 9 declared entry points · 59 referenced from a script, unit or doc but never imported · **92 by nothing here**.
+**Reached by:** 110 imported · 9 declared entry points · 60 referenced from a script, unit or doc but never imported · **91 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -708,7 +708,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_midnight_halt.py`
 - **calls:** (none)
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** (not imported) — referenced in `deploy/install_midnight_halt.sh`, `docs/BACKLOG.md`
 
 ### `tests/check_missed_inert.py`
 - **calls:** `derived/plan_ledger.py`
@@ -1132,7 +1132,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `warehouse/midnight_halt.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `deploy/install_midnight_halt.sh`
+- **called by:** (not imported) — referenced in `deploy/install_midnight_halt.sh`, `docs/BACKLOG.md`
 
 ### `warehouse/retention_purge.py`
 - **calls:** (none)
