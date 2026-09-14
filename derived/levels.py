@@ -1,6 +1,35 @@
 """
-derived/levels.py  v4.6
+derived/levels.py  v5.0
 Owns `level_ledger` and `level_event`. Tier 3 — stateful; the object has a biography.
+v5.0  2026-09-14  OTV4TEST r29 (LVL.8, LVL.9) — THE SESSION LEVELS COME FROM THE
+      TAPE, AND THE LEDGER IS RECONCILED TO IT EVERY CLOSED BAR. Operator: *"Levels
+      are session extremes that held. Starting from spot, map the most recent up/down
+      levels going backwards in time and further up/down from the recent ones. A
+      level is spent if it didn't hold & price accepted through it."* — the rulings
+      already on record in fork PLAN_SPEC §31.1 and mainline §38 / LVL.3 / LVL.17.
+      (1) SOURCES. When main hands `ctx["level_tape"]` (the feed store's 1m tape,
+      `SYM` and `SYM_EXT` merged) the session levels are `level_map.session_levels`
+      — every CLOSED Asia/London/NY section's high and low on the mapper's own
+      clock — that HELD, plus ledger rows formed BEFORE the tape begins (the book
+      reaches further than the purged tape; §38 *"reach is what the ledger has"*).
+      The mapper's pools (PDH/PDL, `(R1)` rungs, the named ladder) are NO LONGER a
+      source: they were the wick-broken ladder, and at 09:10 ET they carried a
+      single 715.42 print as `London High (R1)` beside the same price as `london`.
+      (2) RECONCILE, once per new tape bar: a live row that is not a held tape
+      level and not older than the tape is RETIRED — `ACCEPTED_THROUGH` at the bar
+      the tape shows acceptance (an `ACCEPTED` event only when that bar is fresh, so
+      history never fires a trade: LVL.17), otherwise `NOT_A_LEVEL`. That retires
+      the r5 `fork1h/*` rails, the pre-r19 tine rows, stale VWAP ids and every
+      duplicate the old producers left, and it cannot fight a restart: nothing is
+      held in memory that the tape does not re-derive.
+      (3) `created_ts` IS THE BAR THE EXTREME PRINTED ON, so the board's walk can
+      order newest first. (4) `board()` and `walk()` WALK: newest held level each
+      side of spot, older ones only if further out, then the board keeps what
+      stands beyond each opening-range edge.
+      ⚠️ WITHOUT `level_tape` IN ctx THE v4.6 SOURCES RUN UNCHANGED. Only the check
+      fixtures take that path (main always supplies the key, None on a dead feed,
+      which yields no session levels and retires nothing). Recorded as LVL.10: the
+      `check_level_rejection` fixtures must move onto a tape and that branch go.
 v4.6  2026-09-13  OTV4TEST r19 — THE FORK PROJECTION IS SEPARATED FROM THE LEVEL
       BOOK. Operator, 2026-09-13: "I want the session extremes separated from the
       1-hr fork object... The job of the fork projection should be a co-informer
@@ -232,6 +261,22 @@ def _f(v) -> Optional[float]:
     return None if f != f else f
 
 
+def pd_ts(ts) -> float:
+    """Epoch seconds of a pandas/py timestamp."""
+    return float(ts.timestamp())
+
+
+def _walked(rows, price):
+    """r29 — ledger rows (price, ..., created_ts last) through `level_map.walk`:
+    the newest held level each side of price, older ones only if further out."""
+    from derived import level_map as lm
+    import pandas as _pd
+    lv = [{"price": float(r[0]), "formed_ts": _pd.Timestamp(float(r[-1] or 0.0), unit="s", tz="UTC"),
+           "row": r} for r in rows]
+    w = lm.walk(lv, float(price))
+    return [x["row"] for x in w["up"] + w["down"]]
+
+
 def _level_id(symbol: str, provenance: str, price: float) -> str:
     """Stable identity so touches land on the SAME row across ticks.
 
@@ -256,7 +301,11 @@ class LevelEngine(DerivedEngine):
         self._pierce: dict = {}          # level_id -> {"depth", "pierce_pct", "closes_back", "bar_ts"}
         self._fork_seen = None           # r19: the anchors of the fork whose projection we hold
         self._last_bar_ts: str = ""
-        self.last_events: list = []      # events emitted on the most recent derive()          # level_id -> mutable state
+        self.last_events: list = []      # events emitted on the most recent derive()
+        # r29 — tape-derived session levels, recomputed once per new tape bar
+        self._tape_key = None
+        self._tape_srcs: list = []       # (prov, price, kind, tf, live) held levels
+        self._formed: dict = {}          # level_id -> epoch the extreme printed
 
     def _sources(self, ctx: dict):
         """(provenance, price, kind, timeframe, is_live) for every known level.
@@ -268,6 +317,10 @@ class LevelEngine(DerivedEngine):
         liq = ctx.get("liq_map")
         vol = ctx.get("vol")
         out = []
+        if "level_tape" in ctx:
+            # r29 — THE TAPE IS THE SOURCE (see v5.0). The mapper's pools are not.
+            out.extend(self._tape_sources(ctx))
+            liq = None
         if liq is not None:
             for attr, prov, kind, live in (
                 ("prev_day_high", "prev_day", "resistance", 0),
@@ -330,6 +383,91 @@ class LevelEngine(DerivedEngine):
         # r15 — tines are NOT sources any more: never stored, computed at read
         # (`tines_now`); the emitter reads them beside the ledger's levels.
         return out
+
+    # ── r29 — levels from the tape ─────────────────────────────────────────
+    def _tape_sources(self, ctx: dict):
+        """Held session levels off the tape plus ledger rows older than the tape.
+        Recomputed and RECONCILED once per new tape bar; cached in between."""
+        tape = ctx.get("level_tape")
+        store = self._store
+        sym = self.symbol or ctx.get("symbol") or ""
+        if tape is None or len(tape) == 0 or store is None or not sym:
+            return list(self._tape_srcs) if tape is not None else []
+        key = (str(tape.index[-1]), len(tape))
+        if key == self._tape_key:
+            return list(self._tape_srcs)
+        from derived import level_map as lm
+        levels = lm.session_levels(tape, accept_closes=ACCEPT_CLOSES, tol_pct=TOUCH_TOL_PCT)
+        tape_start = float(tape.index[0].timestamp())
+        srcs, formed, spent = [], {}, {}
+        for lv in levels:
+            prov = lm.provenance(lv["label"])
+            lid = self._lid(sym, prov, lv["price"])
+            if lv["spent_ts"] is not None:
+                spent[lid] = lv
+                continue
+            srcs.append((prov, lv["price"], lm.kind_of(lv["side"]), f"session:{lv['date']}", 0))
+            formed[lid] = float(pd_ts(lv["formed_ts"]))
+        held_ids = set(formed)
+        # the book reaches further than the tape: rows formed before the tape
+        try:
+            older = store.conn.execute(
+                "SELECT level_id, price, kind, provenance, timeframe, created_ts FROM level_ledger"
+                " WHERE symbol=? AND retired_ts IS NULL AND timeframe LIKE 'session:%'"
+                " AND created_ts < ?", (sym, tape_start)).fetchall()
+        except Exception:                                       # noqa: BLE001
+            older = []
+        for lid, price, kind, prov, tf, created in older:
+            if lid not in held_ids and lid not in spent:
+                srcs.append((prov, float(price), kind, tf, 0))
+                formed[lid] = float(created)
+        self._reconcile(store, sym, set(formed), formed, spent, tape)
+        self._formed.update(formed)
+        self._tape_srcs = srcs
+        self._tape_key = key
+        return list(srcs)
+
+    def _reconcile(self, store, sym, keep: set, formed: dict, spent: dict, tape) -> None:
+        """Retire every live row the tape does not hold; stamp formation times."""
+        try:
+            rows = store.conn.execute(
+                "SELECT level_id, price, kind, provenance, created_ts FROM level_ledger"
+                " WHERE symbol=? AND retired_ts IS NULL", (sym,)).fetchall()
+        except Exception as exc:                                # noqa: BLE001
+            logger.warning("[level] reconcile read failed — nothing retired: %s", exc)
+            return
+        now = time.time()
+        fresh_after = now - 60.0 * max(3, ACCEPT_CLOSES + 1)
+        retired = 0
+        for lid, price, kind, prov, created in rows:
+            if lid in keep:
+                f = formed.get(lid)
+                if f is not None and created is not None and abs(float(created) - f) > 1.0:
+                    store.set_level_created(lid, f)
+                continue
+            if kind == "dynamic" and str(prov) == "vwap":
+                continue                   # the live VWAP row is re-upserted by derive()
+            sp = spent.get(lid)
+            if sp is not None:
+                ts = float(pd_ts(sp["spent_ts"]))
+                store.retire_level(lid, ts, "ACCEPTED_THROUGH")
+                st = self._live.get(lid)
+                if st is not None:
+                    st["retired"], st["reason"] = ts, "ACCEPTED_THROUGH"
+                if ts >= fresh_after:
+                    bar_ts = str(sp["spent_ts"].tz_convert("America/New_York"))
+                    self._emit(store, sym, lid, float(price), kind, prov, bar_ts, now,
+                               "ACCEPTED", {"pierce_pct": 0.0, "depth": "accepted",
+                                            "closes_back": 0}, None)
+            else:
+                store.retire_level(lid, now, "NOT_A_LEVEL")
+                st = self._live.get(lid)
+                if st is not None:
+                    st["retired"], st["reason"] = now, "NOT_A_LEVEL"
+            self._pierce.pop(lid, None)
+            retired += 1
+        if retired:
+            logger.info("[level] reconciled to the tape — %d row(s) retired, %d held", retired, len(keep))
 
     def tines_now(self, price: float, minutes_back: float = 0.0):
         """The 1h fork's rails at THIS read, from the fork the ForkEngine holds
@@ -400,12 +538,13 @@ class LevelEngine(DerivedEngine):
             return out
         try:
             rows = self._store.conn.execute(
-                "SELECT price, kind, provenance, touch_count, is_live_session, level_id"
+                "SELECT price, kind, provenance, touch_count, is_live_session, level_id, created_ts"
                 " FROM level_ledger WHERE symbol=? AND retired_ts IS NULL"
                 " AND kind IN ('support','resistance')", (self.symbol,)).fetchall()
         except Exception:                                       # noqa: BLE001
             out["state"] = "no_store"
             return out
+        rows = _walked(rows, price)                     # r29 — newest first, further out
         above = sorted([r for r in rows if r[0] > orb_high], key=lambda r: r[0] - orb_high)
         below = sorted([r for r in rows if r[0] < orb_low], key=lambda r: orb_low - r[0])
 
@@ -509,7 +648,7 @@ class LevelEngine(DerivedEngine):
             lid = self._lid(sym, prov, lvl_price)
             st = self._live.get(lid)
             if st is None:
-                st = {"created": now, "touches": 0, "beyond": 0,
+                st = {"created": self._formed.get(lid, now), "touches": 0, "beyond": 0,
                       "last_touch": None, "retired": None, "reason": None}
                 self._live[lid] = st
             if st["retired"]:
@@ -699,10 +838,11 @@ class LevelEngine(DerivedEngine):
             return {"above": [], "below": []}
         try:
             cur = self._store.conn.execute(
-                "SELECT price, kind, provenance, touch_count, is_live_session"
-                " FROM level_ledger WHERE symbol=? AND retired_ts IS NULL",
+                "SELECT price, kind, provenance, touch_count, is_live_session, level_id, created_ts"
+                " FROM level_ledger WHERE symbol=? AND retired_ts IS NULL"
+                " AND kind IN ('support','resistance')",
                 (self.symbol,))
-            rows = cur.fetchall()
+            rows = _walked(cur.fetchall(), price)       # r29 — the same walk as the board
         except Exception:                                       # noqa: BLE001
             return {"above": [], "below": []}
         above = sorted([r for r in rows if r[0] > price], key=lambda r: r[0] - price)

@@ -1,5 +1,6 @@
 # PLAN_SPEC.md — every strategy declares its intent BEFORE the trigger
 
+**v1.26 · 2026-09-14 · OTV4TEST r29 — the levels are built from the tape: held session extremes, walked from spot, spent only on acceptance (§40).**
 **v1.25 · 2026-09-14 · OTV4TEST r26 — the ATP (at-the-pin) butterfly, a second butterfly thesis; one butterfly per session across both (§39).**
 **v1.24 · 2026-09-08 · OTV4TEST r2 — the ORB spec and its plan contract, agreed part by part; observe-only outside the window (§29).**
 **v1.23 · 2026-09-01 · r208 — the butterfly wing is searched, not computed (§28).**
@@ -1335,6 +1336,8 @@ Purpose, his words: *"catch large moves in the afternoon on some macro catalyst 
 | window | 11:31–14:00; outside it the plan observes and does not write |
 | condor | **leg one only, never the second**; the complement must be a sweep (`authorize()`, untouched) |
 
+> 🔴 **CLARIFIED 2026-09-14 (OTV4TEST r29) — THE TRIGGER ROW ABOVE SAYS "today's high / low" AND THE CODE HAS NEVER READ THAT.** The store's `ny` levels are the high and low of **closed** prior RTH sessions: every `ny` row on this box was created at or after 16:00 ET. That is the mapper's LIQ.6 rule — *a level is a fixed price stops rest at; today's high/low is still being made, every new high "breaches" it, so it is not a level until the session closes.* So what the TCS has actually traded is **an established prior-session NY extreme accepted through after 11:30, outside the EM**. The row is left as agreed; whether the TCS should trade that, or something about today's forming extreme, is **TCS.3** and is the operator's ruling.
+
 ### 34.2 Exits, in order
 1. 15:45 hard close · 2. **15% of credit — a LONE vertical only** (a hedged leg's sibling suppresses it) · 3. **the level lost** — a 1m close back through the accepted extreme (`tcs_breach`) · **no nickel close** — the 2026-08-14 ruling ("no closing it short of a breach or the hard close") was measured, EV held to expiry, and stands; today's untangle listed a nickel in passing without revisiting it. Flagged, not changed.
 
@@ -1446,3 +1449,29 @@ Found on mainline's warehouse and verified here by reading: **(1) pools were wri
 12:00–15:00 on this box: Wed 09-09 and Thu 09-10 — no qualifying minute (GEX read TRENDING). Fri 09-11 — 36 qualifying minutes, first 12:28 (pin 715, spot 716.01, EM 5.21, conc 0.26). On Friday's real 12:28 quotes the structure is the 713/715/717 PUT fly, debit 0.56, R 2.57, its stop 5.6× its spread; the 1-wide leaves spot outside the tent and the call fly fails its spread at 1.6×. Worst mid to the flatten 0.38 at 13:25 against a 0.336 stop — it survives by four cents — and worth 1.135 at 15:44. One day is a mechanism, not a rule; the priors are recorded on every row to be fitted.
 
 **As built (OTV4TEST r26):** `strategy/atp_butterfly_plan.py` v1.0 (the plan), `strategy/atp_butterfly.py` v1.0 (the strategy), `strategy/gex_pin_butterfly.py` v5.4 (`pin_strength` shared), `strategy/management.py` v2.4, `main.py` v4.49, `config.py` v4.22, `tools/query.py` v4.12. Hypotheticals: `check_atp_butterfly` P1–P9, M1–M3, S1–S6.
+
+## 40. OTV4TEST r29 — THE LEVELS ARE BUILT FROM THE TAPE (operator 2026-09-14)
+
+*"Levels are session extremes that held. Starting from spot, map the most recent up/down levels going backwards in time and further up/down from the recent ones. A level is spent if it didn't hold & price accepted through it."* And: *"Straight from the tape I want you to properly construct the levels."* On prints: *"The highest high of the session that held, or the lowest low."*
+
+These restate rulings already on record, and the build implements those, not a new reading: §31.1 here (*"Age does not matter. A previously held extreme is enough"*; spent = the breach accepted) and mainline §38 / LVL.3 / LVL.17 (one board every plan parses; newest first, each rung further out; *"we go back as far as we go and we map the levels with what we have"*; nothing in memory; tines never stored; history seeds durability, never an event).
+
+### 40.1 The definition, as values
+| part | definition |
+|---|---|
+| a level | the high or the low of a CLOSED session — Asia 00–08 UTC, London 08–13 UTC, NY = RTH at hour granularity by the ET date — the mapper's own clock, imported (`derived/level_map.closed_sections`) |
+| the tape | the feed store's 1m bars, `SYM` and `SYM_EXT` merged on the stamp (identical on overlap, measured) |
+| provable | a section the tape does not fully cover is not a level (mapper A2.1) |
+| a print | no filter, by ruling — the session's highest high / lowest low, whatever printed it |
+| held / spent | spent at the bar that completes `LEVEL_ACCEPT_CLOSES` (2) consecutive closed 1m closes beyond it, past the engine's 0.15% close tolerance, after the bar it formed on. A wick does not spend it |
+| the map | `level_map.walk(held, spot)`: the newest held level each side of spot, then each older one only if further out; equal formation times go nearest first. A view, computed at read |
+| who reads it | the hunt's `board()` (then beyond each opening-range edge), `walk()` (the snapshot/notes record), and the sweep plan's levels in play. The TCS reads its `ny` levels unwalked (TCS.3) |
+| stored | `level_ledger` holds the biography: `created_ts` = the bar the extreme printed on, `timeframe` = `session:YYYY-MM-DD`, provenance `asia`/`london`/`ny`, kind by formation (high → resistance) |
+| retired | every closed tape bar the ledger is reconciled: a live row that is not a held tape level and not formed before the tape begins retires `ACCEPTED_THROUGH` (at the tape's bar) or `NOT_A_LEVEL`. An `ACCEPTED` event is written only when that bar is fresh — history never fires a trade. `TRAVERSED` inside the opening range is unchanged (§31.1) |
+| reach | the ledger (NEVER_PURGE) beyond the tape: a `session:` row formed before the tape's first bar is kept and still judged on live closes |
+
+### 40.2 Measured on this box, 2026-09-14
+At 09:10 ET 619 of 624 ledger rows were live, back to 09-08: three `fork1h/*` rails frozen at Wednesday's prices, 52 pre-r19 tine rows, and the mapper's `(R1)`/`(R2)` pools beside the same prices under bare session names. On the tape at 09:46 (spot 705.33) nine levels held and the walk read up **715.42** (London 09-14 — a single 08:26 print on 885 contracts, kept by ruling), **717.68** (NY 09-11), **719.70** (NY 09-09), **720.06** (London 09-09); down **701.16** (London 09-14). Every older low had been accepted through.
+
+**As built (OTV4TEST r29):** `derived/level_map.py` v1.0, `derived/levels.py` v5.0, `data/derived_store.py` v4.5, `strategy/sweep_plan.py` v1.5, `main.py` v4.50. Hypotheticals: `check_level_map` M0–M9 on the box's own tape. **Not in this revision:** the S3 seed (SEED.1, awaiting read access) and moving `check_level_rejection`'s fixtures onto a tape (LVL.10).
+

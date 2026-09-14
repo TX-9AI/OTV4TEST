@@ -1,5 +1,8 @@
 """
-data/derived_store.py  v4.4
+data/derived_store.py  v4.5
+v4.5  2026-09-14  OTV4TEST r29 — `retire_level` and `set_level_created`, the two writes
+      the tape reconcile needs (levels v5.0); `live_levels` also returns
+      `created_ts`, the bar the extreme printed on, so readers can walk newest first.
 v4.4  2026-09-09  OTV4TEST r9 — `latest_event(symbol, event, since, kind)`: the
       general form of latest_rejection; the TCS reads ACCEPTED through it.
 v4.3  2026-09-08  OTV4TEST r5 — `live_levels(symbol)`: the un-retired support /
@@ -226,16 +229,27 @@ class DerivedStore:
             " event, price, kind, provenance, pierce_pct, depth, closes_back, bar_close)"
             " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", [row])
 
+    def retire_level(self, level_id: str, ts: float, reason: str):
+        """r29 — retire one live level. Never un-retires; never deletes (NEVER_PURGE)."""
+        return self._write(
+            "UPDATE level_ledger SET retired_ts=?, retired_reason=?"
+            " WHERE level_id=? AND retired_ts IS NULL", [(float(ts), str(reason), level_id)])
+
+    def set_level_created(self, level_id: str, ts: float):
+        """r29 — stamp the bar the extreme printed on (the walk orders by it)."""
+        return self._write(
+            "UPDATE level_ledger SET created_ts=? WHERE level_id=?", [(float(ts), level_id)])
+
     def live_levels(self, symbol: str):
-        """[{level_id, price, kind, provenance, timeframe, touches}] for every
-        un-retired support/resistance level of `symbol`."""
+        """[{level_id, price, kind, provenance, timeframe, touches, created_ts}] for
+        every un-retired support/resistance level of `symbol`."""
         try:
             with self._lock:
                 rows = self.conn.execute(
-                    "SELECT level_id, price, kind, provenance, timeframe, touch_count "
+                    "SELECT level_id, price, kind, provenance, timeframe, touch_count, created_ts "
                     "FROM level_ledger WHERE symbol=? AND retired_ts IS NULL "
                     "AND kind IN ('support','resistance')", (symbol,)).fetchall()
-            keys = ("level_id", "price", "kind", "provenance", "timeframe", "touches")
+            keys = ("level_id", "price", "kind", "provenance", "timeframe", "touches", "created_ts")
             return [dict(zip(keys, r)) for r in rows]
         except Exception as exc:                                # noqa: BLE001
             logger.warning("live_levels read failed: %s", exc)

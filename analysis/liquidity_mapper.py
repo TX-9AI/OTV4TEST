@@ -1,5 +1,8 @@
 """
-analysis/liquidity_mapper.py  v4.3
+analysis/liquidity_mapper.py  v4.4
+v4.4  2026-09-14  OTV4TEST r29 — WORDING ONLY: LIQ.6 point 2 says what the closed-session
+      rule is FOR. The operator read the old text and called it nebulous; it named
+      the rule and not the harm it prevents. No code changed.
 v4.3  2026-09-03  r231 — EQUAL HIGHS/LOWS ARE GONE; NEAREST REPLACES LAST.
       Operator, 2026-09-03: *"I don't want equal highs/lows identified at all.
       Those are not reliable enough."* The map is NAMED LEVELS and FORK TINES,
@@ -217,12 +220,22 @@ LIQ.6 (2026-08-15) — A WHOLESALE CHANGE TO WHAT A NAMED POOL IS.
        "London High" could be set by a price RTH traded seconds ago and why
        LIQ.1 had to remove London wholesale. Only the OVERLAPPING TAIL was ever
        the problem; the pre-RTH London extreme is a real level and is back.
-    2. A SECTION IS A POOL ONCE IT IS CLOSED. The test is COMPLETED vs STILL
-       FORMING, never the calendar date. Today's Asia and pre-RTH London are
-       valid from the open. **TODAY'S RTH IS NEVER A POOL** — it is
-       `session_high`/`session_low`, already tracked by the not-exceeded filter.
-       The old code named today's forming RTH extreme "NY High", a level that
-       rewrote itself on every new print.
+    2. ONLY A CLOSED SESSION MAKES A LEVEL.
+       WHAT A LEVEL IS FOR: a fixed price where stops already rest, that price
+       can come back to and TEST. That needs the price to stop moving first.
+       WHY TODAY'S RTH HIGH/LOW IS NOT ONE: it is still being made. Every new
+       high moves it, so in a trending session it is "breached" on every print
+       and there is nothing for price to return to. Treating it as a level did
+       two kinds of damage, both measured:
+         · a "sweep" of it was just price trading where it traded seconds ago;
+         · anything scored against it scored a MOVING TARGET — the LIQ.5 retreat
+           probe's NY 4.1-4.2 vs PDH/PDL 1.1-1.2 was that artefact, not a better
+           level (and LIQ.1's London share the same thing, via overlapping hours).
+       SO: a session counts once it has CLOSED — completed, not calendar date.
+       Today's Asia and pre-RTH London are closed by 09:30 and count from the
+       open; an untaken RTH high from five days ago still counts. Today's RTH
+       high/low is not thrown away — it is `session_high`/`session_low` — it just
+       is not a level until the session closes.
     3. `NY High/Low` IS SESSION-TYPE, NOT DATE-RELATIVE. PDH/PDL means literally
        yesterday. An RTH extreme from five days ago that nothing has taken is
        still "NY High" and is still where the stops are.

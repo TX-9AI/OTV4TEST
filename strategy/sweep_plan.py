@@ -1,5 +1,9 @@
 """
-strategy/sweep_plan.py  v1.4
+strategy/sweep_plan.py  v1.5
+v1.5  2026-09-14  OTV4TEST r29 — the levels in play are WALKED (derived/level_map.walk):
+      the newest held level each side of price, older ones only if further out —
+      the same map the hunt's board reads, so the plans parse one set of levels
+      (mainline PLAN_SPEC §38). The rails are added after the walk, unchanged.
 v1.4  2026-09-12  OTV4TEST r15 — the rails come from `tines_now` (never a stored row); the
       PDH/PDL ladder is visible now that pools are classified by side (levels v4.3).
 v1.3  2026-09-09  OTV4TEST r12 — anchors on the chosen structure (record only): GEX at the
@@ -244,6 +248,18 @@ class SweepPlan:
             prep.starved.append("level_store"); t.starved("level_store"); return prep
         sym = _symbol_of()
         levels = store.live_levels(sym)
+        # r29 — one map for every plan: walk newest first, each older level further out
+        try:
+            import pandas as _pd
+            from derived import level_map as _lm
+            _w = _lm.walk([dict(l, formed_ts=_pd.Timestamp(float(l.get("created_ts") or 0.0),
+                                                           unit="s", tz="UTC")) for l in levels],
+                          float(price_now))
+            levels = _w["up"] + _w["down"]
+        except Exception as exc:                                # noqa: BLE001
+            # fails CLOSED: an unwalked book is the map this revision replaces
+            logger.warning("[sweep] level walk failed — no levels in play this tick: %s", exc)
+            levels = []
         # r15 — the rails are read, not stored (levels v4.3): add them from the engine
         try:
             from derived.registry import level_engine

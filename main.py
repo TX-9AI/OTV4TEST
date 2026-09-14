@@ -1,5 +1,9 @@
 """
-main.py  v4.49
+main.py  v4.50
+v4.50 2026-09-14  OTV4TEST r29 — `ctx["level_tape"]`: the feed store's 1m tape (SYM and
+      SYM_EXT merged) handed to the level engine, which builds the session levels
+      from it (levels v5.0). Read at most once per minute; None when the store
+      cannot be read, which yields no session levels and retires nothing.
 v4.49 2026-09-14  OTV4TEST r26 — THE ATP BUTTERFLY IS ASKED, AND THE SESSION HAS ONE BUTTERFLY.
       Operator: "allow one butterfly or the other, whichever plan produces a
       viable trade 1st can take it." Both butterfly sites — the in-dispatch slot
@@ -1348,6 +1352,31 @@ _NLF_CACHE = (0.0, None)
 _NLF_SAID = {}
 
 
+_LEVEL_TAPE_CACHE = (0.0, None)
+
+
+def _level_tape():
+    """OTV4TEST r29 — the 1m tape the level engine builds session levels from.
+    Re-read at most once a minute (a new closed bar is the only thing that can
+    change the answer); None on any failure, logged, never an empty frame."""
+    global _LEVEL_TAPE_CACHE
+    try:
+        ts, df = _LEVEL_TAPE_CACHE
+        if df is not None and (time.time() - ts) < 60.0:
+            return df
+        from data.candle_feed import feed_db_path
+        from derived.level_map import load_tape
+        df = load_tape(feed_db_path(), INSTRUMENT)
+        if df is None:
+            logger.warning("[levels] no 1m tape readable for %s — session levels "
+                           "unavailable this minute", INSTRUMENT)
+        _LEVEL_TAPE_CACHE = (time.time(), df)
+        return df
+    except Exception as exc:                                   # noqa: BLE001
+        logger.warning("[levels] level tape read failed: %s", exc)
+        return None
+
+
 def _named_level_frame():
     """The deep 1h frame for the mapper's named levels, or None (fail soft).
     None simply means the mapper falls back to the live frame - where its
@@ -1520,6 +1549,8 @@ def run_analysis(state: BotState, chain=None) -> dict:
         "df_5m":     df_5m,
         # OTV4TEST r5 — the level engine retires levels inside the opening range
         "orb":       (get_orb_engine().data if _orb_engine_ready() else None),
+        # OTV4TEST r29 — the tape the session levels are built from (levels v5.0)
+        "level_tape": _level_tape(),
     }
 
     # ── Level.1 (2026-08-18) — WHAT IS PRICE TRADING INTO? ──────────────────

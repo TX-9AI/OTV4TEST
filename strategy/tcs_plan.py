@@ -1,5 +1,10 @@
 """
-strategy/tcs_plan.py  v1.1
+strategy/tcs_plan.py  v1.2
+v1.2  2026-09-14  OTV4TEST r29 — WORDING ONLY: the TRIGGER paragraph said "today's high as
+      resistance, today's low as support". The code has never read today's: the
+      store's `ny` levels are CLOSED RTH sessions (liquidity_mapper LIQ.6 — a forming
+      high is not a level). The text now says what the code does. Which one the TCS
+      SHOULD trade is TCS.3, a ruling. No code changed.
 v1.1  2026-09-09  OTV4TEST r12 — anchors on the chosen structure (record only).
 v1.0  2026-09-09  OTV4TEST r9 — THE TREND CREDIT SPREAD PLAN (PLAN_SPEC §34),
       agreed with the operator 2026-09-09. The purpose, his words: *"catch
@@ -7,10 +12,13 @@ v1.0  2026-09-09  OTV4TEST r9 — THE TREND CREDIT SPREAD PLAN (PLAN_SPEC §34),
       theta do the work on our behalf since debits on 0DTE late in the day are
       deteriorating rapidly."*
 
-      TRIGGER — a live SESSION EXTREME (the store's `ny` levels: today's high
-      as resistance, today's low as support) ACCEPTED after 11:30 — two closed
-      1m bars beyond it, the level store's own ACCEPTED event — AND the move
-      OUTSIDE THE EXPECTED MOVE. "Outside" is read against the EM assessment
+      TRIGGER — an ESTABLISHED NY LEVEL (the store's `ny` levels: the high and
+      low of a CLOSED prior RTH session that price has not accepted through — a
+      high is resistance, a low support) ACCEPTED after 11:30 — two closed 1m
+      bars beyond it, the level store's own ACCEPTED event — AND the move
+      OUTSIDE THE EXPECTED MOVE. ⚠️ NOT today's forming high/low: that is not a
+      level until the session closes (LIQ.6), and PLAN_SPEC §34's "today's high /
+      low" never matched this code (TCS.3). "Outside" is read against the EM assessment
       that stood BEFORE the move: every tick the plan computes spot ± EM
       (ATM IV, remaining session) and prints it; on the first 1m close beyond
       a live extreme it FREEZES the previous tick's band as that move's
