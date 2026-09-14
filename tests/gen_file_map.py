@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """
-tests/gen_file_map.py  v4.5
+tests/gen_file_map.py  v4.6
+v4.6  2026-09-14  OTV4TEST r28 (MAP.3) — THREE UNIT-LAUNCHED SCRIPTS AND THE LANDER'S
+      OWN BOOKKEEPING CHECK WERE MISSING FROM ENTRY_POINTS. `warehouse/midnight_halt.py`
+      (optbot-midnight-halt.service, installed on this box at r21) printed as an
+      ORPHAN on every land; `warehouse/retention_purge.py` (optbot-retention-purge,
+      r27), `warehouse/self_close.py` (fleet self-close unit) and
+      `tools/check_land_discipline.py` (run by tools/land.sh) were undeclared.
+      Added, with the fleet-only services labelled as such. Pinned by
+      tests/check_map_accuracy.py E1/E2, which read the units and land.sh.
 v4.5  2026-09-11  OTV4TEST r14 — the operator readers are entry points under tools/.
 v4.4  2026-09-08  OTV4TEST r1 - docs/GENESIS-TEST.md JOINS THE EXCLUSION. The
       fork keeps its own ledger and the lander appends to it BETWEEN
@@ -115,6 +123,14 @@ ENTRY_POINTS = {
     "data/candle_logger.py",       # candle-logger.service
     "warehouse/s3_push.py",        # s3-push.service
     "data/candle_feed.py",         # candle-feed.service
+    # r28 — the box's own timers (installed here, BOX.2/BOX.4) and a fleet unit.
+    # ⚠️ shadow-*, candle-logger and s3-push above are FLEET services: this box
+    # has none of them installed (BOX.1). Declared because the units ship in deploy/.
+    "warehouse/midnight_halt.py",  # optbot-midnight-halt.service (this box, r21)
+    "warehouse/retention_purge.py",  # optbot-retention-purge.service (this box, r27)
+    "warehouse/self_close.py",     # self-close unit (fleet only; not on this box)
+    # run by tools/land.sh on every land
+    "tools/check_land_discipline.py",
     # CLI helpers, run by hand or by a script
     "analysis/get_orb_range.py",
     "utils/check_sdk.py",

@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-277 Python modules across 13 local packages.
+278 Python modules across 13 local packages.
 
-**Reached by:** 112 imported · 9 declared entry points · 70 referenced from a script, unit or doc but never imported · **86 by nothing here**.
+**Reached by:** 112 imported · 11 declared entry points · 70 referenced from a script, unit or doc but never imported · **85 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -718,6 +718,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** `tools/manifold_health.py`, `utils/time_utils.py`
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
+### `tests/check_map_accuracy.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/WORKING_AGREEMENT.md`
+
 ### `tests/check_market_calendar.py`
 - **calls:** `utils/__init__.py`, `utils/market_calendar.py`
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
@@ -904,7 +908,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_snapshot_pin.py`
 - **calls:** `derived/snapshot.py`, `strategy/gex_pin_butterfly.py`
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_standing_offer.py`
 - **calls:** `analysis/orb_engine.py`, `data/tasty_client.py`, `database/trade_logger.py`, `execution/__init__.py`, `execution/entry_engine.py`, `execution/resting_orders.py`, `utils/time_utils.py`
@@ -1088,7 +1092,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tools/check_land_discipline.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/WORKING_AGREEMENT.md`, `tools/land.sh`
+- **called by:** (entry point)
 
 ### `tools/debug_status.py`
 - **calls:** `config.py`
@@ -1160,7 +1164,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `warehouse/midnight_halt.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `deploy/install_midnight_halt.sh`, `deploy/install_retention_purge_timer.sh`, `docs/BACKLOG.md`
+- **called by:** (entry point)
 
 ### `warehouse/retention_purge.py`
 - **calls:** (none)

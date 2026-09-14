@@ -1,13 +1,15 @@
 # WORKING_AGREEMENT.md — how we operate (read this first, every new thread)
 
-**`WORKING_AGREEMENT.md` v4.11 · 2026-09-13 — §0 plus 40 sections. See the CHANGELOG at the foot.**
+**`WORKING_AGREEMENT.md` v4.12 · 2026-09-14 — §0 through §38, plus §15a, §18a and §36a. See the CHANGELOG at the foot.**
 
 > 🔴 **§0 IS THE FLOOR — AN ATTESTATION, NOT A TIP. Read it first, every thread.**
 > The operator ordered it once before and was told it existed. It did not.
 > He found the original instruction in his own history and proved it.
 
 This file is operating discipline for the assistant across threads. None of it is
-about the trading system's *logic* (that's OBSERVATIONS.md / ROADMAP.md) — it's
+about the trading system's *logic* (on this fork that's `docs/PLAN_SPEC.md` and
+`docs/BACKLOG.md`; the `OBSERVATIONS.md` this line used to name has never been in
+this repo's history — corrected r28) — it's
 about **how work gets done here without repeating mistakes that have each cost
 multiple sessions.** Every rule below was learned the painful way.
 
@@ -241,6 +243,14 @@ layer** vs. a direct prompt. Nested quotes collide with that wrapping.
   `optionsbot`, `candle-feed` and a masked `s3-push`. There is no `ot-eod`, no
   `candle-logger`, no `eod-bot`, no `shadow-observer`, no `midnight-halt`. Do
   not assume a timer exists here because an installer for it does.
+  🔑 **AMENDED 2026-09-14 (OTV4TEST r28), MEASURED WITH `systemctl list-unit-files`:**
+  the box now has **two timers, both by ruling** — `optbot-midnight-halt.timer`
+  (00:00 ET, r21, BOX.2: the backstop in case it is left up) and
+  `optbot-retention-purge.timer` (Saturday 08:30 ET, r27, BOX.4). It still has no
+  `ot-eod`, `candle-logger`, `eod-bot`, `self-close` or shadow units, and `s3-push`
+  stays masked. The box is started at **08:00 ET daily by an AWS EventBridge
+  schedule that lives outside this repo** — a failed wake is invisible from here,
+  so read `journalctl --list-boots` first.
 - **The trap:** `~/options-trader` exists on **bot boxes**, NOT on the control box.
   Sending `cd ~/options-trader` while the user is on the *control* box fails (this
   happened, repeatedly). Always resolve the path to the box the user is actually on:
@@ -313,7 +323,8 @@ retracted a wrong read (sweeps "fading a trend" was over-fit to one day; LOW-swe
 ## 12. Thin samples find mechanisms, not conclusions.
 n=7 (one session) tells you **what to look at**; n=99 (many sessions) tells you **what's
 true.** No dial moves on one session. When the user says "understand it, don't fix it
-yet," that is the correct discipline — capture it in OBSERVATIONS.md and let it stack.
+yet," that is the correct discipline — capture it in the backlog (`docs/BACKLOG.md`
+on this fork; `OBSERVATIONS.md` was never here) and let it stack.
 
 ---
 
@@ -826,9 +837,15 @@ argument to make out loud before writing, not after.
 ---
 
 ### Companion files
-- **OBSERVATIONS.md** — evidenced findings about the *system*, deferred fixes.
-- **ROADMAP.md** — the L1→L2→L3 build plan and where each piece stands.
-- **README.md** — architecture + defect log.
+🔴 **CORRECTED 2026-09-14 (OTV4TEST r28).** This list named `OBSERVATIONS.md`,
+which has never existed in this repo's history, and called README an
+"architecture + defect log", which r14's README v2.0 replaced. What exists:
+- **`docs/BACKLOG.md`** — evidenced findings, rulings owed, deferred fixes (§18).
+- **`docs/PLAN_SPEC.md`** / **`docs/TRADES.md`** — what each trade and plan does.
+- **`docs/FORK_BRIEF.md`** — the fork's charter and acceptance test.
+- **`README.md`** — what this repo is, the layering, the layout, how work lands.
+- **`docs/ROADMAP.md`** — mainline's L1→L2→L3 plan, inherited; HYG.2 proposes
+  removing it with the other mainline-history docs, not yet ruled.
 
 
 ---
@@ -843,8 +860,9 @@ renamed the `ORBState` strings.
 
 ### Monitoring and mode
 
-Monitoring: `python status.py` · `python query.py` · `bash configure.sh` (risk, mode, daily-loss
-cap override).
+Monitoring: `python tools/status.py` · `python tools/query.py` · `bash deploy/configure.sh`
+(risk, mode, daily-loss cap override). ⚠️ Paths corrected 2026-09-14 (r28): all three
+moved out of the repo root at r14, and this block still named the root.
 
 ---
 
@@ -893,7 +911,15 @@ they both trade and collect.
 The rule itself survives intact and is why the section stays: **a box that stops
 collecting is a box whose pitchfork and ADX warm-up depth quietly dies** — and
 DXFeed history is same-evening only, so that depth cannot be recovered
-afterwards. Pruning is disabled specifically so it accumulates.
+afterwards. ~~Pruning is disabled specifically so it accumulates.~~
+🔴 **CORRECTED 2026-09-14 (OTV4TEST r28) — THAT SENTENCE HAD BEEN FALSE SINCE
+MAINLINE r162**, which armed `warehouse/retention_purge.py`. The purge exists to
+keep disk available and removes only rows past its windows — the minimum the
+tenors' ramps need (1m candles 5 days, 5m 10, 15m 20, 1h 60, daily never) — and
+`trades` and every ledger are `NEVER_PURGE`. On the fleet it rides `self_close`
+after an S3 drain; on this box it runs from its own Saturday timer (r27, BOX.4).
+Operator, 2026-09-14: *"safe to run anytime any day."* What accumulates is the
+depth inside those windows, which is what this rule protects.
 
 ⚠️ **THE CONSEQUENCE NOBODY WROTE DOWN AT THE TIME:** fleet-wide open-interest
 accumulation — which the GEX butterfly's unpark waits on — now runs across 15
@@ -966,7 +992,17 @@ broken version.
             → commit → push → cleanup
 
 If regeneration reports broken imports, or `--check` reports drift, **the gate
-fails and nothing stages.** Operator, 2026-08-19: *"I'm in favour of good
+fails and nothing stages.**
+
+⚠️ **CURRENT IS NOT ACCURATE (MAP.1, MAP.2, MAP.3 — OTV4TEST r18 and r28).**
+`--check` proves a map regenerates identical, which a map blind to a writer does
+every time: the write map sat green while missing a table (r18) and while
+crediting the retention purge with one table of the fourteen it deletes from
+(r28). `tests/check_map_accuracy.py` is the accuracy gate: the purge's policy
+tables against the map, every unit- and lander-launched script against
+`ENTRY_POINTS`, and every table in the box's four stores against the map,
+read-only. Name it as a CHECK in any delivery that touches a generator, a
+table, a unit or the purge. Operator, 2026-08-19: *"I'm in favour of good
 discipline as a backstop to sloppy execution."* A warning that fires on every
 structural change gets ignored within a week — which is exactly how v3's map
 came to be written from memory.
@@ -999,6 +1035,13 @@ Added 2026-08-19, operator's instruction.
                      notifications/ utils/ warehouse/ shadow/ deploy/
                      main.py config.py + install scripts
     CONTROL ONLY     tests/ — every harness, probe and replay tool
+
+🔴 **SCOPE, ADDED 2026-09-14 (OTV4TEST r28): NOT THIS BOX.** QQQ-TEST is its own
+control (§3): `tests/` is checked out here (`core.sparseCheckout` is unset,
+measured), every land runs its CHECK lines here through `tools/land.sh`, and
+full sweeps run here on scratch stores. What still applies is the care: a sweep
+during RTH runs niced, on scratch databases, and leaves the live stores unchanged
+(snapshot them before and after).
 
 **Harnesses read banked tape and trade databases. They never run on a box
 mid-session**, and a t2.micro that has already been OOM-killed once (SPX, 419 MB)
@@ -1385,8 +1428,10 @@ not hold surfaces at the worst moment: *after* the work and *after* the approval
   that never happened.**
 - **THE ASSISTANT DOES NOT RUN CONTINUOUSLY.** *"I'll keep an eye on it"* is
   false. Recurring work is a **timer the operator installs**, proposed with its
-  schedule, its command, and what it will report. ⚠️ See BOX.1: this box has
-  almost no timers, and a previous revision assumed three that never existed.
+  schedule, its command, and what it will report. ⚠️ See BOX.1: a revision once
+  assumed three timers that never existed here. As of r27 the box has exactly
+  two, both ruled — the midnight halt (BOX.2) and the Saturday purge (BOX.4) —
+  and §3 lists them as measured.
 - **REPORT OUTCOMES FAITHFULLY.** BUILT, PUSHED and BAKED are three claims and
   are never merged (§18). **A check that could not run is reported as NOT RUN,
   never as passed.** Reds are shown, not tidied away (§0.5).
@@ -1407,6 +1452,19 @@ not hold surfaces at the worst moment: *after* the work and *after* the approval
 ---
 
 ## CHANGELOG
+
+**v4.12 — 2026-09-14 — OTV4TEST r28 — OBSOLETE REFERENCES CORRECTED, FACTS ONLY.**
+Found reading this file against the box on the first morning of the week. §3
+said the box had no midnight halt and three units; it has two ruled timers
+(midnight halt, Saturday purge) and an 08:00 ET wake outside the repo, measured.
+§30 said pruning is disabled; it has been armed since mainline r162, and the
+operator ruled it safe any time. §34 said tests never run on a box; this box is
+its own control. §38.7 cited "almost no timers". The opening line, §12 and
+Companion files named `OBSERVATIONS.md`, which has **never been in this repo's
+history** (`git log --all` returns nothing). The migrated monitoring line named
+root paths r14 moved. The header's "§0 plus 40 sections" did not match the file.
+§33 gains the accuracy gate r28 built (`check_map_accuracy`). No rule changed;
+§30's struck sentence is kept, struck, per the r240 precedent.
 
 **v4.11 — 2026-09-13 — OTV4TEST r18 — §38 ADDED: HOW THE ASSISTANT IS
 PERMITTED TO WORK.** The operator's own `ASSISTANT_PERMISSIONS.md`, at his
