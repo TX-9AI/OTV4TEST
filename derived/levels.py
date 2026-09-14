@@ -1,6 +1,18 @@
 """
-derived/levels.py  v5.0
+derived/levels.py  v5.1
 Owns `level_ledger` and `level_event`. Tier 3 — stateful; the object has a biography.
+v5.1  2026-09-14  OTV4TEST r30 — TWO DEFECTS IN r29, FOUND READING THE NOON BAKE.
+      (1) A CONFIRMED LEGACY ROW KEPT ITS OLD `timeframe`. The reconcile stamped
+      `created_ts` on a pre-r29 row the tape holds but not `timeframe`, which
+      `upsert_level` never rewrites, so the 9 held rows on the box read `session`
+      and not `session:YYYY-MM-DD`. The book-beyond-the-tape rule matches only
+      `session:%`, so once Saturday's purge trims the 1m tape past 09-09, the held
+      720.06 / 719.70 / 717.68 would have retired NOT_A_LEVEL. The kept row now
+      gets its formation time AND its dated timeframe (`set_level_created`).
+      (2) r29's changelog said the reconcile retires "stale VWAP ids"; it skipped
+      every `dynamic` row, and 515 were live after the bake. Every VWAP id but the
+      current one now retires `STALE_VWAP`. No level reader sees `dynamic` rows,
+      so neither changes a trade — (1) prevents one silently losing its levels.
 v5.0  2026-09-14  OTV4TEST r29 (LVL.8, LVL.9) — THE SESSION LEVELS COME FROM THE
       TAPE, AND THE LEDGER IS RECONCILED TO IT EVERY CLOSED BAR. Operator: *"Levels
       are session extremes that held. Starting from spot, map the most recent up/down
@@ -399,7 +411,7 @@ class LevelEngine(DerivedEngine):
         from derived import level_map as lm
         levels = lm.session_levels(tape, accept_closes=ACCEPT_CLOSES, tol_pct=TOUCH_TOL_PCT)
         tape_start = float(tape.index[0].timestamp())
-        srcs, formed, spent = [], {}, {}
+        srcs, formed, spent, tfs = [], {}, {}, {}
         for lv in levels:
             prov = lm.provenance(lv["label"])
             lid = self._lid(sym, prov, lv["price"])
@@ -408,6 +420,7 @@ class LevelEngine(DerivedEngine):
                 continue
             srcs.append((prov, lv["price"], lm.kind_of(lv["side"]), f"session:{lv['date']}", 0))
             formed[lid] = float(pd_ts(lv["formed_ts"]))
+            tfs[lid] = f"session:{lv['date']}"
         held_ids = set(formed)
         # the book reaches further than the tape: rows formed before the tape
         try:
@@ -421,17 +434,21 @@ class LevelEngine(DerivedEngine):
             if lid not in held_ids and lid not in spent:
                 srcs.append((prov, float(price), kind, tf, 0))
                 formed[lid] = float(created)
-        self._reconcile(store, sym, set(formed), formed, spent, tape)
+        vol = ctx.get("vol")
+        _vw = _f(getattr(vol, "vwap", None)) if vol is not None else None
+        vwap_lid = self._lid(sym, "vwap", _vw) if _vw and _vw > 0 else None
+        self._reconcile(store, sym, set(formed), formed, spent, tape, tfs=tfs, vwap_lid=vwap_lid)
         self._formed.update(formed)
         self._tape_srcs = srcs
         self._tape_key = key
         return list(srcs)
 
-    def _reconcile(self, store, sym, keep: set, formed: dict, spent: dict, tape) -> None:
+    def _reconcile(self, store, sym, keep: set, formed: dict, spent: dict, tape,
+                   tfs: Optional[dict] = None, vwap_lid: Optional[str] = None) -> None:
         """Retire every live row the tape does not hold; stamp formation times."""
         try:
             rows = store.conn.execute(
-                "SELECT level_id, price, kind, provenance, created_ts FROM level_ledger"
+                "SELECT level_id, price, kind, provenance, created_ts, timeframe FROM level_ledger"
                 " WHERE symbol=? AND retired_ts IS NULL", (sym,)).fetchall()
         except Exception as exc:                                # noqa: BLE001
             logger.warning("[level] reconcile read failed — nothing retired: %s", exc)
@@ -439,14 +456,26 @@ class LevelEngine(DerivedEngine):
         now = time.time()
         fresh_after = now - 60.0 * max(3, ACCEPT_CLOSES + 1)
         retired = 0
-        for lid, price, kind, prov, created in rows:
+        tfs = tfs or {}
+        for lid, price, kind, prov, created, tf in rows:
             if lid in keep:
                 f = formed.get(lid)
-                if f is not None and created is not None and abs(float(created) - f) > 1.0:
-                    store.set_level_created(lid, f)
+                want_tf = tfs.get(lid) or tf
+                if f is not None and (created is None or abs(float(created) - f) > 1.0
+                                      or want_tf != tf):
+                    # r30 — formation time AND dated timeframe, or the row cannot
+                    # be kept once the tape no longer reaches it
+                    store.set_level_created(lid, f, want_tf)
                 continue
             if kind == "dynamic" and str(prov) == "vwap":
-                continue                   # the live VWAP row is re-upserted by derive()
+                if lid == vwap_lid:
+                    continue               # the current VWAP row, re-upserted by derive()
+                store.retire_level(lid, now, "STALE_VWAP")      # r30
+                st = self._live.get(lid)
+                if st is not None:
+                    st["retired"], st["reason"] = now, "STALE_VWAP"
+                retired += 1
+                continue
             sp = spent.get(lid)
             if sp is not None:
                 ts = float(pd_ts(sp["spent_ts"]))

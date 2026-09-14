@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""tests/check_level_map.py — v1.0
+"""tests/check_level_map.py — v1.1
+v1.1  2026-09-14 — OTV4TEST r30. M10-M12, from reading r29's noon bake on the box: a
+      confirmed legacy row kept `timeframe='session'`, so it would retire once the
+      tape stopped reaching it (M10, M11 — Saturday's purge); r29 claimed to retire
+      stale VWAP ids and skipped them, 515 live (M12). All three born red at 0c3b01b.
 THE LEVELS ARE BUILT FROM THE TAPE, AND THE LEDGER HOLDS ONLY WHAT THE TAPE HOLDS.
 
 v1.0  2026-09-14 — OTV4TEST r29 (LVL.8, LVL.9). Operator: *"Levels are session
@@ -29,6 +33,9 @@ shapes measured live at 09:10 ET (fork1h rail, 1h tine row, `(R2)` pool, bare
   M7  a FRESH acceptance on the live tape emits ACCEPTED and retires the level
   M8  no tape (None) retires nothing
   M9  live_levels carries created_ts; the sweep plan walks it
+  M10 a confirmed legacy row gets its dated timeframe (session:2026-09-14), not just its time
+  M11 ...and so stays live when the tape is trimmed past its session (Saturday's purge)
+  M12 stale VWAP ids retire STALE_VWAP; the current VWAP row stays live
 Born red at 2a346c4 (r28): no derived/level_map, no reconcile, board unwalked.
 Run:  python3 tests/check_level_map.py
 """
@@ -184,6 +191,37 @@ def main():
     check("M9 live_levels carries created_ts, and the sweep plan walks it",
           bool(lv) and all("created_ts" in x for x in lv) and "_lm.walk(" in src,
           f"{len(lv)} live")
+
+    # ── r30 — M10-M12, a fresh ledger so M7's mutations do not leak in ──────
+    store2 = DerivedStore(path=os.path.join(tempfile.mkdtemp(), "derived.db"))
+    for lid, p, k, prov, tf, cr in [
+        ("QQQ:asia:714.75", 714.75, "resistance", "asia", "session", now - 3600),
+        ("QQQ:london:720.06", 720.06, "resistance", "london", "session", now - 3600),
+        ("QQQ:vwap:700.00", 700.0, "dynamic", "vwap", "session", now - 7200),
+        ("QQQ:vwap:705.00", 705.0, "dynamic", "vwap", "session", now - 60),
+    ]:
+        store2.upsert_level((lid, "QQQ", p, k, prov, tf, cr, 0, None, 0, None, None, 1 if prov == "vwap" else 0))
+    store2.commit()
+
+    class _Vol:
+        vwap = 705.0
+    ctx2 = dict(ctx, vol=_Vol(), level_tape=df)
+    LevelEngine(store2, "QQQ").derive(ctx2)
+    store2.commit()
+    tf10 = store2.conn.execute("SELECT timeframe, retired_ts FROM level_ledger WHERE level_id='QQQ:asia:714.75'").fetchone()
+    check("M10 a confirmed legacy row gets its dated timeframe", tf10 is not None and tf10[0] == "session:2026-09-14"
+          and tf10[1] is None, f"{tf10}")
+    trimmed = df[df.index >= pd.Timestamp("2026-09-10 12:00", tz="UTC")]
+    LevelEngine(store2, "QQQ").derive(dict(ctx2, level_tape=trimmed))
+    store2.commit()
+    r11 = store2.conn.execute("SELECT timeframe, retired_ts, retired_reason FROM level_ledger WHERE level_id='QQQ:london:720.06'").fetchone()
+    check("M11 a confirmed level stays live when the tape no longer reaches its session",
+          r11 is not None and r11[1] is None, f"{r11}")
+    v = {r[0]: r for r in store2.conn.execute(
+        "SELECT level_id, retired_ts, retired_reason FROM level_ledger WHERE provenance='vwap'")}
+    check("M12 stale VWAP ids retire STALE_VWAP; the current one stays live",
+          v.get("QQQ:vwap:700.00", (0, None, None))[2] == "STALE_VWAP"
+          and v.get("QQQ:vwap:705.00", (0, 1, None))[1] is None, str(v))
 
     print()
     if FAILED:

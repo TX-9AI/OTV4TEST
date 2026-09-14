@@ -1,5 +1,6 @@
 # PLAN_SPEC.md — every strategy declares its intent BEFORE the trigger
 
+**v1.27 · 2026-09-14 · OTV4TEST r30 — §40: a confirmed level carries its dated timeframe so it outlives the tape; stale VWAP ids retire.**
 **v1.26 · 2026-09-14 · OTV4TEST r29 — the levels are built from the tape: held session extremes, walked from spot, spent only on acceptance (§40).**
 **v1.25 · 2026-09-14 · OTV4TEST r26 — the ATP (at-the-pin) butterfly, a second butterfly thesis; one butterfly per session across both (§39).**
 **v1.24 · 2026-09-08 · OTV4TEST r2 — the ORB spec and its plan contract, agreed part by part; observe-only outside the window (§29).**
@@ -1467,7 +1468,7 @@ These restate rulings already on record, and the build implements those, not a n
 | the map | `level_map.walk(held, spot)`: the newest held level each side of spot, then each older one only if further out; equal formation times go nearest first. A view, computed at read |
 | who reads it | the hunt's `board()` (then beyond each opening-range edge), `walk()` (the snapshot/notes record), and the sweep plan's levels in play. The TCS reads its `ny` levels unwalked (TCS.3) |
 | stored | `level_ledger` holds the biography: `created_ts` = the bar the extreme printed on, `timeframe` = `session:YYYY-MM-DD`, provenance `asia`/`london`/`ny`, kind by formation (high → resistance) |
-| retired | every closed tape bar the ledger is reconciled: a live row that is not a held tape level and not formed before the tape begins retires `ACCEPTED_THROUGH` (at the tape's bar) or `NOT_A_LEVEL`. An `ACCEPTED` event is written only when that bar is fresh — history never fires a trade. `TRAVERSED` inside the opening range is unchanged (§31.1) |
+| retired | every closed tape bar the ledger is reconciled: a live row that is not a held tape level and not formed before the tape begins retires `ACCEPTED_THROUGH` (at the tape's bar) or `NOT_A_LEVEL`; every VWAP id but the current one retires `STALE_VWAP` (r30). A kept row is stamped with its formation bar AND its `session:YYYY-MM-DD` timeframe (r30), which is what lets it stay once the tape no longer reaches it. An `ACCEPTED` event is written only when that bar is fresh — history never fires a trade. `TRAVERSED` inside the opening range is unchanged (§31.1) |
 | reach | the ledger (NEVER_PURGE) beyond the tape: a `session:` row formed before the tape's first bar is kept and still judged on live closes |
 
 ### 40.2 Measured on this box, 2026-09-14

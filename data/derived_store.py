@@ -1,5 +1,8 @@
 """
-data/derived_store.py  v4.5
+data/derived_store.py  v4.6
+v4.6  2026-09-14  OTV4TEST r30 — `set_level_created(level_id, ts, timeframe=None)` also
+      stamps the dated `session:YYYY-MM-DD` timeframe on a confirmed legacy row
+      (levels v5.1); `upsert_level` never rewrites that column.
 v4.5  2026-09-14  OTV4TEST r29 — `retire_level` and `set_level_created`, the two writes
       the tape reconcile needs (levels v5.0); `live_levels` also returns
       `created_ts`, the bar the extreme printed on, so readers can walk newest first.
@@ -235,8 +238,13 @@ class DerivedStore:
             "UPDATE level_ledger SET retired_ts=?, retired_reason=?"
             " WHERE level_id=? AND retired_ts IS NULL", [(float(ts), str(reason), level_id)])
 
-    def set_level_created(self, level_id: str, ts: float):
-        """r29 — stamp the bar the extreme printed on (the walk orders by it)."""
+    def set_level_created(self, level_id: str, ts: float, timeframe: Optional[str] = None):
+        """r29 — stamp the bar the extreme printed on (the walk orders by it);
+        r30 — and its dated timeframe, which the book-beyond-the-tape rule keys on."""
+        if timeframe:
+            return self._write(
+                "UPDATE level_ledger SET created_ts=?, timeframe=? WHERE level_id=?",
+                [(float(ts), str(timeframe), level_id)])
         return self._write(
             "UPDATE level_ledger SET created_ts=? WHERE level_id=?", [(float(ts), level_id)])
 
