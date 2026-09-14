@@ -1,5 +1,6 @@
 # PLAN_SPEC.md — every strategy declares its intent BEFORE the trigger
 
+**v1.25 · 2026-09-14 · OTV4TEST r26 — the ATP (at-the-pin) butterfly, a second butterfly thesis; one butterfly per session across both (§39).**
 **v1.24 · 2026-09-08 · OTV4TEST r2 — the ORB spec and its plan contract, agreed part by part; observe-only outside the window (§29).**
 **v1.23 · 2026-09-01 · r208 — the butterfly wing is searched, not computed (§28).**
 **v1.22 · 2026-09-01 · r207 — the ORB firing sequence is the gate (§27).**
@@ -1422,3 +1423,26 @@ Found on mainline's warehouse and verified here by reading: **(1) pools were wri
 **What this changes on the tape:** from r15 the hunt and the sweep can see the ladder. Every row before r15 that said *"NO live level outside the range"* or chose a generic zone level was reading a door the ladder could not pass. HUNT.1's first week starts here, not at r12.
 
 **Predecessor status (correction to the manifest):** mainline is no longer frozen — 37 commits, r325→r364, under Claude Code on the controller. The back-port is a merge now, and the level engine is the first file where both sides changed the same thing on purpose.
+
+## 39. OTV4TEST r26 — THE ATP (AT-THE-PIN) BUTTERFLY SPEC AND ITS PLAN CONTRACT (operator 2026-09-13)
+
+*"That is a different trade. Code it and allow one butterfly or the other, whichever plan produces a viable trade 1st can take it. Call it something different, because traveling to the pin is a different thesis than building it on an already sideways tape."* He named it the ATP butterfly.
+
+### 39.1 The spec
+| part | definition |
+|---|---|
+| thesis | price already SITS on the pin on a settled tape; the fly pays as the wings die into the close. §32's trade buys for price to TRAVEL to the pin |
+| slot | the butterfly slot, shared with §32 (12:00–15:00) |
+| regime | PINNING with a pin strike |
+| pin strength | `gex_pin_butterfly.pin_strength()` — the SAME function §32 calls: concentration ≥ 0.25, or the pin within ±0.10 × EM of today's VWAP (r25) |
+| at the pin | \|spot − pin\| ≤ `ATP_BFLY_AT_PIN_EM_FRAC` ⟨PRIOR 0.30⟩ × EM — the complement of §32's 0.30–1.00 reach, so on one tick at most one butterfly can be viable |
+| settled | the last `ATP_BFLY_SETTLED_BARS` ⟨PRIOR 15⟩ CLOSED 1m bars all closed inside that band — read from the candles, never counted in memory (DEC.1) |
+| structure | both sides priced; symmetric listed wings, apex exactly on the pin; spot must be INSIDE the tent (width > \|spot − pin\|); R ≥ R_FLOOR; the 40% stop clears the fly's own three-leg spread by STOP_VS_SPREAD_MIN; the pick is the MAX R |
+| exits | §32's, by construction: the 40% floor and the 15:45 flatten, no target (`strategy/management.py` `BUTTERFLIES`) |
+| one per session | main.py's trades.db cap counts EITHER butterfly name before asking either — a butterfly of one kind ends the day for both. No played-pin set and no tick counter |
+| starved | no price, no GEX, open interest summing to zero (§32.2's park — it matters more here, since a gamma² "pin" sits at spot), no chain |
+
+### 39.2 Measured before building
+12:00–15:00 on this box: Wed 09-09 and Thu 09-10 — no qualifying minute (GEX read TRENDING). Fri 09-11 — 36 qualifying minutes, first 12:28 (pin 715, spot 716.01, EM 5.21, conc 0.26). On Friday's real 12:28 quotes the structure is the 713/715/717 PUT fly, debit 0.56, R 2.57, its stop 5.6× its spread; the 1-wide leaves spot outside the tent and the call fly fails its spread at 1.6×. Worst mid to the flatten 0.38 at 13:25 against a 0.336 stop — it survives by four cents — and worth 1.135 at 15:44. One day is a mechanism, not a rule; the priors are recorded on every row to be fitted.
+
+**As built (OTV4TEST r26):** `strategy/atp_butterfly_plan.py` v1.0 (the plan), `strategy/atp_butterfly.py` v1.0 (the strategy), `strategy/gex_pin_butterfly.py` v5.4 (`pin_strength` shared), `strategy/management.py` v2.4, `main.py` v4.49, `config.py` v4.22, `tools/query.py` v4.12. Hypotheticals: `check_atp_butterfly` P1–P9, M1–M3, S1–S6.

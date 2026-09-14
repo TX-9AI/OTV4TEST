@@ -1,6 +1,19 @@
 #!/usr/bin/env python3
 """
-tests/check_audit_20260823.py  v1.0
+tests/check_audit_20260823.py  v1.1
+v1.1  2026-09-14  OTV4TEST r26 — 🔴 A1 RAN THE REAL RETENTION PURGE, WITH --apply, ON THE BOX'S
+      OWN FEED STORE. `self_close.main()` was driven with only `subprocess.run`
+      faked; after the (faked) verifier said OK it called
+      `retention_purge.main(["--apply"])` for real. `purge()` honours
+      OT_DERIVED_DB but opens `<repo>/data/feed_store.db` unconditionally, so every
+      run of this check DELETED live rows past the retention windows (1m candles
+      > 5 days; quotes, prints, greeks, last_trade, session_summary > 3 days;
+      chain_snapshots > 3 days) and ran the reclaim on the real feed_store.db and
+      trades.db. On this box that happened on each full check sweep — r20's and
+      the r25/r26 sweeps of 2026-09-13/14 — and cost Thursday 09-10's quotes and
+      prints. The purge is now REPLACED by a recorder for the call, and A1b
+      asserts self_close still asks for it with --apply (the r162 property)
+      without executing it. HYG.10.
 Executing pins for the 2026-08-23 adversarial audit (F1, F3, F6, F9).
 
 v1.0  2026-08-23  Born RED at r82 `fe832ae` on all four; green on the fixed
@@ -59,6 +72,12 @@ def a1():
     # environment-true check would pass against the bug. Pretend to be the
     # venv, as the unit really does, and assert the verifier is NOT spawned
     # under it.
+    # 🔴 r26 — NEVER THE REAL PURGE. self_close calls it after the verifier says
+    # OK, and purge() opens the box's real feed_store.db whatever the env says.
+    from warehouse import retention_purge as _rp
+    purge_calls = []
+    orig_purge = _rp.main
+    _rp.main = lambda argv=None: purge_calls.append(list(argv or [])) or 0
     orig, orig_exe = subprocess.run, sys.executable
     subprocess.run = fake_run
     sys.executable = "/home/ubuntu/options-trader/venv/bin/python"
@@ -66,6 +85,9 @@ def a1():
         sc.main(["self_close.py"])
     finally:
         subprocess.run, sys.executable = orig, orig_exe
+        _rp.main = orig_purge
+    check("A1b self_close asks for the purge with --apply (recorded, never executed)",
+          purge_calls == [["--apply"]], f"calls={purge_calls}")
     interp = seen.get("interp", "")
     check("A1 verifier is NOT spawned under the bot venv (boto3 lives in system python)",
           bool(interp) and "venv" not in interp and interp.endswith("python3"),

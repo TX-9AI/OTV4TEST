@@ -1,5 +1,16 @@
 """
-main.py  v4.48
+main.py  v4.49
+v4.49 2026-09-14  OTV4TEST r26 — THE ATP BUTTERFLY IS ASKED, AND THE SESSION HAS ONE BUTTERFLY.
+      Operator: "allow one butterfly or the other, whichever plan produces a
+      viable trade 1st can take it." Both butterfly sites — the in-dispatch slot
+      and `_attempt_butterfly` (the position-open branch) — ask GEXPinButterfly,
+      then, if it did not fire, ATPButterfly (their reach bands are complements,
+      0.30-1.00 vs <= 0.30 of the EM, so on one tick at most one can be viable and
+      the order decides nothing). The r179 trades.db cap now counts EITHER name
+      before asking either, so a butterfly of one kind ends the day for both. A
+      tick where the pin fly fired writes the ATP's row as a skip rather than
+      leaving it NOT ASKED. `_STRUCTURE_BY_NAME` maps it to "butterfly"; without
+      that the afternoon cutoff would have treated it as a long debit.
 v4.48 2026-09-13  OTV4TEST r24 — THE SWEEP'S PREMIUM STOP IS 15% OF RISK, AS SPECIFIED.
       `_execute_condor_leg` stamped the sweep's `stop_premium` as 15% of the
       CREDIT — the inverted rule r155 deleted — and the management plan acts on
@@ -1215,6 +1226,7 @@ from strategy.orb_strategy import ORBStrategy
 from strategy.runaway_continuation import RunawayContinuationStrategy
 from strategy.sweep_credit_spread import SweepCreditSpreadStrategy
 from strategy.gex_pin_butterfly import GEXPinButterflyStrategy
+from strategy.atp_butterfly import ATPButterflyStrategy
 from strategy.liquidity_hunt import LiquidityHunt                       # OTV4TEST r12
 from execution import handoff as _handoff                              # OTV4TEST r12
 from config import SWEEP_SETUP_FLOOR
@@ -1265,6 +1277,7 @@ _orb_strategy     = ORBStrategy()
 _runaway_strategy = RunawayContinuationStrategy()
 _sweep_cs_strategy = SweepCreditSpreadStrategy()
 _gex_bfly_strategy = GEXPinButterflyStrategy()
+_atp_bfly_strategy = ATPButterflyStrategy()
 _liquidity_hunt = LiquidityHunt()                                      # OTV4TEST r12
 _iron_condor_strategy = IronCondorStrategy()
 # TC.6 — trend credit spread. Sits with the other strategy instances and is
@@ -3386,6 +3399,7 @@ _STRUCTURE_BY_NAME = {
     "RunawayContinuation":  "long_debit",
     "SweepCreditSpread":    "vertical",
     "GEXPinButterfly":      "butterfly",
+    "ATPButterfly":         "butterfly",
     "IronCondorStrategy":   "vertical",
 }
 
@@ -3886,11 +3900,14 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     # starts accumulating (2026-08-19).
     if signal is not None:
         _plan_skip("GEXPinButterfly", f"slot claimed by {signal.strategy_name}")
+        _plan_skip("ATPButterfly", f"slot claimed by {signal.strategy_name}")
     # r179 — ONE PER SESSION ON THIS BOX: this in-dispatch butterfly path
     # does not route through _attempt_butterfly, so it carries its own guard.
-    if signal is None and _one_per_session_used("GEXPinButterfly"):
-        _plan_skip("GEXPinButterfly",
-                   "one per session on this box — already traded today")
+    # OTV4TEST r26 — one butterfly of EITHER kind per session.
+    if signal is None and (_one_per_session_used("GEXPinButterfly")
+                           or _one_per_session_used("ATPButterfly")):
+        for _bn in ("GEXPinButterfly", "ATPButterfly"):
+            _plan_skip(_bn, "one per session on this box — already traded today (one butterfly of either kind)")
     elif signal is None:
         # r205 — ONE SOURCE. Computed once in run_analysis and stored on ctx.
         # Recomputing here would let the dispatch and the snapshot disagree
@@ -3906,6 +3923,20 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
                                 ), ctx)
         if bf_sig:
             signal = bf_sig
+            _plan_skip("ATPButterfly", "the pin butterfly fired this tick — one butterfly per session")
+        else:
+            # OTV4TEST r26 — the ATP butterfly: price already AT the pin, settled.
+            atp_sig = _safe_strategy("ATPButterfly",
+                                     lambda: _atp_bfly_strategy.generate_signal(
+                                         gex           = ctx.get("gex"),
+                                         price_now     = ctx["price"],
+                                         now_et        = _now_et_hhmm,
+                                         atm_iv        = _atm_iv,
+                                         chain         = chain,
+                                         df_1m         = ctx.get("df_1m"),
+                                     ), ctx)
+            if atp_sig:
+                signal = atp_sig
 
 
     # Priority 2 (was sweep): Trend Continuation.
@@ -4148,9 +4179,9 @@ def _attempt_butterfly(ctx, ms, state, *, additive: bool) -> None:
     # butterfly allowed per session on a box"). Checked BEFORE the strategy
     # is asked, at the one entry point every butterfly attempt routes
     # through. DB-backed, survives restarts, fails closed.
-    if _one_per_session_used("GEXPinButterfly"):
-        _plan_skip("GEXPinButterfly",
-                   "one per session on this box — already traded today")
+    if _one_per_session_used("GEXPinButterfly") or _one_per_session_used("ATPButterfly"):
+        for _bn in ("GEXPinButterfly", "ATPButterfly"):
+            _plan_skip(_bn, "one per session on this box — already traded today (one butterfly of either kind)")
         return
     """r161 — ask the butterfly's plan (dormant outside its slot) and, on a
     fire, execute it. Called from main_loop's position-open branch with
@@ -4160,6 +4191,7 @@ def _attempt_butterfly(ctx, ms, state, *, additive: bool) -> None:
         chain = ctx.get("chain")
         if chain is None:
             _plan_skip("GEXPinButterfly", "no options chain this tick")
+            _plan_skip("ATPButterfly", "no options chain this tick")
             return
         # r205 — ONE SOURCE. Computed once in run_analysis and stored on ctx.
         # Recomputing here would let the dispatch and the snapshot disagree
@@ -4182,6 +4214,16 @@ def _attempt_butterfly(ctx, ms, state, *, additive: bool) -> None:
                                     or getattr(bf_sig, "strike", None))
             except Exception as _pp_err:                        # noqa: BLE001
                 logger.warning("pin-played mark failed: %s", _pp_err)
+            _plan_skip("ATPButterfly", "the pin butterfly fired this tick — one butterfly per session")
+            return
+        # OTV4TEST r26 — asked only when the pin butterfly did not fire.
+        atp_sig = _safe_strategy("ATPButterfly",
+                                 lambda: _atp_bfly_strategy.generate_signal(
+                                     gex=ctx.get("gex"), price_now=ctx["price"],
+                                     now_et=now_et().strftime("%H:%M"),
+                                     atm_iv=_atm_iv, chain=chain, df_1m=ctx.get("df_1m")), ctx)
+        if atp_sig is not None:
+            _execute_entry_signal(atp_sig, ctx, ms, state, None, additive=additive)
     except Exception as exc:                                    # noqa: BLE001
         logger.warning("Butterfly attempt failed: %s", exc)
 

@@ -1,5 +1,11 @@
 """
-strategy/gex_pin_butterfly.py  v5.3
+strategy/gex_pin_butterfly.py  v5.4
+v5.4  2026-09-14  OTV4TEST r26 — PIN STRENGTH IS ONE FUNCTION, SHARED WITH THE ATP BUTTERFLY.
+      r25's inline concentration-or-VWAP-band block is lifted, unchanged in
+      behaviour, into module-level `pin_strength(t, pin, conc, em)`, which
+      `strategy/atp_butterfly_plan.py` also calls — so the two butterflies can
+      never disagree about what a strong pin is. check_bfly_vwap_band and
+      check_plan_prepares' butterfly cases are the regression net.
 v5.3  2026-09-13  OTV4TEST r25 — A PIN AT VWAP WAIVES THE CONCENTRATION FLOOR (BFLY.5).
       Operator: "VWAP replaces the floor if the pin is w/in a predefined portion
       of VWAP" and "W/in 20% of the expected move, expressed as 10% above, 10%
@@ -680,32 +686,9 @@ class GEXPinButterflyStrategy:
         # See relaxed_bounds(): pinned to themselves, so relaxation moves
         # neither, and a checker can execute the same function the strategy
         # calls rather than re-deriving it.
-        _conc_min = PIN_CONC_MIN
         em = expected_move(price_now, atm_iv)
-        # ── OTV4TEST r25 (BFLY.5): A PIN AT VWAP MEETS THE CONDITION WITHOUT THE
-        #    FLOOR. Today's VWAP only (anchors.vwap_now fails closed on a prior
-        #    session's anchor or a stale bar); the distance is recorded every
-        #    tick so the band can be fitted, waived or not.
-        _vw, _vw_why = None, "not read"
-        try:
-            from derived import anchors as _A
-            _vw, _vw_why = _A.vwap_now()
-        except Exception as _e:                     # noqa: BLE001
-            _vw, _vw_why = None, f"VWAP read failed: {_e}"
-        _band = VWAP_BAND_EM_FRAC * em if (em and em > 0) else None
-        _vdist = abs(pin - _vw) if (_vw is not None and pin > 0) else None
-        _in_band = _vdist is not None and _band is not None and _vdist <= _band
-        t.check("pin_vwap_dist", _vdist, None if _vdist is None or _band is None else _in_band)
-        _waived = conc < _conc_min and _in_band
-        if _waived:
-            prep.vwap_waiver = (f"concentration {conc:.2f} < {_conc_min:.2f} WAIVED — pin {pin:g} is "
-                                f"{_vdist:.2f} from today's VWAP {_vw:.2f} (band ±{_band:.2f} = "
-                                f"{VWAP_BAND_EM_FRAC:.2f}x EM {em:.2f})")
-            t.note(prep.vwap_waiver)
-        _need = f">= {_conc_min:.2f}" + (
-            f", or pin within ±{_band:.2f} of VWAP (now {_vdist:.2f} off)" if _vdist is not None and _band
-            else f", or pin within {VWAP_BAND_EM_FRAC:.2f}x EM of VWAP (no VWAP: {_vw_why})")
-        prep.cond("pin_concentration", conc, _need, conc >= _conc_min or _waived)
+        _met, _need, prep.vwap_waiver = pin_strength(t, pin, conc, em)
+        prep.cond("pin_concentration", conc, _need, _met)
         prep.em = em or 0.0
         prep.cond("expected_move", em or None, self.CONDITIONS["expected_move"], bool(em and em > 0))
         if pin > 0 and em and em > 0:
@@ -943,6 +926,38 @@ class GEXPinButterflyStrategy:
         logger.info("[gex_bfly] FIRE  %s  pin conc %.2f  spot %.2f",
                     prep.trade_line(), prep.conc, float(price_now))
         return prep.tick.take(sig)
+
+
+def pin_strength(t, pin: float, conc: float, em) -> tuple:
+    """(met, need_text, waiver_text) — IS THIS PIN STRONG? One definition, both butterflies.
+
+    r208: concentration >= PIN_CONC_MIN, FOUNDATIONAL. OTV4TEST r25 (BFLY.5, the
+    operator's ruling): OR the pin within ±VWAP_BAND_EM_FRAC x EM of TODAY's VWAP.
+    The VWAP is read through `anchors.vwap_now()`, which fails closed on a prior
+    session's anchor or a stale bar. Records `pin_vwap_dist` on the tick and, when
+    the floor is waived, a note naming by how much. `waiver_text` is "" otherwise.
+    """
+    _conc_min = PIN_CONC_MIN
+    _vw, _vw_why = None, "not read"
+    try:
+        from derived import anchors as _A
+        _vw, _vw_why = _A.vwap_now()
+    except Exception as _e:                         # noqa: BLE001
+        _vw, _vw_why = None, f"VWAP read failed: {_e}"
+    _band = VWAP_BAND_EM_FRAC * em if (em and em > 0) else None
+    _vdist = abs(pin - _vw) if (_vw is not None and pin and pin > 0) else None
+    _in_band = _vdist is not None and _band is not None and _vdist <= _band
+    t.check("pin_vwap_dist", _vdist, None if _vdist is None or _band is None else _in_band)
+    waiver = ""
+    if conc < _conc_min and _in_band:
+        waiver = (f"concentration {conc:.2f} < {_conc_min:.2f} WAIVED — pin {pin:g} is "
+                  f"{_vdist:.2f} from today's VWAP {_vw:.2f} (band ±{_band:.2f} = "
+                  f"{VWAP_BAND_EM_FRAC:.2f}x EM {em:.2f})")
+        t.note(waiver)
+    need = f">= {_conc_min:.2f}" + (
+        f", or pin within ±{_band:.2f} of VWAP (now {_vdist:.2f} off)" if _vdist is not None and _band
+        else f", or pin within {VWAP_BAND_EM_FRAC:.2f}x EM of VWAP (no VWAP: {_vw_why})")
+    return (conc >= _conc_min or bool(waiver)), need, waiver
 
 
 def _chain_increment(contracts, pin: float, default: float = 1.0) -> float:

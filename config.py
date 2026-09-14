@@ -1,5 +1,10 @@
 """
-config.py  v4.21
+config.py  v4.22
+v4.22  2026-09-14  OTV4TEST r26 — THE ATP BUTTERFLY'S KEYS (BFLY.6, PLAN_SPEC §39):
+       `ATP_BUTTERFLY_ENABLED` (OT_ATP_BUTTERFLY=0 parks it), and two declared
+       priors — `ATP_BFLY_AT_PIN_EM_FRAC = 0.30` (spot within 0.30 x EM of the pin:
+       the complement of the travel fly's 0.30-1.00 reach) and
+       `ATP_BFLY_SETTLED_BARS = 15` (closed 1m bars all inside that band).
 v4.21  2026-09-13  OTV4TEST r25 — `GEX_BFLY_VWAP_BAND_EM_FRAC = 0.10` (BFLY.5): a pin within
        ±0.10 x EM of today's VWAP meets the butterfly's concentration condition
        without the floor. Operator: "W/in 20% of the expected move, expressed as
@@ -820,6 +825,9 @@ SWEEP_CS_TAKE_PROFIT_PCT = None
 # that routing happens by DERIVATION from persisted columns, not a flag.
 # Debit positions keep the ladder because they decay; verticals do not.
 BUTTERFLY_STOP_LOSS_PCT = 0.40   # OTV4TEST r24, operator: "Widen it to 40%." (was 0.25)
+ATP_BUTTERFLY_ENABLED = os.environ.get("OT_ATP_BUTTERFLY", "1") == "1"   # OTV4TEST r26 (BFLY.6)
+ATP_BFLY_AT_PIN_EM_FRAC = 0.30   # ⟨PRIOR⟩ r26: at the pin = spot within this x EM of it
+ATP_BFLY_SETTLED_BARS = 15       # ⟨PRIOR⟩ r26: closed 1m bars all within that band
 GEX_BFLY_VWAP_BAND_EM_FRAC = 0.10   # OTV4TEST r25 (BFLY.5): pin within ±this x EM of today's VWAP waives the conc floor
 # Max-loss stop applied to an ADOPTED position (one discovered open at the
 # broker on a LIVE restart with no DB plan). Defaults to the same threshold

@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""check_retention_armed.py — v1.1 (landed r162; R5 re-derived r278)
+"""check_retention_armed.py — v1.2 (landed r162; R5 re-derived r278)
+
+v1.2  2026-09-14 — OTV4TEST r26 (HYG.9). R2/R3 NO LONGER TAKE THE BOX'S REAL PURGE LOCK.
+      `rp.main()` acquires `LOCK_PATH` — `<repo>/data/retention_purge.lock` —
+      before it calls the stubbed `purge`, so every run created that file in the
+      real checkout and, on a box mid-purge, would have waited on (or held) the
+      real lock. Found by running each check alone and watching for the file
+      after check_purge_lock's own fix. `LOCK_PATH` now points at scratch for the
+      two calls, and R0 asserts the real path is not created (when absent before).
 
 v1.1  2026-09-05 — r278. 🔴 R5 ASSERTED "VACUUM is still not EXECUTED at
       shutdown" AND r255 MADE THAT FALSE ON PURPOSE. It has been red since that
@@ -75,6 +83,10 @@ def main():
     from warehouse import retention_purge as rp
     _real = rp.purge
     rp.purge = lambda apply=False: {"quote_series": 1000, "prints": 500}
+    import tempfile
+    _real_lock = rp.LOCK_PATH
+    _real_lock_existed = os.path.exists(_real_lock)
+    rp.LOCK_PATH = os.path.join(tempfile.mkdtemp(), "retention_purge.lock")
     try:
         b = io.StringIO()
         with contextlib.redirect_stdout(b):
@@ -96,6 +108,9 @@ def main():
               "RETENTION IS DRY" in dry and "NOT removed" in dry)
     finally:
         rp.purge = _real
+        rp.LOCK_PATH = _real_lock
+    check("R0 the run did not create the box's real purge lock",
+          _real_lock_existed or not os.path.exists(_real_lock), _real_lock)
 
     # ── 🔴 R5 RE-DERIVED (r278) — THE RULE CHANGED, SO THE CHECK MOVED ───
     # It asserted "VACUUM is still not EXECUTED at shutdown", and r255 made

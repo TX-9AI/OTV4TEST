@@ -1,5 +1,10 @@
 """
-strategy/management.py  v2.3
+strategy/management.py  v2.4
+v2.4  2026-09-14  OTV4TEST r26 — THE ATP BUTTERFLY IS MANAGED EXACTLY AS THE PIN BUTTERFLY.
+      Covered, with the same two declared exits (the 40% floor and the 15:45
+      flatten, no target). Every "is this the butterfly" test reads one tuple,
+      `BUTTERFLIES`, so a third butterfly cannot be half-managed by a name
+      comparison someone forgot.
 v2.3  2026-09-13  OTV4TEST r24 — THE DECLARATIONS MATCH THE ROWS AGAIN. The sweep's
       premium stop is the credit plus 15% OF THE RISK (PLAN_SPEC §31) — this
       line read "credit x (1 + max_loss_pct)", the inverted rule the stamp was
@@ -121,13 +126,16 @@ EXIT_CONDITIONS: Dict[str, Dict[str, str]] = {
         "flatten":        "the 15:45 hard close",
     },
 }
+# OTV4TEST r26 — the ATP butterfly's exits are the pin butterfly's, by construction.
+BUTTERFLIES = ("GEXPinButterfly", "ATPButterfly")
+EXIT_CONDITIONS["ATPButterfly"] = dict(EXIT_CONDITIONS["GEXPinButterfly"])
 
 MGMT_CHECKS = ("premium", "entry_premium", "pnl_pct", "stop_premium", "trail_stop",
                "target_premium", "underlying_stop", "dist_to_stop", "mfe_pct",
                "mae_pct", "ticks_held", "fired")
 
 COVERED = ("RunawayContinuation", "GEXPinButterfly", "SweepCreditSpread",
-           "TrendCreditSpread")
+           "TrendCreditSpread", "ATPButterfly")
 NICKEL = 0.05
 
 
@@ -244,7 +252,7 @@ class ManagementPlan:
             if prem is not None and stop_p and strategy != "TrendCreditSpread":
                 hit = (prem >= stop_p) if credit else (prem <= stop_p)
                 if hit:
-                    name = "premium_stop" if credit else ("stop" if strategy == "GEXPinButterfly" else "hard_stop")
+                    name = "premium_stop" if credit else ("stop" if strategy in BUTTERFLIES else "hard_stop")
                     floor_pct = (abs(stop_p - entry) / entry) if entry else 0.0
                     intent = Intent("CLOSE", f"{name}_{floor_pct:.0%} pnl={pnl:.1%}", name, pnl_pct=pnl)
             if intent is None and ustop and last_close is not None:
@@ -261,7 +269,7 @@ class ManagementPlan:
             # the target: a debit exit for the RUNAWAY only — the butterfly rides
             # to the close (r169)
             if (intent is None and prem is not None and target and not credit
-                    and strategy != "GEXPinButterfly" and prem >= target):
+                    and strategy not in BUTTERFLIES and prem >= target):
                 intent = Intent("CLOSE", f"target_hit pnl={pnl:.1%}", "target", pnl_pct=pnl)
             if intent is None and credit and prem is not None and prem <= NICKEL:
                 intent = Intent("CLOSE", f"nickel_close pnl={pnl:.1%}", "nickel", pnl_pct=pnl)
@@ -321,9 +329,9 @@ class ManagementPlan:
             outs.append(f"1m close {thru} {ustop:.2f} -> out (breach)")
         if trail:
             outs.append(f"premium <= {trail:.2f} -> out (trail)")
-        if target and not credit and str(record.get("strategy", "")) != "GEXPinButterfly":
+        if target and not credit and str(record.get("strategy", "")) not in BUTTERFLIES:
             outs.append(f"premium >= {target:.2f} -> out (target)")
-        if str(record.get("strategy", "")) == "GEXPinButterfly":
+        if str(record.get("strategy", "")) in BUTTERFLIES:
             outs.append("15:45 -> flatten (rides to the close)")
         if credit:
             outs.append("value <= nickel -> out")

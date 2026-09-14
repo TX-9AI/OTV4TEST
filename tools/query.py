@@ -1,5 +1,6 @@
 """
-tools/query.py  v4.11
+tools/query.py  v4.12
+v4.12  2026-09-14  OTV4TEST r26 — "ATPButterfly" abbreviates to "ATP" (was truncated to "ATPBu").
 v4.11  2026-09-11  OTV4TEST r14 — moved from the repo root to tools/ (root cleanup); no behaviour change.
 v4.10 2026-09-09  OTV4TEST r8 — NOT ASKED rows are hushed too. Operator: "Not asked
       is exactly what I don't want to know … until we have an open vertical
@@ -283,7 +284,7 @@ def session_start_epoch() -> float:
 # silently hide a strategy nobody added to this table (r202's rule, same table).
 _STRAT_ABBR = {
     "ORBStrategy": "ORB", "RunawayContinuation": "RUN",
-    "GEXPinButterfly": "BFLY", "SweepCreditSpread": "SWP",
+    "GEXPinButterfly": "BFLY", "ATPButterfly": "ATP", "SweepCreditSpread": "SWP",
     "TrendCreditSpread": "TCS", "IronCondorStrategy": "CNDR",
     "CondorManagement": "CMGT", "CreditRoll": "ROLL",
     "SweepReversal": "SWPR", "ContinuationStrategy": "CONT",

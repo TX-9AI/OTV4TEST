@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""tests/check_purge_lock.py — v1.0
+"""tests/check_purge_lock.py — v1.1
+v1.1  2026-09-14 — OTV4TEST r26 (HYG.9). L1 NO LONGER TAKES THE BOX'S REAL LOCK.
+Both the holder subprocess and this process called `acquire_lock` on the module's
+`LOCK_PATH` — `<repo>/data/retention_purge.lock` — so every run of this check
+created that file in the real checkout (found 2026-09-13 as an untracked file
+the r25 archive nearly shipped), and, on a box whose nightly purge was running,
+L1 would have raced the real purge for its lock: a checker reaching live state,
+the r13/HYG.6 class. Both processes now point `LOCK_PATH` at a scratch file, and
+L0 asserts the real path is not created by the run (when it was absent before).
 v1.0  2026-09-05 — r256. MUTUAL EXCLUSION AND PARTIAL-FAILURE BEHAVIOUR,
 DRIVEN AGAINST REAL PROCESSES AND A REAL LOCKED DATABASE.
 
@@ -72,6 +80,12 @@ def main():
             return 1
     check("K0 retention_purge exposes the r256 surface", True)
 
+    # ══ L0 (r26) — THE CHECK NEVER TOUCHES THE REAL LOCK ═══════════════════
+    real_lock = rp.LOCK_PATH
+    real_existed = os.path.exists(real_lock)
+    _l1_dir = tempfile.mkdtemp()
+    rp.LOCK_PATH = os.path.join(_l1_dir, "retention_purge.lock")
+
     # ══ L1 — A SECOND PROCESS CANNOT ENTER WHILE ONE HOLDS THE LOCK ═══════
     # 🔑 REAL PROCESS, REAL flock. Advisory locks are per open-file-description,
     # so acquiring twice in ONE process would succeed even against code that
@@ -81,6 +95,7 @@ def main():
             import sys, time
             sys.path.insert(0, {_root!r})
             from warehouse import retention_purge as rp
+            rp.LOCK_PATH = {rp.LOCK_PATH!r}
             fh = rp.acquire_lock(0)
             print("held" if fh else "nolock", flush=True)
             time.sleep(8)
@@ -106,6 +121,9 @@ def main():
         import fcntl
         fcntl.flock(after, fcntl.LOCK_UN)
         after.close()
+    rp.LOCK_PATH = real_lock
+    check("L0 the run did not create the box's real lock file",
+          real_existed or not os.path.exists(real_lock), real_lock)
 
     # ══ L2 — THE LOCK IS ROUND EVERYTHING, AND A DECLINE IS NAMED ═════════
     with tempfile.TemporaryDirectory() as tmp:
