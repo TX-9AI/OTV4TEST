@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-276 Python modules across 13 local packages.
+277 Python modules across 13 local packages.
 
-**Reached by:** 112 imported · 9 declared entry points · 69 referenced from a script, unit or doc but never imported · **86 by nothing here**.
+**Reached by:** 112 imported · 9 declared entry points · 70 referenced from a script, unit or doc but never imported · **86 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -862,6 +862,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** `warehouse/__init__.py`, `warehouse/retention_purge.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
+### `tests/check_retention_timer.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
 ### `tests/check_runaway_break_key.py`
 - **calls:** `database/__init__.py`, `database/trade_logger.py`, `strategy/__init__.py`, `strategy/runaway_continuation.py`
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
@@ -1156,7 +1160,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `warehouse/midnight_halt.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `deploy/install_midnight_halt.sh`, `docs/BACKLOG.md`
+- **called by:** (not imported) — referenced in `deploy/install_midnight_halt.sh`, `deploy/install_retention_purge_timer.sh`, `docs/BACKLOG.md`
 
 ### `warehouse/retention_purge.py`
 - **calls:** (none)

@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# deploy/install_retention_purge_timer.sh — v1.0
+# v1.0  2026-09-14  OTV4TEST r27 (BOX.4). THE RETENTION PURGE, WEEKLY, SATURDAY 08:30 ET.
+#
+# Operator, 2026-09-14: *"I want the purge put on a timer. Let's try Saturday after
+# the automatic 8AM wake."* And on what it is: *"The retention purge is safe to run
+# anytime any day because its intent is designed to flush out everything except
+# the minimum necessary to preserve ramps that serve tenors. Trades should be
+# excluded from that purge entirely."* — verified in warehouse/retention_purge.py:
+# `trades` and every ledger are in NEVER_PURGE; trades.db only gets the reclaim's
+# WAL checkpoint and gated vacuum, never a DELETE.
+#
+# 🔑 WHY THIS BOX NEEDS ITS OWN. On the fleet the purge rides `self_close` at 16:45
+# after an S3 drain. This box does not drain (BOX.1, by ruling) and self_close is
+# not installed, so NOTHING trimmed its stores — the only purges it ever had were
+# a checker's side effect (HYG.10). This runs the purge ALONE: no drain, no stop,
+# no shutdown. The midnight halt stays the box's only way down.
+#
+# ⚠️ 08:30, NOT 08:00. The EventBridge wake starts the instance at 08:00 ET; the
+# bot and the feed come up behind it. Thirty minutes lets boot settle so the purge
+# is not competing with a cold start for the disk. The purge's own lock and
+# 120 s busy timeout (r256) already make a busy store a report, not a failure.
+#
+# ⚠️ Persistent=true, THE OPPOSITE OF THE MIDNIGHT HALT, ON PURPOSE. A missed
+# midnight halt must never replay at the next boot — it would stop a morning box.
+# A missed purge replaying at the next boot is harmless by the operator's ruling
+# ("safe to run anytime any day"), and without it one failed Saturday wake would
+# silently skip a week.
+#
+# ⚠️ --apply AT THE CALL SITE (r162): a purge without it is a dry run that deletes
+# nothing and logs the same line forever.
+#
+# ⚠️ OnCalendar CARRIES THE ZONE. The box clock is UTC; `America/New_York` makes
+# systemd track DST (verified with systemd-analyze on systemd 259: 12:30 UTC on
+# 2026-10-31, 13:30 UTC on 2026-11-07 — 08:30 ET both).
+#
+# Run:  bash deploy/install_retention_purge_timer.sh            (from anywhere — it finds the repo)
+#       bash deploy/install_retention_purge_timer.sh --rollback
+set -euo pipefail
+
+# The REPO ROOT, one level up — r21's lesson from install_midnight_halt.sh.
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PY="$DIR/venv/bin/python"
+if [ ! -x "$PY" ]; then
+  # ⚠️ NO PATH FALLBACK. The purge imports the repo's modules; a unit bound to
+  # whatever python3 the installing shell had is r21's hazard. Refuse instead.
+  echo "no venv at $DIR/venv — refusing to install a unit with a guessed interpreter" >&2
+  exit 1
+fi
+
+if [ "${1:-}" = "--rollback" ]; then
+  sudo systemctl disable --now optbot-retention-purge.timer 2>/dev/null || true
+  sudo rm -f /etc/systemd/system/optbot-retention-purge.service /etc/systemd/system/optbot-retention-purge.timer
+  sudo systemctl daemon-reload
+  echo "rolled back."; systemctl list-timers 'optbot-*' --all --no-pager; exit 0
+fi
+
+sudo tee /etc/systemd/system/optbot-retention-purge.service >/dev/null <<UNIT
+[Unit]
+Description=OPT_Trader weekly retention purge — trim stores to the retention windows. No drain, no halt.
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=$DIR
+ExecStart=$PY $DIR/warehouse/retention_purge.py --apply
+StandardOutput=append:$DIR/logs/retention_purge.log
+StandardError=append:$DIR/logs/retention_purge.log
+# The deletes and a gated vacuum of a ~600 MB feed store; an hour is generous.
+TimeoutStartSec=3600
+# Out of the bot's way if it is up: lowest CPU and I/O priority.
+Nice=15
+IOSchedulingClass=idle
+UNIT
+
+sudo tee /etc/systemd/system/optbot-retention-purge.timer >/dev/null <<UNIT
+[Unit]
+Description=Retention purge, Saturdays 08:30 ET (after the 08:00 wake)
+
+[Timer]
+OnCalendar=Sat *-*-* 08:30:00 America/New_York
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+
+mkdir -p "$DIR/logs"
+sudo systemctl daemon-reload
+sudo systemctl enable --now optbot-retention-purge.timer
+echo
+systemctl list-timers 'optbot-*' --all --no-pager | sed -n '1,4p'
