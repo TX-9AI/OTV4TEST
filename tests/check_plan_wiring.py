@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_wiring.py  v1.6  (2026-09-08)
+tests/check_plan_wiring.py  v1.7  (2026-09-13)
+v1.7  2026-09-13  OTV4TEST r25 — W9/W9b PASS A 1m FRAME. r24 requires the last closed bar to
+      hold the 50, and these two calls passed none, so both went HOLD before
+      reaching the chain / R they test. RED SINCE r24 AND SHIPPED THAT WAY: r24's
+      gate list did not include this check. The frame's closes sit at the case's
+      own price (101.6), so W9 still tests "no chain" and W9b still tests R.
 v1.6  2026-09-08  OTV4TEST r3 — W9's fake ORB carries `fifty_accepted`, the runaway plan's trigger.
 v1.5  2026-09-08  OTV4TEST r2 — W2 accepts `self.plan.prepare(` as the wiring:
       ORB's plan is a separate object the strategy owns (strategy/orb_plan.py).
@@ -269,15 +274,28 @@ def main():
         calls = [_C(102.0, 0.90, 0.40, 0.03), _C(103.0, 0.45, 0.25), _C(104.0, 0.20, 0.12)]
         puts = []
 
+    # OTV4TEST r25 — r24 made entry require the CLOSED 1m bar to hold the 50 NOW
+    # (runaway_plan's `fifty_held_now`); live, main.py always passes ctx["df_1m"].
+    # A call with no frame therefore HOLDs before it reaches the case under test,
+    # so the fixture carries bars whose closes sit at this case's own price.
+    import pandas as _pd
+
+    def _bars_at(px):
+        return _pd.DataFrame([{"open": px, "high": px, "low": px, "close": px}] * 5,
+                             index=_pd.date_range("2026-09-08 10:10", periods=5, freq="1min",
+                                                  tz="America/New_York"))
+
     rs = RunawayContinuationStrategy()
     P.begin_tick(1006.0)
-    r0 = rs.generate_signal(orb=_ORB(), atr_pct=0.14, price_now=101.6, now_et="10:15")
+    r0 = rs.generate_signal(orb=_ORB(), atr_pct=0.14, price_now=101.6, now_et="10:15",
+                            df_1m=_bars_at(101.6))
     row6 = st.conn.execute("SELECT verdict, reason FROM plan_tick WHERE "
                            "strategy='RunawayContinuation' AND ts_epoch=1006.0").fetchone()
     check("W9 runaway without a chain: NO PLAN row naming the chain",
           r0 is None and row6 and row6[0] == "NO PLAN" and "chain" in (row6[1] or ""), str(row6))
     P.begin_tick(1007.0)
-    r1 = rs.generate_signal(orb=_ORB(), atr_pct=0.14, price_now=101.6, now_et="10:15", chain=_Chain())
+    r1 = rs.generate_signal(orb=_ORB(), atr_pct=0.14, price_now=101.6, now_et="10:15", chain=_Chain(),
+                            df_1m=_bars_at(101.6))
     row7 = st.conn.execute("SELECT verdict, r_now, invalidation FROM plan_tick WHERE "
                            "strategy='RunawayContinuation' AND ts_epoch=1007.0").fetchone()
     # r168: the runaway has NO price invalidation — its floor is a 20% premium

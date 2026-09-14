@@ -1,5 +1,17 @@
 """
-derived/anchors.py  v1.0
+derived/anchors.py  v1.1
+v1.1  2026-09-13  OTV4TEST r25 — THE VWAP READ WAS DEAD, AND ONE ANCHOR NOW DECIDES.
+      🔴 `vwap()` queried interval '1m', which indicator_series has NEVER held —
+      the engine writes 'primary' only — so it returned None on every call and
+      `anchor_vwap_minus_pin` was null on 723 of 723 of Friday's butterfly rows.
+      Re-pointed to 'primary'. ⚠️ THE FIRST ANCHOR PROMOTED TO A DECISION INPUT,
+      on the operator's ruling (BFLY.5): `vwap_now()` feeds the butterfly's VWAP
+      band. It is a SEPARATE reader because "latest row" is not "now": the
+      engine keeps writing the last session's VWAP after the close (Sunday
+      evening's rows carry Friday's 715.45, anchored Friday midnight). So it
+      returns a value only when the row is anchored at TODAY's midnight ET and
+      its bar is fresh; anything else is None with the reason, never a stale
+      number. `vwap()` stays record-only and unfiltered.
 v1.0  2026-09-09  OTV4TEST r12 — ANCHORS: DERIVATIVES RECORDED ON THE PLAN ROW,
       NEVER DECIDED ON. Operator: *"record in our newly crafted plans, not to
       decide, but to see if they offer fitting anchors we can tie to later."*
@@ -13,7 +25,8 @@ v1.0  2026-09-09  OTV4TEST r12 — ANCHORS: DERIVATIVES RECORDED ON THE PLAN ROW
 
       READS (all from stores that already exist):
         charm_at / vanna_at / gex_at (strike)  — surface_series, latest row
-        vwap ()                                 — indicator_series (1m), latest
+        vwap ()                                 — indicator_series (primary), latest
+        vwap_now (now)                          — the same, ONLY if today's and fresh
         fork_dir (tf)                           — fork_series, latest built
         nearest_tine (price)                    — level_ledger fork1h/* live
         aggressor_share (level, band, secs)     — prints: buy share of size
@@ -25,7 +38,9 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Optional
+from datetime import datetime
+from typing import Optional, Tuple
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
@@ -90,9 +105,40 @@ def gex_between(lo, hi) -> Optional[float]:
 
 
 def vwap() -> Optional[float]:
-    rows = _q("SELECT vwap FROM indicator_series WHERE symbol=? AND interval='1m' ORDER BY ts_epoch DESC LIMIT 1",
+    rows = _q("SELECT vwap FROM indicator_series WHERE symbol=? AND interval='primary' ORDER BY ts_epoch DESC LIMIT 1",
               (_sym(),))
     return float(rows[0][0]) if rows and rows[0][0] is not None else None
+
+
+# Friday 09-11, 1,479 RTH rows: written every 15 s, the bar trailing the write by
+# at most 63 s. 180 s is three missed bars — a stalled feed, not a slow tick.
+VWAP_MAX_BAR_AGE_S = 180.0
+
+
+def vwap_now(now: Optional[float] = None,
+             max_bar_age_s: float = VWAP_MAX_BAR_AGE_S) -> Tuple[Optional[float], str]:
+    """(vwap, why) — the bot's midnight-ET-anchored VWAP for TODAY, or (None, reason).
+
+    A decision input (the butterfly's VWAP band), so it FAILS CLOSED: a missing
+    row, a null value, a prior session's anchor or a stale bar each return None
+    and say which."""
+    # zoneinfo, not utils.time_utils.ET: that is pytz, and .replace(hour=0) on a
+    # pytz datetime keeps the AFTERNOON's offset, an hour wrong on a DST day.
+    ET = ZoneInfo("America/New_York")
+    now = time.time() if now is None else float(now)
+    rows = _q("SELECT vwap, bar_ts_ms, vwap_anchor_ms FROM indicator_series WHERE symbol=? "
+              "AND interval='primary' ORDER BY ts_epoch DESC LIMIT 1", (_sym(),))
+    if not rows:
+        return None, "no VWAP row in indicator_series"
+    v, bar_ms, anchor_ms = rows[0]
+    if v is None:
+        return None, "the latest VWAP row is null"
+    midnight = datetime.fromtimestamp(now, ET).replace(hour=0, minute=0, second=0, microsecond=0)
+    if anchor_ms is None or abs(float(anchor_ms) / 1000.0 - midnight.timestamp()) > 1.0:
+        return None, "the latest VWAP is anchored to a prior session, not today's midnight ET"
+    if bar_ms is None or now - float(bar_ms) / 1000.0 > max_bar_age_s:
+        return None, f"the latest VWAP bar is older than {max_bar_age_s:.0f}s — stale"
+    return float(v), ""
 
 
 def fork_dir(tf: str = "15m") -> Optional[str]:

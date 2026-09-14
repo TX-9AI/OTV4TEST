@@ -1,5 +1,8 @@
 """
-database/trade_logger.py  v4.15
+database/trade_logger.py  v4.16
+v4.16 2026-09-13  OTV4TEST r25 — the "[spent]" log line reads `is_breach_exit()`, the same
+      label set the lock reads, so a management-plan `breach:` / `acceptance:`
+      close is logged as spending its level (r24 logged only the engine labels).
 v4.15 2026-09-13  OTV4TEST r24 — THE CLOSE HOOK NO LONGER WRITES DECISION STATE INTO MEMORY.
       It finished runaway breaks in a set a restart wiped, and it spent sweep
       levels through a read of `is_credit_vertical` — not a column — that raised
@@ -785,11 +788,12 @@ class TradeLogger:
             if "Runaway" in _strat:
                 logger.info("[spent] runaway %s closed — its break is finished "
                             "(the plan reads it from trades.db)", trade_id[:8])
-            elif ("Sweep" in _strat or "TrendCredit" in _strat) and \
-                    str(exit_reason or "").startswith(("sweep_breach_accepted", "tcs_breach")):
-                logger.info("[spent] %s %s closed (%s) — its level is SPENT for the day "
-                            "(the plan reads it from trades.db)", _strat, trade_id[:8],
-                            str(exit_reason or "")[:48])
+            elif ("Sweep" in _strat or "TrendCredit" in _strat):
+                from strategy.sweep_credit_spread import is_breach_exit
+                if is_breach_exit(exit_reason):
+                    logger.info("[spent] %s %s closed (%s) — its level is SPENT for the day "
+                                "(the plan reads it from trades.db)", _strat, trade_id[:8],
+                                str(exit_reason or "")[:48])
         except Exception as exc:                               # noqa: BLE001
             logger.warning("[spent] could not report the spent state for %s: %s",
                            trade_id[:8], exc)

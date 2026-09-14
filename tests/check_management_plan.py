@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
 """
-tests/check_management_plan.py  v1.3  (2026-08-27)
+tests/check_management_plan.py  v1.4  (2026-09-13)
+v1.4  OTV4TEST r25: D12b RE-DERIVED FROM A SOURCE PIN TO THE RULE, AND IT FOUND A HOLE.
+      It pinned trade_logger's spent-marking hook (`_is_cv`, the underlying_stop
+      read) — deleted by r24, so D12b was RED SINCE r24 AND SHIPPED THAT WAY (not in
+      r24's gate list) — and the pre-fork rule that ANY losing exit spends a level,
+      which the fork's r5 ruling replaced with acceptance only. It now DRIVES this
+      file's own plan: a TCS whose 1m close goes through its bound is closed by
+      `MP.decide` under the plan's `breach:` label, that exit is written as a real
+      row in a temp trades.db, and `is_spent` must read the level SPENT, keyed on
+      the bound (D12b); the same TCS stopped out on premium must NOT spend it
+      (D12d). D12b was red against r24's lock, which read only exit_engine's labels.
 v1.3  r169: the butterfly rides to the 15:45 flatten or the 25% floor — D12
       re-pinned (above the old target -> HOLD), D12a the floor, D12c the
       engine acts on neither target nor max hold; M5 re-pinned.
@@ -304,9 +314,38 @@ def main():
     bfs = "\n".join(l for l in ast.unparse(bfb).split("\n") if not l.strip().startswith("#"))
     check("D12c the engine's butterfly path acts on neither a target nor a max hold any more",
           "target_hit" not in bfs and "butterfly_max_hold" not in bfs and "stop_hit" in bfs)
-    tlsrc = open(os.path.join(_root, "database", "trade_logger.py"), encoding="utf-8").read()
-    check("D12b a losing exit on ANY lone credit vertical marks its level spent (TCS keys on the bound)",
-          "_is_cv" in tlsrc and 'self._get_field(trade_id, "underlying_stop")' in tlsrc)
+    # D12b/D12d (OTV4TEST r25) — the plan's OWN breach close must spend the level it
+    # sold against, read back from trades.db the way the TCS/sweep plans read it.
+    import tempfile as _tfd
+    from datetime import datetime as _dtd, timedelta as _tdd, timezone as _tzd
+    import database.trade_logger as _TLD
+    import strategy.sweep_credit_spread as _scd
+    _TLD._trade_logger = _TLD.TradeLogger(os.path.join(_tfd.mkdtemp(), "d12.db"))
+    tcs = {"trade_id": "d12b", "strategy": "TrendCreditSpread", "option_side": "put",
+           "is_credit": True, "entry_premium": 0.40, "current_premium": 0.55,
+           "stop_premium": 0.0, "underlying_stop": 100.50}
+    P.begin_tick(21.0)
+    it_b = MP.decide(tcs, 0.55, df_1m=_df([100.7, 100.3]), exit_engine=eng)
+
+    def _closed_row(tid, bound, reason):
+        _now = _dtd.now(_tzd.utc)
+        c = _TLD.get_trade_logger()._connect()
+        try:
+            c.execute("INSERT INTO trades (trade_id, symbol, strategy, option_side, underlying_stop,"
+                      " status, pnl_usd, entry_time, exit_time, exit_reason) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                      (tid, "TST", "TrendCreditSpread", "put", bound, "closed", -15.0,
+                       (_now - _tdd(minutes=20)).isoformat(), (_now - _tdd(minutes=5)).isoformat(), reason))
+            c.commit()
+        finally:
+            c.close()
+    if it_b is not None and it_b.action == "CLOSE":
+        _closed_row("d12b", 100.50, it_b.reason)
+    check("D12b a TCS closed by the plan's OWN breach (1m close through its bound) spends that level (TCS keys on the bound)",
+          it_b is not None and it_b.action == "CLOSE" and _scd.is_spent("TST", "put", 100.50)[0],
+          f"{it_b and it_b.reason} -> spent={_scd.is_spent('TST', 'put', 100.50)}")
+    _closed_row("d12d", 99.00, "premium_stop_15% pnl=-16.0%")
+    check("D12d (r5) the same spread stopped out on premium does NOT spend its level — acceptance only",
+          not _scd.is_spent("TST", "put", 99.00)[0], str(_scd.is_spent("TST", "put", 99.00)))
 
     esrc = open(os.path.join(_root, "execution", "exit_engine.py"), encoding="utf-8").read()
     ecode = "\n".join(l for l in esrc.split("\n") if not l.strip().startswith("#"))

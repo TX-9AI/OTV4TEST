@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_signal_numeric_tail.py  v1.1  (2026-09-08)
+tests/check_signal_numeric_tail.py  v1.2  (2026-09-13)
+v1.2  2026-09-13  OTV4TEST r25 — N6 PASSES A 1m FRAME. r24 requires the last closed bar to
+      hold the 50; with no frame the runaway HOLDs, no signal exists, and N6 had
+      nothing to resolve. RED SINCE r24 AND SHIPPED THAT WAY (not in r24's gate
+      list). Closes at the case's own price, 101.9, so the signal is unchanged.
 v1.1  2026-09-08  OTV4TEST r3 — N6's fake ORB carries `fifty_accepted`; no `prev_close`.
 
 EVERY STRATEGY'S SIGNAL SHAPE MUST SURVIVE THE EXECUTION TAIL'S NUMERIC
@@ -94,12 +98,23 @@ def main():
         calls = [_C(102, 0.95, 0.46, 0.05), _C(103, 0.48, 0.30, 0.058)]
         puts = []
 
+    # OTV4TEST r25 — r24 made entry require the CLOSED 1m bar to hold the 50 NOW
+    # (runaway_plan's `fifty_held_now`); live, main.py always passes ctx["df_1m"].
+    # A call with no frame therefore HOLDs before it reaches the case under test,
+    # so the fixture carries bars whose closes sit at this case's own price.
+    import pandas as _pd
+
+    def _bars_at(px):
+        return _pd.DataFrame([{"open": px, "high": px, "low": px, "close": px}] * 5,
+                             index=_pd.date_range("2026-09-08 10:10", periods=5, freq="1min",
+                                                  tz="America/New_York"))
+
     P.bind_store(_S())
     P.begin_tick(1.0)
     os.environ["OT_RELAXED_ENTRY"] = "1"
     RW = RunawayContinuationStrategy(); RW.planner.symbol = "TST"
     sig = RW.generate_signal(orb=_ORB(), atr_pct=0.14, price_now=101.9,
-                             now_et="10:15", chain=_Chain())
+                             now_et="10:15", chain=_Chain(), df_1m=_bars_at(101.9))
     os.environ["OT_RELAXED_ENTRY"] = "0"
     sp = M._sig_num(sig, "stop_premium") if sig else None
     check("N6 the real runaway signal resolves its 20% floor through the tail's reader",

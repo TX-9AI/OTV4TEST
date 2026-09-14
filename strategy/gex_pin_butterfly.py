@@ -1,5 +1,27 @@
 """
-strategy/gex_pin_butterfly.py  v5.2
+strategy/gex_pin_butterfly.py  v5.3
+v5.3  2026-09-13  OTV4TEST r25 — A PIN AT VWAP WAIVES THE CONCENTRATION FLOOR (BFLY.5).
+      Operator: "VWAP replaces the floor if the pin is w/in a predefined portion
+      of VWAP" and "W/in 20% of the expected move, expressed as 10% above, 10%
+      below" — so `pin_concentration` is met by conc >= PIN_CONC_MIN OR
+      |pin - VWAP| <= VWAP_BAND_EM_FRAC x EM. WHICH VWAP, on his rule "the minimum
+      measurement anchored to a derived value that would have allowed that
+      fly": the bot's own midnight-ET-anchored VWAP (indicator_series primary).
+      Friday 09-11 12:02 ET, pin 715, EM 5.48, band ±0.55: that VWAP read 715.35
+      (0.35 off, waived); a 09:30 session VWAP read 715.59 (0.59, would have
+      missed); a "pin inside the 5m Bollinger channel" test also passed but
+      spans ~3.8 points against a 1.1-point band — looser, not minimal. On Friday
+      the waiver matters on exactly the 27 PREPARED ticks where concentration
+      was the ONLY failing gate: 12:02-12:07 are waived, 13:25-13:32 (band
+      ±0.38, VWAP 0.41 off) are not. Wed and Thu had no such tick.
+      ⚠️ FAILS CLOSED ON "NOW": the VWAP is read through `anchors.vwap_now()`,
+      which returns nothing for a prior session's anchor or a stale bar — the
+      engine keeps writing Friday's VWAP all weekend, and a "latest row" read
+      would have waived Monday's open on it. The floor itself is unchanged and
+      still FOUNDATIONAL: the waiver is a second way to MEET the condition, not
+      a relaxation, and `relaxed_bounds()` does not move it. The distance is
+      recorded on every tick as `pin_vwap_dist`, and a waived fire says so on
+      its row.
 v5.2  2026-09-13  OTV4TEST r24 — THE FLOOR IS 40% (operator's ruling); both readers of
       `BUTTERFLY_STOP_LOSS_PCT` — the signal's stop and the wing search's
       stop-vs-spread feasibility — default to the ruled 0.40, so a box without
@@ -311,6 +333,9 @@ ENABLED = getattr(config, "GEX_BUTTERFLY_ENABLED", True)       # v4.3: ON
 # config.GEX_BFLY_WING_EM_FRAC is left in place, unread, so a box carrying the
 # old env var starts cleanly rather than failing on an unknown key.
 PIN_CONC_MIN = getattr(config, "GEX_BFLY_PIN_CONC_MIN", 0.25)
+# OTV4TEST r25 (BFLY.5, operator's ruling): a pin within ±this x EM of today's VWAP
+# meets pin_concentration without the floor. 0.10 above + 0.10 below = 20% of EM.
+VWAP_BAND_EM_FRAC = float(getattr(config, "GEX_BFLY_VWAP_BAND_EM_FRAC", 0.10))
 EM_MIN_FRAC = getattr(config, "GEX_BFLY_EM_MIN_FRAC", 0.30)
 EM_MAX_FRAC = getattr(config, "GEX_BFLY_EM_MAX_FRAC", 1.00)
 EARLIEST_ET = getattr(config, "GEX_BFLY_EARLIEST_ET", "11:00")
@@ -470,7 +495,7 @@ class ButterflyPreparation:
     __slots__ = ("tick", "pin", "side", "conc", "em", "frac", "wing",
                  "wing_intended", "grid_inc", "wing_stretch", "lower", "center",
                  "upper", "debit", "width", "r", "r_min", "conditions", "unmet",
-                 "structural", "starved", "ready")
+                 "structural", "starved", "ready", "vwap_waiver")
 
     def __init__(self, tick):
         self.tick = tick
@@ -483,6 +508,7 @@ class ButterflyPreparation:
         self.r_min = R_FLOOR
         self.conditions, self.unmet, self.structural, self.starved = {}, [], [], []
         self.ready = False
+        self.vwap_waiver = ""
 
     def cond(self, name, current, required, met):
         self.conditions[name] = (current, required, bool(met))
@@ -514,7 +540,8 @@ class GEXPinButterflyStrategy:
     CONDITIONS = {
         "enabled":           "GEX_BUTTERFLY_ENABLED is on",
         "pinning":           "GEX environment is PINNING with a pin strike",
-        "pin_concentration": f"pin concentration >= {PIN_CONC_MIN:.2f} (NOT relaxable, r208)",
+        "pin_concentration": (f"pin concentration >= {PIN_CONC_MIN:.2f} (NOT relaxable, r208), "
+                              f"or the pin within ±{VWAP_BAND_EM_FRAC:.2f}x EM of today's VWAP (r25)"),
         "entry_window":      f"{EARLIEST_ET}-{LATEST_ET} ET",
         "expected_move":     "an expected move from the chain's ATM IV (no fallback)",
         "pin_em_fraction":   f"pin at {EM_MIN_FRAC:.0%}-{EM_MAX_FRAC:.0%} of the expected move (NOT relaxable, r208)",
@@ -524,7 +551,7 @@ class GEXPinButterflyStrategy:
     PLAN_CHECKS = tuple(CONDITIONS) + STRUCTURAL + ("gex", "wing_width", "width",
                                                     "debit_pct_width", "stop_vs_spread",
                                                     "r_muted", "pin_dist_pct",
-                                                    "pin_strike_raw")
+                                                    "pin_strike_raw", "pin_vwap_dist")
 
     def __init__(self):
         self.planner = Plan(self.name, self.PLAN_CHECKS)
@@ -654,8 +681,31 @@ class GEXPinButterflyStrategy:
         # neither, and a checker can execute the same function the strategy
         # calls rather than re-deriving it.
         _conc_min = PIN_CONC_MIN
-        prep.cond("pin_concentration", conc, f">= {_conc_min:.2f}", conc >= _conc_min)
         em = expected_move(price_now, atm_iv)
+        # ── OTV4TEST r25 (BFLY.5): A PIN AT VWAP MEETS THE CONDITION WITHOUT THE
+        #    FLOOR. Today's VWAP only (anchors.vwap_now fails closed on a prior
+        #    session's anchor or a stale bar); the distance is recorded every
+        #    tick so the band can be fitted, waived or not.
+        _vw, _vw_why = None, "not read"
+        try:
+            from derived import anchors as _A
+            _vw, _vw_why = _A.vwap_now()
+        except Exception as _e:                     # noqa: BLE001
+            _vw, _vw_why = None, f"VWAP read failed: {_e}"
+        _band = VWAP_BAND_EM_FRAC * em if (em and em > 0) else None
+        _vdist = abs(pin - _vw) if (_vw is not None and pin > 0) else None
+        _in_band = _vdist is not None and _band is not None and _vdist <= _band
+        t.check("pin_vwap_dist", _vdist, None if _vdist is None or _band is None else _in_band)
+        _waived = conc < _conc_min and _in_band
+        if _waived:
+            prep.vwap_waiver = (f"concentration {conc:.2f} < {_conc_min:.2f} WAIVED — pin {pin:g} is "
+                                f"{_vdist:.2f} from today's VWAP {_vw:.2f} (band ±{_band:.2f} = "
+                                f"{VWAP_BAND_EM_FRAC:.2f}x EM {em:.2f})")
+            t.note(prep.vwap_waiver)
+        _need = f">= {_conc_min:.2f}" + (
+            f", or pin within ±{_band:.2f} of VWAP (now {_vdist:.2f} off)" if _vdist is not None and _band
+            else f", or pin within {VWAP_BAND_EM_FRAC:.2f}x EM of VWAP (no VWAP: {_vw_why})")
+        prep.cond("pin_concentration", conc, _need, conc >= _conc_min or _waived)
         prep.em = em or 0.0
         prep.cond("expected_move", em or None, self.CONDITIONS["expected_move"], bool(em and em > 0))
         if pin > 0 and em and em > 0:

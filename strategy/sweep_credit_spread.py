@@ -1,5 +1,15 @@
 """
-strategy/sweep_credit_spread.py  v6.2
+strategy/sweep_credit_spread.py  v6.3
+v6.3  2026-09-13  OTV4TEST r25 — THE SPENT LOCK KNOWS BOTH LABELS A BREACH CLOSES UNDER.
+      r24 matched only exit_engine's `sweep_breach_accepted` / `tcs_breach`. But
+      strategy/management.py acts FIRST, and when the row carries an
+      underlying_stop it closes a breach as `breach: 1m close … through …` (TCS)
+      or `acceptance: …` (sweep) — and a TCS row ALWAYS carries its bound, so a
+      live TCS breach would have closed under a label the lock never read, and
+      its level would have been sold again. Friday's one breach row carried the
+      engine label only because that sweep had no underlying_stop. One tuple,
+      `SPENT_EXIT_PREFIXES`, read by `is_breach_exit()` here and in trade_logger's
+      log line, so the lock and the log cannot disagree.
 v6.2  2026-09-13  OTV4TEST r24 — THE SPENT LOCK IS READ FROM trades.db. `_SPENT`, `_SPENT_DAY`
       and `mark_spent` are DELETED: the dict's only writer raised "no such column:
       is_credit_vertical" on every close, so no level was ever marked, and on
@@ -743,6 +753,17 @@ def _spent_key(symbol: str, side: str, pool: float) -> tuple:
     return (symbol or "", side or "", round(float(pool or 0.0), 2))
 
 
+# Every label a breach/acceptance close is written under. exit_engine's own, and
+# strategy/management.py's Intent names — which act first whenever the row carries
+# an underlying_stop (always, for a TCS).
+SPENT_EXIT_PREFIXES = ("sweep_breach_accepted", "tcs_breach", "breach:", "acceptance:")
+
+
+def is_breach_exit(exit_reason) -> bool:
+    """True when a credit spread closed because its level GAVE WAY (r5: acceptance only)."""
+    return str(exit_reason or "").startswith(SPENT_EXIT_PREFIXES)
+
+
 def is_spent(symbol: str, side: str, pool: float):
     """(spent, why) — READ FROM trades.db, day-scoped. NEVER raises.
 
@@ -790,7 +811,7 @@ def is_spent(symbol: str, side: str, pool: float):
         reason = str(why or "")
         # ⚠️ ACCEPTANCE ONLY — the r5 ruling ("spent on acceptance only"). A
         # stop-out on noise does not discredit the level; the level giving way does.
-        if reason.startswith("sweep_breach_accepted") or reason.startswith("tcs_breach"):
+        if is_breach_exit(reason):
             return True, (f"breach accepted on this level today ({reason[:50]}, "
                           f"pnl ${float(pnl or 0.0):+.0f})")
     return False, ""
