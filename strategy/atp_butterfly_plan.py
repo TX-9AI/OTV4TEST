@@ -1,5 +1,12 @@
 """
-strategy/atp_butterfly_plan.py  v1.0
+strategy/atp_butterfly_plan.py  v1.1
+v1.1  2026-09-17  OTV4TEST r31 (BFLY.7) — the pinning REGIME stamped on the row,
+      record-only and at ZERO WEIGHT, the same `derived/gamma_regime.read()` the
+      travel fly stamps, so the two butterflies cannot disagree about the regime any
+      more than they can about pin strength (v1.0 shares `pin_strength`). Concentration
+      says WHERE gamma is; this says whether the pinning regime exists at all — on
+      2026-09-16 the two disagreed for six hours. `GAMMA_RAMP_WEIGHT` is 0.0, so
+      nothing here is sized by it (§31); see BFLY.8 for why it stays that way.
 v1.0  2026-09-14  OTV4TEST r26 — THE ATP BUTTERFLY'S PLAN (PLAN_SPEC §39, BFLY.6).
       Operator, 2026-09-13: *"that is a different trade. Code it and allow one
       butterfly or the other, whichever plan produces a viable trade 1st can take
@@ -193,6 +200,12 @@ class ATPButterflyPlan:
         em = _gpb.expected_move(price_now, atm_iv)
         prep.em = em or 0.0
         _met, _need, prep.vwap_waiver = _gpb.pin_strength(t, pin, conc, em)
+        try:            # r31 (BFLY.7) — the pinning REGIME, record only, zero weight
+            from derived import anchors as _A
+            from derived import gamma_regime as _G
+            _A.stamp(t, **_G.read())
+        except Exception:                           # noqa: BLE001
+            pass
         prep.cond("pin_concentration", conc, _need, _met)
         prep.cond("expected_move", em or None, self.CONDITIONS["expected_move"], bool(em and em > 0))
 

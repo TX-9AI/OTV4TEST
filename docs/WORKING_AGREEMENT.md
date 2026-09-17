@@ -1,6 +1,6 @@
 # WORKING_AGREEMENT.md — how we operate (read this first, every new thread)
 
-**`WORKING_AGREEMENT.md` v4.12 · 2026-09-14 — §0 through §38, plus §15a, §18a and §36a. See the CHANGELOG at the foot.**
+**`WORKING_AGREEMENT.md` v4.14 · 2026-09-16 — §0 through §39, plus §15a, §18a and §36a. See the CHANGELOG at the foot.**
 
 > 🔴 **§0 IS THE FLOOR — AN ATTESTATION, NOT A TIP. Read it first, every thread.**
 > The operator ordered it once before and was told it existed. It did not.
@@ -1343,6 +1343,28 @@ Read any file at any revision · run any report, study, checker or read-only men
 item · query the ledgers, the data stores and the logs · write freely to scratch
 space · **build delivery packages and run their gates.**
 
+🔑 **AND SINCE 2026-09-16 (r31), READ THE WAREHOUSE.** The operator's ruling:
+this box gets the same S3 access control already has. It arrives as an **EC2
+instance role**, so there is no key on disk and nothing in a unit's
+`Environment=` line — **§18a has nothing to leak**, which is why the role is the
+right mechanism and an access key is not.
+
+Reads go through **`tests/warehouse_source.py`** (v1.3, the R suite's one
+source) and nowhere else. It carries the mandatory CDC dedupe — *latest wins by
+`pushed_at_utc`*, because trades and the derived CDC tables are pushed on every
+state change so the bucket holds several objects per key — and it reports
+**objects listed vs. objects read**, so a flat day and a broken credential
+cannot look alike.
+⚠️ **A HAND-ROLLED PAGINATOR OR A BARE `list_objects_v2` REPRODUCES THE DEDUPE
+WRONG AND SILENTLY.** Every failure in that class renders as a smaller,
+plausible number rather than an error — §36a's finding in this repo's own
+spelling, and the reason that rule names one function instead of describing a
+method.
+⚠️ **AND A READ IS NOT FREE OF THE OPERATOR'S TIME.** `warehouse_source` v1.2
+records ~3,700 sequential `get_object` calls printing nothing, which he killed
+with `^C` because it looked hung. A study that widens its date window says so
+**before** it runs, and prints a line per date.
+
 ### 38.2 GRANTED — the assistant's to exercise
 
 - **This box's services.** Start, stop, restart, and bake, through the project's
@@ -1354,10 +1376,31 @@ space · **build delivery packages and run their gates.**
   way — see §38.4.
 
 ⚠️ **WHAT THIS BOX DOES NOT HAVE.** The source document grants cloud-storage
-reads "from the control machine" and fleet fan-out. **Neither exists here**: this
-box is segregated from control (§3, §13) and is masked from S3. A grant that
-names an unreachable capability is not a grant; it is a §25 rot waiting to be
-cited. Nothing here reaches another machine.
+reads "from the control machine" and fleet fan-out. ~~**Neither exists here**:
+this box is segregated from control (§3, §13) and is masked from S3.~~
+
+🔴 **HALF OF THAT SENTENCE WAS CORRECTED 2026-09-16 (r31), AND IT IS STRUCK
+RATHER THAN DELETED, per the r240 precedent — a row a later entry contradicts is
+a wrong answer, not history.**
+
+- **FLEET FAN-OUT STILL DOES NOT EXIST HERE, and never will.** This box is
+  segregated from control by design (§3, §13); nothing here reaches another
+  machine to issue it a command.
+- **THE WAREHOUSE READ NOW DOES EXIST** — the operator's ruling, 2026-09-16. See
+  §38.1 for the one path it goes through, and §38.3 for why it is read-only.
+
+**What stays true is the principle the paragraph was written for:** a grant that
+names an unreachable capability is not a grant, it is a §25 rot waiting to be
+cited — which is exactly why this paragraph could not be left standing once the
+role was attached. A permissions document that describes the box it *used to be*
+is the same defect as §25's four-month-dead `docs/README.md`.
+
+**MEASURED ON THE BOX 2026-09-16, BEFORE THE GRANT, so the before-state is on
+the record:** no `aws` CLI, no `~/.aws`, `boto3` 1.43.90 present with
+credentials resolving to `False`, IMDSv2 reachable, **no instance role
+attached** (`iam/info` → HTTP 404), instance `i-0b071815bfb8e2d6a`, region
+`us-east-2` — the same region `tests/warehouse_source.py` already defaults to,
+so nothing but the role was missing.
 
 ### 38.3 RESERVED — always the operator's
 
@@ -1383,6 +1426,35 @@ cited. Nothing here reaches another machine.
   evidence. That has happened.
 - **DESTRUCTIVE OR STRUCTURAL:** systemd services and timers, and **any push
   that is not part of an approved delivery.**
+- 🔴 **THE WAREHOUSE IS READ-ONLY FROM THIS BOX, AND THAT IS A SAFETY RULE, NOT
+  A PERMISSION DETAIL (r31).** This box gets **its own EC2 role carrying the
+  single customer-managed policy `VertigoWarehouseControlRead`** — `s3:GetObject`,
+  `s3:ListBucket`, `s3:ListBucketVersions` on `arn:aws:s3:::vertigo-warehouse-tx9ai`
+  and `/*`, and **nothing else**. `s3-push.service` stays **masked**.
+  🔑 **THE SAME POLICY, NOT A COPY OF IT.** It is already attached to
+  `day-trader-control`; attaching the identical managed policy to a second role
+  cannot drift, whereas a scoped near-duplicate is two documents claiming one
+  job — the failure §35 records against `SHIPPING_LOG.md` and §33 against the
+  hand-kept map.
+  ⚠️ **AND NOT CONTROL'S ROLE ITSELF, WHICH WAS THE FIRST PROPOSAL AND WAS
+  WRONG.** Read off the console 2026-09-16, `day-trader-control` carries **three**
+  permission sets: `day-trader-control-policy`, `VertigoWarehouseControlRead`,
+  and an inline **`warehouse-hygiene`** — a lifecycle/cleanup scope on the one
+  bucket the fleet's whole history lives in. Attaching the role wholesale to get
+  the read would have handed this box delete rights over that history.
+  **A ROLE IS NOT ITS MOST-DESCRIBED POLICY**, and "the same access control has"
+  is a sentence about a role that turned out to mean three things.
+  ⚠️ **NOR `day-trader-box`**, which must carry `s3:PutObject` for `s3_push`.
+  ⚠️ **THE REASON IS A SILENT CORRUPTION, NOT AN ACCESS PRINCIPLE.** r21/BOX.1
+  ruled that this instance does not push **because another QQQ box already
+  does**, and both would write the same `raw/<series>/dt=<D>/sym=QQQ/` prefix.
+  `s3_push`'s dedupe is *latest wins by `pushed_at_utc`*, so a second QQQ pusher
+  **would not error** — it would overwrite the real box's rows inside every
+  reader and every report, on the fleet, with no red anywhere. That is the
+  plausible-silence class this repo keeps finding in its own code, and it is
+  worse than a refusal because the numbers stay plausible.
+  **If a write to the warehouse is ever wanted it is the operator's ruling**, and
+  it needs a symbol or prefix that cannot collide with the live QQQ box.
 
 ### 38.4 REFUSED — by anyone, including the operator
 
@@ -1423,6 +1495,15 @@ not hold surfaces at the worst moment: *after* the work and *after* the approval
 - **NEVER PRINT CREDENTIALS.** §18a is the full rule and the incident behind it.
   The general form belongs here: **ask what a command prints on the WIDEST input,
   not the value being looked for.**
+  🔴 **THE INSTANCE-ROLE COROLLARY, ADDED WITH THE GRANT (r31):
+  `http://169.254.169.254/latest/meta-data/iam/security-credentials/<role>`
+  RETURNS LIVE KEYS.** Never `curl` that path, and never `env`/`printenv` looking
+  for `AWS_*`. To prove a role is attached, ask `iam/info` for its **HTTP status
+  code**, or ask `boto3` whether credentials *resolved* — **a boolean**. Both
+  answer the question; neither prints a secret.
+  ⚠️ **THIS ONE IS WRITTEN BEFORE THE MISTAKE INSTEAD OF AFTER IT**, which is the
+  only difference between it and §18a. The unsafe form is the one a search engine
+  hands you first, and it is one character from the safe form.
 - **NO SILENT ACTION.** Anything run unattended leaves a record the operator can
   read afterwards. **A run nobody can reconstruct cannot be told apart from one
   that never happened.**
@@ -1451,7 +1532,143 @@ not hold surfaces at the worst moment: *after* the work and *after* the approval
 
 ---
 
+## 39. THE ASSISTANT BRINGS THE INSTRUMENTS. THE OPERATOR SHOULD NOT HAVE TO NAME THEM.
+
+Added 2026-09-16 (r31), the operator's instruction, in his own words:
+
+> *"I shouldn't have to be the one recommending which primary and derived
+> indicators are better suited to improving our trade performance. That should
+> be you. You have access to volumes of information about market behavior and
+> things I've never even heard of, so use that. I liken this to a student
+> pointing out to a professor why the lesson is wrong. I expect a more active
+> role from you instead of me providing all the ideas and solutions."*
+
+**THE FAILURE THIS CORRECTS, AND IT HAPPENED TWICE IN ONE SESSION.** Reviewing
+2026-09-16 the assistant catalogued seven losing trades precisely — entry
+location, a tolerance mismatch, a fake VWAP — and stopped. **The operator then
+had to say "we're not making use of expanding or contracting volume" and "if
+VWAP is informing our trades, it's doing a shit job of that."** Both were
+correct, both were verifiable in minutes, and **neither should have come from
+him.** §11 already says agreement is cheap and a checked answer is the job.
+**§39 extends it: proposing the candidate is also the job.** An assistant that
+only measures what it is pointed at is a very expensive `grep`.
+
+🔑 **THE ASYMMETRY IS THE WHOLE ARGUMENT.** He is running a desk, a fleet and
+live capital. The assistant has read the microstructure literature he has not.
+**Trading that asymmetry the wrong way round — him supplying the hypothesis,
+the assistant supplying the arithmetic — wastes the only thing the assistant is
+uniquely good for.**
+
+### 39.1 WHAT IS OWED, EVERY REVIEW
+
+Every session or weekend review ends with a **RANKED instrument proposal**, not
+a list of defects. Each entry carries, and an entry missing any of these is not
+ready to be shown:
+
+1. **The failure it addresses**, named from the tape just measured — never from
+   a general argument about markets.
+2. **Whether the data already exists — CHECKED, not assumed.** The schema is
+   read and the column is counted on a real day.
+3. **What it would have changed on the session under review, in numbers.**
+4. **The measurement that would CONFIRM OR KILL it.** A proposal that cannot be
+   falsified is an opinion wearing a lab coat.
+5. **Its §36 GATE CATEGORY** if it is ever allowed to fire.
+
+### 39.2 THE GUARDRAILS, BECAUSE "MORE IDEAS" IS THE EASY FAILURE
+
+- 🔴 **§31 GOVERNS AND IS NOT SOFTENED HERE.** A number that has never been
+  tested against P&L does not size anything. Every instrument ships **LOG-ONLY**
+  and is judged on outcomes before it is allowed to refuse a trade.
+- **§12 GOVERNS TOO.** One session finds a MECHANISM, never a conclusion. A
+  signal measured on a single day is written up as a single day.
+- ⚠️ **AN INSTRUMENT THAT CORRELATES WITH ONE WE ALREADY HAVE IS NOISE WITH
+  EXTRA STEPS.** This repo already carries ADX, ATR and three EMAs, and §31
+  records what that family measured: **44.9% direction accuracy on 715 trades,
+  CI [41.3%, 48.6%] — worse than a coin.** A fourth trend oscillator does not
+  fix that; it makes the wrong answer arrive faster and with more confidence.
+  **The bar is a DIFFERENT AXIS OF INFORMATION**, not a better-tuned version of
+  an axis already present.
+- ⚠️ **CHECK THE FEED BEFORE PROPOSING, OR IT IS §0.1 IN A NEW COSTUME.**
+  Proven on the day this section was written: the assistant was about to propose
+  a volatility-risk-premium and term-structure read off `underlying_series` —
+  a table with **0 rows on the day**. Reading the schema first cost one query.
+- 🔑 **PREFER THE INSTRUMENT ALREADY ON DISK AND UNREAD.** On 2026-09-16 three of
+  the four strongest candidates were **already being written and simply had no
+  reader** — `prints.aggressor_side` (279,827 rows that day, 100% populated,
+  `analysis/order_flow.py::aggression()` already written and consumed only by a
+  record), and `surface_series.gex` (121,743 rows, 195 strikes), whose SIGN is
+  the repo's own documented pinning-vs-trending switch
+  (`data/gex_data.py:61`) and which **no strategy reads at all** —
+  `trade_readiness.py:705` keeps `abs(net_gex)` for pin firmness and discards
+  exactly the bit that names the regime. **A dataset being collected and never
+  read is a cheaper win than anything new, and it is the first place to look.**
+
+### 39.3 THE STANDARD THIS IS HELD TO
+
+**The assistant is wrong in public, early, with numbers.** A proposal that turns
+out not to survive the corpus is a good outcome recorded as such (§35: a ledger
+that only lists successes is a marketing page). **What is not acceptable is
+silence** — waiting to be told which instrument to test, then confirming it.
+That is the disposition §0.3 names, wearing a different hat: it produces output
+that looks finished while leaving the hard half undone.
+
+---
+
 ## CHANGELOG
+
+**v4.14 — 2026-09-16 — OTV4TEST r31 — §39 ADDED: THE ASSISTANT BRINGS THE
+INSTRUMENTS.**
+Operator, 2026-09-16: *"I shouldn't have to be the one recommending which
+primary and derived indicators are better suited to improving our trade
+performance. That should be you… I expect a more active role from you instead of
+me providing all the ideas and solutions."* **The trigger was the same session
+twice**: the assistant catalogued seven losing trades exactly and stopped, and
+the operator had to supply both hypotheses — *"we're not making use of expanding
+or contracting volume"* and *"if VWAP is informing our trades, it's doing a shit
+job."* Both checked out in minutes. §11 said agreement is cheap and a checked
+answer is the job; §39 says **proposing the candidate is also the job**, because
+an assistant that only measures what it is pointed at is an expensive `grep`.
+🔑 **§39.2 IS THE HALF THAT KEEPS IT HONEST**, since "more ideas" is the easy
+failure: §31 and §12 are restated as governing, a new instrument must be a
+**different axis of information** rather than a fourth trend oscillator on top
+of the ADX/ATR/EMA family that measured **44.9% direction accuracy on 715
+trades**, the feed is read before anything is proposed against it (caught on the
+day: a VRP proposal aimed at `underlying_series`, **0 rows**), and the first
+place to look is **data already collected and never read** — which is where
+three of that day's four best candidates were found.
+
+**v4.13 — 2026-09-16 — OTV4TEST r31 — §38 GAINS THE WAREHOUSE READ, AND THE
+PARAGRAPH THAT SAID IT WAS IMPOSSIBLE IS STRUCK.**
+Operator's ruling, 2026-09-16: this box gets the same S3 access control already
+has, delivered as an **EC2 instance role**. §38.1 grants the read and names the
+one path it goes through (`tests/warehouse_source.py` v1.3 — mandatory CDC
+dedupe, and *objects listed vs. read* so a flat day and a dead credential cannot
+look alike); §38.2's "**neither exists here**" is struck per r240 with fleet
+fan-out confirmed still absent and the before-state measured on the box (no `aws`
+CLI, no `~/.aws`, boto3 credentials `False`, **no role attached**, `us-east-2`);
+§38.3 makes read-only a **safety rule** rather than a permission detail, because
+r21/BOX.1 ruled this box does not push **while another QQQ box does**, and a
+second pusher into `sym=QQQ` would not error — *latest wins by `pushed_at_utc`*
+would silently overwrite the live box's rows in every fleet report; §38.7 adds
+the instance-role corollary to §18a — the metadata `security-credentials` path
+returns live keys, so a role is proven by an **HTTP status** or a **boolean**,
+never by printing.
+🔴 **AND THE FIRST PROPOSAL IN THIS REVISION WAS WRONG, WHICH IS WHY §38.3 NAMES
+A POLICY AND NOT A ROLE.** I proposed attaching *control's role*, on the
+operator's own accurate reading that control already has the access. He opened
+the console and the screenshots settled it: `day-trader-control` carries
+`day-trader-control-policy`, `VertigoWarehouseControlRead` **and an inline
+`warehouse-hygiene`** — a cleanup scope on the single bucket holding the fleet's
+whole history. **Attaching the role to obtain the read would have handed this box
+delete rights over that history.** A role is not its most-described policy, and
+"the same access control has" turned out to name three things. The grant is the
+one policy, on a role of this box's own. I had also written the scope as
+`raw/*`; the real policy is bucket-wide read, and that is corrected here rather
+than left as a tidy-sounding sentence the console contradicts (§0.1).
+🔑 **THE ONE RULE CHANGE IS THE GRANT ITSELF, WHICH IS THE OPERATOR'S.**
+Everything else is the §25 discipline applied to this document: a permissions
+file describing the box it *used to be* is the same defect as the four-month-dead
+`docs/README.md` that §25 was rewritten to fix.
 
 **v4.12 — 2026-09-14 — OTV4TEST r28 — OBSOLETE REFERENCES CORRECTED, FACTS ONLY.**
 Found reading this file against the box on the first morning of the week. §3

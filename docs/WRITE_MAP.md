@@ -27,7 +27,7 @@ Regenerated in the land gate; a stale map fails `--check`.
 | `plan_ledger` | `derived/plan_ledger.py` | `derived/plan_ledger.py` (insert/update), `tests/check_purge_pushed.py` (update) | `tests/check_audit_20260823.py`, `tests/check_butterfly_legs.py`, `tests/check_missed_inert.py`, `tests/check_plan_lifecycle.py`, `tests/edge_scan.py`, `tools/query.py` |
 | `plan_tick` | `strategy/plan.py` | `strategy/plan.py` (insert), `tests/check_tick_join.py` (insert), `warehouse/retention_purge.py` (delete) | `main.py`, `tests/check_atp_butterfly.py`, `tests/check_bfly_vwap_band.py`, `tests/check_butterfly_foundational.py`, `tests/check_butterfly_legs.py`, `tests/check_chain_ordering.py`, `tests/check_condor_mgmt.py`, `tests/check_liquidity_hunt.py`, `tests/check_management_plan.py`, `tests/check_not_asked_reasons.py`, `tests/check_orb_plan.py`, `tests/check_orb_sequence.py`, `tests/check_plan_prepares.py`, `tests/check_plan_signal.py`, `tests/check_plan_wiring.py`, `tests/check_runaway_plan.py`, `tests/check_tcs_narrates.py`, `tests/check_tcs_plan.py`, `tools/query.py` |
 | `strategy_note` | `derived/notes.py` | `derived/notes.py` (insert) | `tests/check_management_plan.py`, `tests/check_tick_join.py` |
-| `surface_series` | `data/derived_store.py` | `data/derived_store.py` (insert), `warehouse/retention_purge.py` (delete) | `derived/anchors.py`, `main.py`, `tools/query.py` |
+| `surface_series` | `data/derived_store.py` | `data/derived_store.py` (insert), `warehouse/retention_purge.py` (delete) | `derived/anchors.py`, `derived/gamma_regime.py`, `main.py`, `tests/check_gamma_regime.py`, `tools/query.py` |
 
 ## feed_store.db
 

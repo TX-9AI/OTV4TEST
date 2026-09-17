@@ -1,5 +1,20 @@
 """
-strategy/gex_pin_butterfly.py  v5.4
+strategy/gex_pin_butterfly.py  v5.5
+v5.5  2026-09-17  OTV4TEST r31 (BFLY.7) — THE PINNING REGIME IS RECORDED, AT ZERO WEIGHT.
+      This fly reads the pin STRIKE and the CONCENTRATION at it and has never read
+      whether the regime that does the pinning EXISTS or is collapsing. They are
+      different axes and 2026-09-16 shows it rather than asserting it: conc
+      0.06-0.17 (NEUTRAL, weak) all day against chain net gamma +71M to +123M
+      (strongly pinning) — six hours of disagreement — then net gamma crossed ZERO
+      at 15:00 (-129M in fifteen minutes) and QQQ went 709.65 to 700.00 in the next
+      twenty. The premium stop prices that AFTER the tent is left; the regime
+      crossing zero is the CAUSE. `derived/gamma_regime.read()` is stamped through
+      `anchors.stamp` as record-only checks (verdict None), so it is scored against
+      fires, DECLINEs and HOLDs alike.
+      🔴 NOTHING IS SIZED BY IT: `GAMMA_RAMP_WEIGHT` is 0.0, so `ramp()` returns
+      exactly 1.0 for every score (§31 — a number never tested against P&L does not
+      size anything). BFLY.8 records that the hypothesis behind it was REFUTED on
+      421 fleet trades and its reverse killed by confounds, so the weight stays 0.
 v5.4  2026-09-14  OTV4TEST r26 — PIN STRENGTH IS ONE FUNCTION, SHARED WITH THE ATP BUTTERFLY.
       r25's inline concentration-or-VWAP-band block is lifted, unchanged in
       behaviour, into module-level `pin_strength(t, pin, conc, em)`, which
@@ -656,6 +671,15 @@ class GEXPinButterflyStrategy:
             _A.stamp(t, gex_at_pin=_A.gex_at(pin or None),
                      vwap_minus_pin=(lambda v: None if (v is None or not pin) else v - pin)(_A.vwap()),
                      oi_at_pin=_A.oi_at(pin or None, chain))
+            # r31 (BFLY.7) — THE PINNING REGIME ITSELF, RECORDED AT ZERO WEIGHT.
+            # Concentration says WHERE gamma is; this says whether the regime
+            # that does the pinning exists. On 2026-09-16 they disagreed for six
+            # hours — conc 0.06-0.17 (weak) against chain net gamma +71M..+123M
+            # (strongly pinning) — which is why it is a separate axis and not
+            # another vote. `gamma_ramp` is the multiplier it WOULD apply;
+            # GAMMA_RAMP_WEIGHT is 0.0, so nothing is sized by it yet (§31).
+            from derived import gamma_regime as _G
+            _A.stamp(t, **_G.read())
         except Exception:                           # noqa: BLE001
             pass
         prep.cond("pin_persistence", float(self._persist),
