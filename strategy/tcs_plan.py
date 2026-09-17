@@ -1,5 +1,20 @@
 """
-strategy/tcs_plan.py  v1.2
+strategy/tcs_plan.py  v1.3
+v1.3  2026-09-17  OTV4TEST r33 — THE `ny` FILTER IS GONE, AND THIS PLAN HAS A FORK
+      FOR THE FIRST TIME. From r9 to r32 the level read was
+      `live_levels()` filtered to `provenance == "ny"`, which broke the r5 ruling
+      in BOTH halves: not "3 named up, 3 named down" — measured on the box the
+      day it was found, it saw **3 of 11** held levels, discarding six London and
+      two Asia extremes built from the same tape by the same rule — and not
+      "plus the 1h pitchfork's tines", which it has never had. The parenthetical
+      "(the store's `ny` levels)" was an IMPLEMENTATION NOTE written into an
+      agreed definition row in PLAN_SPEC §34.1, and it governed the trade for
+      twenty-four revisions. ⚠️ THE PLAN HAS NEVER FIRED — `trades.db` holds no
+      TrendCreditSpread row — so nothing realised was lost; the cost is entirely
+      opportunity. Now it reads `board(price)` like every other level plan, and
+      its candidate set is the mapped levels UNION the rails (the fork is an OR
+      level, not an AND). Operator, 2026-09-17: *"I don't give a rat's shit if
+      it's a New York level or a London level or an Asia level."*
 v1.2  2026-09-14  OTV4TEST r29 — WORDING ONLY: the TRIGGER paragraph said "today's high as
       resistance, today's low as support". The code has never read today's: the
       store's `ny` levels are CLOSED RTH sessions (liquidity_mapper LIQ.6 — a forming
@@ -143,7 +158,8 @@ class TCSPreparation:
     __slots__ = ("tick", "em", "band_lo", "band_hi", "above", "below", "nearest_above",
                  "nearest_below", "accepted", "chosen", "side", "direction", "bound",
                  "short", "long", "credit", "width", "r", "stop_dist", "pop", "richness",
-                 "ref_band", "outside_by", "structural", "starved", "unmet", "ready")
+                 "ref_band", "outside_by", "structural", "starved", "unmet", "ready",
+                 "tines")          # r33 — the fork, BESIDE the levels, never in them
 
     def __init__(self, tick):
         self.tick = tick
@@ -158,6 +174,7 @@ class TCSPreparation:
         self.ref_band = None
         self.outside_by = None
         self.structural, self.starved, self.unmet = [], [], []
+        self.tines = []                     # r33 — "absent" is an answer, not a gap
         self.ready = False
 
     def trade_line(self):
@@ -192,7 +209,20 @@ class TCSPlan:
         except Exception:                                       # noqa: BLE001
             return None
 
-    # ── the structure it would sell against a given extreme ─────────────
+    def _board_(self, price: float):
+        """r33 — THE ONE ACCESSOR, through the one shared entry point. No ORB
+        bounds: this plan walks from SPOT, which is the operator's rule (r5/r29).
+        Levels in `above`/`below`, the fork's rails separately in `tines` with
+        `fork` naming built or absent. `board_for` prefers the LIVE engine (the
+        only thing holding a fork) and falls back to the store this plan is
+        BOUND to — r13: a plan uses its own store and never reaches a global."""
+        try:
+            from derived.levels import board_for
+            return board_for(self._store_(), _symbol_of(), float(price))
+        except Exception as exc:                                # noqa: BLE001
+            logger.warning("[tcs] level board unavailable — no levels in play: %s", exc)
+            return {"state": "no_store", "above": [], "below": [], "tines": [], "fork": "absent"}
+
     def _structure(self, cand: Candidate, chain) -> Candidate:
         contracts = list(getattr(chain, "puts" if cand.side == "put" else "calls", None) or [])
         if not contracts:
@@ -280,7 +310,26 @@ class TCSPlan:
         if store is None:
             prep.starved.append("level_store"); t.starved("level_store"); return prep
         sym = _symbol_of()
-        levels = [l for l in store.live_levels(sym) if str(l["provenance"]) == "ny"]
+        # r33 — THE ONE BOARD. This read was `live_levels()` filtered to
+        # `provenance == "ny"` from r9 to r32, which is the r5 ruling broken in
+        # both halves: not "3 named up, 3 named down" (it saw 3 of 11 held levels
+        # on the box the day this was found) and not "plus the 1h pitchfork's
+        # tines" (it has never had a fork). The session is a label on the answer,
+        # not the query. The fork arrives BESIDE the levels and is never in them.
+        _b = self._board_(price_now)
+        t.check("level_board", _b.get("state"), None)
+        t.check("fork", _b.get("fork"), None)
+        levels = list(_b.get("above", [])) + list(_b.get("below", []))
+        prep.tines = list(_b.get("tines", []))
+        # r33 — THE FORK IS AN "OR" LEVEL, NOT AN "AND" (operator, 2026-09-17).
+        # A rail is a level in its OWN right, not a confirmation stacked on a
+        # historical one: an upper tine projected above spot IS a resistance, a
+        # lower tine below spot IS a support. So the candidate set is the UNION,
+        # and an absent fork means fewer candidates — never a blocked plan
+        # ("a common informer but not mandatory if it's not there").
+        # They arrive LABELLED (provenance `fork1h/*`) so nothing is conjoined:
+        # the two products stay distinguishable on the row and in the journal.
+        levels = levels + prep.tines
         # NOT filtered by side of spot: after the move the accepted high is BELOW
         # price and is exactly the level the spread sells against.
         above = sorted([l for l in levels if l["kind"] == "resistance"], key=lambda l: abs(float(l["price"]) - price_now))

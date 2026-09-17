@@ -1,5 +1,14 @@
 """
-strategy/liquidity_hunt.py  v1.1
+strategy/liquidity_hunt.py  v1.2
+v1.2  2026-09-17  OTV4TEST r33 — THE BOARD COMPOSITION MOVED OUT OF THIS FILE.
+      `_board` held the eight lines that prefer the live LevelEngine and fall back
+      to the bound store — correct, and the ONLY plan that had them. The sweep and
+      the TCS did not, and r33's first cut gave them a registry-only read that
+      returned zero levels under every fixture (five green checks went red). Those
+      lines are now `derived.levels.board_for()`, called by all three. THIS PLAN'S
+      QUESTION IS UNCHANGED: it still passes its ORB bounds, so the bias is still
+      the nearest level BEYOND the opening range measured from the edge (r12).
+      Only where the composition lives moved.
 v1.1  2026-09-12  OTV4TEST r15 — the bias is read off the LEVEL BOARD (PLAN_SPEC §38):
       held levels beyond the range ordered outward plus the rails computed at this
       read, never a stale tine row; `board_state` is a check so silence is never
@@ -137,22 +146,13 @@ class LiquidityHunt:
             return None
 
     def _board(self, price_now, hi, lo) -> dict:
-        """The LevelEngine's board when one is built; else a board assembled from
-        the store alone (tests bind a store; the fork's rails need the engine)."""
-        try:
-            from derived.registry import level_engine
-            eng = level_engine()
-            if eng is not None and getattr(eng, "_store", None) is not None:
-                return eng.board(price_now, hi, lo)
-        except Exception:                                       # noqa: BLE001
-            pass
-        store = self._store_()
-        if store is None:
-            return {"state": "no_store", "above": [], "below": [], "tines": [], "fork": "absent",
-                    "count": {"above": 0, "below": 0, "tines": 0}}
-        from derived.levels import LevelEngine
-        eng = LevelEngine(store, _symbol_of(), forks=None)
-        return eng.board(price_now, hi, lo)
+        """r33 — the shared entry point. This plan keeps its RANGE anchoring:
+        the bias is the nearest level BEYOND the opening range, measured from
+        the edge (r12), and that is untouched. Only the composition moved —
+        the eight lines that lived here are now `derived.levels.board_for`,
+        which the sweep and the TCS call too."""
+        from derived.levels import board_for
+        return board_for(self._store_(), _symbol_of(), price_now, hi, lo)
 
     # ── the plan ──────────────────────────────────────────────────────────
     def prepare(self, *, orb, price_now, now_et, atr_pct=None, chain=None, df_1m=None,

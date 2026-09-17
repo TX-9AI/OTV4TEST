@@ -1,6 +1,46 @@
 """
-derived/levels.py  v5.1
+derived/levels.py  v5.2
 Owns `level_ledger` and `level_event`. Tier 3 — stateful; the object has a biography.
+v5.2  2026-09-17  OTV4TEST r33 — ONE BOARD, THE FORK BESIDE IT, AND THE LEDGER
+      EMPTIED OF WHAT WAS NEVER A LEVEL.
+      🔴 VWAP IS NO LONGER A SOURCE. It wrote a `kind="dynamic"` row every tick
+      keyed on the PRICE, so a moving average minted a new identity each time it
+      moved — 844 rows, and NO READER HAS EVER SEEN ONE, because `live_levels()`,
+      `board()` and `walk()` all filter `kind IN ('support','resistance')`. It is
+      r19's defect in a second costume: a MOVING object given a FROZEN horizontal
+      identity. VWAP stays available at `ctx["vol"].vwap`, where the butterfly's
+      own band already reads it. r30's STALE_VWAP sweep — which existed only to
+      clean up after this producer — is retired with it.
+      🔴 THE LEDGER WAS CLEANED IN THE SAME REVISION, on the operator's
+      instruction: 855 vwap/dynamic rows and 55 fork-rail remnants DELETED
+      (1,016 rows to 107). The live tradeable count was 11 before and 11 after —
+      the invariant that mattered, checked either side of the delete, with the
+      table dumped to `/home/ubuntu/level_ledger_backup_*.sql` first. The 63
+      pre-r29 ladder rows (prev_day, PDH/PDL, R1-R3) are LEFT as history: all
+      retired, none live, and they were real levels once.
+      ONE BOARD FOR EVERY PLAN THAT TRADES LEVELS, AND
+      THE FORK IS A SECOND PRODUCT BESIDE IT, NEVER INSIDE IT. Operator 2026-09-17:
+      *"Make every fucking trade that relies on levels get it from the same place
+      and include the fork when present"* and *"the fork projection is separate
+      from the levels map. Those are two separate products. Both are to be
+      consulted. The fork is a common informer but not mandatory if it's not
+      there."* That was already the ruling at r5 — *"LEVELS IN PLAY come from the
+      derived store, NEVER A PRIVATE MAP: 3 named up, 3 named down, plus the 1h
+      pitchfork's tines"* — and three plans had three private compositions of it:
+      the hunt through `board()`, the sweep through a local `level_map.walk()`
+      with the rails APPENDED INTO the level list, and the TCS through a raw
+      `live_levels()` filtered to `provenance == "ny"` with no fork at all.
+      🔴 `board()` IS NOW THE ONE ACCESSOR AND ITS ORB BOUNDS ARE OPTIONAL. With
+      them it answers the hunt's question unchanged (levels BEYOND the opening
+      range, measured outward from the edge — r12's reach, which is the hunt's
+      own design and is not touched). Without them it walks from SPOT, nearest
+      first, each older level further out — the operator's rule, and the same
+      `_walked()` the ORB path already used, so this merges two compositions
+      rather than adding a third.
+      ⚠️ THE RAILS ARE NEVER IN `above`/`below`. They stay in `tines`, with
+      `fork` reading "built" or "absent" — r19's co-inform-not-conjoin, which the
+      sweep had rebuilt one layer up by appending them in memory at read time.
+      `walk()` now DELEGATES here so there is one implementation, not two.
 v5.1  2026-09-14  OTV4TEST r30 — TWO DEFECTS IN r29, FOUND READING THE NOON BAKE.
       (1) A CONFIRMED LEGACY ROW KEPT ITS OLD `timeframe`. The reconcile stamped
       `created_ts` on a pre-r29 row the tape holds but not `timeframe`, which
@@ -278,6 +318,35 @@ def pd_ts(ts) -> float:
     return float(ts.timestamp())
 
 
+def board_for(store, symbol: str, price: float, orb_high=None, orb_low=None, limit: int = 3):
+    """THE ONE ENTRY POINT EVERY LEVEL-TRADING PLAN CALLS (r33).
+
+    Prefers the LIVE `LevelEngine` — it is the one holding the fork, so the
+    rails only exist there — and falls back to an engine over whatever store the
+    caller is bound to, which is what the checkers bind and what r13 made
+    mandatory (a plan must use ITS store, never reach a global one).
+
+    ⚠️ THIS EXISTS BECAUSE THE FALLBACK ITSELF WAS DUPLICATED. `liquidity_hunt`
+    had it; the sweep and the TCS did not, and the first cut of r33 gave them a
+    registry-only read that returned ZERO levels under every fixture — five
+    green checks went red and that is how it was found. One composition, called
+    three times, rather than three copies of the same eight lines.
+    """
+    eng = None
+    try:
+        from derived.registry import level_engine
+        eng = level_engine()
+    except Exception:                                           # noqa: BLE001
+        eng = None
+    if eng is not None and getattr(eng, "_store", None) is not None:
+        return eng.board(price, orb_high, orb_low, limit)
+    if store is None:
+        return {"state": "no_store", "above": [], "below": [], "tines": [],
+                "fork": "absent", "anchor": "spot",
+                "count": {"above": 0, "below": 0, "tines": 0}}
+    return LevelEngine(store, symbol, forks=None).board(price, orb_high, orb_low, limit)
+
+
 def _walked(rows, price):
     """r29 — ledger rows (price, ..., created_ts last) through `level_map.walk`:
     the newest held level each side of price, older ones only if further out."""
@@ -327,7 +396,8 @@ class LevelEngine(DerivedEngine):
         close", and today the map exposes a bare price with the origin lost.
         """
         liq = ctx.get("liq_map")
-        vol = ctx.get("vol")
+        # r33 — `vol` was read here ONLY to mint the VWAP row. VWAP is not a
+        # level; the binding goes with the producer rather than sitting unused.
         out = []
         if "level_tape" in ctx:
             # r29 — THE TAPE IS THE SOURCE (see v5.0). The mapper's pools are not.
@@ -387,11 +457,18 @@ class LevelEngine(DerivedEngine):
                     out.append((str(getattr(pool, "name", None) or "pool"), p,
                                 _side,
                                 str(getattr(pool, "timeframe", "") or ""), 0))
-        # VWAP is a level too and belongs in the same walk — operator.
-        if vol is not None:
-            p = _f(getattr(vol, "vwap", None))
-            if p and p > 0:
-                out.append(("vwap", p, "dynamic", "session", 1))
+        # r33 — VWAP IS NOT A LEVEL IN THIS LEDGER AND NO LONGER ENTERS IT.
+        # Operator, 2026-09-17: get everything that does not belong out of the
+        # levels ledger. It wrote a `kind="dynamic"` row every tick keyed on the
+        # PRICE, so a moving average minted a new identity each time it moved —
+        # 844 rows, of which NO READER HAS EVER SEEN ONE: `live_levels()`,
+        # `board()` and `walk()` all filter `kind IN ('support','resistance')`,
+        # and `board()`'s own docstring says VWAP is not a level a trade
+        # contends with. It is the same defect r19 found in the fork rails —
+        # a MOVING object given a FROZEN horizontal identity — and the fix is
+        # the same one: it is not a source. VWAP remains available to any plan
+        # that wants it from `ctx["vol"].vwap`, which is where it always was and
+        # where the butterfly's own VWAP band already reads it (BFLY.5).
         # r15 — tines are NOT sources any more: never stored, computed at read
         # (`tines_now`); the emitter reads them beside the ledger's levels.
         return out
@@ -434,17 +511,15 @@ class LevelEngine(DerivedEngine):
             if lid not in held_ids and lid not in spent:
                 srcs.append((prov, float(price), kind, tf, 0))
                 formed[lid] = float(created)
-        vol = ctx.get("vol")
-        _vw = _f(getattr(vol, "vwap", None)) if vol is not None else None
-        vwap_lid = self._lid(sym, "vwap", _vw) if _vw and _vw > 0 else None
-        self._reconcile(store, sym, set(formed), formed, spent, tape, tfs=tfs, vwap_lid=vwap_lid)
+        # r33 — the VWAP id went with the producer; nothing is exempted any more.
+        self._reconcile(store, sym, set(formed), formed, spent, tape, tfs=tfs)
         self._formed.update(formed)
         self._tape_srcs = srcs
         self._tape_key = key
         return list(srcs)
 
     def _reconcile(self, store, sym, keep: set, formed: dict, spent: dict, tape,
-                   tfs: Optional[dict] = None, vwap_lid: Optional[str] = None) -> None:
+                   tfs: Optional[dict] = None) -> None:
         """Retire every live row the tape does not hold; stamp formation times."""
         try:
             rows = store.conn.execute(
@@ -467,13 +542,17 @@ class LevelEngine(DerivedEngine):
                     # be kept once the tape no longer reaches it
                     store.set_level_created(lid, f, want_tf)
                 continue
-            if kind == "dynamic" and str(prov) == "vwap":
-                if lid == vwap_lid:
-                    continue               # the current VWAP row, re-upserted by derive()
-                store.retire_level(lid, now, "STALE_VWAP")      # r30
+            if kind == "dynamic":
+                # r33 — r30's STALE_VWAP sweep retired every id but the current
+                # one. With the producer gone nothing creates them, and the rows
+                # that existed were DELETED in this revision, so this branch can
+                # only ever see a row from a pre-r33 store. Retire it and let it
+                # go rather than leaving a `dynamic` row live in a ledger that
+                # has no reader for one.
+                store.retire_level(lid, now, "NOT_A_LEVEL")
                 st = self._live.get(lid)
                 if st is not None:
-                    st["retired"], st["reason"] = now, "STALE_VWAP"
+                    st["retired"], st["reason"] = now, "NOT_A_LEVEL"
                 retired += 1
                 continue
             sp = spent.get(lid)
@@ -541,9 +620,27 @@ class LevelEngine(DerivedEngine):
                 b = -gap / slope
                 bars = round(b, 2) if b > 0 else None
             out.append({"provenance": name, "price": p,
+                        # r33 — THE RAIL'S NATURE NAMES IT; ITS POSITION DECIDES
+                        # WHETHER IT COUNTS THIS TICK. `side_ok` below carries the
+                        # operator's rule, 2026-09-17: "lower fork tines
+                        # projected below spot must inform the plan that they are a
+                        # SUPPORT level, and upper fork tines projected above spot
+                        # that a valid RESISTANCE exists above spot." A rail's
+                        # position moves every tick, so its side is a per-tick fact.
+                        # ⚠️ KIND IS NOT RELABELLED AND THAT IS DELIBERATE. r5's TINE
+                        # RULE binds — a top tine can never be a floor, a bottom tine
+                        # never a ceiling — so a rail on the wrong side of spot is
+                        # DROPPED by `board()`, never renamed into the level it is not.
+                        # The emitter reads `kind` for WICKED/REJECTED/ACCEPTED and
+                        # relabelling would have made a lower rail emit resistance
+                        # events the moment price fell under it (caught by
+                        # check_level_rejection T2, which went red on the first cut).
                         "kind": "resistance" if name.endswith("upper") else
                                 ("support" if name.endswith("lower") else
                                  ("resistance" if price and price < p else "support")),
+                        "side_ok": (name.endswith("upper") and bool(price) and p > price)
+                                   or (name.endswith("lower") and bool(price) and p < price)
+                                   or not name.endswith(("upper", "lower")),
                         "slope_per_bar": slope, "bars_to_contact": bars,
                         "fork_key": fkey,          # r19: which projection this is
                         "minutes_back": float(minutes_back or 0.0),
@@ -551,18 +648,35 @@ class LevelEngine(DerivedEngine):
         return out
 
     def board(self, price: float, orb_high=None, orb_low=None, limit: int = 3):
-        """THE LEVEL BOARD (mainline r364, PLAN_SPEC §38): the held levels beyond
-        the OPENING RANGE — up to `limit` above orb_high and below orb_low,
-        ordered outward from the edge (monotone by construction) — plus the
-        fork's rails when it exists. Four answers stay distinct: no_store,
-        no_range, no fork, no level that side; fewer than three is an answer
-        (`count`), never padded. VWAP is not a level a trade contends with."""
+        """THE ONE LEVEL BOARD every plan that trades levels reads (r33).
+
+        Two ANCHORINGS, one composition, one source:
+        · `orb_high`/`orb_low` GIVEN — the held levels BEYOND the opening range,
+          up to `limit` each side, ordered outward from the edge. That is the
+          liquidity hunt's reach (r12: the bias is measured from the range edge)
+          and it is unchanged.
+        · BOUNDS OMITTED — the walk from SPOT: nearest first, each older level
+          further out, `limit` each side. The operator's rule, r5 and r29:
+          *"the session is a label on the answer, not the query."*
+
+        🔴 THE FORK IS A SECOND PRODUCT, NOT A LEVEL IN THIS LIST. The rails are
+        returned in `tines` with `fork` = "built"/"absent" and NEVER merged into
+        `above`/`below` (r19: co-inform, do not conjoin). A caller that wants
+        them consults them; a caller that does not is unaffected, and an absent
+        fork is an explicit answer rather than an empty list.
+
+        Empty answers stay distinct — no_store, no_range, no fork, none that
+        side; fewer than `limit` is an answer (`count`), never padded. VWAP is
+        not a level a trade contends with."""
         out = {"state": "ok", "above": [], "below": [], "tines": [], "fork": "absent",
+               "anchor": "range" if (orb_high and orb_low) else "spot",
                "as_of": time.time()}
         if self._store is None or not price:
             out["state"] = "no_store"
             return out
-        if not (orb_high and orb_low and orb_high > orb_low):
+        _ranged = bool(orb_high and orb_low and orb_high > orb_low)
+        if (orb_high or orb_low) and not _ranged:
+            # a HALF range is a broken input, not a spot walk — fail closed (§22)
             out["state"] = "no_range"
             return out
         try:
@@ -574,16 +688,27 @@ class LevelEngine(DerivedEngine):
             out["state"] = "no_store"
             return out
         rows = _walked(rows, price)                     # r29 — newest first, further out
-        above = sorted([r for r in rows if r[0] > orb_high], key=lambda r: r[0] - orb_high)
-        below = sorted([r for r in rows if r[0] < orb_low], key=lambda r: orb_low - r[0])
+        # r33 — the EDGE each side is measured from: the range when one was given,
+        # otherwise spot. One sort, one formatter; only the reference moves.
+        edge_up = orb_high if _ranged else price
+        edge_dn = orb_low if _ranged else price
+        above = sorted([r for r in rows if r[0] > edge_up], key=lambda r: r[0] - edge_up)
+        below = sorted([r for r in rows if r[0] < edge_dn], key=lambda r: edge_dn - r[0])
 
         def fmt(r, edge):
             return {"price": r[0], "kind": r[1], "provenance": r[2], "touches": r[3],
                     "live": bool(r[4]), "level_id": r[5],
                     "dist_pct": abs(r[0] - edge) / edge * 100.0}
-        out["above"] = [fmt(r, orb_high) for r in above[:limit]]
-        out["below"] = [fmt(r, orb_low) for r in below[:limit]]
-        out["tines"] = self.tines_now(price)
+        out["above"] = [fmt(r, edge_up) for r in above[:limit]]
+        out["below"] = [fmt(r, edge_dn) for r in below[:limit]]
+        # r33 — THE RAILS, AS A SECOND PRODUCT. r5's TINE RULE is applied HERE
+        # rather than left to each caller: a top tine can never be a floor and a
+        # bottom tine never a ceiling, so a rail sitting on the wrong side of
+        # spot this tick is NOT offered as a candidate at all. It is dropped,
+        # never relabelled — relabelling is how a projection becomes a level it
+        # is not. `side_ok` is computed in `tines_now` from where the projection
+        # actually sits, because that moves every tick.
+        out["tines"] = [t_ for t_ in self.tines_now(price) if t_.get("side_ok", True)]
         for t_ in out["tines"]:
             t_["level_id"] = self._lid(self.symbol, t_["provenance"], 0.0)
         out["fork"] = "built" if out["tines"] else "absent"
@@ -850,35 +975,21 @@ class LevelEngine(DerivedEngine):
         return written
 
     def walk(self, price: float, limit: int = 3):
-        """Levels ordered by DISTANCE from price, nearest first, with grade.
+        """The walk from SPOT — nearest first, each older level further out.
 
         🔴 THE OPERATOR'S OWN FRAMING: walk up from where price is until you
         hit the last session high — which could be overnight, previous day or
         previous session — and the same going down. **The session is a label on
-        the answer, not the query.** That is what makes the live NY high safe
-        to use: if it is nearest above, it IS the level that matters.
+        the answer, not the query.**
 
         ⚠️ DISTANCE ORDERS, TOUCH COUNT SCORES. The nearest level may be a
-        one-touch artifact while the one 0.4% beyond has held five times — that
-        is the whole distinction between trading into something and trading
-        into noise.
+        one-touch artifact while the one 0.4% beyond has held five times.
+
+        r33 — THIS DELEGATES TO `board()` AND HOLDS NO COMPOSITION OF ITS OWN.
+        It was a second implementation of the same query over the same rows, and
+        two implementations is how the plans came to disagree. Kept as a name
+        because `main.py` and `derived/snapshot.py` call it; it returns only the
+        levels, since its callers never consulted the fork.
         """
-        if self._store is None or not price:
-            return {"above": [], "below": []}
-        try:
-            cur = self._store.conn.execute(
-                "SELECT price, kind, provenance, touch_count, is_live_session, level_id, created_ts"
-                " FROM level_ledger WHERE symbol=? AND retired_ts IS NULL"
-                " AND kind IN ('support','resistance')",
-                (self.symbol,))
-            rows = _walked(cur.fetchall(), price)       # r29 — the same walk as the board
-        except Exception:                                       # noqa: BLE001
-            return {"above": [], "below": []}
-        above = sorted([r for r in rows if r[0] > price], key=lambda r: r[0] - price)
-        below = sorted([r for r in rows if r[0] < price], key=lambda r: price - r[0])
-        def fmt(r):
-            return {"price": r[0], "kind": r[1], "provenance": r[2],
-                    "touches": r[3], "live": bool(r[4]),
-                    "dist_pct": abs(r[0] - price) / price * 100.0}
-        return {"above": [fmt(r) for r in above[:limit]],
-                "below": [fmt(r) for r in below[:limit]]}
+        b = self.board(price, limit=limit)
+        return {"above": b.get("above", []), "below": b.get("below", [])}

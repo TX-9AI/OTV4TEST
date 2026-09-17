@@ -1,5 +1,19 @@
 """
-strategy/sweep_plan.py  v1.5
+strategy/sweep_plan.py  v1.6
+v1.6  2026-09-17  OTV4TEST r33 — THE PRIVATE MAP IS GONE; THIS PLAN READS THE ONE
+      BOARD. It called `live_levels()`, ran its OWN `level_map.walk()` over the
+      result, and then APPENDED the fork's rails into the same list — so a moving
+      1h rail and a held session extreme arrived as one indistinguishable
+      product. r19 stopped the rails reaching the ledger; this rebuilt the
+      conjunction one layer up, in memory, at read time. Now: `board(price)` —
+      no ORB bounds, so the walk is from SPOT — with levels in `above`/`below`
+      and the rails returned SEPARATELY in `tines`. The rails stay IN PLAY for
+      this plan (r5: "3 named up, 3 named down, plus the 1h pitchfork's tines")
+      and the operator's 2026-09-17 ruling that the fork is an **OR** level, not
+      an AND: one of the mapped levels OR a fork rail. What changed is that they
+      arrive LABELLED, so nothing is silently conjoined, and `fork == "absent"`
+      is an answer rather than a gap. Levels in play are unchanged in meaning
+      and in count.
 v1.5  2026-09-14  OTV4TEST r29 — the levels in play are WALKED (derived/level_map.walk):
       the newest held level each side of price, older ones only if further out —
       the same map the hunt's board reads, so the plans parse one set of levels
@@ -138,7 +152,8 @@ class SweepPreparation:
     __slots__ = ("tick", "above", "below", "nearest_above", "nearest_below", "rejected",
                  "chosen", "side", "boundary", "pool", "name", "rej_pct", "depth",
                  "short", "long", "credit", "width", "r", "stop_prem", "stop_dist",
-                 "richness", "structural", "starved", "unmet", "ready")
+                 "richness", "structural", "starved", "unmet", "ready",
+                 "tines")          # r33 — the fork, BESIDE the levels, never hidden in them
 
     def __init__(self, tick):
         self.tick = tick
@@ -152,6 +167,7 @@ class SweepPreparation:
         self.short = self.long = None
         self.credit = self.width = self.r = self.stop_prem = self.stop_dist = self.richness = None
         self.structural, self.starved, self.unmet = [], [], []
+        self.tines = []                     # r33 — "absent" is an answer, not a gap
         self.ready = False
 
     def trade_line(self) -> str:
@@ -176,6 +192,20 @@ class SweepPlan:
                             record_only=True, self_ledgers=True)
         self._store = store
         self._fired_events: set = set()      # (level_id, bar_ts) — each REJECTED fires once
+
+    def _board_(self, price: float):
+        """r33 — THE ONE ACCESSOR, through the one shared entry point. No ORB
+        bounds: this plan walks from SPOT, which is the operator's rule (r5/r29).
+        Levels in `above`/`below`, the fork's rails separately in `tines` with
+        `fork` naming built or absent. `board_for` prefers the LIVE engine (the
+        only thing holding a fork) and falls back to the store this plan is
+        BOUND to — r13: a plan uses its own store and never reaches a global."""
+        try:
+            from derived.levels import board_for
+            return board_for(self._store_(), _symbol_of(), float(price))
+        except Exception as exc:                                # noqa: BLE001
+            logger.warning("[sweep] level board unavailable — no levels in play: %s", exc)
+            return {"state": "no_store", "above": [], "below": [], "tines": [], "fork": "absent"}
 
     def _store_(self):
         if self._store is not None:
@@ -247,29 +277,26 @@ class SweepPlan:
         if store is None:
             prep.starved.append("level_store"); t.starved("level_store"); return prep
         sym = _symbol_of()
-        levels = store.live_levels(sym)
-        # r29 — one map for every plan: walk newest first, each older level further out
-        try:
-            import pandas as _pd
-            from derived import level_map as _lm
-            _w = _lm.walk([dict(l, formed_ts=_pd.Timestamp(float(l.get("created_ts") or 0.0),
-                                                           unit="s", tz="UTC")) for l in levels],
-                          float(price_now))
-            levels = _w["up"] + _w["down"]
-        except Exception as exc:                                # noqa: BLE001
-            # fails CLOSED: an unwalked book is the map this revision replaces
-            logger.warning("[sweep] level walk failed — no levels in play this tick: %s", exc)
-            levels = []
-        # r15 — the rails are read, not stored (levels v4.3): add them from the engine
-        try:
-            from derived.registry import level_engine
-            _eng = level_engine()
-            if _eng is not None:
-                for t_ in _eng.tines_now(price_now):
-                    levels.append({"level_id": _eng._lid(sym, t_["provenance"], 0.0), "price": t_["price"],
-                                   "kind": t_["kind"], "provenance": t_["provenance"], "timeframe": "1h", "touches": 0})
-        except Exception:                                       # noqa: BLE001
-            pass
+        # r33 — THE ONE BOARD. This block built its OWN map: `live_levels()`,
+        # then a local `level_map.walk()`, then the rails APPENDED INTO the same
+        # list — so a moving 1h rail and a held session extreme arrived as one
+        # indistinguishable product. r19 stopped the rails reaching the ledger;
+        # this rebuilt the conjunction one layer up, in memory, at read time.
+        # The board walks from SPOT (no ORB bounds — the operator's rule) and
+        # hands the fork back SEPARATELY. Levels in play are unchanged in
+        # meaning and in count; only the composition moved to one place.
+        _b = self._board_(price_now)
+        t.check("level_board", _b.get("state"), None)
+        t.check("fork", _b.get("fork"), None)
+        levels = list(_b.get("above", [])) + list(_b.get("below", []))
+        tines = list(_b.get("tines", []))
+        prep.tines = tines
+        # r5 keeps the rails IN PLAY for this plan — "3 named up, 3 named down,
+        # plus the 1h pitchfork's tines" — so they are still sellable here. What
+        # changed is that they arrive LABELLED as the fork's, and a caller can
+        # tell them apart; they are not silently indistinguishable from a held
+        # session extreme. `fork == "absent"` is an answer, never a gap.
+        levels = levels + tines
         above = sorted([l for l in levels if l["kind"] == "resistance" and float(l["price"]) > price_now],
                        key=lambda l: float(l["price"]))[:LEVELS_EACH_SIDE]
         below = sorted([l for l in levels if l["kind"] == "support" and float(l["price"]) < price_now],

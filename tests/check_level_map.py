@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""tests/check_level_map.py — v1.1
+"""tests/check_level_map.py — v1.2
+v1.2  2026-09-17 — OTV4TEST r33. M9 AND M12 ASSERTED CONTRACTS THAT RULINGS
+      REPLACED, AND ARE REWRITTEN RATHER THAN LOOSENED. M9's second half required
+      `"_lm.walk(" in src` — the sweep running its OWN walk — which is exactly what
+      check_level_source S2 now REFUSES; two gates asserting opposite things, and
+      this was the stale one (M9b inverts it, the created_ts half stays because the
+      walk needs a formation time). M12 pinned r30's STALE_VWAP sweep for a
+      producer r33 deleted: VWAP is not a level, no reader has ever seen a
+      `dynamic` row, so M12 now pins that none is left LIVE and none is minted,
+      and M12b that a legacy row from a pre-r33 store is retired.
 v1.1  2026-09-14 — OTV4TEST r30. M10-M12, from reading r29's noon bake on the box: a
       confirmed legacy row kept `timeframe='session'`, so it would retire once the
       tape stopped reaching it (M10, M11 — Saturday's purge); r29 claimed to retire
@@ -188,9 +197,17 @@ def main():
 
     lv = store.live_levels("QQQ")
     src = open(os.path.join(_root, "strategy", "sweep_plan.py"), encoding="utf-8").read()
-    check("M9 live_levels carries created_ts, and the sweep plan walks it",
-          bool(lv) and all("created_ts" in x for x in lv) and "_lm.walk(" in src,
-          f"{len(lv)} live")
+    # r33 — M9's SECOND HALF PINNED THE DEFECT. It asserted `"_lm.walk(" in src`
+    # — the sweep running its OWN walk — which is exactly what the operator ruled
+    # out on 2026-09-17 ("every trade that relies on levels gets it from the same
+    # place") and what check_level_source S2 now REFUSES. Two gates asserting
+    # opposite things; this is the stale one. The first half still matters and
+    # stays: the walk needs a formation time, so `live_levels` must carry it.
+    check("M9 live_levels carries created_ts — the walk needs a formation time",
+          bool(lv) and all("created_ts" in x for x in lv), f"{len(lv)} live")
+    check("M9b the sweep reaches the ONE board, it does not walk privately (r33)",
+          "board_for(" in src and "_lm.walk(" not in src.split('"""', 2)[-1],
+          "sweep -> board_for")
 
     # ── r30 — M10-M12, a fresh ledger so M7's mutations do not leak in ──────
     store2 = DerivedStore(path=os.path.join(tempfile.mkdtemp(), "derived.db"))
@@ -219,9 +236,32 @@ def main():
           r11 is not None and r11[1] is None, f"{r11}")
     v = {r[0]: r for r in store2.conn.execute(
         "SELECT level_id, retired_ts, retired_reason FROM level_ledger WHERE provenance='vwap'")}
-    check("M12 stale VWAP ids retire STALE_VWAP; the current one stays live",
-          v.get("QQQ:vwap:700.00", (0, None, None))[2] == "STALE_VWAP"
-          and v.get("QQQ:vwap:705.00", (0, 1, None))[1] is None, str(v))
+    # r33 — M12 IS REWRITTEN, NOT LOOSENED, AND THE REASON IS A RULING.
+    # r30's M12 pinned "stale VWAP ids retire STALE_VWAP; the CURRENT one stays
+    # live" — a contract that only makes sense while VWAP is a level. The
+    # operator ruled on 2026-09-17 that it is not one and never was: no reader
+    # has ever seen a `kind="dynamic"` row, because every accessor filters
+    # `kind IN ('support','resistance')`. The producer is gone and the 855 rows
+    # were deleted. So the thing to pin is the OPPOSITE: nothing mints one, and
+    # a row from a pre-r33 store does not survive as live.
+    # the fixture SEEDS two legacy vwap ids on purpose (they are what r30's
+    # STALE_VWAP sweep was written against), so the assertion is not "no rows"
+    # — it is that the derive LEAVES NONE LIVE and mints no new one.
+    check("M12 VWAP is not a level: no dynamic row is left live, and none is minted",
+          all(r[1] is not None for r in v.values()) and len(v) == 2,
+          f"vwap rows: {[(k, r[2]) for k, r in sorted(v.items())]}")
+    store2.conn.execute(
+        "INSERT INTO level_ledger (level_id, symbol, price, kind, provenance, timeframe,"
+        " created_ts, touch_count, retired_ts) VALUES"
+        " ('QQQ:vwap:701.00','QQQ',701.0,'dynamic','vwap','session',1,0,NULL)")
+    store2.commit()
+    LevelEngine(store2, "QQQ").derive(ctx2)
+    store2.commit()
+    leg = store2.conn.execute(
+        "SELECT retired_ts, retired_reason FROM level_ledger"
+        " WHERE level_id='QQQ:vwap:701.00'").fetchone()
+    check("M12b a legacy dynamic row from a pre-r33 store is retired, not left live",
+          leg is not None and leg[0] is not None, f"{leg}")
 
     print()
     if FAILED:

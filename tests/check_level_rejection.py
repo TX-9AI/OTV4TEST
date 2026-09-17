@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """
-tests/check_level_rejection.py  v1.5
+tests/check_level_rejection.py  v1.6
+v1.6  2026-09-17  OTV4TEST r33 — L12b PINS THE NEW BOARD CONTRACT. It asserted that
+      a board with NO ORB bounds is `no_range`. The operator ruled on 2026-09-17
+      that every plan reads ONE board and that levels are walked from SPOT — "three
+      up and three down, starting with the most recent" — so no-bounds is now the
+      spot walk, and `no_range` is reserved for a HALF range, which is a broken
+      input and still fails closed (L12b2). Rewritten to the new contract, not
+      loosened; both halves are pinned again in check_level_source S5/S10.
 v1.5  2026-09-13  OTV4TEST r19 — F1/F1b/F2/F2b/F3/F3b/F4/F4b: the fork projection
       is separated from the level book. A moving rail never reaches the ledger
       (F1) while the static pool beside it still does (F1b, the control); the
@@ -242,7 +249,19 @@ def main():
           bd["state"] == "ok" and [x["provenance"] for x in bd["above"]] == ["NY High (R1)", "PDH", "prev_day"]
           and [x["provenance"] for x in bd["below"]] == ["PDL"] and bd["count"] == {"above": 3, "below": 1, "tines": 0}
           and bd["fork"] == "absent", str({k: bd[k] for k in ("state", "count", "fork")}))
-    check("L12b board with no range -> no_range, not an empty ladder", eng6.board(100.0, None, None)["state"] == "no_range")
+    # r33 — L12b PINS THE NEW CONTRACT. It asserted that a board with NO ORB
+    # bounds is `no_range`. The operator ruled on 2026-09-17 that every plan
+    # reads ONE board and that levels are walked from SPOT — "three up and three
+    # down, starting with the most recent" — so no-bounds is now the SPOT walk,
+    # and `no_range` is reserved for a HALF range, which is a broken input and
+    # still fails closed. Both halves are pinned here and again in
+    # check_level_source S5/S10.
+    _nb = eng6.board(100.0, None, None)
+    check("L12b board with NO bounds walks from SPOT (r33), it is not no_range",
+          _nb["state"] == "ok" and _nb.get("anchor") == "spot",
+          f"state={_nb['state']} anchor={_nb.get('anchor')}")
+    check("L12b2 a HALF range is still no_range — a broken input fails closed",
+          eng6.board(100.0, 101.0, None)["state"] == "no_range")
     check("L12c board with no store -> no_store", LevelEngine(None, "X").board(100.0, 101.0, 99.0)["state"] == "no_store")
 
     # ── r18: L13 — THE ACCEPTED FACT NAMES THE BAR THAT MADE IT ──
