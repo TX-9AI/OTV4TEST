@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# devtools.sh  v3.0  — OTV4TEST box menu
+# devtools.sh  v3.1  — OTV4TEST box menu
+# v3.1  2026-09-17  OTV4TEST — EVERY CLAUDE SESSION THIS MENU STARTS IS A
+#       REMOTE CONTROL SESSION. Operator's instruction: he drives these threads
+#       from his phone, and a session started without it cannot be reached from
+#       the chat thread. All four launch sites carry `--remote-control qqq-test`.
+#       ⚠️ THE NAME IS PASSED EXPLICITLY AND THAT IS LOAD-BEARING, NOT TIDINESS:
+#       the flag's argument is OPTIONAL (`--remote-control [name]`), so on the
+#       HAND OFF site — the only one that also passes a positional prompt — a
+#       bare flag could swallow the whole of docs/HANDOFF.md as the session
+#       NAME and hand Claude no brief at all. Naming it removes the ambiguity.
 # v3.0  2026-09-13  OTV4TEST r17 — THE MENU IS READ ON A PHONE. Reformatted to
 #       control's shape: a 54-column rule, a title line, sections as " NAME:",
 #       items as "  NN) label" — and every line fits 54 columns, because a label
@@ -337,11 +346,11 @@ mi_claude_handoff() {
   fi
   if [ -f "$CLAUDE_BOOTSTRAP" ]; then
     exec tmux new-session -s "$CLAUDE_TMUX" \
-      "cd '$REPO' && claude \"\$(cat '$CLAUDE_BOOTSTRAP')\$([ -f '$CLAUDE_NOW' ] && printf '%s' '
+      "cd '$REPO' && claude --remote-control qqq-test \"\$(cat '$CLAUDE_BOOTSTRAP')\$([ -f '$CLAUDE_NOW' ] && printf '%s' '
 
 Also read docs/HANDOFF_NOW.md first — a one-time note for this handoff: where things stand, what to read on Monday, and the open items. Delete it once you have read it.')\"; exec bash"
   else
-    exec tmux new-session -s "$CLAUDE_TMUX" "cd '$REPO' && claude; exec bash"
+    exec tmux new-session -s "$CLAUDE_TMUX" "cd '$REPO' && claude --remote-control qqq-test; exec bash"
   fi
 }
 
@@ -362,7 +371,7 @@ mi_claude_resume() {
   confirm "proceed?" || { pause; return; }
   _claude_kill_all_tmux
   cd "$REPO" || exit 1
-  exec tmux new-session -s "$CLAUDE_TMUX" "claude --continue; exec bash"
+  exec tmux new-session -s "$CLAUDE_TMUX" "claude --remote-control qqq-test --continue; exec bash"
 }
 
 mi_claude_resume_pick() {
@@ -372,7 +381,7 @@ mi_claude_resume_pick() {
   confirm "proceed?" || { pause; return; }
   _claude_kill_all_tmux
   cd "$REPO" || exit 1
-  exec tmux new-session -s "$CLAUDE_TMUX" "claude --resume; exec bash"
+  exec tmux new-session -s "$CLAUDE_TMUX" "claude --remote-control qqq-test --resume; exec bash"
 }
 
 # ── THE MENU IS DATA — numbers are assigned at render time ─────────────────
@@ -469,7 +478,7 @@ _colorize() {
 menu_render() {
   local n=0 e kind rest label
   printf '%s\n' "$_RULE"
-  printf '  OTV4TEST — devtools  v3.0   %s\n' "$(hostname -s)"
+  printf '  OTV4TEST — devtools  v3.1   %s\n' "$(hostname -s)"
   printf '  bot=%-8s feed=%-8s %s\n' "$(svc "$BOT")" "$(svc "$FEED")" \
          "$(git -C "$REPO" log -1 --format='%h %s' 2>/dev/null | cut -c1-22)"
   printf '%s\n' "$_RULE"

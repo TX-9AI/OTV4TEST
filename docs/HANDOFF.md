@@ -5,4 +5,4 @@ You should be familiar with public repo- https://github.com/TX-9AI/options_trade
 You have direct ownership of https://github.com/TX-9AI/OTV4TEST
 Start with the WORKING AGREEMENT, then review the past week's changes to GENESIS, then VERIFY if the WRITE MAP is current/accurate. Next VERIFY if the FILE MAP is current/accurate. Our task is to make radical changes to the OTV4 that are not possible to do on an active fleet of 15 trading servers to optimize our strategies and P&L by identifying and employing edge, and using data analysis to propose novel predictive adaptations to capture market moves.
 
-Remember, the working agreement is mandatory—but if it contains obsolete references or requirements, we should correct it. Let me know when you're caught up!
+Remember, the working agreement is mandatory—but if it contains obsolete references or requirements, we should correct it. But that is not the purpose of THIS thread. Although we may discuss your findings afterwards, I want you to shelve those for a minute to discuss the task at hand. Let me know when you're caught up!
