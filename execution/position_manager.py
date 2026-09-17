@@ -1,5 +1,33 @@
 """
-execution/position_manager.py  v4.9
+execution/position_manager.py  v5.0
+v5.0  2026-09-17  OTV4TEST r35 — THE ONE AND ONLY POSITION MANAGER: IT KNOWS WHAT
+      IS OPEN AND IT DECIDES WHAT MAY OPEN. Operator, 2026-09-17: *"attempt_new_entry
+      is a position manager function"*, and earlier, *"the gates for our 1 and only
+      position manager"*. Admission was seven mechanisms in four files — an early
+      return in main (`is_halted`), a second one (`session_guard.can_enter`), a
+      TICK-LOOP BRANCH (`has_open_position`), a hardcoded exemption predicate here,
+      a bare dispatch cascade whose ORDER was load-bearing, a window inside each
+      plan file, and `_one_per_session_used`. Nothing enumerated them, which is why
+      the TCS's 14:00 window shut for twenty-four revisions unnoticed.
+      🔴 THE TABLE IS THE OPERATOR'S, AND IT INVERTS THE OLD MODEL. A single GLOBAL
+      position slot used to block everything with two hardcoded exemptions.
+      **Nothing blocks anything now.** *"To the greatest extent possible I do not
+      want to set a maximum number of open positions, and many times this may lead
+      to CONFLICTING theses at play simultaneously. That is OK! I WANT sweep to be
+      able to fire while we have an active runaway in progress. We will rely on the
+      runaway to exit gracefully using ITS OWN stops."* The only structural limit is
+      MAX OPEN OF THIS TYPE; there is no cap on the total.
+      🔑 THE CONDOR RULES FALL OUT OF THE TYPE CAPS WITH NO SPECIAL CASE: sweep = 2
+      permits sweep+sweep, TCS = 1 makes TCS+TCS impossible, TCS+sweep is two types.
+      Nothing here knows the word "condor".
+      ⚠️ IT ANSWERS, IT DOES NOT DRIVE. `eligible_now()` returns the strategies that
+      may be ASKED; `main_loop` does the asking, the plan selects, the strategy
+      confirms, execution acts. A position manager that called a plan would be the
+      first backwards edge in the one-way flow this repo's isolation depends on.
+      ⚠️ IT DOES NOT OWN ORDER PLACEMENT. `session_guard`: *"ORDER PLACEMENT IS NOT
+      GATED HERE AT ALL — it is refused at the two order choke points, which check
+      `is_rth()` themselves. A gate that says 'no' is not what stops a fill; the
+      choke point is."* That separation is a SAFETY PROPERTY and survives intact.
 v4.9  2026-09-10  OTV4TEST r12 — has_blocking_position(): THE LIQUIDITY HUNT BLOCKS
       NOTHING (PLAN_SPEC §37), the butterfly's rule applied to a second strategy,
       so the hunt and the ORB run the same break side by side.
@@ -129,7 +157,8 @@ repo-wide v3.0 bump: Yahoo-Finance purge & data stream
 """
 
 import logging
-from typing import Optional, List
+from dataclasses import dataclass, field
+from typing import Mapping, Optional, List
 
 import pandas as pd
 
@@ -140,6 +169,7 @@ from execution.exit_engine import get_exit_engine, ExitDecision
 from data.tasty_client import get_client, TastyClientError
 from risk.risk_manager import get_risk_manager
 from notifications.alert_manager import get_alert_manager
+import config
 from config import PAPER_TRADING, CONTRACT_MULTIPLIER
 
 
@@ -174,6 +204,174 @@ def _vertical_close_due() -> bool:
 
 logger = logging.getLogger(__name__)
 _WARNED_LEG_COUNT: set = set()   # SWALLOW T1: warn once on an unreadable count
+
+
+# ══ ADMISSION ══════════════════════════════════════════════════════════════
+# ── the strategies this box runs, by their dispatch names ───────────────────
+ORB = "ORBStrategy"
+RUNAWAY = "RunawayContinuation"
+HUNT = "LiquidityHunt"
+SWEEP = "SweepCreditSpread"
+TCS = "TrendCreditSpread"
+GEXFLY = "GEXPinButterfly"
+ATPFLY = "ATPButterfly"
+
+
+@dataclass(frozen=True)
+class AdmissionRule:
+    """One strategy's admission terms. §36: every field here is SELECTION —
+    the operator toggles them as the data arrives. None of them is foundational;
+    the FEASIBILITY gate is the catastrophic cap, which is universal."""
+    window: tuple                       # ((sh, sm), (eh, em)), half-open [start, end)
+    max_open_of_type: int               # concurrent positions OF THIS TYPE
+    max_tries_per_session: Optional[int] = None      # None = unlimited
+    # 🔑 NAMED SETS, NOT BOOLEANS. The operator asked for the blocking gates to
+    # be toggleable "to name which strategies will fill those gates", so a future
+    # rule is a name added to a set rather than an edit to a conditional.
+    # BOTH DIRECTIONS ARE EVALUATED, so a pairing can be expressed from either
+    # end and a half-configured matrix cannot silently do nothing.
+    blocks: frozenset = field(default_factory=frozenset)      # I block these from opening
+    blocked_by: frozenset = field(default_factory=frozenset)  # these block me
+
+
+# ── THE TABLE. Operator's specification, 2026-09-17. ────────────────────────
+# ⚠️ EVERY WINDOW IS HALF-OPEN [start, end): at 11:30:00 the ORB is OUT and the
+# TCS is IN — no overlap, no gap, and no tick that belongs to both or neither.
+# ⚠️ EVERY `blocks` / `blocked_by` IS EMPTY BY RULING. Nothing blocks anything.
+_DEFAULT_RULES = {
+    ORB:     AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
+    RUNAWAY: AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
+    HUNT:    AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
+    # the credit window was widened to 15:00 by the operator on 2026-09-17
+    SWEEP:   AdmissionRule(((9, 35), (15, 0)), max_open_of_type=2),   # 2: it forms a condor
+    TCS:     AdmissionRule(((11, 30), (15, 0)), max_open_of_type=1),  # 1: TCS+TCS is in conflict
+    # the GEX fly's cutoff was raised from 14:00 to 15:00 by the operator
+    GEXFLY:  AdmissionRule(((12, 0), (15, 0)), max_open_of_type=1, max_tries_per_session=1),
+    ATPFLY:  AdmissionRule(((11, 30), (15, 0)), max_open_of_type=1, max_tries_per_session=1),
+}
+
+
+def rules() -> dict:
+    """The table, with `config.ADMISSION_RULES` overlaid when present.
+
+    🔑 TOGGLED WITHOUT A REVISION. The operator: *"I want to be able to toggle
+    those granular details LATER. For instance, after we have enough data, I will
+    toggle it back to only 1 butterfly trade at a time."* An override names a
+    strategy and any subset of its fields; everything unnamed keeps the default,
+    so a partial override cannot blank a rule by omission."""
+    out = dict(_DEFAULT_RULES)
+    ov = getattr(config, "ADMISSION_RULES", None) or {}
+    for name, patch in ov.items():
+        base = out.get(name)
+        if base is None or not isinstance(patch, dict):
+            continue
+        out[name] = AdmissionRule(
+            window=tuple(patch.get("window", base.window)),
+            max_open_of_type=int(patch.get("max_open_of_type", base.max_open_of_type)),
+            max_tries_per_session=patch.get("max_tries_per_session", base.max_tries_per_session),
+            blocks=frozenset(patch.get("blocks", base.blocks)),
+            blocked_by=frozenset(patch.get("blocked_by", base.blocked_by)),
+        )
+    return out
+
+
+@dataclass(frozen=True)
+class Facts:
+    """Everything admission depends on, gathered by the caller.
+
+    ⚠️ FACTS, NOT OBJECTS — passing values rather than the risk manager and the
+    position manager is what keeps this pure, and what lets a checker drive every
+    combination without a tick loop or a store."""
+    strategy: str
+    now_et: tuple                        # (hour, minute)
+    trading_day: bool = True
+    orb_established: bool = False
+    cap_intact: bool = True
+    past_hard_close: bool = False
+    open_by_strategy: Mapping[str, int] = field(default_factory=dict)
+    tries_used: int = 0
+
+
+@dataclass(frozen=True)
+class Verdict:
+    admitted: bool
+    gate: str = ""
+    why: str = ""
+
+    def __bool__(self) -> bool:
+        return self.admitted
+
+
+def _within(now: tuple, window: tuple) -> bool:
+    (sh, sm), (eh, em) = window
+    t = now[0] * 60 + now[1]
+    return (sh * 60 + sm) <= t < (eh * 60 + em)      # half-open, deliberately
+
+
+def decide(f: Facts, table: Optional[dict] = None) -> Verdict:
+    """ADMIT, or the FIRST gate that refuses.
+
+    THE THREE UNIVERSALS ARE ASKED ONCE, FOR EVERY STRATEGY, and they are the
+    operator's own list: is today a trading day, is the ORB range established,
+    is the catastrophic cap unbroken. The hard close rides with them.
+    ⚠️ THE VIX CRISIS GATE IS GONE, and that is a ruling, not an omission.
+    Operator, 2026-09-17: *"VIX crisis — get rid of it. That is major
+    opportunity."* It previously refused every new entry on `macro`'s say-so.
+    """
+    table = table if table is not None else rules()
+
+    # ── the universals ──────────────────────────────────────────────────────
+    if not f.trading_day:
+        return Verdict(False, "trading_day", "not a trading day")
+    if not f.orb_established:
+        # the universal floor for EVERY strategy: nothing trades inside the
+        # opening range, and the ORB itself cannot be read before it exists.
+        return Verdict(False, "orb_range", "opening range not established yet")
+    if not f.cap_intact:
+        return Verdict(False, "catastrophic_cap", "catastrophic cap reached — no new entries")
+    if f.past_hard_close:
+        return Verdict(False, "hard_close", "past the 15:45 ET hard close")
+
+    rule = table.get(f.strategy)
+    if rule is None:
+        # ⚠️ FAILS CLOSED (§22). An unknown strategy is not admitted by default;
+        # a new trade joins the table deliberately or it does not trade.
+        return Verdict(False, "unknown_strategy", f"{f.strategy} has no admission rule")
+
+    # ── the per-strategy terms ──────────────────────────────────────────────
+    if not _within(f.now_et, rule.window):
+        (sh, sm), (eh, em) = rule.window
+        return Verdict(False, "window",
+                       f"{f.strategy} is outside {sh:02d}:{sm:02d}-{eh:02d}:{em:02d} ET")
+
+    if rule.max_tries_per_session is not None and f.tries_used >= rule.max_tries_per_session:
+        return Verdict(False, "tries_per_session",
+                       f"{f.strategy} has used its {rule.max_tries_per_session} attempt(s)")
+
+    if int(f.open_by_strategy.get(f.strategy, 0)) >= rule.max_open_of_type:
+        return Verdict(False, "max_open_of_type",
+                       f"{rule.max_open_of_type} {f.strategy} already open")
+
+    # ── the blocking matrix, BOTH directions, empty by ruling ───────────────
+    open_now = {s for s, n in f.open_by_strategy.items() if int(n) > 0}
+    hit = open_now & set(rule.blocked_by)
+    if hit:
+        return Verdict(False, "blocked_by", f"{f.strategy} is blocked by {sorted(hit)[0]} being open")
+    for other in sorted(open_now):
+        other_rule = table.get(other)
+        if other_rule is not None and f.strategy in other_rule.blocks:
+            return Verdict(False, "blocks", f"{other} is open and blocks {f.strategy}")
+
+    return Verdict(True, "", "admitted")
+
+
+def gates() -> tuple:
+    """Every gate this can refuse on, in order — so admission can be ENUMERATED
+    by a reader, a report and a checker instead of rediscovered.
+    ⚠️ The absence of this list is why the seven layers were never counted."""
+    return ("trading_day", "orb_range", "catastrophic_cap", "hard_close",
+            "unknown_strategy", "window", "tries_per_session",
+            "max_open_of_type", "blocked_by", "blocks")
 
 
 class PositionManager:
@@ -238,6 +436,65 @@ class PositionManager:
             return bool(record.get("is_butterfly", 0))
         except Exception:                                       # noqa: BLE001
             return False
+
+    # ══ ADMISSION, ANSWERED FROM THE STATE THIS OBJECT ALREADY HOLDS ══════
+    def open_by_strategy(self) -> dict:
+        """{strategy: open count} across the records this manager holds.
+
+        Counts from `_open_records` when loaded, falling back to the DB on a cold
+        call — the same shape as `open_condor_leg_count`, deliberately.
+        ⚠️ FAILS CLOSED, AND THAT IS THE OPPOSITE OF THE LEG COUNT'S CHOICE. An
+        empty dict reads to `decide()` as NOTHING IS OPEN, which is the PERMISSIVE
+        answer — the F5 shape that swallow T1 was written about. So a failure
+        raises rather than returning {}: a box that cannot count its own open
+        positions must not be told it is clear to open another."""
+        recs = self._open_records
+        if not recs:
+            recs = self._trade_logger.get_open_trades()
+        out: dict = {}
+        for r in (recs or []):
+            name = (r.get("strategy") if isinstance(r, dict) else getattr(r, "strategy", "")) or ""
+            if name:
+                out[name] = out.get(name, 0) + 1
+        return out
+
+    def eligible_now(self, now_et: tuple, *, trading_day: bool = True,
+                     orb_established: bool = False, cap_intact: bool = True,
+                     past_hard_close: bool = False,
+                     tries_used: Optional[Mapping[str, int]] = None,
+                     table: Optional[dict] = None) -> list:
+        """The strategies that MAY BE ASKED this tick, in table order.
+
+        🔑 IT ANSWERS, IT DOES NOT DRIVE. The caller iterates this list and asks
+        each plan; this never reaches into `strategy/`. That is what keeps the
+        one-way flow intact — position manager feeds the plans, the plans feed
+        the strategies.
+        🔑 AND IT IS WHY THE `NOT ASKED` ROWS DISAPPEAR. A strategy outside its
+        window is not in this list, so it is never asked, so it writes nothing.
+        There is no per-tick refusal to journal because there is no refusal —
+        the plan did not run. (10,116 rows of `NOT ASKED` were written on
+        2026-09-17 alone, three of them on every one of 1,460 ticks.)"""
+        tbl = table if table is not None else rules()
+        tried = dict(tries_used or {})
+        openmap = self.open_by_strategy()
+        out = []
+        for name in tbl:
+            v = decide(Facts(strategy=name, now_et=now_et, trading_day=trading_day,
+                             orb_established=orb_established, cap_intact=cap_intact,
+                             past_hard_close=past_hard_close,
+                             open_by_strategy=openmap,
+                             tries_used=int(tried.get(name, 0))), tbl)
+            if v.admitted:
+                out.append(name)
+        return out
+
+    def why_not(self, strategy: str, now_et: tuple, **kw):
+        """The Verdict for ONE strategy — the named gate that refused it.
+
+        For the journal and the operator, so a row can say WHICH gate rather
+        than "blocked". Same inputs as `eligible_now`, one strategy."""
+        kw.setdefault("open_by_strategy", self.open_by_strategy())
+        return decide(Facts(strategy=strategy, now_et=now_et, **kw))
 
     def has_blocking_position(self) -> bool:
         """Does an open position BLOCK a new entry? A butterfly never does.

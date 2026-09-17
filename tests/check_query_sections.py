@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
-tests/check_query_sections.py  v1.3
+tests/check_query_sections.py  v1.4
+v1.4  2026-09-17  OTV4TEST r35 — reads query.py at the REPO ROOT.
+      ⚠️ r34 MOVED IT AND MISSED THIS FILE. Thirteen callers were re-pointed by
+      reading; this one and check_plan_signal spell the path differently and were
+      not in that grep, and r34 declared only three CHECK lines — so nothing at the
+      gate caught it. A delivery that names its own checks gets to choose what it
+      is judged on; the full sweep is what finds the rest.
 v1.3  2026-09-11  OTV4TEST r14 — reads the operator readers under tools/ (root cleanup).
 v1.2  2026-09-02  r216 — Q12/Q12b: the percent column is in PERCENT. It was off
       by 100x from r210 to r216 because `pnl_pct` is a fraction and the row
@@ -67,7 +73,7 @@ def check(name, ok, detail=""):
 
 
 def main():
-    src = open(os.path.join(_root, "tools", "query.py"), encoding="utf-8").read()
+    src = open(os.path.join(_root, "query.py"), encoding="utf-8").read()
     tree = ast.parse(src, "query.py")
     fns = {n.name for n in tree.body if isinstance(n, ast.FunctionDef)}
 
@@ -177,7 +183,7 @@ def main():
     # the operator's own 2026-09-01 trades. A width assertion that reads the
     # f-string proves nothing about what renders.
     import importlib.util as _u
-    _sp = _u.spec_from_file_location("_q210", os.path.join(_root, "tools", "query.py"))
+    _sp = _u.spec_from_file_location("_q210", os.path.join(_root, "query.py"))
     _m = _u.module_from_spec(_sp)
     try:
         _sp.loader.exec_module(_m)
