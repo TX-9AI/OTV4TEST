@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# deploy/configure.sh  v4.5
+# configure.sh  v4.6
+# v4.6  2026-09-17  OTV4TEST r34 — MOVED BACK TO THE REPO ROOT (operator's ruling).
+#   r14 moved it to deploy/ because it is a .sh, but it installs no unit, touches
+#   no systemd and runs on no timer — it is the sixth operator reader and belongs
+#   beside status.py and query.py. No behaviour change.
 # v4.5  2026-09-11  OTV4TEST r14 — moved from the repo root to deploy/ (root cleanup); no behaviour change.
 #
 # v4.4  2026-08-31  r203 — THE r201 SPOT HINT WAS BROKEN AND BAKED. It read a

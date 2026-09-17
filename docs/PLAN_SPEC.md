@@ -1451,7 +1451,7 @@ Found on mainline's warehouse and verified here by reading: **(1) pools were wri
 ### 39.2 Measured before building
 12:00–15:00 on this box: Wed 09-09 and Thu 09-10 — no qualifying minute (GEX read TRENDING). Fri 09-11 — 36 qualifying minutes, first 12:28 (pin 715, spot 716.01, EM 5.21, conc 0.26). On Friday's real 12:28 quotes the structure is the 713/715/717 PUT fly, debit 0.56, R 2.57, its stop 5.6× its spread; the 1-wide leaves spot outside the tent and the call fly fails its spread at 1.6×. Worst mid to the flatten 0.38 at 13:25 against a 0.336 stop — it survives by four cents — and worth 1.135 at 15:44. One day is a mechanism, not a rule; the priors are recorded on every row to be fitted.
 
-**As built (OTV4TEST r26):** `strategy/atp_butterfly_plan.py` v1.0 (the plan), `strategy/atp_butterfly.py` v1.0 (the strategy), `strategy/gex_pin_butterfly.py` v5.4 (`pin_strength` shared), `strategy/management.py` v2.4, `main.py` v4.49, `config.py` v4.22, `tools/query.py` v4.12. Hypotheticals: `check_atp_butterfly` P1–P9, M1–M3, S1–S6.
+**As built (OTV4TEST r26):** `strategy/atp_butterfly_plan.py` v1.0 (the plan), `strategy/atp_butterfly.py` v1.0 (the strategy), `strategy/gex_pin_butterfly.py` v5.4 (`pin_strength` shared), `strategy/management.py` v2.4, `main.py` v4.49, `config.py` v4.22, `query.py` v4.12. Hypotheticals: `check_atp_butterfly` P1–P9, M1–M3, S1–S6.
 
 ## 40. OTV4TEST r29 — THE LEVELS ARE BUILT FROM THE TAPE (operator 2026-09-14)
 

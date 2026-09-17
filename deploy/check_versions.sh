@@ -1,6 +1,8 @@
 #!/bin/bash
 # ==========================================================================
-# deploy/check_versions.sh  v4.3
+# deploy/check_versions.sh  v4.4
+# v4.4  2026-09-17  OTV4TEST r34 — the three operator scripts moved back to the repo root (configure.sh, status.py, query.py); this file's reference re-pointed. No behaviour change.
+# v4.3
 # v4.3  2026-09-11  OTV4TEST r14 — moved from the repo root to deploy/ (root cleanup); no behaviour change.
 # v4.2  2026-09-08  r322 — 🔴 THE COMMENT MARKERS. r65 wrote its changelog
 #       entry into this header WITHOUT them, so lines 4-6 were SHELL, not
@@ -490,7 +492,7 @@ check "analysis/orb_engine.py"           "_rearm"                       "v3.9 ti
 check "analysis/orb_engine.py"           "bars_since_break"             "v3.9 timeout counts deduped 1m bars, not 15s loop ticks"
 
 # status v1.12 (2026-07-20) — daily-loss banner reads the LIVE unit env
-check "tools/status.py"                        "get_runtime_env"              "v1.12 loss-limit read via runtime env (false \$200 HALT fix)"
+check "status.py"                        "get_runtime_env"              "v1.12 loss-limit read via runtime env (false \$200 HALT fix)"
 
 # main v4.0 / L2.5 (2026-07-21) — the Layer-2 label drives live trading
 # REMOVED 2026-08-20 with main.py v4.2: this canary asserted the PRESENCE of
@@ -829,8 +831,8 @@ check "analysis/signal_journal.py"       "def journal"                  "v1.0 si
 check "risk/setup_scorer.py"             "_journal_scored"              "v1.3 scorer emits scored events (REJECTs included)"
 check "analysis/orb_engine.py"           "retest_depth_px"              "v3.7 defect-G retest depth measurement"
 check "main.py"                          "condor_leg"                   "v3.9 condor conviction journaled at fire time"
-check "tools/status.py"                        "ORB High"                    "Structured ORB display"
-check "tools/status.py"                        "No Trade"                    "No Trade display string"
+check "status.py"                        "ORB High"                    "Structured ORB display"
+check "status.py"                        "No Trade"                    "No Trade display string"
 check "notifications/alert_manager.py"   "send_shutdown_alert"          "Shutdown alert method"
 check "notifications/alert_manager.py"   "INSTRUMENT"                   "Ticker in alerts"
 check "risk/setup_scorer.py"             "return None"                  "Grade C elimination (returns None)"

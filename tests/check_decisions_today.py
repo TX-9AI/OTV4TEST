@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""check_decisions_today.py — v1.2
+"""check_decisions_today.py — v1.3
+v1.3  2026-09-17 — OTV4TEST r34. Reads query.py at the REPO ROOT again; v1.2 read
+      it under tools/. This checker loads the file BY PATH, so the move breaks it
+      outright rather than subtly — which is why it is a declared CHECK on r34.
+v1.2
 v1.2  2026-09-11  OTV4TEST r14 — reads query.py under tools/ (root cleanup).
 v1.1  2026-09-01  r210 — D2 RE-DERIVED. It matched the SOURCE TEXT
       `_today0 = _open.timestamp()`, so extracting that boundary into
@@ -55,7 +59,7 @@ def _cut(now):
 
 
 def main():
-    src = open(os.path.join(_root, "tools", "query.py"), encoding="utf-8").read()
+    src = open(os.path.join(_root, "query.py"), encoding="utf-8").read()
     tree = ast.parse(src)
     fn = next((n for n in ast.walk(tree)
                if isinstance(n, ast.FunctionDef)
@@ -76,7 +80,7 @@ def main():
     # canaries check BEHAVIOUR, never a literal that a correct change moves.
     # It now EXECUTES the cut and asserts it is 09:30 ET today.
     import importlib.util as _u
-    _sp = _u.spec_from_file_location("_q", os.path.join(_root, "tools", "query.py"))
+    _sp = _u.spec_from_file_location("_q", os.path.join(_root, "query.py"))
     _m = _u.module_from_spec(_sp)
     try:
         _sp.loader.exec_module(_m)

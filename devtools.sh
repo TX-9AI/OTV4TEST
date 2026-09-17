@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# devtools.sh  v3.1  — OTV4TEST box menu
+# devtools.sh  v3.2  — OTV4TEST box menu
+# v3.2  2026-09-17  OTV4TEST r34 — items 1, 2 and 3 run status.py and query.py at
+#       the REPO ROOT again. r14 had moved them to tools/ and this menu followed;
+#       the operator runs them by hand and the root is where he looks.
 # v3.1  2026-09-17  OTV4TEST — EVERY CLAUDE SESSION THIS MENU STARTS IS A
 #       REMOTE CONTROL SESSION. Operator's instruction: he drives these threads
 #       from his phone, and a session started without it cannot be reached from
@@ -94,9 +97,9 @@ _ask_day() {    # prompts; ENTER = today in ET
 }
 
 # ── STATUS ─────────────────────────────────────────────────────────────────
-run_status()    { "$PY" tools/status.py; pause; }
-run_query()     { "$PY" tools/query.py; pause; }
-run_decisions() { "$PY" tools/query.py --decisions; pause; }
+run_status()    { "$PY" status.py; pause; }
+run_query()     { "$PY" query.py; pause; }
+run_decisions() { "$PY" query.py --decisions; pause; }
 run_debug()     { "$PY" tools/debug_status.py; pause; }
 run_eod()       { "$PY" tools/eod_summary.py; pause; }
 

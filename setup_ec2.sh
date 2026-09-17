@@ -1,6 +1,8 @@
 #!/bin/bash
 # ==========================================================================
-# setup_ec2.sh  v4.1
+# setup_ec2.sh  v4.2
+# v4.2  2026-09-17  OTV4TEST r34 — the three operator scripts moved back to the repo root (configure.sh, status.py, query.py); this file's reference re-pointed. No behaviour change. The printed hints name the root paths again.
+# v4.1
 # v4.1  2026-09-11  OTV4TEST r14 — the helper scripts it names live in deploy/ and the
 #       readers in tools/ (root cleanup); harden_hosts.sh is called from deploy/.
 # EC2 instance provisioning for a fleet box.
@@ -377,15 +379,15 @@ if [ "$STATUS" = "active" ]; then
     echo -e "  Telegram:    chat ${TELEGRAM_CHAT_ID}"
     echo ""
     echo -e "  Commands:"
-    echo -e "    python tools/status.py             — live status"
-    echo -e "    python tools/query.py              — performance dashboard"
+    echo -e "    python status.py             — live status"
+    echo -e "    python query.py              — performance dashboard"
     echo -e "    journalctl -u ${SERVICE_NAME} -f   — live logs"
     echo -e "    journalctl -u candle-feed -f       — feed logs"
-    echo -e "    bash deploy/configure.sh           — change settings"
+    echo -e "    bash configure.sh           — change settings"
     echo -e "    bash deploy/push.sh                — push changes to GitHub"
     echo -e "    bash deploy/snapshot.sh            — snapshot bot state"
     echo ""
-    echo -e "${GREEN}  Run 'python tools/status.py' to verify the bot is running correctly.${RESET}"
+    echo -e "${GREEN}  Run 'python status.py' to verify the bot is running correctly.${RESET}"
     echo ""
 else
     echo ""

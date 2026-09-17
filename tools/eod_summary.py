@@ -1,5 +1,12 @@
 """
-tools/eod_summary.py  v4.2
+tools/eod_summary.py  v4.3
+v4.3  2026-09-17  OTV4TEST r34 — `from tools.query import …` becomes `from query
+      import …`: query.py moved back to the repo root. ⚠️ THIS IS THE ONE THAT
+      WOULD HAVE FAILED SILENTLY. The import sits in a try/except whose fallback
+      re-derives DB_PATH, INSTRUMENT and the ET date by hand — so a stale import
+      would not raise at 15:50, it would quietly report against a DIFFERENT
+      resolved DB path than the dashboard does.
+v4.2
 v4.2  2026-09-11  OTV4TEST r14 — moved from the repo root to tools/ (root cleanup); no behaviour change.
 v4.1  2026-08-25  r65 EXORCISM: every mention of the retired classification
       system removed - identifiers, comments, docstrings, schema. The word
@@ -56,7 +63,7 @@ sys.path.insert(0, INSTALL_DIR)
 # Reuse query.py's resolved DB path + live instrument/mode so this matches the
 # dashboard. Fall back gracefully if imported outside the install dir.
 try:
-    from tools.query import DB_PATH, INSTRUMENT, PAPER_TRADING, now_et   # r14: tools/
+    from query import DB_PATH, INSTRUMENT, PAPER_TRADING, now_et   # r34: back at the root
 except Exception:  # noqa: BLE001
     # Fallback with NO tzdata dependency (fresh boxes may lack zoneinfo data).
     # ET date via fixed EDT offset — matches the '-4 hours' SQL date filter,

@@ -1,5 +1,13 @@
 """
-tools/status.py  v4.6
+status.py  v4.7
+v4.7  2026-09-17  OTV4TEST r34 — MOVED BACK TO THE REPO ROOT. Operator's ruling,
+      2026-09-17. r14 sorted the root by FILE TYPE rather than by ROLE: every
+      operator reader written in Python went to tools/ and every shell script to
+      deploy/, so the three things he actually runs by hand ended up in two
+      different folders and one of them (configure.sh) in the deploy drawer. The
+      three he drives — status, query, configure — are back at the root where he
+      looks for them. No behaviour change.
+v4.6  2026-09-11
 v4.6  2026-09-11  OTV4TEST r14 — moved from the repo root to tools/ (root cleanup); no behaviour change.
 v4.5  2026-09-01  r212 (chunk D) — THE PLAN COLLAPSE GOES WITH ITS PREMISE.
       r199 saw two rows for one strategy at one trigger, called them

@@ -1,6 +1,8 @@
 #!/bin/bash
 # ==========================================================================
-# deploy/snapshot.sh  v4.1
+# deploy/snapshot.sh  v4.2
+# v4.2  2026-09-17  OTV4TEST r34 — the three operator scripts moved back to the repo root (configure.sh, status.py, query.py); this file's reference re-pointed. No behaviour change.
+# v4.1
 # v4.1  2026-09-11  OTV4TEST r14 — moved from the repo root to deploy/ (root cleanup); no behaviour change.
 # Snapshots a directory into a repo-ready tarball.
 #
@@ -127,7 +129,7 @@ if [[ "${1:-}" != "--no-status" ]]; then
         echo ""
         cd "$BOT_DIR"
         source "$BOT_DIR/venv/bin/activate" 2>/dev/null || true
-        python tools/status.py 2>/dev/null || echo "  (tools/status.py unavailable)"
+        python status.py 2>/dev/null || echo "  (status.py unavailable)"
         echo ""
         echo "=========================================="
         echo "  Service Environment (secrets redacted)"

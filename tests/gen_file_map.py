@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/gen_file_map.py  v4.6
+tests/gen_file_map.py  v4.7
+v4.7  2026-09-17  OTV4TEST r34 — ENTRY_POINTS names query.py and status.py at the
+      repo root again (they moved back). An entry point is matched on PATH since
+      v4.3, so a stale entry would have printed both as ORPHANS on every land.
+v4.6
 v4.6  2026-09-14  OTV4TEST r28 (MAP.3) — THREE UNIT-LAUNCHED SCRIPTS AND THE LANDER'S
       OWN BOOKKEEPING CHECK WERE MISSING FROM ENTRY_POINTS. `warehouse/midnight_halt.py`
       (optbot-midnight-halt.service, installed on this box at r21) printed as an
@@ -115,7 +119,7 @@ SKIP_DIRS = {".git", "__pycache__", "deploy", "reports", "blind_tapes", "venv"}
 # full path, as `shadow/observer.py` and `data/candle_feed.py` already do.
 ENTRY_POINTS = {
     # operator / CLI
-    "main.py", "tools/query.py", "tools/status.py", "tools/debug_status.py",
+    "main.py", "query.py", "status.py", "tools/debug_status.py",
     "tools/eod_summary.py", "tools/stress_theta_bleed.py",      # r14: root cleanup
     # systemd-launched services
     "shadow/observer.py",          # shadow-observer.service

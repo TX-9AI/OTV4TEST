@@ -1,6 +1,6 @@
 # OTV4TEST — the plan/strategy untangle, in isolation
 
-**`README.md` v2.0 · 2026-09-11 (OTV4TEST r14) — what this repo is, how it is laid out, how work lands. Supersedes the mainline README (v1.1) the fork inherited.**
+**`README.md` v2.1 · 2026-09-17 (OTV4TEST r34) — what this repo is, how it is laid out, how work lands. Supersedes the mainline README (v1.1) the fork inherited.**
 
 **What this repo is.** A fork of `TX-9AI/options_trader_v4` (from `e955020`, mainline r322)
 where the trading path is being re-wired so that **plans decide and strategies execute** —
@@ -63,8 +63,16 @@ without a source — read, queried, told, or inferred, and said which.
 
 ## Reading a session
 
-`tools/query.py` (menu: query.py) — trades, then DECISIONS: one row per plan saying what it
+`query.py` (menu: query.py) — trades, then DECISIONS: one row per plan saying what it
 is waiting on, or which bar refused it, or that it fired; plans outside their window are
-hushed on the readers but recorded. `tools/status.py` for the live position. The sensors
+hushed on the readers but recorded. `status.py` for the live position. The sensors
 in the menu read the derived stores directly (plan rows, level events, anchors).
 A NO PLAN or NOT ASKED for an in-window strategy is a wiring defect, not a market fact.
+
+---
+
+## Changelog
+
+**v2.1 — 2026-09-17 — OTV4TEST r34.** `status.py`, `query.py` and `configure.sh` are named at the REPO ROOT again. r14 moved them out in the root cleanup, sorting by file type rather than by role — the operator runs all three by hand and the root is where he looks for them. Paths only; nothing about the repo changed.
+
+**v2.0 — 2026-09-11 — OTV4TEST r14.** Supersedes the inherited mainline README.

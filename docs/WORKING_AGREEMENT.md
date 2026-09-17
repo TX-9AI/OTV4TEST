@@ -1,6 +1,6 @@
 # WORKING_AGREEMENT.md — how we operate (read this first, every new thread)
 
-**`WORKING_AGREEMENT.md` v4.14 · 2026-09-16 — §0 through §39, plus §15a, §18a and §36a. See the CHANGELOG at the foot.**
+**`WORKING_AGREEMENT.md` v4.15 · 2026-09-17 — §0 through §39, plus §15a, §18a and §36a. See the CHANGELOG at the foot.**
 
 > 🔴 **§0 IS THE FLOOR — AN ATTESTATION, NOT A TIP. Read it first, every thread.**
 > The operator ordered it once before and was told it existed. It did not.
@@ -860,7 +860,7 @@ renamed the `ORBState` strings.
 
 ### Monitoring and mode
 
-Monitoring: `python tools/status.py` · `python tools/query.py` · `bash deploy/configure.sh`
+Monitoring: `python status.py` · `python query.py` · `bash configure.sh`
 (risk, mode, daily-loss cap override). ⚠️ Paths corrected 2026-09-14 (r28): all three
 moved out of the repo root at r14, and this block still named the root.
 
@@ -1615,6 +1615,13 @@ that looks finished while leaving the hard half undone.
 ---
 
 ## CHANGELOG
+
+**v4.15 — 2026-09-17 — OTV4TEST r34 — THE MONITORING LINE NAMES THE ROOT AGAIN.**
+`status.py`, `query.py` and `configure.sh` moved back to the repo root (r34). The
+migrated operating-notes line named `tools/` and `deploy/` paths, which r28 had
+already corrected once in the other direction — the same line, wrong twice in
+three days, because it describes where the operator's own scripts live and
+nothing mechanical checks it. Facts only; no rule changed.
 
 **v4.14 — 2026-09-16 — OTV4TEST r31 — §39 ADDED: THE ASSISTANT BRINGS THE
 INSTRUMENTS.**

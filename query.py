@@ -1,5 +1,9 @@
 """
-tools/query.py  v4.12
+query.py  v4.13
+v4.13 2026-09-17  OTV4TEST r34 — MOVED BACK TO THE REPO ROOT with status.py and
+      configure.sh (operator's ruling). r14 bucketed by file type, not by role.
+      No behaviour change.
+v4.12 2026-09-11
 v4.12  2026-09-14  OTV4TEST r26 — "ATPButterfly" abbreviates to "ATP" (was truncated to "ATPBu").
 v4.11  2026-09-11  OTV4TEST r14 — moved from the repo root to tools/ (root cleanup); no behaviour change.
 v4.10 2026-09-09  OTV4TEST r8 — NOT ASKED rows are hushed too. Operator: "Not asked
