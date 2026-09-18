@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""check_chain_ordering.py — v1.1
+"""check_chain_ordering.py — v1.2
+v1.2  2026-09-18  OTV4TEST r41 — C7 re-pointed: the board's verdict for an
+      unasked strategy is now INACTIVE (operator's status ruling), and C7 asserted
+      the literal string. The RULE it guards — no strategy vanishes from plan_tick
+      — is unchanged, so the assertion moved to the row's existence and a closed
+      set of not-working verdicts rather than one spelling.
 v1.1  2026-08-26  r146: C7-C11 re-pinned against the plan BOARD (derived/plans
       v2.0) after the seven builders were deleted. The property survives —
       no strategy may vanish from plan_tick — the mechanism is now NOT ASKED
@@ -133,10 +138,18 @@ def main():
     e3.derive({"price": 201.5})                    # tick 2 closes tick 1
     rows = {r[0]: (r[1], r[2]) for r in st3.conn.execute(
         "SELECT strategy, verdict, reason FROM plan_tick")}
+    # ⚠️ r41 — THE VERDICT IS `INACTIVE` NOW, AND C7 IS RE-POINTED AT ITS
+    # INTENT RATHER THAN LOOSENED. What this check exists to prove is that NO
+    # STRATEGY VANISHES FROM plan_tick — r146's rule. The verdict STRING was
+    # incidental to that and changed on the operator's ruling of 2026-09-18
+    # ("each plan should have a current status as either working or inactive"),
+    # so C7 now asserts the row EXISTS and carries a NOT-WORKING status. It is
+    # still a closed set: an empty or unexpected verdict fails.
     check("C7 a strategy the dispatch never asked still gets a row",
-          "RunawayContinuation" in rows and rows["RunawayContinuation"][0] == "NOT ASKED",
+          "RunawayContinuation" in rows
+          and rows["RunawayContinuation"][0] in ("INACTIVE", "NO PLAN"),
           str(rows.get("RunawayContinuation")))
-    check("C8 the NOT ASKED row carries the dispatcher's reason",
+    check("C8 the INACTIVE row carries the dispatcher's reason",
           "ORB has not run away" in (rows.get("RunawayContinuation", ("", ""))[1] or ""))
     check("C9 a strategy with no stated reason still gets a row saying so",
           "SweepCreditSpread" in rows and "no reason" in (rows["SweepCreditSpread"][1] or ""),

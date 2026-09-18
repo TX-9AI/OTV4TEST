@@ -1,5 +1,31 @@
 """
-strategy/plan.py  v1.9
+strategy/plan.py  v2.0
+v2.0  2026-09-18  OTV4TEST r41 — EVERY PLAN IS WORKING OR INACTIVE, AND INACTIVE
+      SAYS SO ONCE. Operator, 2026-09-18: *"Because we know a plan is inactive
+      outside its window, I don't need 10k rows explaining why. I just need 1,
+      so I'm aware it at least 'Knows' — each plan should have a current status
+      as either 'working' or 'inactive' and if it's working, I want per tick
+      logging. If inactive it should just say that, once, until it becomes
+      active."*
+      🔑 THE ROW IS EDGE-TRIGGERED NOW, NOT LEVEL-TRIGGERED. `close_tick` wrote
+      one row per idle plan per TICK; it writes one per TRANSITION. A plan that
+      spoke this tick is WORKING and keeps its per-tick row — that half is
+      deliberately untouched, because a working plan's row is the one he reads.
+      MEASURED on 2026-09-17: 11,931 of 17,585 plan_tick rows were the idle
+      restatement, and the top reason alone ("no options chain this tick")
+      accounted for 3,672 of them.
+      ⚠️ THE STATE IS (day, verdict, reason), NOT MERELY "inactive", AND THAT IS
+      A READING OF "once" RATHER THAN A LOOPHOLE. A plan that moves from
+      "outside its window" to "catastrophic cap broken" is inactive for a
+      DIFFERENT reason, and that is new information about the box; silence there
+      would hide a state change behind a rule written to remove noise. A stable
+      inactive state still writes exactly one row.
+      ⚠️ THE `NO PLAN` WARNING IS EDGE-TRIGGERED TOO. It is a defect report, and
+      repeating it every tick for a session is the same noise one channel over —
+      which is how a real defect gets filtered out of the log (§17).
+      ⚠️ AND THE VERDICT IS `INACTIVE`, NOT `NOT ASKED` — r213 recorded his
+      objection to that wording (*"Not asked? why or Why not?"*) and this is the
+      column finally holding a STATUS, which is what he asked for both times.
 v1.9  2026-09-09  OTV4TEST r6 (HYG.4) — `_ledger_open` returns when a store is BOUND
       (tests): the box's plan_ledger carried TestStrat rows written by the
       lander's checks. A bound store means "not the box".
@@ -791,6 +817,50 @@ class Plan:
 _SKIPPED: Dict[str, str] = {}      # strategy -> reason main.py gave
 _ASKED: Dict[str, Any] = {}        # strategy -> result summary
 
+# ══ r41 — EVERY PLAN IS WORKING OR INACTIVE, AND INACTIVE SAYS SO ONCE ═══
+# Operator, 2026-09-18: *"Because we know a plan is inactive outside its
+# window, I don't need 10k rows explaining why. I just need 1, so I'm aware it
+# at least KNOWS. Each plan should have a current status as either 'working' or
+# 'inactive' and if it's working, I want per tick logging. If inactive it
+# should just say that, once, until it becomes active."*
+#
+# 🔑 THE ROW BECOMES EDGE-TRIGGERED, NOT LEVEL-TRIGGERED. A plan that wrote
+# this tick is WORKING and keeps its per-tick row — that half is untouched,
+# because a working plan's row is the thing he actually reads. A plan that did
+# not write is INACTIVE and gets ONE row on the TRANSITION; while the state
+# holds, the board stays silent.
+#
+# ⚠️ THE STATE IS (verdict, reason), NOT JUST "inactive", AND THAT IS A
+# DELIBERATE READING OF "once". A plan that goes from "outside its window" to
+# "catastrophic cap broken" is inactive for a DIFFERENT reason, and that is new
+# information about the box — silence there would hide a state change behind a
+# rule written to remove noise. A stable inactive state still writes exactly
+# one row, which is what he asked for.
+#
+# ⚠️ KEYED BY TRADING DATE, so a new session re-announces once rather than
+# inheriting yesterday's silence. Restart survival is deliberate too: the dict
+# is module state, so a bounce re-announces — which is correct, because after a
+# restart nobody can assume the operator saw the pre-restart row.
+_STATUS: Dict[str, Tuple[str, str, str]] = {}   # strategy -> (day, verdict, reason)
+
+
+def _status_changed(name: str, day: str, verdict: str, reason: str) -> bool:
+    """True when this (day, verdict, reason) is NEW for `name` — i.e. write it.
+
+    Records the state as a side effect, so a caller that gets True has already
+    claimed the transition and a second call in the same state returns False."""
+    cur = (day, verdict, reason)
+    if _STATUS.get(name) == cur:
+        return False
+    _STATUS[name] = cur
+    return True
+
+
+def plan_status(name: str) -> str:
+    """'working' | 'inactive' | 'unknown' — the board's current view."""
+    st = _STATUS.get(name)
+    return "unknown" if st is None else ("working" if st[1] == "WORKING" else "inactive")
+
 
 def skipped(strategy: str, reason: str) -> None:
     """main.py: this strategy is NOT being asked this tick, and here is why.
@@ -854,16 +924,33 @@ def close_tick(store=None, symbol: str = "") -> int:
     store = store or _store()
     symbol = symbol or _symbol()
     written = 0
+    # r41 — the trading date keys the status, so a new session re-announces.
+    try:
+        from utils.time_utils import now_et as _net
+        _day = _net().strftime("%Y-%m-%d")
+    except Exception:                                           # noqa: BLE001
+        _day = ""
     try:
         for name, plan in list(REGISTRY.items()):
             if plan.wrote_this_tick():
+                # r41 — WORKING: it spoke for itself this tick, and a working
+                # plan keeps its per-tick row. Recording the state here is what
+                # makes the next inactive row a TRANSITION rather than a repeat.
+                _status_changed(name, _day, "WORKING", "")
                 continue
             if name in _ASKED:
                 why = (f"ASKED and returned {_ASKED[name]} but wrote no plan "
                        f"row — a return path in this strategy is not wired "
                        f"through its plan (or it raised)")
                 verdict = "NO PLAN"
-                logger.warning("[plan] %s %s", name, why)
+                # ⚠️ r41 — THE WARNING IS EDGE-TRIGGERED TOO. This is a defect
+                # report; repeating it every tick for a whole session is the
+                # same noise the operator just ruled out, one channel over, and
+                # it is how a real defect gets filtered out of the log.
+                if _status_changed(name, _day, verdict, why):
+                    logger.warning("[plan] %s %s", name, why)
+                else:
+                    continue
             else:
                 # 🔴 r213 (chunk E) — THE DEFAULT ADMITS WHAT IT IS. Operator,
                 # 2026-09-01: *"I don't like 'NOT ASKED' as a reason. It makes
@@ -878,7 +965,15 @@ def close_tick(store=None, symbol: str = "") -> int:
                     name, "no reason recorded — main.py reached a return path "
                           "that does not name this strategy. That is a "
                           "dispatch gap, not a market condition")
-                verdict = "NOT ASKED"
+                verdict = "INACTIVE"
+                # 🔑 r41 — ONE ROW, THEN SILENCE UNTIL THE STATE CHANGES.
+                # Operator: *"If inactive it should just say that, once, until
+                # it becomes active."* The verdict is INACTIVE rather than NOT
+                # ASKED because he ruled on that wording too (r213): *"I don't
+                # like 'NOT ASKED' as a reason. It makes no sense."* A status is
+                # what he asked for, and a status is what the column now holds.
+                if not _status_changed(name, _day, verdict, why):
+                    continue
             if write_row(store, symbol, ts, name, verdict, why):
                 written += 1
             plan._last = (n, verdict, why)

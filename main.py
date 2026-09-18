@@ -1,5 +1,13 @@
 """
-main.py  v4.52
+main.py  v4.53
+v4.53 2026-09-18  OTV4TEST r41 — A REFUSED STRATEGY NAMES THE GATE THAT REFUSED
+      IT. r40 gated the dispatch on the admission table but told the plan board
+      nothing, so a strategy refused for being outside its window had no reason
+      recorded and fell to `plan.py`'s default — *"no reason recorded … that is
+      a dispatch gap, not a market condition"* — wording chosen deliberately to
+      read as a DEFECT. An ordinary out-of-window strategy would have reported
+      itself as a bug, every session. `why_not()` was built for exactly this and
+      returns the FIRST gate that refused; the row now names it.
 v4.52 2026-09-17  OTV4TEST r40 — THE ADMISSION TABLE IS LIVE. r35 moved every
       entry gate into `execution/position_manager.py` and left it INERT:
       *"NOTHING IS WIRED YET — attempt_new_entry still runs the old gates."*
@@ -3725,6 +3733,8 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     try:
         _orb_d = get_orb_engine().data
         _pm_adm = get_position_manager(state.paper_trading)
+        from execution.position_manager import rules as _adm_rules
+        _pm_adm_rules = _adm_rules()
         _tries = {}
         for _bn in ("GEXPinButterfly", "ATPButterfly"):
             _tries[_bn] = 1 if _one_per_session_used(_bn) else 0
@@ -3737,6 +3747,27 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
             tries_used      = _tries,
         )
         _set_admission(_eligible)
+        # 🔑 r41 — A REFUSED STRATEGY NAMES THE GATE THAT REFUSED IT.
+        # Without this the board has no reason for it and falls back to "no
+        # reason recorded … a dispatch gap, not a market condition" — wording
+        # that is deliberately a DEFECT REPORT, so a perfectly ordinary
+        # out-of-window strategy would read as a bug. `why_not()` exists for
+        # exactly this and returns the FIRST gate that refused, which is the
+        # one the operator wants named.
+        for _nm in _pm_adm_rules:
+            if _nm in _eligible:
+                continue
+            try:
+                _v = _pm_adm.why_not(
+                    _nm, (_adm_now.hour, _adm_now.minute),
+                    trading_day     = True,
+                    orb_established = bool(_orb_d and _orb_d.orb_high and _orb_d.orb_low),
+                    cap_intact      = not risk_mgr.is_halted(),
+                    past_hard_close = _adm_now.time() >= HARD_CLOSE,
+                    tries_used      = int(_tries.get(_nm, 0)))
+                _plan_skip(_nm, f"inactive — {_v.gate}: {_v.why}")
+            except Exception:                                  # noqa: BLE001
+                _plan_skip(_nm, "inactive — admission refused (gate unnamed)")
     except Exception as exc:                                   # noqa: BLE001
         # ⚠️ FAILS OPEN AND SAYS SO. `open_by_strategy()` RAISES rather than
         # returning {} (r35, deliberately — an empty map reads as "nothing is
