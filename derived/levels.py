@@ -1,6 +1,15 @@
 """
-derived/levels.py  v5.3
+derived/levels.py  v5.4
 Owns `level_ledger` and `level_event`. Tier 3 — stateful; the object has a biography.
+v5.4  2026-09-18  OTV4TEST r44 — THE PIERCE IS THE EXCURSION, NOT THE RECLAIM
+      BAR'S WICK. `_derive_events` skipped every bar that traded beyond a level
+      without closing back, so depth was measured on the ONE bar that closed
+      back. ⚠️ THE BIAS RAN AGAINST THE BEST SETUPS: a one-bar wick measured
+      correctly, a REAL grab always reported the shallowest bar of the sequence.
+      Operator's case, 09-18 london 716.38: true 0.0688%, recorded 0.0102% —
+      refused as "a touch, not a sweep" against a floor it cleared by 3.4x.
+      MEASURED: of 182 banked REJECTED events, 58 under-reported by >1.5x and
+      23 were refused when the true excursion cleared the floor.
 v5.3  2026-09-18  OTV4TEST r39 (LVL.13) — THE BOARD WALKS ZONES, AND A ZONE
       HOLDING PRICE IS FINISHED. Operator, 2026-09-17: *"it's just grouping and
       only the outer members of the group declare anything"*, *"only points of
@@ -323,6 +332,11 @@ except Exception:                                               # noqa: BLE001
     SHALLOW_PIERCE_PCT = 0.0025
 DEEP_PIERCE_PCT = SHALLOW_PIERCE_PCT * 3.0
 CLOSES_BACK = {"shallow": 1, "deep": 2}          # operator, 2026-09-08
+# r44 — how many consecutive bars may sit beyond a level and still count as ONE
+# sweep. A grab is fast; a level price spends twenty minutes under is broken,
+# not swept. ⚠️ A PRIOR, NOT A MEASUREMENT — it wants the same study the pierce
+# floor got, and it is overridable so that study can move it without a revision.
+EXCURSION_MAX_BARS = int(getattr(_cfg, "LEVEL_EXCURSION_MAX_BARS", 10)) if _cfg else 10
 
 
 def _f(v) -> Optional[float]:
@@ -402,6 +416,11 @@ class LevelEngine(DerivedEngine):
         self._forks = forks              # v4.2: the ForkEngine, for tine prices
         self._live: dict = {}
         self._pierce: dict = {}          # level_id -> {"depth", "pierce_pct", "closes_back", "bar_ts"}
+        self._excursion: dict = {}       # r44 — level_id -> {"pierce", "bars"}:
+                                         # how deep price actually went while it
+                                         # was BEYOND the level and had not yet
+                                         # closed back. Without this the pierce
+                                         # is only ever the reclaim bar's wick.
         self._fork_seen = None           # r19: the anchors of the fork whose projection we hold
         self._last_bar_ts: str = ""
         self.last_events: list = []      # events emitted on the most recent derive()
@@ -1083,12 +1102,50 @@ class LevelEngine(DerivedEngine):
                 close_held = close >= lvl
                 wick_beyond = lo < lvl
                 pierce = (lvl - lo) / lvl if wick_beyond else 0.0
-            if close_beyond or not close_held:
+            if close_beyond:
                 # a rejection cannot survive a close through the level;
                 # acceptance itself is counted by derive() on the 5m close.
-                if close_beyond:
-                    self._pierce.pop(lid, None)
+                self._pierce.pop(lid, None)
+                self._excursion.pop(lid, None)
                 continue
+            if not close_held:
+                # ══ r44 — THE EXCURSION IS REMEMBERED, NOT DISCARDED ═════════
+                # 🔴 THIS `continue` THREW AWAY THE SWEEP ITSELF. A bar that
+                # trades beyond the level and does NOT close back is not noise —
+                # it is the grab. The old code skipped it, so `pierce` was only
+                # ever measured on the ONE bar that closed back, and every bar
+                # of the actual excursion was lost.
+                # ⚠️ THE BIAS RAN AGAINST THE BEST SETUPS. A one-bar
+                # wick-and-reclaim measured correctly; a REAL liquidity grab —
+                # price under the level for two or three bars while stops are
+                # taken — always reported the shallowest bar of the sequence.
+                # The more convincing the sweep, the shallower the number.
+                # MEASURED 2026-09-18 over 182 banked REJECTED events: 58 had a
+                # true excursion >1.5x what was recorded, and 23 were refused as
+                # "a touch, not a sweep" when the excursion CLEARED the sweep's
+                # floor. Operator's own case, 09-18 10:16-10:18 on london
+                # 716.38: true pierce 0.0681%, recorded 0.0102% — 6.7x short,
+                # against a 0.02% minimum it would have passed by 3.4x.
+                if wick_beyond:
+                    ex = self._excursion.get(lid) or {"pierce": 0.0, "bars": 0}
+                    ex["pierce"] = max(float(ex["pierce"]), pierce)
+                    ex["bars"] = int(ex["bars"]) + 1
+                    # ⚠️ A CAP, BECAUSE A SWEEP IS FAST. A level price spends a
+                    # long time beneath is not being swept, it is being broken,
+                    # and carrying that depth forward would dress a breakdown up
+                    # as a grab. Overridable; it wants its own measurement.
+                    if ex["bars"] > EXCURSION_MAX_BARS:
+                        self._excursion.pop(lid, None)
+                    else:
+                        self._excursion[lid] = ex
+                continue
+            # ── the bar CLOSED BACK: this is the reclaim ────────────────────
+            ex = self._excursion.pop(lid, None)
+            if ex and float(ex["pierce"]) > pierce:
+                # the sweep's depth is how far price actually went, not the
+                # wick of whichever bar happened to close back.
+                pierce = float(ex["pierce"])
+                wick_beyond = True          # it DID go beyond — on an earlier bar
             ps = self._pierce.get(lid)
             if wick_beyond:
                 depth = ("shallow" if pierce <= SHALLOW_PIERCE_PCT

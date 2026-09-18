@@ -1,5 +1,18 @@
 """
-execution/exit_engine.py  v4.17
+execution/exit_engine.py  v4.18
+v4.18  2026-09-18  OTV4TEST r44 — TWO EXIT CONSTANTS RE-ANCHORED.
+      (1) THE THESIS LINE HAS A WIDTH. It was asserted to the cent: the hunt's
+      line was 718.50, a bar closed 718.57 — SEVEN CENTS — and price then fell
+      2.68 points. The band is the median 1m wick from the live tape (the
+      level's own precision), measured per instrument as r39 ruled for the zone
+      width. And a LiquidityHunt exit now says `hunt_thesis_dead`, not
+      `runaway_thesis_dead` — that label cost a wrong diagnosis.
+      (2) THE TRAIL FLOOR IS A FRACTION OF THE GAIN. Both paths used a fraction
+      of PREMIUM (0.75 / 0.80), which can sit BELOW ENTRY — at the +20% arm
+      threshold an 80% lock floors at 0.96 of entry, so ARMING THE TRAIL COULD
+      GUARANTEE A LOSS. Measured on S3, 210 trail-exited fleet trades: median
+      capture 42.9%, and 10 of 210 (5%) finished NEGATIVE with the trail armed.
+      `entry + L x (peak - entry)` is >= entry by construction.
 v4.17 2026-09-10  OTV4TEST r12 — THE LIQUIDITY HUNT'S EXITS (PLAN_SPEC §37): routed to
       the runaway's family (thesis-dead on a close back through the entry
       boundary, fizzle, backstop, no premium stop) with one exit of its own
@@ -642,6 +655,7 @@ from config import (
     PAPER_TRADING, CONTRACT_MULTIPLIER,
     BUTTERFLY_MAX_HOLD_MIN, TRAIL_LOCK_PCT, TRAIL_ACTIVATION_PCT, FVG_MIN_SIZE_PCT,
     THETA_LOOKAHEAD_MIN, RTH_MINUTES, FVG_TRAIL_ARM_PCT, FVG_TRAIL_LOCK_PCT,
+    THESIS_BAND_WICKS, THESIS_BAND_LOOKBACK, TRAIL_GAIN_LOCK,
     CONT_INSURANCE_STOP,
     MAX_LOSS_PCT, POST_TARGET_TRAIL_LOCK_PCT, FVG_FLOOR_MAX_LOCK_PCT,
     USE_5M_FVG_TRAIL, SWEEP_POST_TARGET_TRAIL,
@@ -887,6 +901,33 @@ class BOSTracker:
                 return True
 
         return False
+
+
+
+# ══ r44 — A TRAIL FLOOR IS A FRACTION OF THE GAIN, NOT OF THE PREMIUM ═══════
+# 🔴 MEASURED ON S3, 210 TRAIL-EXITED FLEET TRADES 2026-08-01..2026-09-18:
+#    MFE gain    median +34.0%
+#    realised    median +14.0%
+#    CAPTURE     median 42.9%   — the trail gave back 57% of every good move
+#    NEGATIVE    10 of 210 (5%) finished IN THE RED with the trail ARMED
+# 🔴 THAT LAST ROW IS THE DEFECT, NOT THE FIRST. `floor = LOCK x current` is a
+# fraction of PREMIUM, so at the +20% arm threshold an 80% lock puts the floor
+# at 0.8 x 1.2 = 0.96 of entry — BELOW IT. Arming the trail could guarantee a
+# loss. A gain-based floor cannot: `entry + L x (peak - entry)` is >= entry by
+# construction, so those ten become structurally impossible rather than rarer.
+# ⚠️ L=0.50 IS THE CONSERVATIVE END OF THE STUDY, DELIBERATELY. The simulated
+# table favoured 0.60-0.70, but a higher floor exits EARLIER and can cut off
+# MFE the trade only reached later — so those rows are an UPPER BOUND, not a
+# promise. 0.50 beats the current median (17.0% vs 14.0%), matches its mean,
+# and takes the negatives to zero without leaning on the optimistic end.
+def _gain_floor(entry: float, peak: float, lock: float) -> float:
+    """The trail floor: keep `lock` of the gain, never give back the entry."""
+    e = float(entry or 0.0)
+    p = float(peak or 0.0)
+    if e <= 0 or p <= e:
+        return e                      # no gain yet — the floor is breakeven
+    return e + (p - e) * float(lock)
+
 
 
 class ExitEngine:
@@ -1358,10 +1399,43 @@ class ExitEngine:
                 # underlying_stop. The 50% level means nothing to it.
                 tp50 = float(record.get("underlying_stop") or 0.0) or tp50
             last_close = float(df_1m.iloc[-2]["close"])
-            lost = last_close < tp50 if direction == "long" else last_close > tp50
+            # ══ r44 — THE LINE HAS A WIDTH, BECAUSE THE LEVEL DOES ═══════════
+            # 🔴 THIS TEST HAD ZERO TOLERANCE AND IT COST A 2.68 POINT MOVE.
+            # 2026-09-18: the hunt's line was 718.50, the 09:52 bar closed
+            # 718.57 — SEVEN CENTS — and the thesis was declared dead at
+            # 09:53:31. Price then fell to 715.89. The trade was directionally
+            # right and was stopped by an overshoot SMALLER THAN ONE TYPICAL
+            # BAR'S WICK (median 1m wick on this instrument: 0.078).
+            # 🔑 THE BAND IS THE LEVEL'S OWN PRECISION, NOT A FUDGE. A line
+            # derived from a session extreme is exact to about one bar of
+            # noise; asserting it to the cent asserts a precision the level
+            # never had. This is r39's zone reasoning one timeframe down — and
+            # like the zone width it is MEASURED from the instrument's own
+            # tape, never a fixed cent amount, because a constant that suits
+            # QQQ is wrong on MU by four-fold.
+            band = 0.0
+            try:
+                _w = df_1m.tail(THESIS_BAND_LOOKBACK)
+                _bh = _w[["open", "close"]].max(axis=1)
+                _bl = _w[["open", "close"]].min(axis=1)
+                _wick = (_w["high"] - _bh).combine(_bl - _w["low"], max)
+                band = float(_wick.median()) * THESIS_BAND_WICKS
+            except Exception as exc:                            # noqa: BLE001
+                # ⚠️ NO BAND IS THE OLD BEHAVIOUR, and it FAILS TIGHT rather
+                # than wide: an unmeasurable tape exits sooner, never later.
+                logger.debug("thesis band unmeasurable, using 0: %s", exc)
+                band = 0.0
+            lost = (last_close < tp50 - band if direction == "long"
+                    else last_close > tp50 + band)
             if lost:
-                return (f"runaway_thesis_dead: 1m close {last_close:.2f} back through the "
-                        f"50% {tp50:.2f}")
+                # ⚠️ THE LABEL NAMES THE STRATEGY IT FIRED FOR. "runaway_thesis_dead"
+                # on a LiquidityHunt row cost a wrong diagnosis on 2026-09-18:
+                # the line used IS the hunt's own boundary (above), but the
+                # reason string said another strategy had killed it.
+                _who = ("hunt_thesis_dead" if record.get("strategy") == "LiquidityHunt"
+                        else "runaway_thesis_dead")
+                return (f"{_who}: 1m close {last_close:.2f} back through "
+                        f"{tp50:.2f} (band {band:.3f})")
             # ── fizzle, on the bars since entry ──
             t0 = self._entry_epoch(record)
             bars = df_1m.iloc[:-1]
@@ -1647,7 +1721,9 @@ class ExitEngine:
                 dist = abs(underlying_floor - underlying_entry)
                 fvg_floor_premium = entry_prem + dist * premium_per_point
 
-        pct_trail = current_premium * FVG_TRAIL_LOCK_PCT
+        # r44 — was `current_premium * FVG_TRAIL_LOCK_PCT`. Same defect, same fix:
+        # a fraction of the GAIN, floored at entry.
+        pct_trail = _gain_floor(entry_prem, current_premium, TRAIL_GAIN_LOCK)
         new_trail = max(fvg_floor_premium, pct_trail) if fvg_floor_premium is not None else pct_trail
         # v3.8 CLAMP: an FVG hugging price must not turn the leash into a
         # tripwire — the floor may never sit tighter than
@@ -2406,7 +2482,7 @@ class ExitEngine:
 
         if not self._trail_active.get(trade_id, False):
             self._trail_active[trade_id] = True
-            initial_trail = entry * (1 + TRAIL_LOCK_PCT)
+            initial_trail = max(entry * (1 + TRAIL_LOCK_PCT), entry)
             self._trail_stops[trade_id] = initial_trail
             logger.info(
                 f"TRAIL ACTIVATED: {trade_id[:8]} "
@@ -2414,7 +2490,9 @@ class ExitEngine:
             )
 
         current_trail = self._trail_stops.get(trade_id, hard_stop)
-        new_trail     = current * 0.75
+        # r44 — was `current * 0.75`: a fraction of PREMIUM, which can sit below
+        # entry. See `_gain_floor` for the S3 measurement behind this.
+        new_trail     = _gain_floor(entry, current, TRAIL_GAIN_LOCK)
         if new_trail > current_trail:
             self._trail_stops[trade_id] = new_trail
 

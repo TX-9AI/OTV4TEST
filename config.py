@@ -1,5 +1,11 @@
 """
-config.py  v4.22
+config.py  v4.23
+v4.23  2026-09-18  OTV4TEST r44 — THREE CONSTANTS RE-ANCHORED TO THE RIGHT
+      QUANTITY. ORB_RISK_USD (the geometry rule normalised to the OPENING RANGE,
+      not the budget: every stop distance on a 0.97 range risked $26-32, 3% of a
+      $1,050 budget). THESIS_BAND_* (a level asserted to the cent; a 7c close
+      overshoot killed a hunt one bar before a 2.68pt move). TRAIL_GAIN_LOCK
+      (a floor that was a fraction of PREMIUM and could sit BELOW ENTRY).
 v4.22  2026-09-14  OTV4TEST r26 — THE ATP BUTTERFLY'S KEYS (BFLY.6, PLAN_SPEC §39):
        `ATP_BUTTERFLY_ENABLED` (OT_ATP_BUTTERFLY=0 parks it), and two declared
        priors — `ATP_BFLY_AT_PIN_EM_FRAC = 0.30` (spot within 0.30 x EM of the pin:
@@ -723,6 +729,50 @@ RISK_PER_TRADE_USD  = float(os.environ.get("OT_RISK_USD", "200"))
 # ⚠️ PER BOX. Fifteen boxes each hold this much, so fleet exposure is 15x.
 ORB_BUDGET_USD     = float(os.environ.get("OT_ORB_BUDGET_USD",
                                           str(RISK_PER_TRADE_USD)))
+
+
+# ── r44 — WHAT ONE ORB SETUP MAY RISK ──────────────────────────────────────
+# 🔑 ORB_BUDGET_USD is a CEILING ON DEPLOYED CAPITAL; this is the TARGET RISK
+# at the structure stop, and they are different questions. The geometry rule
+# (`width // distance`) is exactly risk-normalised — the operator's own model,
+# tight stop big / wide stop small — but it normalises to `width x delta x 100`,
+# a constant set by the OPENING RANGE. Measured 2026-09-18 on a 0.97 range:
+# every stop distance from 0.54 to 0.01 risked $26-$32 while the contract count
+# swung 1 to 80. That is 3% of a $1,050 per-trade budget.
+# ⚠️ DEFAULTS TO THE SAME RISK EVERY OTHER STRATEGY TAKES, which on this box is
+# roughly a 33x increase in ORB size. The operator's own read, 2026-09-18: the
+# ORB *"is typically a loser… but when it does win it usually pretty good"* —
+# so this scales the losses too, and it is deliberately ONE ENV VAR so it can be
+# dialled to a fraction while it proves itself, without a revision.
+ORB_RISK_USD = float(os.environ.get("OT_ORB_RISK_USD", RISK_PER_TRADE_USD))
+
+# ── r44 — HOW WIDE THE THESIS LINE IS ──────────────────────────────────────
+# 🔑 A LEVEL IS PRECISE TO ABOUT ONE BAR OF NOISE, and the thesis test used to
+# assert it to the cent. 2026-09-18: the hunt's line was 718.50, a bar closed
+# 718.57 — SEVEN CENTS — the thesis was declared dead, and price then fell 2.68
+# points. The median 1m wick on this instrument is 0.078, so the trade was
+# stopped by an overshoot smaller than one typical bar's wick.
+# ⚠️ MEASURED FROM THE TAPE, never a fixed cent amount — the same ruling r39
+# reached for the zone width, where percent-of-spot spanned four-fold across
+# instruments while the wick ratio held.
+THESIS_BAND_WICKS    = float(os.environ.get("OT_THESIS_BAND_WICKS", "1.0"))
+THESIS_BAND_LOOKBACK = int(os.environ.get("OT_THESIS_BAND_LOOKBACK", "60"))
+
+# ── r44 — HOW MUCH OF THE GAIN THE TRAIL KEEPS ─────────────────────────────
+# 🔴 THE OLD FLOORS WERE FRACTIONS OF PREMIUM (0.75 and 0.80), WHICH CAN SIT
+# BELOW ENTRY. At the +20% arm threshold an 80% lock floors at 0.96 of entry:
+# arming the trail could guarantee a loss.
+# MEASURED ON S3, 210 trail-exited fleet trades 2026-08-01..2026-09-18:
+#   MFE gain median +34.0% · realised median +14.0% · CAPTURE median 42.9%
+#   and 10 of 210 (5%) finished NEGATIVE with the trail armed.
+# A gain floor — entry + L x (peak - entry) — is >= entry by construction, so
+# those ten become impossible rather than rare.
+# ⚠️ 0.50 IS THE CONSERVATIVE END. The simulation favoured 0.60-0.70, but a
+# higher floor exits EARLIER and can cut off MFE the trade only reached later,
+# so those rows are an upper bound. 0.50 beats the current median (17.0% vs
+# 14.0%), matches its mean, and zeroes the negatives.
+TRAIL_GAIN_LOCK = float(os.environ.get("OT_TRAIL_GAIN_LOCK", "0.50"))
+
 # 🔑 WHETHER IT WAS SET, NOT JUST WHAT IT IS. The default FAILS CLOSED, so a box
 # nobody configured trades small rather than large — right, but it makes an
 # unconfigured box look like a BROKEN one: 1-lot SPX reads as a defect, not as

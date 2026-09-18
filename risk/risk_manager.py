@@ -1,5 +1,16 @@
 """
-risk/risk_manager.py  v4.3
+risk/risk_manager.py  v4.4
+v4.4  2026-09-18  OTV4TEST r44 — THE ORB GEOMETRY RULE GAINS A SCALE.
+      🔑 THE OPERATOR'S MODEL WAS RIGHT AND IS KEPT — tight stop big, wide stop
+      small. The algebra shows why it was never enough: contracts = width/dist
+      and risk/contract = dist x delta x 100, so total risk = width x delta x
+      100 and the DISTANCE CANCELS. The rule is exactly risk-normalised — to a
+      constant set by the OPENING RANGE rather than the risk budget. Measured on
+      a 0.97 range: every stop from 0.54 to 0.01 risked $26-32 while the count
+      swung 1 to 80. `by_risk` is the same 1/distance curve with the constant
+      the operator banks against. ⚠️ A MISSING STOP PREMIUM FALLS BACK TO
+      GEOMETRY — my first cut used `premium - 0`, a constant that flattened the
+      curve to one count at every distance; check_orb_budget B3 caught it.
 v4.3  2026-08-31  r201 — ORB GEOMETRY IS CLAMPED BY A BUDGET. `min(geometry,
       floor(budget / cost_per_contract))`, and the operator's scaling curve
       falls out of the two clamps meeting rather than needing a ramp. A
@@ -130,6 +141,7 @@ from typing import Optional
 
 from config import (
     ORB_BUDGET_USD,
+    ORB_RISK_USD,
     RISK_PER_TRADE_USD, GRADE_SIZE_MULTIPLIER, SIZE_ON_RISK_TO_STOP,
     DEPLOY_CAP_MULT,
     CONTRACT_MULTIPLIER, PAPER_TRADING, INSTRUMENT, DAILY_LOSS_LIMIT_USD
@@ -271,12 +283,14 @@ class RiskManager:
                                      butterfly_half_size=butterfly_half_size)
         if st == "long_debit" and (orb_width or orb_stop_distance):
             return self._size_geometry(premium, orb_width, orb_stop_distance,
-                                       grade, budget_usd=budget_usd)
+                                       grade, budget_usd=budget_usd,
+                                       stop_premium=stop_premium)
         return self._size_budget(premium=premium, grade=grade,
                                  stop_premium=stop_premium)
 
     def _size_geometry(self, premium: float, width: float, distance: float,
-                       grade: str = "B", budget_usd=None) -> SizingResult:
+                       grade: str = "B", budget_usd=None,
+                       stop_premium: float = 0.0) -> SizingResult:
         """Risk-normalised size off the impulsive candle. NO BUDGET, NO CAP.
 
         contracts = max(1, floor(width / stop_distance)); the worst entry — a
@@ -325,15 +339,58 @@ class RiskManager:
             return result
         if width > 0 and 0 < distance <= width * 1.0001:
             by_geometry = max(1, int(width // distance))
-            count = min(by_geometry, by_budget)
+            # ══ r44 — THE RATIO SETS THE SHAPE; THIS SETS THE SCALE ═══════════
+            # 🔑 THE OPERATOR'S MODEL IS CORRECT AND IS KEPT: a tight stop takes
+            # a large position, a wide stop a small one, *"because we're
+            # accepting massive risk on a turn back"*. `width // distance` says
+            # that perfectly. What it does NOT say is HOW MUCH — and the algebra
+            # is why:
+            #     contracts     = width / distance
+            #     risk/contract = distance x delta x 100
+            #     total risk    = width x delta x 100     <- distance CANCELS
+            # The rule is exactly risk-normalised, and normalises to a constant
+            # SET BY THE OPENING RANGE rather than by the risk budget.
+            # 🔴 MEASURED 2026-09-18 on a 0.97-wide range: EVERY stop distance
+            # from 0.54 down to 0.01 produced a total risk of $26-$32 — 3% of
+            # the box's $1,050 per-trade budget — while the contract count swung
+            # from 1 to 80. The ORB rode a 3.46pt move to +48.4% and banked $60.
+            # ⚠️ SAME SHAPE, NOT A NEW ONE. `by_risk` is also proportional to
+            # 1/distance, because `premium - stop_premium` IS the distance in
+            # premium terms. It is the identical curve with the constant the
+            # operator actually banks against, so nothing about the tight/wide
+            # behaviour changes — only where the whole curve sits.
+            # ⚠️ IT FAILS BACK TO GEOMETRY. No usable stop premium means no
+            # risk-per-contract, and inventing one would size on a number
+            # nobody measured.
+            # 🔴 A MISSING STOP PREMIUM MUST FALL BACK, NOT GUESS — AND MY FIRST
+            # CUT DID GUESS. With `stop_premium` absent it defaults to 0, so
+            # `premium - 0` is the WHOLE premium: a constant that does not move
+            # with the stop, which flattened the sizing curve to the same count
+            # at every distance and destroyed the operator's tight/wide shape
+            # outright. `check_orb_budget` B3 caught it — stops 0.10 through
+            # 10.0 all returned 2 lots. The risk scale is only meaningful when
+            # a REAL stop premium was measured; without one, geometry decides,
+            # exactly as it did before r44.
+            _sp = float(stop_premium or 0.0)
+            _pm = float(premium or 0.0)
+            _rpc = (_pm - _sp) * CONTRACT_MULTIPLIER
+            if _sp > 0 and _rpc > 0:
+                by_risk = max(1, int(ORB_RISK_USD // _rpc))
+                _scaled = True
+            else:
+                by_risk, _scaled = by_geometry, False
+            count = min(by_risk, by_budget)
             result.geometry_wanted = by_geometry
             result.budget_allowed  = by_budget
-            _bound = "BUDGET" if by_budget < by_geometry else "geometry"
+            _bound = ("BUDGET" if by_budget < by_risk
+                      else ("risk" if _scaled else "geometry"))
             logger.info(
                 "[size] orb_geometry: width %.2f / stop %.2f -> geometry %d, "
-                "budget %d ($%.0f / $%.0f) -> %d contract(s) = $%.0f  [%s "
-                "binds]", width, distance, by_geometry, by_budget, budget,
-                cost_per_contract, count, count * cost_per_contract, _bound)
+                "risk %d ($%.0f target / $%.2f per contract), budget %d "
+                "($%.0f / $%.0f) -> %d contract(s) = $%.0f deployed, $%.0f at "
+                "risk  [%s binds]", width, distance, by_geometry, by_risk,
+                ORB_RISK_USD, _rpc, by_budget, budget, cost_per_contract,
+                count, count * cost_per_contract, count * max(_rpc, 0.0), _bound)
         else:
             count = 1
             result.geometry_wanted = 1
