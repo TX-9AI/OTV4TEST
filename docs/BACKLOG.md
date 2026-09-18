@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.39
+# BACKLOG.md — OTV4TEST — v0.40
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -191,6 +191,11 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.40 — 2026-09-18 — OTV4TEST r37 — THE BAKE WAS HALF A BAKE, AND IT PRINTED A GREEN LINE EITHER WAY.**
+**BOX.5 OPENED AND CLOSED.** Found the same evening r36 landed: the operator baked from the menu, the line read `baked → active 3aa6cfd r36`, and **half the revision was not live**. `bake()` restarted `$BOT` only — r36's underlying-Quote subscription lives in `data/candle_feed.py`, so it could not take — and it **never purged `__pycache__`**, which the migrated operating notes name as *"the single most common cause of 'I pushed the fix but it's still broken'"*. The one command whose entire job is making a landed revision LIVE was serving stale bytecode and telling the operator it was done. ⚠️ **I ALSO MISDESCRIBED IT**, saying it "restarts the bot only" from the menu label rather than the code; the operator made me read it. It does four things — pull, check_imports, `daemon-reload`, restart — each of the first two a gate. Both halves of that correction are recorded because each was wrong in a different direction.
+**Operator's sequence, adopted verbatim:** stop both, pull, purge, start the **FEED first**, then the bot, report both. The order is not cosmetic — the bot reads what the feed writes, so bouncing them independently can leave the bot querying a store no producer is filling. ⚠️ **ONE BEHAVIOUR CHANGE, STATED:** `check_imports` is kept and still blocks, but now runs while the services are DOWN — so a tree that cannot import leaves the box **stopped** rather than running yesterday's code. That is the honest direction, and it means a failed bake needs a fix rather than a shrug.
+**GATE:** `tests/check_bake.py` B1–B8, **born red 5 of 9 at r36** (B1 stop-both, B3/B3b the purge, B5 feed-first, B6 report-both). It reads the CODE with comments stripped, because a comment naming a step is not the step (§20/§21), and B7 keeps the menu label inside r17's 54-column phone rule (51 cols).
 
 **v0.39 — 2026-09-18 — OTV4TEST r36 — THE LEVEL BOARD IS BUILT FROM THE HOURLY TAPE AND REACHES TWELVE WEEKS; THE UNDERLYING'S OWN QUOTE IS FINALLY SUBSCRIBED.**
 **LVL.12 ✅ · FEED.2 ✅ · LVL.13 still open (zones).** The operator read his own 1D chart against the live board and three of his five levels above spot **did not exist in the ledger at all**. Cause: `load_tape` read 1m, and retention keeps 1m for FIVE DAYS while keeping 1h for SIXTY — so the board reached nine days back while twelve weeks of hourly history sat unread in the same store. **Not missing data. UNREAD data** (§39.2). Reach now 2026-06-25 → today, **43→42 held levels of which 25 are Asia or London**, and all five of his levels resolve within 4–31 cents.

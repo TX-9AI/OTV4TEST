@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# devtools.sh  v3.2  — OTV4TEST box menu
+# devtools.sh  v3.3  — OTV4TEST box menu
+# v3.3  2026-09-18  OTV4TEST r37 — THE BAKE WAS HALF A BAKE. It restarted the BOT
+#       only, and it never purged __pycache__ — the one thing the operating notes
+#       name as "the single most common cause of I pushed the fix but it is still
+#       broken". So r36's Quote subscription, which lives in candle_feed.py, could
+#       not have taken from a menu bake, and any bake could serve stale bytecode
+#       while printing a green line. Operator's sequence, adopted verbatim: stop
+#       both, pull, purge, start the FEED first, then the bot, report both.
 # v3.2  2026-09-17  OTV4TEST r34 — items 1, 2 and 3 run status.py and query.py at
 #       the REPO ROOT again. r14 had moved them to tools/ and this menu followed;
 #       the operator runs them by hand and the root is where he looks.
@@ -240,13 +247,34 @@ mi_reinstall_timers() { bash "$REPO/deploy/reinstall_timers.sh"; pause; }
 mi_bake()   { bake; pause; }
 
 bake() {
-  # v4.4 (OTV4TEST r3) — LANDED ≠ BAKED. A landed revision is live only after
-  # the service restarts on this box. Pull, prove the tree imports, restart.
-  confirm "BAKE: git pull --ff-only, check_imports, restart $BOT on THIS box?" || { echo "cancelled"; return; }
-  ( cd "$REPO" && git pull --ff-only ) || { echo "  pull FAILED — not restarting"; return 0; }
-  ( cd "$REPO" && "$PY" tests/check_imports.py ) || { echo "  check_imports FAILED — NOT restarting; the tree does not start"; return 0; }
+  # v3.3 (OTV4TEST r37) — THE BAKE IS BOTH SERVICES, AND IT PURGES THE BYTECODE.
+  # Operator's sequence, 2026-09-18: stop both, pull, purge __pycache__, start the
+  # FEED first, then the bot, then report both.
+  # 🔴 WHAT IT WAS MISSING AND WHY EACH ONE MATTERS:
+  #   (1) THE BYTECODE PURGE. The migrated operating notes open with it — "Always
+  #       purge the bytecode cache before restarting. This is the single most
+  #       common cause of 'I pushed the fix but it's still broken'" — and the one
+  #       command whose entire job is making a landed revision LIVE never did it.
+  #   (2) THE FEED. It only ever restarted $BOT. r36 put the underlying's Quote
+  #       subscription in data/candle_feed.py; a bot-only bake leaves that dead
+  #       and the operator reading a green "baked" line that is only half true.
+  #   (3) STOP BOTH FIRST, START FEED FIRST. The bot reads what the feed writes,
+  #       so bouncing them independently can leave the bot querying a store no
+  #       producer is filling. Down together, up in dependency order.
+  # ⚠️ check_imports IS KEPT AND STILL BLOCKS, but it now runs while the services
+  # are DOWN, so a tree that cannot import leaves the box STOPPED rather than
+  # running yesterday's code. That is the honest direction — a bake that silently
+  # leaves the old process up is the "LANDED ≠ BAKED" confusion r3 named — but it
+  # is a change: a failed bake now needs a fix, not a shrug.
+  confirm "BAKE: stop $BOT + $FEED, pull, purge bytecode, start $FEED then $BOT?" || { echo "cancelled"; return; }
+  sudo systemctl stop "$BOT" "$FEED"
+  ( cd "$REPO" && git pull --ff-only ) || { echo "  pull FAILED — services are DOWN; fix the pull, then bake again"; return 0; }
+  find "$REPO" -name __pycache__ -type d -not -path "*/venv/*" -exec rm -rf {} + 2>/dev/null
+  echo "  bytecode purged"
+  ( cd "$REPO" && "$PY" tests/check_imports.py ) || { echo "  check_imports FAILED — services left DOWN; the tree does not start"; return 0; }
   sudo systemctl daemon-reload 2>/dev/null
-  sudo systemctl restart "$BOT" && echo "baked → $(svc "$BOT")  $(git -C "$REPO" log -1 --oneline)"
+  sudo systemctl start "$FEED" && sleep 5 && sudo systemctl start "$BOT"
+  echo "baked → $FEED=$(svc "$FEED")  $BOT=$(svc "$BOT")  $(git -C "$REPO" log -1 --oneline)"
 }
 land_tarball() {
   # OTV4TEST r1 — the fork lands its own archives, because it is segregated
@@ -449,7 +477,7 @@ MENU=(
   "ITEM|show commit / status / last ledger row|git_state"
   "ITEM|git pull --ff-only|git_pull"
   "ITEM|LAND a tarball from ~|mi_land"
-  "ITEM|BAKE   pull, check_imports, restart the bot|mi_bake"
+  "ITEM|BAKE   stop both, pull, purge, start feed+bot|mi_bake"
   "ITEM|REINSTALL TIMERS     one-time, after r14|mi_reinstall_timers"
 )
 

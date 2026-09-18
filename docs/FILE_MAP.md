@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-285 Python modules across 13 local packages.
+286 Python modules across 13 local packages.
 
-**Reached by:** 114 imported · 11 declared entry points · 78 referenced from a script, unit or doc but never imported · **82 by nothing here**.
+**Reached by:** 114 imported · 11 declared entry points · 79 referenced from a script, unit or doc but never imported · **82 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -562,6 +562,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** `analysis/__init__.py`, `analysis/gate_report.py`, `data/__init__.py`, `data/candle_feed.py`, `derived/plan_ledger.py`, `strategy/__init__.py`, `strategy/iron_condor_strategy.py`, `warehouse/__init__.py`, `warehouse/retention_purge.py`, `warehouse/self_close.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
+### `tests/check_bake.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
 ### `tests/check_bfly_vwap_band.py`
 - **calls:** `data/derived_store.py`, `derived/__init__.py`, `derived/anchors.py`, `strategy/__init__.py`, `strategy/gex_pin_butterfly.py`, `strategy/plan.py`, `utils/time_utils.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
@@ -700,7 +704,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_imports.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `devtools.sh`, `docs/PORT_STATE.md`, `docs/WORKING_AGREEMENT.md`, `requirements.txt`
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/BACKLOG.md`, `docs/PORT_STATE.md`, `docs/WORKING_AGREEMENT.md` +1
 
 ### `tests/check_ladder_wired.py`
 - **calls:** `config.py`, `execution/__init__.py`, `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/ladder_registry.py`, `execution/order_confirm.py`
