@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-"""tests/check_atm_iv_stored.py  v1.0
+"""tests/check_atm_iv_stored.py  v1.1
 `atm_iv` REACHES ctx, AND EVERY READER TAKES THE SAME VALUE.
 
+v1.1  2026-09-18  OTV4TEST r43 — A3b demanded EXACTLY TWO readers of the
+      stored atm_iv, which was a pin on the SHAPE (two butterfly paths) rather
+      than on the rule. r43 collapsed them to one; A3b now demands at least one
+      and A3 still forbids recomputation.
 v1.0  2026-08-31  r205 — born red at r204: `ctx["atm_iv"]` is never assigned.
 
 🔴 MEASURED, NOT REASONED. Every one of the 31 `fire_snapshot` rows from the
@@ -70,9 +74,15 @@ def main():
     check("A3 no dispatch branch recomputes atm_iv from the chain",
           not recompute,
           f"{len(recompute)} branch(es) still recompute")
+    # ⚠️ r43 — THE COUNT WAS 2 BECAUSE THERE WERE TWO BUTTERFLY PATHS. ADM.1
+    # collapsed them into one (`_attempt_butterfly`), so one reader disappeared
+    # with the duplicate it belonged to. An exact count is a pin on the SHAPE of
+    # the code, not on the rule — the rule is "read the stored value, never
+    # recompute it", and A3 above is what enforces the second half. A3b now
+    # demands at least one reader and no zero.
+    _n = src.count('_atm_iv = ctx.get("atm_iv")')
     check("A3b the branches read the stored value",
-          src.count('_atm_iv = ctx.get("atm_iv")') == 2,
-          f'found {src.count(chr(95) + "atm_iv = ctx.get" + chr(40) + chr(34) + "atm_iv" + chr(34) + chr(41))}')
+          _n >= 1, f"found {_n} (was 2 while two butterfly paths existed)")
 
     # ── A2 / A4: EXECUTED, against the extracted conversion ───────────────
     # 🔑 `run_analysis` needs live market data and raises in a sandbox, so a

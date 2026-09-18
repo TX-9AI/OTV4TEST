@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-"""tests/check_atp_butterfly.py  v1.0
+"""tests/check_atp_butterfly.py  v1.1
 THE ATP (AT-THE-PIN) BUTTERFLY — ITS PLAN, ITS STRATEGY, ITS EXITS AND ITS SESSION CAP.
 
+v1.1  2026-09-18  OTV4TEST r43 — S6 reads `_attempt_butterfly`, not
+      `attempt_new_entry`: r43 collapsed two butterfly paths into one, so the
+      ordering rule (cap on both names, pin fly, then ATP fly) lives in the
+      survivor. S6b added — the caller must NOT re-check the cap, because two
+      mechanisms for one rule drift.
 v1.0  2026-09-14  OTV4TEST r26 (BFLY.6, PLAN_SPEC §39). Operator: "traveling to the pin
       is a different thesis than building it on an already sideways tape" and
       "allow one butterfly or the other, whichever plan produces a viable trade
@@ -261,13 +266,25 @@ def main():
           M._STRUCTURE_BY_NAME.get("ATPButterfly") == "butterfly")
     import ast
     src = open(os.path.join(_root, "main.py"), encoding="utf-8").read()
+    # ⚠️ r43 — S6 NOW READS `_attempt_butterfly`, NOT `attempt_new_entry`.
+    # It asserted the ORDER of the in-dispatch copy: cap on both names, then the
+    # pin fly, then the ATP fly. r43 collapsed the two butterfly paths into ONE
+    # — the helper this file already drives directly in S1-S4 — so the ordering
+    # rule is unchanged and simply lives in the surviving path. The assertion
+    # follows the rule rather than the address.
     fn = next(x for x in ast.walk(ast.parse(src)) if isinstance(x, ast.FunctionDef)
-              and x.name == "attempt_new_entry")
+              and x.name == "_attempt_butterfly")
     body = ast.unparse(fn)
     i_cap, i_gex, i_atp = (body.find("_one_per_session_used('ATPButterfly')"),
                            body.find("_safe_strategy('GEXPinButterfly'"), body.find("_safe_strategy('ATPButterfly'"))
-    check("S6 the in-dispatch slot checks the cap on BOTH names before asking either, and asks the ATP fly after the pin fly",
+    check("S6 the ONE butterfly path checks the cap on BOTH names before asking either, and asks the ATP fly after the pin fly",
           -1 < i_cap < i_gex < i_atp, f"cap@{i_cap} gex@{i_gex} atp@{i_atp}")
+    # and the caller must NOT re-check it — two mechanisms for one rule drift
+    anb = next(x for x in ast.walk(ast.parse(src)) if isinstance(x, ast.FunctionDef)
+               and x.name == "attempt_new_entry")
+    check("S6b the caller does not duplicate the session cap",
+          "_one_per_session_used('GEXPinButterfly')" not in ast.unparse(anb),
+          "the helper owns it")
 
     print()
     if _fails:

@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
-tests/check_admission_wired.py  v1.1
+tests/check_admission_wired.py  v1.2
 THE ADMISSION TABLE IS LIVE: A STRATEGY OUTSIDE ITS WINDOW IS NEVER ASKED.
 
+v1.2  2026-09-18  OTV4TEST r43 — A9 INVERTED, which is the point of having
+      written it. At r40 it pinned the STATED SCOPE (the gate still stands);
+      ADM.1 closed, so the assertion flips to "the gate is gone". A scope pin
+      that cannot be flipped when the scope changes is just a comment.
 v1.1  2026-09-18  OTV4TEST r42 — A8 accepts the one-pass accessor. It named
       `eligible_now` specifically; r42 asks via `logging_state()` and A8 went red
       on code that satisfies its own rule. Re-pointed at the rule, kept closed.
@@ -139,10 +143,17 @@ def main():
     # r40 did NOT remove `has_blocking_position()`. This asserts the STATED
     # scope so the next revision can see exactly what it inherits, and so the
     # claim in the changelog cannot drift from the code.
-    def gate_present():
-        return "if not pos_mgr.has_blocking_position():" in src
-    guard("A9 has_blocking_position() still gates the open branch — ADM.1's scope",
-          gate_present, "removing it needs the three direct calls de-duplicated first")
+    # 🔴 r43 — A9 IS INVERTED, AND THAT IS THE POINT OF HAVING WRITTEN IT.
+    # At r40 it pinned the STATED SCOPE: `has_blocking_position()` still gates
+    # the open branch, because removing it needed the three direct calls
+    # de-duplicated first. ADM.1 did that de-duplication, so the scope moved and
+    # the assertion moves with it — from "the gate is still there" to "the gate
+    # is gone". A scope pin that could not be flipped when the scope changed
+    # would just be a comment.
+    def gate_gone():
+        return "if not pos_mgr.has_blocking_position():" not in src
+    guard("A9 has_blocking_position() NO LONGER gates the open branch — ADM.1 closed",
+          gate_gone, "the last of r35's seven admission mechanisms")
 
     print()
     if FAILED:

@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_prepares.py  v1.16
+tests/check_plan_prepares.py  v1.17
+v1.17 2026-09-18  OTV4TEST r43 — B6 follows the call one level down
+      (main_loop -> attempt_new_entry -> _attempt_butterfly), asserting the
+      reachable path rather than one call's address.
+      🔴 B13 MATCHED A MENTION, NOT A CALL, AND A COMMENT BROKE IT. It did
+      `msrc.index("mark_pin_played")` on the raw file, so the FIRST occurrence
+      won — and r43 added a docstring line naming it above the fire site. The
+      rule (mark AFTER execution, so a refused or zero-sized fire does not burn
+      the pin) was never violated; the canary was reading prose. Re-anchored on
+      the two CALLS via the AST, and mutation-tested: moving the execute below
+      the mark still fails it.
 v1.16 2026-09-13  OTV4TEST r24 — SPENT AND FINISHED ARE REAL ROWS. S7/T7 write a closed sweep
       row that exited on its breach (the r5 rule: spent on acceptance only)
       instead of calling the deleted `mark_spent`; R11 writes a closed runaway
@@ -530,8 +540,17 @@ def main():
     ml = next(n for n in _ast.walk(_ast.parse(msrc))
               if isinstance(n, _ast.FunctionDef) and n.name == "main_loop")
     mls = _ast.unparse(ml)
-    check("B6 main_loop asks the butterfly with a position OPEN, additively",
-          "_attempt_butterfly(ctx, ms, state, additive=True)" in mls
+    # ⚠️ r43 — THE CALL MOVED ONE LEVEL DOWN, THE RULE DID NOT. `main_loop` used
+    # to call `_attempt_butterfly(..., additive=True)` directly in the
+    # position-open branch. ADM.1 removed the entry gate, so main_loop calls
+    # `attempt_new_entry` in BOTH branches and that is what asks the butterfly —
+    # still with a position open, still additively. B6 asserts the reachable
+    # path, not the address of one call.
+    _anb = next(n for n in _ast.walk(_ast.parse(msrc))
+                if isinstance(n, _ast.FunctionDef) and n.name == "attempt_new_entry")
+    check("B6 the butterfly is asked with a position OPEN, additively",
+          "attempt_new_entry(ctx, ms, state)" in mls
+          and "_attempt_butterfly(ctx, ms, state, additive=True)" in _ast.unparse(_anb)
           and '_plan_skip("GEXPinButterfly", _auth_why)' not in mls)
     from execution.position_manager import PositionManager
     pm = PositionManager.__new__(PositionManager)
@@ -884,9 +903,22 @@ def main():
           fired_at == 8, f"fired_at={fired_at}")
     _bfm.PERSIST_TICKS = 1
     msrc2 = open(os.path.join(_root, "main.py"), encoding="utf-8").read()
+    # 🔴 r43 — B13 MATCHED A MENTION, NOT A CALL, AND A COMMENT BROKE IT.
+    # It did `msrc.index("mark_pin_played")` against the raw file, so the FIRST
+    # occurrence won — and r43 added a docstring line naming `mark_pin_played`
+    # above the fire site. The rule (mark AFTER execution, so a refused or
+    # zero-sized fire does not burn the pin) was never violated; the canary was
+    # reading prose. §20/§21: assert the BINDING. Anchored on the two CALLS,
+    # located by line number in the AST, inside the one path that fires.
+    _bf_fn = next(x for x in _ast.walk(_ast.parse(msrc2))
+                  if isinstance(x, _ast.FunctionDef) and x.name == "_attempt_butterfly")
+    _exec_ln = [n.lineno for n in _ast.walk(_bf_fn)
+                if isinstance(n, _ast.Call) and getattr(n.func, "id", "") == "_execute_entry_signal"]
+    _mark_ln = [n.lineno for n in _ast.walk(_bf_fn)
+                if isinstance(n, _ast.Call) and getattr(n.func, "attr", "") == "mark_pin_played"]
     check("B13 (r178) the fire site marks the pin played AFTER execution",
-          "mark_pin_played" in msrc2
-          and msrc2.index("_execute_entry_signal(bf_sig") < msrc2.index("mark_pin_played"))
+          bool(_exec_ln) and bool(_mark_ln) and min(_exec_ln) < min(_mark_ln),
+          f"execute@{min(_exec_ln) if _exec_ln else '-'} mark@{min(_mark_ln) if _mark_ln else '-'}")
     bfmod.GEXPinButterflyStrategy.PLAYED_PINS.clear()
 
     # r237 — restore the parked window; see the note at _real_end above.

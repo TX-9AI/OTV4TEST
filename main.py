@@ -1,5 +1,31 @@
 """
-main.py  v4.54
+main.py  v4.55
+v4.55 2026-09-18  OTV4TEST r43 (ADM.1) — EVERY ADMITTED STRATEGY FIRES ON ITS
+      OWN. Operator: *"I want the orb, hunt, breakout & sweep all able to fire &
+      non-competing… In live trading, we will revert back to hierarchy-based."*
+      🔴 THE `signal` CASCADE *WAS* THE COMPETITION — one variable, five
+      `if signal is None` guards, winner-take-all — so removing
+      `has_blocking_position()` alone would not have delivered this. Live
+      evidence, 2026-09-18: TrendCreditSpread, GEXPinButterfly and ATPButterfly
+      sat on "slot claimed by RunawayContinuation" for THIRTY-FIVE MINUTES,
+      never asked. Each strategy now runs through `_fire()`, on r12's proven
+      `_attempt_hunt` shape. The afternoon-debit gate moved INTO `_fire`: with
+      no single winner, a tail gate catches only the last signal.
+      ⚠️ ALWAYS ADDITIVE — a second fire must append, never replace, or
+      `set_open_position` drops the first position from management.
+      ⚠️ THE POSTURE IS TEST-BOX-ONLY. The fleet reverts to hierarchy, and the
+      table overlays from `config.ADMISSION_RULES`, so that is CONFIG, not a
+      revision.
+      🔴 AND I DELETED `_attempt_butterfly`, THEN PUT IT BACK — RECORDED RATHER
+      THAN TIDIED. Inlining it destroyed a TESTABLE SEAM: `check_atp_butterfly`
+      drives that function directly to prove the one-per-session cap and
+      crashed on "module 'main' has no attribute '_attempt_butterfly'". A
+      behaviour reachable only through a 700-line dispatch stops being tested.
+      It is now THE one butterfly path. ⚠️ It also carries r178's
+      `mark_pin_played` — the guard against the 2026-08-28 stack of five
+      butterflies in ninety seconds — which the in-dispatch copy NEVER called,
+      so that guard had only ever covered one of the two paths that could fire
+      one. Keeping the function keeps it by construction.
 v4.54 2026-09-18  OTV4TEST r42 — ADMISSION IS ONE PASS. `attempt_new_entry`
       asked `eligible_now()` for the LIST and then `why_not()` per refused
       strategy for the REASON — two calls, the same facts passed twice, and
@@ -3801,7 +3827,72 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
         return
 
     macro = ctx["macro"]
-    signal = None
+    signal = None          # r43 — RETAINED ONLY AS A "DID ANYTHING FIRE" TALLY.
+                           # It no longer arbitrates: see `_fire()` below.
+
+    # ══ r43 — EVERY ADMITTED STRATEGY FIRES ON ITS OWN ════════════════════════
+    # Operator, 2026-09-18: *"I want the orb, hunt, breakout & sweep all able to
+    # fire & non-competing. We only have one session at a time so we need to
+    # maximize every opportunity on these setups. In live trading, we will revert
+    # back to hierarchy-based."*
+    #
+    # 🔴 THE `signal` CASCADE *WAS* THE COMPETITION, and that is why removing
+    # `has_blocking_position()` alone would not have delivered this. One variable,
+    # five `if signal is None` guards, winner-take-all: the first strategy to
+    # produce a signal consumed the tick and every strategy below it was never
+    # even ASKED. Non-competing means each admitted strategy is asked and
+    # executed independently.
+    #
+    # 🔑 THE PATTERN IS r12's, NOT A NEW ONE. `_attempt_hunt` has executed
+    # ADDITIVE beside the ORB since r12 — *"the hunt runs beside the ORB, never
+    # in its slot"* — and has been live ever since. This extends that proven
+    # shape to the rest; it does not invent a mechanism.
+    #
+    # ⚠️ THE AFTERNOON DEBIT GATE MOVED WITH IT, AND HAD TO. It used to sit ONCE
+    # at the tail, on whichever signal won the slot. With no slot there is no
+    # single winner, so a tail gate would let every strategy but the last one
+    # past it. It is applied PER SIGNAL here — which is also what its own
+    # docstring asked for ("ONE gate instead of three... the next strategy added
+    # silently bypasses the rule"), just relocated to the one funnel that now
+    # exists.
+    #
+    # ⚠️ ADMISSION IS STILL THE ONLY LIMIT. `_safe_strategy` refuses anything
+    # outside its window, and the table's `max_open_of_type` is what stops a
+    # second ORB — not this function, and not a hand-rolled "already open" check.
+    # ⚠️ THIS POSTURE IS TEST-BOX-ONLY, by his ruling. The fleet reverts to
+    # hierarchy, and because the table overlays from `config.ADMISSION_RULES`
+    # that reversion is a CONFIG CHANGE, not a revision.
+    _fired: list = []
+
+    def _fire(sig) -> bool:
+        """Execute ONE strategy's signal, on its own. Returns True if it fired."""
+        nonlocal signal
+        if sig is None:
+            return False
+        if _afternoon_debit_blocked(sig.strategy_name, now_et()):
+            logger.info(
+                "STRATEGY: BLOCKED — %s is long premium and it is past the "
+                "%02d:%02d ET afternoon debit cutoff (%s). Credit verticals and "
+                "the pin butterfly are unaffected.",
+                sig.strategy_name, DEBIT_DIRECTIONAL_CUTOFF_ET[0],
+                DEBIT_DIRECTIONAL_CUTOFF_ET[1], fmt_et_short())
+            if _sigj is not None:
+                try:
+                    _sigj.journal("disposition",
+                                  outcome="gate_block:afternoon_debit",
+                                  signal=_sigj.signal_ctx(sig))
+                except Exception:                              # noqa: BLE001
+                    pass
+            return False
+        # ADDITIVE ALWAYS. r197 already made `additive` a FACT rather than a
+        # caller's opinion (`if additive or _pm.has_open_position()`), so this
+        # is the same decision that path already reaches — stated here because
+        # non-competing entries MUST append rather than replace, or the second
+        # fire would silently drop the first from management.
+        _execute_entry_signal(sig, ctx, ms, state, _sigj, additive=True)
+        _fired.append(sig.strategy_name)
+        signal = sig
+        return True
 
     # Memoryless pass-through of the classifier's verdict — it adds ZERO latency
     # and holds NO state. It does not debounce, confirm, or wait: the instant
@@ -3951,11 +4042,15 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
                        "cutoff — refused here; the plan's window and this "
                        "gate disagree")
         orb_sig = None
-    if orb_sig:
-        signal = orb_sig
+    _fire(orb_sig)                                  # r43 — fires on its own
     # OTV4TEST r12 — THE LIQUIDITY HUNT runs beside the ORB, never in its slot
     # (PLAN_SPEC §37): asked every tick, executed additive, so both can be long
     # the same break. That is the paired comparison.
+    # r43 — the handoff-granted sweep moved here from main_loop's open branch.
+    # It is NOT the same as the sweep dispatch below: it requires a LIVE GRANT,
+    # constrains the side to the grant's, stamps the provenance and CONSUMES the
+    # grant. Deleting it with the other two would have lost a behaviour.
+    _attempt_sweep_on_grant(ctx, ms, state)
     _attempt_hunt(ctx, ms, state, orb=orb, chain=chain,
                   now_hhmm=(_now_disp.strftime("%H:%M") if _now_disp else ""),
                   atr_pct=float(getattr(ctx.get("vol"), "atr_pct", 0.0) or 0.0))
@@ -4022,9 +4117,7 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     # r179 — ONE PER SESSION ON THIS BOX (operator, 2026-08-28: "Only one
     # runway debit trade aloud per session on a box … Simple"). DB-backed,
     # survives restarts, fails closed.
-    if signal is not None:
-        _plan_skip("RunawayContinuation", f"slot claimed by {signal.strategy_name}")
-    else:
+    if True:                                        # r43 — no slot to claim
         # OTV4TEST r3 — asked EVERY tick; the plan narrates (no direction /
         # waiting on the 50 accepted / break finished, re-validating / PREPARED)
         # and is dormant outside 09:35–11:30. `_is_runaway` no longer gates
@@ -4039,8 +4132,7 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
                                     chain         = chain,
                                     df_1m         = ctx.get("df_1m"),
                                 ), ctx)
-        if rc_sig:
-            signal = rc_sig
+        if _fire(rc_sig):
             # ⚠️ THE RETEST IS DISARMED BY THE FIRING ITSELF. The runaway IS the
             # evidence price never came back for it, so leaving the arm live
             # would queue a second position on a pullback that is not coming.
@@ -4053,9 +4145,7 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     # Sells the boundary a swept named pool just became. It runs AFTER the
     # runaway because a runaway proved directional force, and fading a level
     # into that force is the low-quality reversal that bled in v3.
-    if signal is not None:
-        _plan_skip("SweepCreditSpread", f"slot claimed by {signal.strategy_name}")
-    if signal is None:
+    if True:                                        # r43 — no slot to claim
         sc_sig = _safe_strategy("SweepCreditSpread",
                                 lambda: _sweep_cs_strategy.generate_signal(
                                     price_now     = ctx["price"],
@@ -4114,45 +4204,16 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     # first line. Wired anyway so the plumbing is exercised and audited NOW
     # rather than on the day it is unparked, ~2 weeks after real open interest
     # starts accumulating (2026-08-19).
-    if signal is not None:
-        _plan_skip("GEXPinButterfly", f"slot claimed by {signal.strategy_name}")
-        _plan_skip("ATPButterfly", f"slot claimed by {signal.strategy_name}")
-    # r179 — ONE PER SESSION ON THIS BOX: this in-dispatch butterfly path
-    # does not route through _attempt_butterfly, so it carries its own guard.
-    # OTV4TEST r26 — one butterfly of EITHER kind per session.
-    if signal is None and (_one_per_session_used("GEXPinButterfly")
-                           or _one_per_session_used("ATPButterfly")):
-        for _bn in ("GEXPinButterfly", "ATPButterfly"):
-            _plan_skip(_bn, "one per session on this box — already traded today (one butterfly of either kind)")
-    elif signal is None:
-        # r205 — ONE SOURCE. Computed once in run_analysis and stored on ctx.
-        # Recomputing here would let the dispatch and the snapshot disagree
-        # about the same tick, which is the bug nobody would ever find.
-        _atm_iv = ctx.get("atm_iv")
-        bf_sig = _safe_strategy("GEXPinButterfly",
-                                lambda: _gex_bfly_strategy.generate_signal(
-                                    gex           = ctx.get("gex"),
-                                    price_now     = ctx["price"],
-                                    now_et        = _now_et_hhmm,
-                                    atm_iv        = _atm_iv,
-                                    chain         = chain,
-                                ), ctx)
-        if bf_sig:
-            signal = bf_sig
-            _plan_skip("ATPButterfly", "the pin butterfly fired this tick — one butterfly per session")
-        else:
-            # OTV4TEST r26 — the ATP butterfly: price already AT the pin, settled.
-            atp_sig = _safe_strategy("ATPButterfly",
-                                     lambda: _atp_bfly_strategy.generate_signal(
-                                         gex           = ctx.get("gex"),
-                                         price_now     = ctx["price"],
-                                         now_et        = _now_et_hhmm,
-                                         atm_iv        = _atm_iv,
-                                         chain         = chain,
-                                         df_1m         = ctx.get("df_1m"),
-                                     ), ctx)
-            if atp_sig:
-                signal = atp_sig
+    # ── BUTTERFLIES — one path, called, not inlined (r43) ────────────────────
+    # r179 (one per session on this box) and OTV4TEST r26 (one butterfly of
+    # EITHER kind) BOTH live inside `_attempt_butterfly`, which is also what
+    # `check_atp_butterfly` drives directly to prove them.
+    # ⚠️ THE CAP IS NOT RE-CHECKED HERE, DELIBERATELY. My first cut of r43 had
+    # it in both places — two mechanisms for one rule, which is the drift this
+    # revision spent its morning removing everywhere else.
+    # ⚠️ ALWAYS ADDITIVE NOW: the butterfly never took a slot (r161) and after
+    # r43 there is no slot left to take.
+    _attempt_butterfly(ctx, ms, state, additive=True)
 
 
     # Priority 2 (was sweep): Trend Continuation.
@@ -4280,9 +4341,7 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     # ── TC.6 TREND CREDIT SPREAD ─────────────────────────────────────────────
     # v4.3: no longer deferred by condor_active. It fires when _can_open_credit_spread
     # allows its side. condor_trigger_source="trend_orb" is stamped on the record.
-    if signal is not None:
-        _plan_skip("TrendCreditSpread", f"slot claimed by {signal.strategy_name}")
-    if signal is None:
+    if True:                                        # r43 — no slot to claim
         _tcs_hi, _tcs_lo = _session_extremes(ctx)
         _orb_hi, _orb_lo = _opening_range(ctx)
         tcs_sig = _safe_strategy("TrendCreditSpread", lambda: (
@@ -4304,48 +4363,36 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
             tcs_sig.condor_trigger_source = "trend_orb"
             if _can_open_credit_spread(tcs_sig.option_side,
                                         tcs_sig, ctx["price"]):
+                # ⚠️ r43 — NO `return` HERE ANY MORE. It ended the whole tick
+                # once the TCS leg was placed, so anything sequenced after it
+                # was never asked. Credit legs route through
+                # `_execute_condor_leg` and do NOT go through `_fire`, so they
+                # are recorded here by hand.
                 _execute_condor_leg(tcs_sig, state, ctx)
-                return
+                _fired.append("TrendCreditSpread")
 
 
-    if signal is None:
+    # ══ r43 — THE TAIL REPORTS; IT NO LONGER ARBITRATES ══════════════════════
+    # Every admitted strategy has already been asked AND executed on its own by
+    # `_fire()`. What used to live here — the afternoon-debit gate and one
+    # `_execute_entry_signal(signal, ...)` — moved INTO `_fire`, because with no
+    # slot there is no single winner for a tail gate to catch.
+    if not _fired:
         logger.info(f"STRATEGY: NO TRADE — adx={ms.adx:.0f} "
-                f"dir={ms.trend_direction} seq={ms.structure_sequence}")
-        return
-
-    # ── AFTERNOON DEBIT BLOCK (2026-08-13) ────────────────────────────────────
-    # Operator: "no long contracts in the afternoon unless they're part of a
-    # vertical spread or a butterfly."
-    # PLACED HERE, AFTER THE SIGNAL IS CHOSEN, ON PURPOSE — three reasons:
-    #   1. ONE gate instead of three. Guarding each dispatch branch means the
-    #      next strategy added silently bypasses the rule.
-    #   2. The blocked signal is fully formed, so the journal records WHAT WAS
-    #      REFUSED. A gate that vetoes invisibly can never be calibrated from
-    #      its own rejections — the same reasoning that put gates E and F after
-    #      the score in setup_scorer rather than before it.
-    #   3. Condor legs never reach here (they route through
-    #      `_execute_condor_leg` above), so the credit path is untouched by
-    #      construction rather than by an exemption that could rot.
-    # Butterfly and condor are exempt; both are already window-gated elsewhere.
-    if _afternoon_debit_blocked(signal.strategy_name, now_et()):
-        if True:
-            logger.info(
-                "STRATEGY: BLOCKED — %s is long premium and it is past the "
-                "%02d:%02d ET afternoon debit cutoff (%s). Credit verticals and "
-                "the pin butterfly are unaffected.",
-                signal.strategy_name, DEBIT_DIRECTIONAL_CUTOFF_ET[0],
-                DEBIT_DIRECTIONAL_CUTOFF_ET[1], fmt_et_short())
-            if _sigj is not None:
-                try:
-                    _sigj.journal("disposition",
-                                  outcome="gate_block:afternoon_debit",
-                                  signal=_sigj.signal_ctx(signal),
-                                  )
-                except Exception:                              # noqa: BLE001
-                    pass
-            return
-
-    _execute_entry_signal(signal, ctx, ms, state, _sigj)
+                    f"dir={ms.trend_direction} seq={ms.structure_sequence}")
+    else:
+        logger.info("STRATEGY: FIRED %d this tick — %s (non-competing; "
+                    "admission's per-type caps are the only limit)",
+                    len(_fired), ", ".join(_fired))
+    return
+    # 🔴 r43 — THE DEAD TAIL IS DELETED, NOT LEFT AS A CORPSE. What stood here
+    # was the afternoon-debit gate plus one `_execute_entry_signal(signal, ...)`:
+    # the single winner's execution. With every strategy firing on its own via
+    # `_fire()`, `return` above makes this unreachable, and unreachable code that
+    # LOOKS like a live gate is exactly how a rule gets believed in but never
+    # runs — §20's guard-that-outlived-what-it-guarded, which this file has paid
+    # for twice (the v4.3 dispatch hard gate, and r55 one layer up).
+    # Its reasoning is PRESERVED where the rule now lives, inside `_fire`.
 
 
 def _attempt_hunt(ctx, ms, state, *, orb, chain, now_hhmm, atr_pct) -> None:
@@ -4400,9 +4447,22 @@ def _attempt_butterfly(ctx, ms, state, *, additive: bool) -> None:
             _plan_skip(_bn, "one per session on this box — already traded today (one butterfly of either kind)")
         return
     """r161 — ask the butterfly's plan (dormant outside its slot) and, on a
-    fire, execute it. Called from main_loop's position-open branch with
-    additive=True; attempt_new_entry keeps its own in-chain call for the
-    no-position case (the chain there gives it the same look)."""
+    fire, execute it.
+
+    🔑 r43 — THE ONE BUTTERFLY PATH. There were two: this, called from
+    main_loop's position-open branch as r161's additive/exempt route, and an
+    in-dispatch copy inside `attempt_new_entry` that COMPETED for the `signal`
+    slot. r43 removed the slot, which made the two genuinely redundant — and
+    the right survivor is THIS one, not the inline copy.
+    ⚠️ AND THE CHECKERS ARE WHY. `check_atp_butterfly` drives this function
+    DIRECTLY to prove the one-per-session cap (S1/S2); inlining it destroyed
+    that seam and the check crashed on `module 'main' has no attribute
+    '_attempt_butterfly'`. A behaviour that can only be tested through a
+    700-line dispatch is a behaviour that stops being tested.
+    ⚠️ IT ALSO CARRIES r178's `mark_pin_played` — the guard against the
+    2026-08-28 15:00 stack of five butterflies in ninety seconds — which the
+    in-dispatch copy NEVER called. Keeping this one keeps the guard on the
+    live path by construction rather than by my remembering to copy it."""
     try:
         chain = ctx.get("chain")
         if chain is None:
@@ -5302,46 +5362,41 @@ def main_loop(state: BotState):
                         _execute_condor_leg(_sl2, state, ctx)
                 elif _auth_why:
                     _plan_skip_all(_auth_why)
-                # r161 — the butterfly is EXEMPT from all of the above: its
-                # plan runs every tick of its slot, and a fire is ADDED to
-                # whatever is open.
-                _attempt_butterfly(ctx, ms, state, additive=True)
-                # OTV4TEST r12 — the hunt beside whatever is open; and the sweep on a
-                # LIVE HANDOFF GRANT even while an ORB is open (the slot yields)
-                _attempt_hunt(ctx, ms, state, orb=get_orb_engine().data, chain=ctx.get("chain"),
-                              now_hhmm=now_et().strftime("%H:%M"),
-                              atr_pct=float(getattr(ctx.get("vol"), "atr_pct", 0.0) or 0.0))
-                _attempt_sweep_on_grant(ctx, ms, state)
-                # ── 🔴 r197 — A BUTTERFLY BLOCKS NOTHING ──────────────────
-                # Operator, 2026-08-31: butterflies "are a rare opportunistic
-                # setup that does not affect our other trades. The only thing
-                # that should block it are the catastrophic cap or the open
-                # window." r161 made the butterfly take no slot on ENTRY;
-                # nothing made it reciprocal, so an open butterfly still threw
-                # the whole box into the second-leg-only branch. On 2026-08-31
-                # that cost MU, NFLX and TSLA their entire credit session.
-                # ⚠️ MANAGEMENT ALREADY RAN ABOVE. This only adds the ENTRY
-                # half back — flipping the branch itself would have left a
-                # butterfly-only box unmanaged, with no trail and no stop.
-                # ⚠️ CREDIT IS STILL BLOCKED BY AN OPEN ORB OR RUNAWAY DEBIT.
-                # has_blocking_position() counts everything except a butterfly,
-                # so that gate is untouched.
-                # ⚠️ r40 LEFT THIS GATE STANDING, DELIBERATELY. Removing it is
-                # the operator's ruling — *"I WANT sweep to be able to fire
-                # while we have an active runaway in progress"* — and the
-                # admission table's per-type caps are built to replace it. What
-                # stopped r40 is that the three calls ABOVE are NOT redundant
-                # with `attempt_new_entry`: `_attempt_butterfly` here is r161's
-                # ADDITIVE, EXEMPT path (asked every tick of its slot, a fire
-                # APPENDS), while `attempt_new_entry`'s own butterfly sits
-                # behind `elif signal is None:` and COMPETES for the slot. Same
-                # strategy, two different questions. Running both unguarded
-                # asks three strategies twice a tick; deleting these loses the
-                # exemption. That de-duplication is its own revision — see
-                # ADM.1 — and it is not something to improvise at 23:00 on a
-                # box that wakes up trading. The gate stays until then.
-                if not pos_mgr.has_blocking_position():
-                    attempt_new_entry(ctx, ms, state)
+                # ══ r43 — ADM.1 CLOSED: ENTRY RUNS WITH A POSITION OPEN ═══
+                # Operator, 2026-09-18: *"I want the orb, hunt, breakout &
+                # sweep all able to fire & non-competing. We only have one
+                # session at a time so we need to maximize every opportunity
+                # on these setups. In live trading, we will revert back to
+                # hierarchy-based."*
+                #
+                # 🔴 `has_blocking_position()` IS GONE FROM HERE. It was the
+                # last of r35's seven mechanisms still deciding what may open,
+                # and on 2026-09-18 it was visibly costing setups: at 10:06:32
+                # the board read "slot claimed by RunawayContinuation" for
+                # TrendCreditSpread, GEXPinButterfly and ATPButterfly — three
+                # strategies not refused on their merits, just crowded out.
+                # The admission table's per-type caps replace it (sweep 2,
+                # every other type 1), and `blocks`/`blocked_by` are named
+                # sets, empty by his ruling.
+                #
+                # 🔑 THE THREE DIRECT CALLS THAT STOOD HERE ARE GONE, AND r40
+                # WAS RIGHT TO REFUSE TO DELETE THEM THEN. They were NOT
+                # redundant while `attempt_new_entry` ran a winner-take-all
+                # cascade: `_attempt_butterfly` was r161's ADDITIVE EXEMPT path
+                # while the in-dispatch butterfly sat behind `elif signal is
+                # None:` and COMPETED. r43 removed the cascade, so the
+                # in-dispatch path IS the additive path now and the duplication
+                # is real rather than apparent. `_attempt_hunt` was being asked
+                # TWICE a tick once this gate came out — here and inside
+                # `attempt_new_entry` — which is the double-ask r40 named.
+                # `_attempt_sweep_on_grant` is NOT redundant (it needs a live
+                # handoff grant, constrains the side, and consumes the grant),
+                # so it MOVED into `attempt_new_entry` rather than being cut.
+                #
+                # ⚠️ MANAGEMENT ALREADY RAN ABOVE and is untouched. This branch
+                # still manages first; what changed is that it no longer
+                # REFUSES to also enter.
+                attempt_new_entry(ctx, ms, state)
             else:
                 # 🔴 r213 (chunk E) — SAY WHY THE MANAGEMENT PLANS ARE QUIET.
                 # They run only in the branch above; with nothing open they are

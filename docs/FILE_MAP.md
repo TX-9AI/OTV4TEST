@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-293 Python modules across 13 local packages.
+294 Python modules across 13 local packages.
 
-**Reached by:** 114 imported · 11 declared entry points · 86 referenced from a script, unit or doc but never imported · **82 by nothing here**.
+**Reached by:** 114 imported · 11 declared entry points · 87 referenced from a script, unit or doc but never imported · **82 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -552,7 +552,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_atp_butterfly.py`
 - **calls:** `database/trade_logger.py`, `derived/__init__.py`, `derived/anchors.py`, `main.py`, `strategy/__init__.py`, `strategy/atp_butterfly.py`, `strategy/atp_butterfly_plan.py`, `strategy/gex_pin_butterfly.py`, `strategy/management.py`, `strategy/plan.py`
-- **called by:** (not imported) — referenced in `docs/PLAN_SPEC.md`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/PLAN_SPEC.md`
 
 ### `tests/check_atr_units.py`
 - **calls:** `analysis/volatility_engine.py`, `strategy/orb_strategy.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`
@@ -789,6 +789,10 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tests/check_no_stray_duplicates.py`
 - **calls:** (none)
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+
+### `tests/check_noncompete.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_not_asked_reasons.py`
 - **calls:** `strategy/__init__.py`, `strategy/plan.py`

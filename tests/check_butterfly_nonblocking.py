@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-"""tests/check_butterfly_nonblocking.py  v1.0
+"""tests/check_butterfly_nonblocking.py  v1.1
 A BUTTERFLY BLOCKS NOTHING. AN ORB OR RUNAWAY DEBIT STILL BLOCKS CREDIT.
 
+v1.1  2026-09-18  OTV4TEST r43 — B5b's RULE IS UNCHANGED; ITS MECHANISM IS
+      GONE. It proved a butterfly-only box reached entry by asserting the gate
+      that let it through. ADM.1 removed the gate, so EVERY box is asked — the
+      rule holds more strongly than when it was written, and the old assertion
+      would have failed on code that satisfies it completely.
 v1.0  2026-08-31  r197 — born red at r196 (`has_blocking_position` does not
       exist there, and an open butterfly makes the box refuse every entry).
 
@@ -123,8 +128,25 @@ def main():
     src = open(os.path.join(_root, "main.py"), encoding="utf-8").read()
     check("B5 the entry path appends whenever anything is open",
           "if additive or _pm.has_open_position():" in src)
-    check("B5b a butterfly-only box is still asked for entries",
-          "if not pos_mgr.has_blocking_position():" in src)
+    # ⚠️ r43 — B5b's RULE IS UNCHANGED; ITS MECHANISM IS GONE. It asserted the
+    # butterfly-only box reached `attempt_new_entry` by checking the gate that
+    # let it through: `if not pos_mgr.has_blocking_position():`. ADM.1 removed
+    # that gate entirely, so EVERY box is asked for entries, butterfly-only or
+    # not — the rule holds more strongly than when it was written. Asserting the
+    # old mechanism would now fail on code that satisfies the rule completely.
+    import ast as _a
+    _ml = next(n for n in _a.walk(_a.parse(src))
+               if isinstance(n, _a.FunctionDef) and n.name == "main_loop")
+
+    def _calls_entry(body):
+        return any(isinstance(c, _a.Call) and getattr(c.func, "id", "") == "attempt_new_entry"
+                   for st in body for c in _a.walk(st))
+    _both = any(isinstance(n, _a.If) and n.orelse
+                and _calls_entry(n.body) and _calls_entry(n.orelse)
+                for n in _a.walk(_ml))
+    check("B5b a butterfly-only box is still asked for entries "
+          "(r43: EVERY box is — entry runs in both branches)",
+          _both and "if not pos_mgr.has_blocking_position():" not in src)
 
     print()
     if _fails:
