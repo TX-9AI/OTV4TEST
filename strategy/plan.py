@@ -1,5 +1,18 @@
 """
-strategy/plan.py  v2.0
+strategy/plan.py  v2.1
+v2.1  2026-09-18  OTV4TEST r42 — THE OPERATOR'S ASYMMETRY. 2026-09-18: *"if
+      something other than the window made it inactive it should declare that,
+      but if it's the window, I just need to see that once not repeatedly."*
+      WINDOW is announced ONCE PER INACTIVE EPISODE (an episode ends when the
+      plan next goes WORKING); every other gate declares itself.
+      ⚠️ IT NEEDS A PER-EPISODE SET, NOT A LAST-VALUE SLOT, AND THAT IS THE
+      WHOLE SUBTLETY. With one remembered state, `window -> cap -> window`
+      RE-ANNOUNCES window, because the slot holds `cap` and window looks like a
+      change. S10 is that exact sequence and demands two rows, not three.
+      ⚠️ KEYED ON THE GATE, NEVER ON THE PROSE. `skipped()` takes `gate` as its
+      own field; recovering it by parsing the reason sentence is how this rule
+      would silently stop working the first time someone reworded a message.
+      S12 phrases the window refusal three ways and demands one row.
 v2.0  2026-09-18  OTV4TEST r41 — EVERY PLAN IS WORKING OR INACTIVE, AND INACTIVE
       SAYS SO ONCE. Operator, 2026-09-18: *"Because we know a plan is inactive
       outside its window, I don't need 10k rows explaining why. I just need 1,
@@ -842,17 +855,59 @@ _ASKED: Dict[str, Any] = {}        # strategy -> result summary
 # is module state, so a bounce re-announces — which is correct, because after a
 # restart nobody can assume the operator saw the pre-restart row.
 _STATUS: Dict[str, Tuple[str, str, str]] = {}   # strategy -> (day, verdict, reason)
+_SKIP_GATE: Dict[str, str] = {}                # strategy -> admission gate name
+_SEEN: Dict[str, set] = {}                     # strategy -> tokens announced THIS episode
+_SEEN_DAY: Dict[str, str] = {}                 # strategy -> the day that episode belongs to
+
+# 🔑 r42 — THE OPERATOR'S ASYMMETRY, STATED AS A RULE.
+# 2026-09-18: *"if something other than the window made it inactive it should
+# declare that, but if it's the window, I just need to see that once not
+# repeatedly."*
+#   · WINDOW is the expected, boring state — announced ONCE per inactive
+#     episode, where an episode ends when the plan next goes WORKING.
+#   · ANY OTHER GATE is news — a cap break, a type cap, a tries cap — and
+#     declares itself when it becomes the reason.
+# ⚠️ IT NEEDS A SET, NOT A LAST-VALUE SLOT, AND THAT IS THE WHOLE SUBTLETY.
+# With one slot, `window -> cap -> window` re-announces window, because the
+# slot now holds `cap` and window "changed". A per-episode SET remembers that
+# window was already said, so the return to window stays silent — which is
+# what "once, not repeatedly" actually requires.
+QUIET_GATES = frozenset({"window"})
 
 
-def _status_changed(name: str, day: str, verdict: str, reason: str) -> bool:
-    """True when this (day, verdict, reason) is NEW for `name` — i.e. write it.
+def _episode(name: str, day: str) -> set:
+    """The set of reasons already announced in this inactive episode."""
+    if _SEEN_DAY.get(name) != day:
+        _SEEN_DAY[name] = day
+        _SEEN[name] = set()
+    return _SEEN.setdefault(name, set())
+
+
+def _status_changed(name: str, day: str, verdict: str, reason: str,
+                    gate: str = "") -> bool:
+    """True when this state is NEW for `name` — i.e. write a row.
 
     Records the state as a side effect, so a caller that gets True has already
     claimed the transition and a second call in the same state returns False."""
     cur = (day, verdict, reason)
-    if _STATUS.get(name) == cur:
-        return False
+    prev = _STATUS.get(name)
     _STATUS[name] = cur
+
+    if verdict == "WORKING":
+        # the episode ends: everything may be announced afresh next time it
+        # goes quiet, because the operator has seen it trading since.
+        _SEEN[name] = set()
+        _SEEN_DAY[name] = day
+        return prev != cur
+
+    seen = _episode(name, day)
+    # a QUIET gate collapses to its gate name, so every window refusal in one
+    # episode is the same token however the sentence is phrased. Anything else
+    # carries its full reason, so a DIFFERENT cap break still declares itself.
+    token = gate if gate in QUIET_GATES else (verdict, gate, reason)
+    if token in seen:
+        return False
+    seen.add(token)
     return True
 
 
@@ -862,11 +917,20 @@ def plan_status(name: str) -> str:
     return "unknown" if st is None else ("working" if st[1] == "WORKING" else "inactive")
 
 
-def skipped(strategy: str, reason: str) -> None:
+def skipped(strategy: str, reason: str, gate: str = "") -> None:
     """main.py: this strategy is NOT being asked this tick, and here is why.
-    Recorded at close_tick as NOT ASKED. Never raises."""
+    Recorded at close_tick as INACTIVE. Never raises.
+
+    r42 — `gate` is the admission gate that refused it. It is kept SEPARATE
+    from the prose because the operator's rule keys on it:
+      · gate == "window"  -> announced ONCE per inactive episode
+      · anything else     -> declares itself
+    Recovering a gate by parsing `reason` would make that rule depend on
+    message wording, which is the kind of coupling that fails silently."""
     try:
-        _SKIPPED[DISPATCH_ALIAS.get(strategy, strategy)] = reason
+        k = DISPATCH_ALIAS.get(strategy, strategy)
+        _SKIPPED[k] = reason
+        _SKIP_GATE[k] = gate or ""
     except Exception:                                           # noqa: BLE001
         pass
 
@@ -966,19 +1030,21 @@ def close_tick(store=None, symbol: str = "") -> int:
                           "that does not name this strategy. That is a "
                           "dispatch gap, not a market condition")
                 verdict = "INACTIVE"
+                _gate = _SKIP_GATE.get(name, "")
                 # 🔑 r41 — ONE ROW, THEN SILENCE UNTIL THE STATE CHANGES.
                 # Operator: *"If inactive it should just say that, once, until
                 # it becomes active."* The verdict is INACTIVE rather than NOT
                 # ASKED because he ruled on that wording too (r213): *"I don't
                 # like 'NOT ASKED' as a reason. It makes no sense."* A status is
                 # what he asked for, and a status is what the column now holds.
-                if not _status_changed(name, _day, verdict, why):
+                if not _status_changed(name, _day, verdict, why, _gate):
                     continue
             if write_row(store, symbol, ts, name, verdict, why):
                 written += 1
             plan._last = (n, verdict, why)
     finally:
         _SKIPPED.clear()
+        _SKIP_GATE.clear()
         _ASKED.clear()
     return written
 

@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# devtools.sh  v3.3  — OTV4TEST box menu
+# devtools.sh  v3.4  — OTV4TEST box menu
+# v3.4  2026-09-18  OTV4TEST r42 — PLAN STATUS NOW: what every plan is doing at
+#       this moment and since when. Operator: "can you just have each plan report
+#       its last known status & a time stamp?" ⚠️ It is the TRANSITION STREAM READ
+#       BACKWARDS, not a new table and not restored per-tick logging — r41 made the
+#       board edge-triggered, so the newest plan_tick row for a strategy IS its last
+#       known status and the moment it changed. Continuous logging would cost ~12k
+#       rows a day (measured 2026-09-17) to repeat what the newest row already says.
+#       It sits BESIDE the existing PLAN BOARD, which is a chosen day's history.
 # v3.3  2026-09-18  OTV4TEST r37 — THE BAKE WAS HALF A BAKE. It restarted the BOT
 #       only, and it never purged __pycache__ — the one thing the operating notes
 #       name as "the single most common cause of I pushed the fix but it is still
@@ -120,6 +128,14 @@ s_plan_board() {
   _sql "$DERIVED_DB" "SELECT strategy, verdict, COUNT(*) n, ROUND(MIN(r_now),2) r_lo, ROUND(MAX(r_now),2) r_hi, ROUND(AVG(underlying),2) px FROM plan_tick WHERE ts_epoch >= $ET_FROM AND ts_epoch < $ET_TO AND verdict <> 'DORMANT' GROUP BY strategy, verdict ORDER BY strategy, verdict;"
   echo; echo "  WHICH CHECK FAILED, AND HOW OFTEN:"
   _sql "$DERIVED_DB" "SELECT strategy, check_name, verdict, COUNT(*) n, ROUND(MIN(value),2) lo, ROUND(MAX(value),2) hi FROM plan_check WHERE ts_epoch >= $ET_FROM AND ts_epoch < $ET_TO GROUP BY strategy, check_name, verdict ORDER BY strategy, check_name, verdict;"; pause; }
+s_plan_status() {
+  # r42 — WHAT EVERY PLAN IS DOING RIGHT NOW. Operator, 2026-09-18: "can you
+  # just have each plan report its last known status & a time stamp?"
+  # ⚠️ IT IS THE TRANSITION STREAM READ BACKWARDS, NOT A NEW TABLE. r41 made the
+  # board edge-triggered, so the NEWEST plan_tick row for a strategy IS its last
+  # known status and the moment it changed. Nothing is written.
+  echo; "$PY" "$REPO/tools/plan_board.py" "$@"; pause; }
+s_plan_status_all() { echo; "$PY" "$REPO/tools/plan_board.py" --all; pause; }
 s_plan_rows() {
   echo; echo "  Source: derived_store.db -> plan_tick, the ROWS (newest last) — the per-tick narrative"; _ask_day || { pause; return; }
   read -rp "  Strategy (ENTER = all): " S; local W=""; [ -n "$S" ] && W=" AND strategy='$S'"
@@ -427,6 +443,7 @@ MENU=(
   "SECTION|SENSORS (this box's derived stores; read-only)"
   "ITEM|Manifold health board|s_manifold"
   "ITEM|Strategy notes       what each engine SAW|s_notes"
+  "ITEM|PLAN STATUS NOW       what each plan is doing|s_plan_status"
   "ITEM|PLAN BOARD           every plan, every check|s_plan_board"
   "ITEM|PLAN ROWS            the per-tick narrative|s_plan_rows"
   "ITEM|Plan ledger          intent + terminal reason|s_plan_ledger"

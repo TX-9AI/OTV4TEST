@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_admission_wired.py  v1.0
+tests/check_admission_wired.py  v1.1
 THE ADMISSION TABLE IS LIVE: A STRATEGY OUTSIDE ITS WINDOW IS NEVER ASKED.
 
+v1.1  2026-09-18  OTV4TEST r42 — A8 accepts the one-pass accessor. It named
+      `eligible_now` specifically; r42 asks via `logging_state()` and A8 went red
+      on code that satisfies its own rule. Re-pointed at the rule, kept closed.
 v1.0  2026-09-17  OTV4TEST r40 — born red at r39 (ae63024), where `_safe_strategy`
       had no admission test at all and `attempt_new_entry` never called
       `eligible_now()`.
@@ -115,8 +118,19 @@ def main():
           cleared_first, "before any gate can return past it")
 
     # ── A8 — and it actually calls the position manager ────────────────────
+    # ⚠️ r42 — A CLOSED SET OF ACCESSORS, NOT ONE METHOD NAME. What A8 exists
+    # to prove is that `attempt_new_entry` ASKS THE POSITION MANAGER rather than
+    # deciding for itself. r42 moved that call from `eligible_now()` to
+    # `logging_state()` — which returns the binary AND the refusing gate in one
+    # walk — and A8 went red on code that satisfies it exactly. Pinning the
+    # spelling of a correct call is the same fault as pinning a reason string
+    # (r41's C7) or a character offset (r39's T6): the rule is unchanged, so
+    # the assertion moves to the rule. It stays CLOSED — an unknown accessor,
+    # or none, still fails.
+    ASKS = {"logging_state", "eligible_now"}
+
     def calls_eligible():
-        return any(isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "eligible_now"
+        return any(isinstance(n, ast.Call) and getattr(n.func, "attr", "") in ASKS
                    for n in ast.walk(fn_ane))
     guard("A8 attempt_new_entry asks the position manager which strategies may be asked",
           calls_eligible, "r35's table is READ, not merely present")

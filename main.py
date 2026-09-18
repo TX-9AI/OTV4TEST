@@ -1,5 +1,13 @@
 """
-main.py  v4.53
+main.py  v4.54
+v4.54 2026-09-18  OTV4TEST r42 — ADMISSION IS ONE PASS. `attempt_new_entry`
+      asked `eligible_now()` for the LIST and then `why_not()` per refused
+      strategy for the REASON — two calls, the same facts passed twice, and
+      nothing making them agree. Pass one fact differently to the second call
+      and the board reports a gate that is not the one that actually refused:
+      wrong in the log, and unfalsifiable FROM the log. `logging_state()`
+      returns both from a single walk. `_plan_skip` now carries the GATE as its
+      own field, because the board keys the say-it-once rule on it.
 v4.53 2026-09-18  OTV4TEST r41 — A REFUSED STRATEGY NAMES THE GATE THAT REFUSED
       IT. r40 gated the dispatch on the admission table but told the plan board
       nothing, so a strategy refused for being outside its window had no reason
@@ -2922,12 +2930,18 @@ def _note_evaluation(name: str, ctx, signal) -> None:
         pass
 
 
-def _plan_skip(name: str, reason: str) -> None:
+def _plan_skip(name: str, reason: str, gate: str = "") -> None:
     """r146 — tell the plan board a strategy is NOT asked this tick. Wrapped;
-    the board is a contributor and can never affect dispatch."""
+    the board is a contributor and can never affect dispatch.
+
+    r42 — `gate` is the ADMISSION GATE that refused it ("window",
+    "catastrophic_cap", …), passed as its own field. The board keys the
+    operator's say-it-once rule on it, and recovering a gate by parsing the
+    reason sentence is how that rule would quietly stop working the first time
+    someone reworded a message."""
     try:
         from strategy import plan as _plan_board
-        _plan_board.skipped(name, reason)
+        _plan_board.skipped(name, reason, gate=gate)
     except Exception:                                          # noqa: BLE001
         pass
 
@@ -3738,7 +3752,14 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
         _tries = {}
         for _bn in ("GEXPinButterfly", "ATPButterfly"):
             _tries[_bn] = 1 if _one_per_session_used(_bn) else 0
-        _eligible = _pm_adm.eligible_now(
+        # r42 — ONE PASS. `logging_state()` returns the binary AND the gate for
+        # every strategy in the table, from a single walk. It replaced
+        # `eligible_now()` + a `why_not()` loop: two calls, the same facts
+        # passed twice, and nothing making them agree. Pass one fact slightly
+        # differently to the second call and the board reports a gate that is
+        # not the one that actually refused — wrong in the log, and
+        # unfalsifiable from the log.
+        _state = _pm_adm.logging_state(
             (_adm_now.hour, _adm_now.minute),
             trading_day     = True,
             orb_established = bool(_orb_d and _orb_d.orb_high and _orb_d.orb_low),
@@ -3746,28 +3767,16 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
             past_hard_close = _adm_now.time() >= HARD_CLOSE,
             tries_used      = _tries,
         )
+        _eligible = [n for n, (ok, _g, _w) in _state.items() if ok]
         _set_admission(_eligible)
-        # 🔑 r41 — A REFUSED STRATEGY NAMES THE GATE THAT REFUSED IT.
-        # Without this the board has no reason for it and falls back to "no
-        # reason recorded … a dispatch gap, not a market condition" — wording
-        # that is deliberately a DEFECT REPORT, so a perfectly ordinary
-        # out-of-window strategy would read as a bug. `why_not()` exists for
-        # exactly this and returns the FIRST gate that refused, which is the
-        # one the operator wants named.
-        for _nm in _pm_adm_rules:
-            if _nm in _eligible:
-                continue
-            try:
-                _v = _pm_adm.why_not(
-                    _nm, (_adm_now.hour, _adm_now.minute),
-                    trading_day     = True,
-                    orb_established = bool(_orb_d and _orb_d.orb_high and _orb_d.orb_low),
-                    cap_intact      = not risk_mgr.is_halted(),
-                    past_hard_close = _adm_now.time() >= HARD_CLOSE,
-                    tries_used      = int(_tries.get(_nm, 0)))
-                _plan_skip(_nm, f"inactive — {_v.gate}: {_v.why}")
-            except Exception:                                  # noqa: BLE001
-                _plan_skip(_nm, "inactive — admission refused (gate unnamed)")
+        # 🔑 A REFUSED STRATEGY NAMES THE GATE THAT REFUSED IT, and the GATE is
+        # passed as its own field rather than buried in prose — `strategy/plan.py`
+        # keys the operator's "say it once" rule on it (window once per inactive
+        # episode; anything else declares itself), and parsing a sentence to
+        # recover a gate name is how that rule would silently stop working.
+        for _nm, (_ok, _gate, _why) in _state.items():
+            if not _ok:
+                _plan_skip(_nm, f"inactive — {_gate}: {_why}", gate=_gate)
     except Exception as exc:                                   # noqa: BLE001
         # ⚠️ FAILS OPEN AND SAYS SO. `open_by_strategy()` RAISES rather than
         # returning {} (r35, deliberately — an empty map reads as "nothing is

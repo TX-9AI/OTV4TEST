@@ -1,8 +1,19 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_status.py  v1.0
+tests/check_plan_status.py  v1.1
 EVERY PLAN IS WORKING OR INACTIVE, AND INACTIVE SAYS SO ONCE.
 
+v1.1  2026-09-18  OTV4TEST r42 — S9-S12 for the operator's asymmetry: window is
+      announced ONCE PER INACTIVE EPISODE, every other gate declares itself.
+      S10 is `window -> cap -> window` and demands TWO rows — the sequence a
+      last-value slot gets wrong by re-announcing window, which is why the
+      implementation needs a per-episode SET. S12 phrases the window refusal
+      three ways and demands one row, pinning that the rule keys on the GATE
+      and never on the prose.
+      ⚠️ AND `fresh()` NOW CLEARS EVERY MODULE DICT. It cleared `_STATUS` only,
+      so `_SEEN`/`_SEEN_DAY` LEAKED BETWEEN CASES and S10 read an earlier
+      case's episode — the same sequence passed standalone and failed in the
+      suite, which is the more dangerous direction of that fault.
 v1.0  2026-09-18  OTV4TEST r41 — born red at r40 (a3ff8b9), where `close_tick`
       wrote a NOT ASKED row for every idle plan on EVERY tick.
 
@@ -62,12 +73,18 @@ def main():
     P.ensure_tables(st)
     P.bind_store(st)
 
+    N = "TrendCreditSpread"
+
     def fresh():
         P.REGISTRY.clear()
         # ⚠️ TOLERANT ON PURPOSE: at the older HEAD there is no `_STATUS`, and
         # a setup helper that raises turns a BORN-RED proof into a traceback —
         # the fault this repo has now shipped three times (r32, r37, r39).
-        getattr(P, "_STATUS", {}).clear()
+        # ⚠️ EVERY module-level dict, or state LEAKS BETWEEN CASES and a later
+        # case silently reads an earlier one's episode. That is what made S10
+        # report 1 row when the same sequence passed standalone.
+        for _d in ("_STATUS", "_SEEN", "_SEEN_DAY", "_SKIPPED", "_SKIP_GATE", "_ASKED"):
+            getattr(P, _d, {}).clear()
         st.conn.execute("DELETE FROM plan_tick")
         P.Plan("TrendCreditSpread", ("age",))
 
@@ -129,6 +146,63 @@ def main():
           lambda: len(r6) == 2 and "cap" in r6[1][1],
           f"{len(r6)} row(s)")
 
+    # ══ S9-S12 — THE OPERATOR'S ASYMMETRY (r42) ═══════════════════════════
+    # 2026-09-18: *"if something other than the window made it inactive it
+    # should declare that, but if it's the window, I just need to see that once
+    # not repeatedly."*
+    # ⚠️ TICKS ARE 1-BASED HERE. `begin_tick` does `float(ts or time.time())`,
+    # so tick 0 is falsy and silently takes the wall clock — the row then sorts
+    # out of order and every index assertion below it is meaningless. Harmless
+    # in production (no real tick is epoch 0); it cost a false smoke failure.
+    def gtick(n, gate=None, why=None, working=False):
+        P.begin_tick(float(n))
+        if working:
+            P.write_row(st, "TST", float(n), N, "ARMED", "working")
+            P.REGISTRY[N]._last = (P.tick_now()[0], "ARMED", "working")
+        elif gate:
+            P.skipped(N, f"inactive — {gate}: {why or gate}", gate=gate)
+        P.close_tick(st, "TST")
+
+    fresh()
+    for i in range(1, 201):
+        gtick(i, "window", "outside 11:30-15:00")
+    guard("S9 TWO HUNDRED ticks outside the window -> exactly ONE row",
+          lambda: len(rows()) == 1, f"{len(rows())} row(s)")
+
+    # 🔑 THE CASE A LAST-VALUE SLOT GETS WRONG. With one remembered state,
+    # window -> cap -> window RE-ANNOUNCES window, because the slot now holds
+    # `cap` and window looks like a change. It needs a per-episode SET.
+    fresh()
+    for i in range(1, 6):
+        gtick(i, "window", "outside 11:30-15:00")
+    for i in range(6, 11):
+        gtick(i, "catastrophic_cap", "catastrophic cap reached")
+    for i in range(11, 21):
+        gtick(i, "window", "outside 11:30-15:00")
+    r9 = rows()
+    guard("S10 window -> cap -> window is TWO rows: window once, then the cap",
+          lambda: len(r9) == 2 and "catastrophic_cap" in r9[1][1],
+          f"{len(r9)} row(s) — a last-value slot would write 3")
+
+    fresh()
+    for i in range(1, 4):
+        gtick(i, "window", "outside 11:30-15:00")
+    for i in range(4, 7):
+        gtick(i, "max_open_of_type", "2 already open")
+    for i in range(7, 10):
+        gtick(i, "tries_per_session", "1 try used")
+    guard("S11 each DIFFERENT non-window gate declares itself — 3 rows",
+          lambda: len(rows()) == 3, f"{len(rows())} row(s)")
+
+    # the gate is keyed, not the prose — rewording must not re-announce
+    fresh()
+    gtick(1, "window", "outside 11:30-15:00")
+    gtick(2, "window", "outside 11:30 - 15:00 ET")
+    gtick(3, "window", "not in window")
+    guard("S12 window REWORDED three ways is still ONE row — keyed on the GATE",
+          lambda: len(rows()) == 1,
+          "parsing prose for the gate is how this rule would silently stop working")
+
     # ── S7 — the status is exposed, not merely internal ────────────────────
     guard("S7 plan_status() answers working/inactive/unknown",
           lambda: P.plan_status("TrendCreditSpread") == "inactive"
@@ -137,7 +211,9 @@ def main():
     # ── S8 — main.py names the gate so no table strategy hits the default ──
     src = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
     guard("S8 admission names the refusing gate for every strategy it refuses",
-          lambda: "why_not(" in src and 'f"inactive — {_v.gate}: {_v.why}"' in src,
+          lambda: "logging_state(" in src
+          and 'f"inactive — {_gate}: {_why}"' in src
+          and "gate=_gate" in src,
           "otherwise an out-of-window plan reads as a dispatch-gap DEFECT")
 
     print()

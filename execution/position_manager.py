@@ -1,5 +1,19 @@
 """
-execution/position_manager.py  v5.0
+execution/position_manager.py  v5.1
+v5.1  2026-09-18  OTV4TEST r42 — `logging_state()`: the BINARY AND THE GATE for
+      every strategy, from ONE walk of the table. `main.py` used to ask
+      `eligible_now()` for the list and `why_not()` per refused strategy for the
+      reason — two calls, the same facts passed twice, and nothing making them
+      agree. Pass one fact differently to the second and the board names a gate
+      that did not refuse: wrong in the log and unfalsifiable from it.
+      `eligible_now()` is now a thin view over it, so "eligible" and "why not"
+      are two readings of one object rather than two computations.
+      ⚠️ STILL PURE, AND DELIBERATELY SO. Nothing is remembered here. The
+      operator's "say it once" rule lives in `strategy/plan.py` because
+      deduplication is a property of the thing that WRITES ROWS — the only
+      thing that knows what it already wrote. A gate that remembered would stop
+      being a function of its Facts, and `check_admission.py` could no longer
+      drive all 47 combinations without a tick loop or a store.
 v5.0  2026-09-17  OTV4TEST r35 — THE ONE AND ONLY POSITION MANAGER: IT KNOWS WHAT
       IS OPEN AND IT DECIDES WHAT MAY OPEN. Operator, 2026-09-17: *"attempt_new_entry
       is a position manager function"*, and earlier, *"the gates for our 1 and only
@@ -458,35 +472,61 @@ class PositionManager:
                 out[name] = out.get(name, 0) + 1
         return out
 
-    def eligible_now(self, now_et: tuple, *, trading_day: bool = True,
-                     orb_established: bool = False, cap_intact: bool = True,
-                     past_hard_close: bool = False,
-                     tries_used: Optional[Mapping[str, int]] = None,
-                     table: Optional[dict] = None) -> list:
-        """The strategies that MAY BE ASKED this tick, in table order.
+    def logging_state(self, now_et: tuple, *, trading_day: bool = True,
+                      orb_established: bool = False, cap_intact: bool = True,
+                      past_hard_close: bool = False,
+                      tries_used: Optional[Mapping[str, int]] = None,
+                      table: Optional[dict] = None) -> dict:
+        """{strategy: (active: bool, gate: str, why: str)} — ONE PASS, ONE TRUTH.
 
-        🔑 IT ANSWERS, IT DOES NOT DRIVE. The caller iterates this list and asks
-        each plan; this never reaches into `strategy/`. That is what keeps the
-        one-way flow intact — position manager feeds the plans, the plans feed
-        the strategies.
-        🔑 AND IT IS WHY THE `NOT ASKED` ROWS DISAPPEAR. A strategy outside its
-        window is not in this list, so it is never asked, so it writes nothing.
-        There is no per-tick refusal to journal because there is no refusal —
-        the plan did not run. (10,116 rows of `NOT ASKED` were written on
-        2026-09-17 alone, three of them on every one of 1,460 ticks.)"""
+        ACTIVE   — the plan is asked this tick and logs per tick.
+        INACTIVE — not asked; `gate` NAMES the rule that refused it
+                   ("window", "max_open_of_type", "tries_per_session",
+                   "catastrophic_cap", "orb_range", "blocked_by", …).
+
+        🔑 WHY THIS REPLACED TWO CALLS. `main.py` used to ask `eligible_now()`
+        for the LIST and then `why_not()` per refused strategy for the REASON —
+        two calls, the same facts passed twice, and nothing making them agree.
+        That is a seam: pass a slightly different fact to the second call and
+        the board reports a gate that is not the one that actually refused,
+        which is unfalsifiable from the log. One call, one object, and they
+        cannot diverge.
+
+        ⚠️ STILL PURE. This is `decide()` over the whole table and NOTHING IS
+        REMEMBERED — same facts in, same map out. That purity is the reason
+        `check_admission.py` can drive all 47 combinations with no tick loop and
+        no store, and it is why the "say it once" half of the operator's ruling
+        lives in `strategy/plan.py` and NOT here: deduplication is a property of
+        the thing that WRITES ROWS, which is the only thing that knows what it
+        already wrote. A gate that remembered would stop being testable.
+        """
         tbl = table if table is not None else rules()
         tried = dict(tries_used or {})
         openmap = self.open_by_strategy()
-        out = []
+        out: dict = {}
         for name in tbl:
             v = decide(Facts(strategy=name, now_et=now_et, trading_day=trading_day,
                              orb_established=orb_established, cap_intact=cap_intact,
                              past_hard_close=past_hard_close,
                              open_by_strategy=openmap,
                              tries_used=int(tried.get(name, 0))), tbl)
-            if v.admitted:
-                out.append(name)
+            out[name] = (bool(v.admitted), v.gate, v.why)
         return out
+
+    def eligible_now(self, now_et: tuple, **kw) -> list:
+        """The strategies that MAY BE ASKED this tick, in table order.
+
+        🔑 IT ANSWERS, IT DOES NOT DRIVE. The caller iterates this list and asks
+        each plan; this never reaches into `strategy/`. That is what keeps the
+        one-way flow intact — position manager feeds the plans, the plans feed
+        the strategies.
+        ⚠️ A THIN VIEW OF `logging_state()` SINCE r42, deliberately: when the
+        list and the reasons came from two separate walks of the table they
+        could disagree about the same tick. There is one walk now and this is
+        a filter over its result, so "eligible" and "why not" are two readings
+        of one object rather than two computations.
+        """
+        return [n for n, (ok, _g, _w) in self.logging_state(now_et, **kw).items() if ok]
 
     def why_not(self, strategy: str, now_et: tuple, **kw):
         """The Verdict for ONE strategy — the named gate that refused it.
