@@ -1,5 +1,12 @@
 """
-data/candle_feed.py  v4.13
+data/candle_feed.py  v4.14
+v4.14 2026-09-18  OTV4TEST r52 — THE WAL HAD NO CEILING. `journal_size_limit`
+      defaulted to -1 and SQLite reuses the WAL in place rather than shrinking
+      it, so the file sits at its high-water mark forever: MEASURED
+      `feed_store.db-wal` at 1,581 MB beside a 1.63 GB database, on a box with
+      3.4 GB free. Truncating by hand reclaimed 1.5 GB and the limit REVERTED on
+      the next open, because the pragma is per connection. Pinned at 128 MB on
+      the connection every writer uses.
 v4.13  2026-09-18  OTV4TEST r36 — THE UNDERLYING'S OWN QUOTE IS SUBSCRIBED
       (FEED.2, open since 2026-09-13). r64's manifold took FOUR of the five
       streams for the ticker — Trade, TimeAndSale, Summary, Underlying — and left
@@ -443,6 +450,21 @@ class FeedStore:
         self._lock = threading.Lock()
         self.conn.execute("PRAGMA journal_mode=WAL;")
         self.conn.execute("PRAGMA synchronous=NORMAL;")
+        # 🔴 r52 — THE WAL HAD NO CEILING AND GREW TO 1.58 GB. `journal_size_limit`
+        # defaults to -1 (unbounded), and SQLite REUSES the WAL in place rather
+        # than shrinking it — so the file sits at its own high-water mark
+        # forever. MEASURED 2026-09-18: `feed_store.db-wal` at 1,581 MB beside a
+        # 1.63 GB database on a box with 3.4 GB free. The repo had already paid
+        # for this once — `warehouse/retention_purge.py`'s own notes record
+        # "1.6 GB feed_store.db-wal beside a 2.3 GB database" on the fleet.
+        # ⚠️ A CHECKPOINT DOES NOT FIX IT AND THAT IS THE TRAP. Truncating by
+        # hand reclaimed 1.5 GB and the limit reverted to -1 on the next open,
+        # because the pragma is PER CONNECTION. The only durable fix is here, on
+        # the connection every writer uses.
+        # ⚠️ IT COSTS NOTHING IN SAFETY: the limit caps the file AFTER a
+        # checkpoint, it does not force checkpoints or weaken durability.
+        # `synchronous=NORMAL` above is unchanged.
+        self.conn.execute("PRAGMA journal_size_limit=134217728;")   # 128 MB
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS candles (
                 symbol      TEXT NOT NULL,
