@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.40
+# BACKLOG.md — OTV4TEST — v0.41
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -191,6 +191,10 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.41 — 2026-09-18 — OTV4TEST r38 — THE HEALTH BOARD SHOWS THE UNDERLYING'S DEPTH, AND READS IN 2.2s INSTEAD OF 56.7s.**
+**BOX.6 opened and closed.** The operator opened menu 6, saw the header and then nothing, and reported it broken — then corrected himself: *"it's not broken. It was just slow."* Both halves were real. **SLOW WAS ONE QUERY:** `SELECT COUNT(*) FROM quote_series` scans 22.8M rows — **measured 56.72s**, against **0.09s** capped and **0.00s** for the indexed `MAX(ts)`. An exact lifetime count on a table the purge trims every three days is not a number anyone acts on; the bulb is driven by freshness. Counts stop at `ROW_CAP` and say so (`1000000+`). Whole board **56.72s → 2.21s**. **BLIND WAS r36's OWN STREAM:** the underlying's Quote landed in `quote_series` beside 22.8M option quotes, so the only source of RESTING DEPTH on this box was invisible on the board meant to show streams. `STREAMS` tuples gain a 7th field, a WHERE, and the ticker gets its own line — equality on the PK's leading column, so it costs nothing. ⚠️ **Unstarred deliberately:** nothing consumes it yet (§31), and an unread stream must not paint the rollup red — r125's own lesson. ⚠️ **And it is NOT `underlying_series`**, which r125 removed on the operator's ruling because it never published; this is the Quote event on the ticker, which does — 219 rows in the twenty minutes after the bake.
+**GATE:** `tests/check_manifold_board.py` M1–M6, **born red 7 of 9 at r37**. ⚠️ Two faults in my own checker, recorded: M4b's first cut banned `COUNT(*), MAX(` anywhere in `collect()` and so **caught the legitimate candles GROUP BY and derived loop** — a canary that fires on correct code is the one that gets loosened and then misses the real thing (§20) — and it **crashed rather than reported** at the older HEAD, the same fault `check_level_source` shipped this morning.
 
 **v0.40 — 2026-09-18 — OTV4TEST r37 — THE BAKE WAS HALF A BAKE, AND IT PRINTED A GREEN LINE EITHER WAY.**
 **BOX.5 OPENED AND CLOSED.** Found the same evening r36 landed: the operator baked from the menu, the line read `baked → active 3aa6cfd r36`, and **half the revision was not live**. `bake()` restarted `$BOT` only — r36's underlying-Quote subscription lives in `data/candle_feed.py`, so it could not take — and it **never purged `__pycache__`**, which the migrated operating notes name as *"the single most common cause of 'I pushed the fix but it's still broken'"*. The one command whose entire job is making a landed revision LIVE was serving stale bytecode and telling the operator it was done. ⚠️ **I ALSO MISDESCRIBED IT**, saying it "restarts the bot only" from the menu label rather than the code; the operator made me read it. It does four things — pull, check_imports, `daemon-reload`, restart — each of the first two a gate. Both halves of that correction are recorded because each was wrong in a different direction.

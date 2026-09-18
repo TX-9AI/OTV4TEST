@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-286 Python modules across 13 local packages.
+287 Python modules across 13 local packages.
 
-**Reached by:** 114 imported · 11 declared entry points · 79 referenced from a script, unit or doc but never imported · **82 by nothing here**.
+**Reached by:** 114 imported · 11 declared entry points · 80 referenced from a script, unit or doc but never imported · **82 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -754,6 +754,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** `database/trade_logger.py`, `derived/notes.py`, `execution/exit_engine.py`, `strategy/__init__.py`, `strategy/management.py`, `strategy/plan.py`, `strategy/sweep_credit_spread.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
+### `tests/check_manifold_board.py`
+- **calls:** `tools/manifold_health.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
 ### `tests/check_manifold_windows.py`
 - **calls:** `tools/manifold_health.py`, `utils/time_utils.py`
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
@@ -1144,7 +1148,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tools/manifold_health.py`
 - **calls:** `config.py`, `utils/time_utils.py`
-- **called by:** `tests/check_manifold_windows.py`
+- **called by:** `tests/check_manifold_board.py`, `tests/check_manifold_windows.py`
 
 ### `tools/manifold_status.py`
 - **calls:** (none)

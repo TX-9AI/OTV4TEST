@@ -41,7 +41,7 @@ Regenerated in the land gate; a stale map fails `--check`.
 | `greeks_series` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `tests/check_purge_lock.py` (insert), `tests/check_purge_reclaim.py` (delete/insert), `warehouse/retention_purge.py` (delete) | `analysis/second_order.py`, `derived/surface.py` |
 | `last_trade` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `warehouse/retention_purge.py` (delete) | — |
 | `prints` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `tests/check_orb_geometry.py` (delete/insert), `warehouse/retention_purge.py` (delete) | `analysis/order_flow.py`, `analysis/tape_at_level.py`, `derived/anchors.py` |
-| `quote_series` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `tests/check_purge_reclaim.py` (insert), `tests/exit_replay.py` (insert), `warehouse/retention_purge.py` (delete) | `analysis/order_flow.py` |
+| `quote_series` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `tests/check_purge_reclaim.py` (insert), `tests/exit_replay.py` (insert), `warehouse/retention_purge.py` (delete) | `analysis/order_flow.py`, `tests/check_manifold_board.py`, `tools/manifold_health.py` |
 | `session_summary` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `tests/check_manifold_windows.py` (update), `warehouse/retention_purge.py` (delete) | — |
 | `theo_series` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `warehouse/retention_purge.py` (delete) | — |
 | `underlying_series` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `warehouse/retention_purge.py` (delete) | — |

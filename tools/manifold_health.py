@@ -1,9 +1,29 @@
 #!/usr/bin/env python3
 """
-tools/manifold_health.py  v4.1
+tools/manifold_health.py  v4.2
 
 One bulb per stream. All green = manifold green.
 
+v4.2  2026-09-18  OTV4TEST r38 — THE BOARD SHOWS THE UNDERLYING'S OWN QUOTE, AND
+      READS IN 2.2s INSTEAD OF 56.7s. The operator opened it, saw a header and
+      then nothing, and reported it broken — then corrected himself: "it's not
+      broken. It was just slow." Both halves were defects.
+      🔴 SLOW: one query. `SELECT COUNT(*) FROM quote_series` scans 22.8M rows —
+      MEASURED 56.72s, against 0.09s capped and 0.00s for the indexed MAX(ts).
+      An exact LIFETIME count on a table the purge trims every three days is not
+      a number anyone acts on; the bulb is driven by FRESHNESS. Counts now stop
+      at ROW_CAP and SAY so ("1000000+"). A board slow enough to look hung stops
+      being read, which is §17's "an alarm that gets filtered" one step on.
+      🔴 BLIND: r36 subscribed the underlying's Quote (FEED.2) and it landed in
+      `quote_series` beside 22.8M option quotes, so the ONLY source of RESTING
+      DEPTH on this box was invisible here. STREAMS tuples gain a 7th field, a
+      WHERE, and the ticker gets its own line — scoped by equality on the PK's
+      leading column, so it costs nothing to read.
+      ⚠️ NOT critical, deliberately: nothing consumes it yet (§31), and an unread
+      stream must not paint the rollup red.
+      ⚠️ AND THIS IS NOT `underlying_series`, which r125 removed on the operator's
+      ruling because it never published. This is the Quote event on the ticker,
+      which does — 219 rows in the twenty minutes after the bake.
 v4.1  2026-08-24  r95 AFTER-HOURS IS ITS OWN SECTION, AND `prints` ON AN INDEX
 IS n/a. Operator: "those sections will never be green during RTH & if used in
 the dashboard, it would never show green."
@@ -98,12 +118,27 @@ CANDLE_BUDGET = {"1m": 180, "5m": 900, "15m": 2700, "1h": 9000, "1d": 200000}
 # is a SESSION-BOUNDARY datum carrying prev_day_close_price — it lands once and
 # its freshness during the session is meaningless, so at a 3600s budget it went
 # amber every day from roughly 10:45 onward and stayed there.
+# r38 — a 7th field, WHERE: a SQL predicate scoping the row, or None for the
+# whole table. It exists so the UNDERLYING's own quote can have a line of its
+# own: `quote_series` is 22.8M rows of option contracts, and the ticker's bid/ask
+# was invisible inside that total.
 STREAMS = [
-    ("greeks_series",     "ts_epoch",      300,  "greeks (series)",   True,  False),
-    ("quote_series",      "ts_epoch",      300,  "quotes (series)",   True,  False),
-    ("chain_marks",       "updated_epoch", 300,  "chain marks",       True,  False),
-    ("prints",            "ts_epoch",      600,  "prints (T&S)",      False, False),
-    ("last_trade",        "ts_epoch",      600,  "last trade",        False, False),
+    ("greeks_series",     "ts_epoch",      300,  "greeks (series)",   True,  False, None),
+    ("quote_series",      "ts_epoch",      300,  "quotes (chain)",    True,  False, None),
+    # 🔴 r38 — THE UNDERLYING'S OWN BID/ASK, the r36 stream (FEED.2). It is the
+    # ONLY source of RESTING DEPTH on this box — `prints` says what TRADED, and
+    # the question "where does size park" cannot be answered from that. Scoped by
+    # equality on the PK's leading column, so it costs nothing to read.
+    # ⚠️ NOT critical: nothing consumes it yet (§31, collection first), so its
+    # absence must not paint the rollup red and teach the operator to skip it.
+    # ⚠️ AND THIS IS NOT `underlying_series`, which r125 removed on the operator's
+    # ruling — *"I don't want underlying on the manifold at all"* — because that
+    # stream never published. This is the Quote event on the ticker, which does.
+    ("quote_series",      "ts_epoch",      600,  "quotes (underlying)", False, False,
+     "streamer_symbol = '{SYM}'"),
+    ("chain_marks",       "updated_epoch", 300,  "chain marks",       True,  False, None),
+    ("prints",            "ts_epoch",      600,  "prints (T&S)",      False, False, None),
+    ("last_trade",        "ts_epoch",      600,  "last trade",        False, False, None),
     # 🔴 r125 — `underlying` AND `theo price` ARE OFF THE BOARD. Operator,
     # 2026-08-25: "I don't want underlying on the manifold at all. You can also
     # take off THEO. We tried it, it's not worth the traffic burden with no
@@ -117,12 +152,20 @@ STREAMS = [
     #   subscription with it attached. It has no consumer and never had one.
     # Both TABLES remain and both WRITERS remain — this removes them from the
     # HEALTH VIEW only, so restoring a row is one line if either gains a reader.
-    ("session_summary",   "ts_epoch",     3600,  "session summary",   False, True),
+    ("session_summary",   "ts_epoch",     3600,  "session summary",   False, True,  None),
 ]
 
 # Streams that CANNOT EXIST for a cash index — no order flow in the index
 # itself, so no time-and-sale. Deliberately NOT extended to underlying/theo:
 # see the header.
+# 🔴 r38 — THE BOARD TOOK 56.72 SECONDS, AND ALL OF IT WAS ONE QUERY.
+# `SELECT COUNT(*) FROM quote_series` scans 22.8M rows; measured 56.72s against
+# 0.09s for the same count capped, and MAX(ts) is instant on its index. An exact
+# lifetime row count on a purged table is not a number anyone acts on — the bulb
+# is driven by FRESHNESS — so the count stops at the cap and SAYS it stopped
+# ("1000000+"). A board slow enough to look hung is a board that stops being read.
+ROW_CAP = 1_000_000
+
 INDEX_NA_TABLES = {"prints"}
 
 DERIVED = [
@@ -204,10 +247,17 @@ def collect(feed_db: str, derived_db: str, in_rth: bool,
         out["fatal"] = f"no feed store at {feed_db}"
         return out
 
-    for tbl, tscol, budget, label, critical, after_hours in STREAMS:
-        r = _q1(fc, f"SELECT COUNT(*), MAX({tscol}) FROM {tbl}")
+    for tbl, tscol, budget, label, critical, after_hours, where in STREAMS:
+        pred = ""
+        if where:
+            pred = " WHERE " + where.replace("{SYM}", os.environ.get("OT_INSTRUMENT", "QQQ"))
+        # capped count (see ROW_CAP) + an indexed MAX: two cheap queries instead
+        # of one 56-second scan.
+        r = _q1(fc, f"SELECT COUNT(*) FROM (SELECT 1 FROM {tbl}{pred} LIMIT {ROW_CAP})")
         rows = (r[0] if r else 0) or 0
-        age = (now - r[1]) if (r and r[1]) else None
+        capped = rows >= ROW_CAP
+        r2 = _q1(fc, f"SELECT MAX({tscol}) FROM {tbl}{pred}")
+        age = (now - r2[0]) if (r2 and r2[0]) else None
         # A stream that cannot exist for this instrument is n/a, and n/a is
         # NOT a degraded green — it is the absence of a question.
         if is_index and tbl in INDEX_NA_TABLES:
@@ -216,7 +266,7 @@ def collect(feed_db: str, derived_db: str, in_rth: bool,
             bulb = _bulb(rows, age, budget,
                          (not in_rth) if after_hours else in_rth)
         out["streams"].append({
-            "label": label, "table": tbl, "rows": rows,
+            "label": label, "table": tbl, "rows": rows, "capped": capped,
             "age_s": round(age) if age is not None else None,
             "bulb": bulb, "critical": critical, "after_hours": after_hours})
 
@@ -255,7 +305,11 @@ def collect(feed_db: str, derived_db: str, in_rth: bool,
             out["engines"] = None
 
         for tbl, tscol, budget, label in DERIVED:
-            r = _q1(dc, f"SELECT COUNT(*), MAX({tscol}) FROM {tbl}")
+            # r38 — capped, same reason as the streams loop: `surface_series`
+            # is 882k rows today and only grows, and the bulb is driven by
+            # FRESHNESS, not by a lifetime total.
+            r = _q1(dc, f"SELECT COUNT(*) FROM (SELECT 1 FROM {tbl} LIMIT {ROW_CAP})")
+            r = ((r[0] if r else 0), (_q1(dc, f"SELECT MAX({tscol}) FROM {tbl}") or [None])[0])
             rows = (r[0] if r else 0) or 0
             age = (now - r[1]) if (r and r[1]) else None
             out["derived"].append({
@@ -373,7 +427,8 @@ def main() -> int:
         age = "—" if s["age_s"] is None else f"{s['age_s']}s"
         star = "*" if s["critical"] else " "
         note = "  n/a — cash index has no tape" if s["bulb"] == NA else ""
-        print(f"   {s['bulb']}{star} {s['label']:<22} rows={s['rows']:<8} age={age}{note}")
+        _rows = f"{s['rows']}+" if s.get("capped") else str(s["rows"])
+        print(f"   {s['bulb']}{star} {s['label']:<22} rows={_rows:<9} age={age}{note}")
 
     print("\n  CANDLES")
     for c in sorted(rep["candles"], key=lambda x: x["label"]):
