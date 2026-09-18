@@ -1,6 +1,28 @@
 """
-derived/levels.py  v5.2
+derived/levels.py  v5.3
 Owns `level_ledger` and `level_event`. Tier 3 — stateful; the object has a biography.
+v5.3  2026-09-18  OTV4TEST r39 (LVL.13) — THE BOARD WALKS ZONES, AND A ZONE
+      HOLDING PRICE IS FINISHED. Operator, 2026-09-17: *"it's just grouping and
+      only the outer members of the group declare anything"*, *"only points of
+      recording interactions is at the extremes of the cluster — nothing in
+      between gets to declare anything"*, and *"when we have a breach of the
+      cluster everything that was a part of the cluster needs to go with it."*
+      Each rung now carries TWO recording prices: `near_edge`, which takes the
+      touch, and `far_edge`, which takes the breach — and `zone_ids`, so the
+      breach retires every member and not just the one price was at.
+      🔴 `board()` NO LONGER PRE-THINS WITH `_walked()`, AND THAT WAS THE WHOLE
+      DEFECT. r29's walk keeps the nearest level per direction-step, which is
+      correct for single levels and DESTRUCTIVE before grouping: measured
+      2026-09-18 on the live ledger, 43 rows became 21 and the six levels stacked
+      on spot (716.75 … 718.04) became ONE before any zone could see them. The
+      cluster has to form from everything the ledger holds; the walk then thins
+      ZONES. Cluster first, walk second.
+      ⚠️ A ZONE CONTAINING PRICE IS RETIRED TRAVERSED, not reported. Operator:
+      *"'one zone containing spot' isn't a zone, then. It's done — as a zone is
+      defined, it's finished. There's no reclaim trade for that."* It is judged
+      on a CLOSED BAR and never a tick, because r5 ruled a wick never spends a
+      level and retirement has no undo. The opening-range TRAVERSED rule is
+      untouched and still runs at tick rate.
 v5.2  2026-09-17  OTV4TEST r33 — ONE BOARD, THE FORK BESIDE IT, AND THE LEDGER
       EMPTIED OF WHAT WAS NEVER A LEVEL.
       🔴 VWAP IS NO LONGER A SOURCE. It wrote a `kind="dynamic"` row every tick
@@ -386,6 +408,10 @@ class LevelEngine(DerivedEngine):
         # r29 — tape-derived session levels, recomputed once per new tape bar
         self._tape_key = None
         self._tape_srcs: list = []       # (prov, price, kind, tf, live) held levels
+        self._tape = None                # r39 — the frame itself: board() computes
+                                         # the zone width from it (the instrument's
+                                         # own median hourly wick), so it needs the
+                                         # bars, not just the levels derived from them.
         self._formed: dict = {}          # level_id -> epoch the extreme printed
 
     def _sources(self, ctx: dict):
@@ -482,6 +508,7 @@ class LevelEngine(DerivedEngine):
         sym = self.symbol or ctx.get("symbol") or ""
         if tape is None or len(tape) == 0 or store is None or not sym:
             return list(self._tape_srcs) if tape is not None else []
+        self._tape = tape                # r39 — kept for zone_width()
         key = (str(tape.index[-1]), len(tape))
         if key == self._tape_key:
             return list(self._tape_srcs)
@@ -687,27 +714,94 @@ class LevelEngine(DerivedEngine):
         except Exception:                                       # noqa: BLE001
             out["state"] = "no_store"
             return out
-        rows = _walked(rows, price)                     # r29 — newest first, further out
+        # 🔴 r39 — `_walked` NO LONGER RUNS HERE, AND THAT IS THE WHOLE FIX.
+        # It applies r29's rule to individual LEVELS — "the newest each side,
+        # older ones only if further out" — which discards cluster members before
+        # any grouping can see them. Measured 2026-09-18: 43 ledger rows became
+        # 21, and the six levels stacked on spot (716.75 … 718.04) became ONE.
+        # Zoning the survivors is inert. The rule still applies, at ZONE
+        # granularity, in `_side()` below — group first, then walk what you
+        # grouped.
         # r33 — the EDGE each side is measured from: the range when one was given,
         # otherwise spot. One sort, one formatter; only the reference moves.
         edge_up = orb_high if _ranged else price
         edge_dn = orb_low if _ranged else price
-        above = sorted([r for r in rows if r[0] > edge_up], key=lambda r: r[0] - edge_up)
-        below = sorted([r for r in rows if r[0] < edge_dn], key=lambda r: edge_dn - r[0])
-
+        # r39 — the per-LEVEL split is gone: the zone is the object now, and the
+        # sides are taken from the zones below.
         def fmt(r, edge):
             return {"price": r[0], "kind": r[1], "provenance": r[2], "touches": r[3],
                     "live": bool(r[4]), "level_id": r[5],
                     "dist_pct": abs(r[0] - edge) / edge * 100.0}
-        out["above"] = [fmt(r, edge_up) for r in above[:limit]]
-        out["below"] = [fmt(r, edge_dn) for r in below[:limit]]
-        # r33 — THE RAILS, AS A SECOND PRODUCT. r5's TINE RULE is applied HERE
-        # rather than left to each caller: a top tine can never be a floor and a
-        # bottom tine never a ceiling, so a rail sitting on the wrong side of
-        # spot this tick is NOT offered as a candidate at all. It is dropped,
-        # never relabelled — relabelling is how a projection becomes a level it
-        # is not. `side_ok` is computed in `tines_now` from where the projection
-        # actually sits, because that moves every tick.
+        # ══ r39 — CLUSTER FIRST, THEN WALK THE ZONES ══════════════════════
+        # Operator's spec, 2026-09-18: extremes that cluster in close proximity
+        # are ONE zone, and "only the outer members of the group declare
+        # anything" — a plan trades the NEAR edge, and a breach needs acceptance
+        # beyond the FAR edge, which takes the whole cluster with it.
+        # 🔴 THE ORDER IS THE WHOLE POINT, AND THE FIRST CUT HAD IT BACKWARDS.
+        # `_walked` applies r29's rule — "the newest held level each side, older
+        # ones only if further out" — which ALREADY discards most cluster members
+        # before any grouping can see them. Zoning the survivors is inert: on
+        # 2026-09-18 it grouped 43 levels into zones of n=1 and missed a
+        # six-member cluster sitting on top of spot. TWO DEDUPLICATION RULES WERE
+        # STACKED, doing different jobs. Now the zone is the object and r29's
+        # walk is applied TO ZONES, at zone granularity, which is what the spec
+        # implies: group, then walk what you grouped.
+        # ⚠️ FAILS OPEN: no width, no grouping — every level is its own zone,
+        # which is exactly the pre-r39 board.
+        # ⚠️ THE IMPORT IS NOT INSIDE THE try. A failed WIDTH is a board without
+        # grouping — degraded but correct, and that is what the except covers. A
+        # failed IMPORT is a broken tree, and swallowing it here would leave
+        # `_lmz` unbound for `_side()` below, turning a missing module into a
+        # NameError raised from the middle of the walk instead of at the import.
+        from derived import level_map as _lmz
+        try:
+            _w = _lmz.zone_width(self._tape) if getattr(self, "_tape", None) is not None else None
+        except Exception as exc:                                # noqa: BLE001
+            logger.warning("[level] zone width unavailable, board ungrouped: %s", exc)
+            _w = None
+        out["zone_width"] = _w
+
+        import pandas as _pdz
+        _lv = [{"price": float(r[0]),
+                "formed_ts": _pdz.Timestamp(float(r[-1] or 0.0), unit="s", tz="UTC"),
+                "row": r} for r in rows]
+        _zs = _lmz.zones(_lv, _w) if _w else [
+            {"lo": x["price"], "hi": x["price"], "members": [x], "seed": x} for x in _lv]
+
+        # a zone is walked by its NEAR edge and dated by its NEWEST member, so
+        # r29's rule reads exactly as it always did — one rung further out each
+        # time — only the rungs are zones now.
+        def _side(edge, ascending):
+            reps = []
+            for z in _zs:
+                if ascending and z["lo"] <= edge:
+                    continue
+                if (not ascending) and z["hi"] >= edge:
+                    continue
+                near = z["lo"] if ascending else z["hi"]
+                reps.append({"price": near, "formed_ts": z["seed"]["formed_ts"], "z": z})
+            w2 = _lmz.walk(reps, float(edge))
+            return (w2["up"] if ascending else w2["down"])
+
+        def fmtz(rep, edge, ascending):
+            z = rep["z"]
+            member = min(z["members"], key=lambda m: abs(m["price"] - edge))
+            d = fmt(member["row"], edge)
+            d.update({"zone_lo": z["lo"], "zone_hi": z["hi"], "zone_n": len(z["members"]),
+                      "near_edge": z["lo"] if ascending else z["hi"],
+                      "far_edge": z["hi"] if ascending else z["lo"],
+                      "zone_ids": [m["row"][5] for m in z["members"]]})
+            return d
+
+        out["above"] = [fmtz(r, edge_up, True) for r in _side(edge_up, True)[:limit]]
+        out["below"] = [fmtz(r, edge_dn, False) for r in _side(edge_dn, False)[:limit]]
+        # 🔴 THERE IS NO "INSIDE" ANSWER. Operator, 2026-09-18: *"one zone
+        # containing spot isn't a zone, then. It's done — as a zone is defined,
+        # it's finished. There's no reclaim trade for that."* A zone is a region
+        # price held AWAY from; once price is inside it, its near edge has been
+        # gone through and the object is spent. It is RETIRED in `derive()`
+        # (TRAVERSED), not reported here — which makes r5's opening-range rule
+        # one instance of a general one rather than a special case.
         out["tines"] = [t_ for t_ in self.tines_now(price) if t_.get("side_ok", True)]
         for t_ in out["tines"]:
             t_["level_id"] = self._lid(self.symbol, t_["provenance"], 0.0)
@@ -798,6 +892,39 @@ class LevelEngine(DerivedEngine):
         rng_lo = _f(getattr(orb, "orb_low", None)) if orb is not None else None
         rng_hi = _f(getattr(orb, "orb_high", None)) if orb is not None else None
         in_range = (lambda p: bool(rng_lo and rng_hi and rng_lo <= p <= rng_hi))
+
+        # ══ r39 — A ZONE THAT HOLDS PRICE IS FINISHED ═════════════════════════
+        # Operator, 2026-09-18: *"one zone containing spot isn't a zone, then.
+        # It's done — as a zone is defined, it's finished. There's no reclaim
+        # trade for that."* A zone is a region price held AWAY from; once price
+        # is inside it, its near edge has been gone through and the object is
+        # spent. EVERY member retires, not just the one price crossed.
+        # 🔑 THIS MAKES r5's OPENING-RANGE RULE A SPECIAL CASE OF A GENERAL ONE.
+        # "Everything between orb_low and orb_high is retired TRAVERSED — price
+        # has been through it" is the same statement about a different region.
+        # ⚠️ JUDGED ON A CLOSED BAR, NOT A TICK, and that is deliberate. r5 ruled
+        # that a wick never spends a level — bodies decide, wicks test — and
+        # retirement has no undo, so a tick-rate test would let a single wick
+        # into a cluster consume six levels permanently. The opening-range rule
+        # stays at tick rate because its boundary is FIXED once the 09:30 bar
+        # prints; a zone's boundary moves with the book, so it needs the close.
+        _zone_gone: set = set()
+        if bar_close:
+            try:
+                from derived import level_map as _lmz
+                _zw = _lmz.zone_width(self._tape) if getattr(self, "_tape", None) is not None else None
+                if _zw:
+                    _src = [{"price": float(p), "formed_ts": self._formed.get(
+                                self._lid(sym, pr, p), now)}
+                            for pr, p, k, _tf, _lv in self._tape_srcs
+                            if k in ("support", "resistance")]
+                    for _z in _lmz.zones(_src, _zw):
+                        if _z["lo"] <= bar_close <= _z["hi"]:
+                            _zone_gone = {round(m["price"], 4) for m in _z["members"]}
+                            break
+            except Exception as exc:                            # noqa: BLE001
+                logger.warning("[level] zone traversal check skipped: %s", exc)
+
         for prov, lvl_price, kind, tf, live in self._sources(ctx):
             lid = self._lid(sym, prov, lvl_price)
             st = self._live.get(lid)
@@ -808,12 +935,16 @@ class LevelEngine(DerivedEngine):
             if st["retired"]:
                 continue                       # finished — operator's ruling
             # v4.2 — NO LEVEL INSIDE THE OPENING RANGE (tines exempt: they move)
-            if kind in ("support", "resistance") and not self._is_tine(prov) and in_range(lvl_price):
+            _in_zone = round(lvl_price, 4) in _zone_gone
+            if kind in ("support", "resistance") and not self._is_tine(prov) and (
+                    in_range(lvl_price) or _in_zone):
                 st["retired"] = now
                 st["reason"] = "TRAVERSED"
                 self._pierce.pop(lid, None)
-                logger.info("[level] %s %s %.2f (%s) retired TRAVERSED — inside the "
-                            "opening range %.2f-%.2f", sym, kind, lvl_price, prov, rng_lo, rng_hi)
+                logger.info("[level] %s %s %.2f (%s) retired TRAVERSED — %s",
+                            sym, kind, lvl_price, prov,
+                            "price closed inside its zone" if _in_zone
+                            else f"inside the opening range {rng_lo:.2f}-{rng_hi:.2f}")
                 store.upsert_level((lid, sym, lvl_price, kind, prov, tf,
                                     st["created"], st["touches"], st["last_touch"],
                                     st["beyond"], st["retired"], st["reason"], int(live)))

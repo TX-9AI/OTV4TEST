@@ -1,8 +1,24 @@
 #!/usr/bin/env python3
 """
-tests/check_level_tape.py  v1.0
+tests/check_level_tape.py  v1.1
 THE LEVEL BOARD IS BUILT FROM THE HOURLY TAPE, EXCLUSIVELY (OTV4TEST r36).
 
+v1.1  2026-09-18  OTV4TEST r39 — T6 WENT RED ON CORRECT CODE, AND THE REFLEX FIX
+      WOULD HAVE BLINDED IT. It matched a FIXED 1400-CHARACTER SLICE taken from
+      the `in_range` lambda. r39 inserted the zone-traversal rule between that
+      lambda and the retirement it guards; the opening-range rule was untouched
+      and fully bound, and T6 failed anyway. A canary keyed to a MAGIC DISTANCE
+      fires on any insertion above its target, and the obvious repair is to
+      raise 1400 until it passes — which is §20's loosened canary, and every
+      future insertion buys another raise until the window is wide enough to
+      catch nothing. Re-anchored on the BINDING: the `if` that actually reads
+      `in_range(lvl_price)`, found wherever it sits.
+      ⚠️ AND IT WAS MUTATION-TESTED RATHER THAN ASSUMED, because a re-anchored
+      canary that no longer fires is worse than the false red it replaced.
+      Four mutants against a CONTROL that must come back clean: dropping the
+      `in_range` term, dropping the tine exemption, and renaming TRAVERSED are
+      each CAUGHT; inserting forty filler lines above the guard PASSES, which
+      is the false red this revision removed.
 v1.0  2026-09-18  OTV4TEST r36 — born red at r35 (1006003), where `load_tape`
       reads `interval='1m'` and `daily_levels`/`load_daily` exist.
 
@@ -29,6 +45,7 @@ WHAT IS PINNED:
 """
 import os
 import sqlite3
+import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -128,12 +145,22 @@ def main():
     # in a checker. `levels.py` explains the rule at :204 and implements it at
     # :811, and a 600-char slice from the prose contains the word TRAVERSED
     # while containing none of the logic. Anchored on the CODE now.
-    code = src_lv[src_lv.index("in_range = (lambda"):][:1400]
+    # 🔴 AND ITS SECOND CUT BROKE ON CORRECT CODE AT r39, WHICH IS THE SAME
+    # LESSON ONE LAYER IN. It took a FIXED 1400-CHARACTER SLICE from the
+    # `in_range` lambda. r39 inserted the zone-traversal rule between that
+    # lambda and the retirement it guards — the rule was untouched and fully
+    # bound, and T6 went red anyway. A canary keyed to a MAGIC DISTANCE fires
+    # on any insertion above its target, and the reflex fix is to raise 1400
+    # until it passes, which is §20's loosened-canary exactly. It is anchored
+    # on the BINDING now — the `if` that actually reads `in_range(lvl_price)`,
+    # located wherever it sits — so inserting code above it cannot move it.
+    m6 = re.search(
+        r'if kind in \("support", "resistance"\)[^\n]*\n(?:[^\n]*\n){0,3}?'
+        r'[^\n]*in_range\(lvl_price\)[^\n]*\n(?:[^\n]*\n){0,4}?'
+        r'[^\n]*st\["reason"\] = "TRAVERSED"', src_lv)
     check("T6 a level inside the opening range is retired TRAVERSED, tines exempt",
-          'st["reason"] = "TRAVERSED"' in code
-          and "not self._is_tine(prov)" in code
-          and "in_range(lvl_price)" in code,
-          "r5's rule, asserted against the implementation")
+          bool(m6) and "not self._is_tine(prov)" in m6.group(0),
+          "r5's rule, asserted against the binding that enforces it")
 
     print()
     if FAILED:
