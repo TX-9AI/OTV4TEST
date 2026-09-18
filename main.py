@@ -1,5 +1,12 @@
 """
-main.py  v4.55
+main.py  v4.56
+v4.56 2026-09-18  OTV4TEST r49 — A FILL STILL ENDED THE TICK IN ONE BRANCH.
+      The sweep's credit-leg branch did `_execute_condor_leg(...)` then `return`
+      — the identical early return r43 deleted from the TCS block, in a branch
+      it did not reach — so a sweep fill silenced every strategy below it.
+      MEASURED LIVE: the sweep filled at 12:34 and `IronCondorStrategy` sat on
+      the dispatch-gap default for 204 minutes, 140 lines below that return.
+      Found by the operator READING THE PLAN BOARD, not the code.
 v4.55 2026-09-18  OTV4TEST r43 (ADM.1) — EVERY ADMITTED STRATEGY FIRES ON ITS
       OWN. Operator: *"I want the orb, hunt, breakout & sweep all able to fire &
       non-competing… In live trading, we will revert back to hierarchy-based."*
@@ -4192,8 +4199,21 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
                     "credit verticals still get this tick")
             elif _can_open_credit_spread(sc_sig.option_side, sc_sig,
                                          ctx["price"], ctx=ctx):
+                # 🔴 r49 — THE `return` HERE ENDED THE WHOLE TICK, AND r43 MISSED IT.
+                # r43 removed the identical early return from the TCS block and
+                # left this one, so a sweep fill still silenced every strategy
+                # sequenced below it — the cascade the operator's non-compete
+                # ruling removed, surviving in one branch. MEASURED LIVE
+                # 2026-09-18: the sweep filled at 12:34 and `IronCondorStrategy`
+                # sat on the dispatch-gap default *"no reason recorded"* for the
+                # next 204 minutes, because its `_plan_skip` is 140 lines below
+                # this line. The operator found it by reading the board:
+                # *"I want the messaging to look intentional and not like an
+                # error."* It was neither — it was unreachable.
+                # ⚠️ CREDIT LEGS DO NOT GO THROUGH `_fire`, so the tally is
+                # kept by hand, exactly as the TCS leg does.
                 _execute_condor_leg(sc_sig, state, ctx)
-                return
+                _fired.append("SweepCreditSpread")
             else:
                 logger.info("SweepCreditSpread %s side blocked by the pairing "
                             "gate - tick passes to the next strategy",

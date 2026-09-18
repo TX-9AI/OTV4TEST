@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_status.py  v1.1
+tests/check_plan_status.py  v1.2
 EVERY PLAN IS WORKING OR INACTIVE, AND INACTIVE SAYS SO ONCE.
 
+v1.2  2026-09-18  OTV4TEST r49 — `guard()` takes a CALLABLE detail. Its `detail`
+      argument was evaluated BEFORE the predicate ran, so any detail computed
+      from state the predicate sets printed STALE — a failing check reporting
+      the opposite of its own finding. Rendered after the predicate now.
 v1.1  2026-09-18  OTV4TEST r42 — S9-S12 for the operator's asymmetry: window is
       announced ONCE PER INACTIVE EPISODE, every other gate declares itself.
       S10 is `window -> cap -> window` and demands TWO rows — the sequence a
@@ -49,10 +53,23 @@ def check(name, ok, detail=""):
 
 
 def guard(name, fn, detail=""):
+    """Run a predicate; a MISSING symbol is a RED LINE, never a traceback.
+
+    ⚠️ `detail` MAY BE A CALLABLE, AND OFTEN MUST BE. A plain string argument is
+    evaluated BEFORE `fn()` runs, so any detail computed from state the predicate
+    sets is stale — r49's N8 printed "no fire-then-return" on a FAILING check,
+    which is the diagnostic saying the opposite of the truth. Pass a lambda to
+    have it rendered AFTER the predicate.
+    """
     try:
-        ok, det = fn(), detail
+        ok = fn()
     except Exception as exc:                                    # noqa: BLE001
-        ok, det = False, f"{type(exc).__name__}: {exc}"
+        check(name, False, f"{type(exc).__name__}: {exc}")
+        return False
+    try:
+        det = detail() if callable(detail) else detail
+    except Exception:                                           # noqa: BLE001
+        det = ""
     check(name, ok, det)
     return ok
 

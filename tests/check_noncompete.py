@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """
-tests/check_noncompete.py  v1.0
+tests/check_noncompete.py  v1.1
 EVERY ADMITTED STRATEGY FIRES ON ITS OWN. NOTHING CLAIMS A SLOT.
 
+v1.1  2026-09-18  OTV4TEST r49 — N8: a fire must not end the tick. N1 tests the
+      cascade's SHAPE (a dispatch under a test of `signal`) and cannot see an
+      unconditional `return` after a fire, which ends the tick just as
+      completely. r43 removed that return from the TCS block and left the
+      sweep's; the operator found the survivor by reading the plan board.
 v1.0  2026-09-18  OTV4TEST r43 (ADM.1) — born red at r42 (b07f356), where
       `attempt_new_entry` ran a winner-take-all cascade and `main_loop` gated
       entry behind `has_blocking_position()`.
@@ -42,10 +47,23 @@ def check(name, ok, detail=""):
 
 
 def guard(name, fn, detail=""):
+    """Run a predicate; a MISSING symbol is a RED LINE, never a traceback.
+
+    ⚠️ `detail` MAY BE A CALLABLE, AND OFTEN MUST BE. A plain string argument is
+    evaluated BEFORE `fn()` runs, so any detail computed from state the predicate
+    sets is stale — r49's N8 printed "no fire-then-return" on a FAILING check,
+    which is the diagnostic saying the opposite of the truth. Pass a lambda to
+    have it rendered AFTER the predicate.
+    """
     try:
-        ok, det = fn(), detail
+        ok = fn()
     except Exception as exc:                                    # noqa: BLE001
-        ok, det = False, f"{type(exc).__name__}: {exc}"
+        check(name, False, f"{type(exc).__name__}: {exc}")
+        return False
+    try:
+        det = detail() if callable(detail) else detail
+    except Exception:                                           # noqa: BLE001
+        det = ""
     check(name, ok, det)
     return ok
 
@@ -90,7 +108,8 @@ def main():
 
     guard("N1 NO strategy dispatch sits under a test of `signal` — the cascade is gone",
           no_slot_guard,
-          ", ".join(getattr(no_slot_guard, "bad", [])) or f"{len(dispatches)} dispatches, none gated")
+          lambda: ", ".join(getattr(no_slot_guard, "bad", []))
+          or f"{len(dispatches)} dispatches, none gated")
 
     # ⚠️ FOUR, NOT FIVE: the butterflies dispatch through `_attempt_butterfly`,
     # which is a SEPARATE function and therefore not inside `attempt_new_entry`'s
@@ -190,6 +209,36 @@ def main():
               isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "mark_pin_played"
               for n in ast.walk(bfly)),
           "the guard against the 2026-08-28 five-in-ninety-seconds stack")
+
+    # ══ N8 — A FIRE MUST NOT END THE TICK ═════════════════════════════════
+    # 🔴 r43 MISSED ONE AND THIS IS WHY N8 EXISTS. N1 tests for dispatches
+    # sitting under a test of `signal` — the cascade's *shape*. It cannot see an
+    # UNCONDITIONAL `return` placed immediately after a fire, which ends the
+    # tick just as completely. r43 removed that return from the TCS block and
+    # left the identical one in the sweep block, so a sweep fill still silenced
+    # every strategy below it. MEASURED LIVE 2026-09-18: the sweep filled at
+    # 12:34 and `IronCondorStrategy` sat on the dispatch-gap default for the
+    # next 204 minutes, 140 lines below the return. The operator found it by
+    # READING THE BOARD — *"I want the messaging to look intentional and not
+    # like an error"* — which is the plan board catching a dispatch defect that
+    # a structural checker could not.
+    def no_fire_then_return():
+        bad = []
+        FIRES = {"_execute_condor_leg", "_execute_entry_signal"}
+        for node in ast.walk(fn):
+            body = getattr(node, "body", None)
+            if not isinstance(body, list):
+                continue
+            for a, b in zip(body, body[1:]):
+                fired = (isinstance(a, ast.Expr) and isinstance(a.value, ast.Call)
+                         and getattr(a.value.func, "id", "") in FIRES)
+                if fired and isinstance(b, ast.Return):
+                    bad.append(f"{getattr(a.value.func,'id','?')}@L{a.lineno}")
+        no_fire_then_return.bad = bad
+        return not bad
+    guard("N8 no fire is followed by a `return` — a fill must not end the tick",
+          no_fire_then_return,
+          lambda: ", ".join(getattr(no_fire_then_return, "bad", [])) or "no fire-then-return")
 
     print()
     if FAILED:
