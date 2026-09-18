@@ -1,5 +1,16 @@
 """
-main.py  v4.56
+main.py  v4.57
+v4.57 2026-09-18  OTV4TEST r51 (BRK.1) — BREAKOUT IS DISPATCHED, and
+      `ctx["_flow_conn"]` FINALLY HAS A PRODUCER. The second is the larger
+      find: that key is read by `derived/notes.py` and `derived/snapshot.py`
+      and was set by NOTHING, so `order_flow.aggression()` on that path had
+      never run — 400 sampled `strategy_note` payloads carry the `tape` key
+      ZERO times. A consumer with no producer, failing quietly because absence
+      and "measured as zero" look identical downstream.
+      Breakout dispatches beside the hunt and the ORB, all three born from the
+      same opening range and admitted in the same window, non-competing by the
+      operator's ruling — the head-to-head is the point, because under a
+      cascade the losing arm's outcome is unobservable.
 v4.56 2026-09-18  OTV4TEST r49 — A FILL STILL ENDED THE TICK IN ONE BRANCH.
       The sweep's credit-leg branch did `_execute_condor_leg(...)` then `return`
       — the identical early return r43 deleted from the TCS block, in a branch
@@ -1363,6 +1374,8 @@ _sweep_cs_strategy = SweepCreditSpreadStrategy()
 _gex_bfly_strategy = GEXPinButterflyStrategy()
 _atp_bfly_strategy = ATPButterflyStrategy()
 _liquidity_hunt = LiquidityHunt()                                      # OTV4TEST r12
+from strategy.breakout import Breakout as _BreakoutStrategy            # OTV4TEST r51
+_breakout = _BreakoutStrategy()                                        # BRK.1
 _iron_condor_strategy = IronCondorStrategy()
 # TC.6 — trend credit spread. Sits with the other strategy instances and is
 # UNGUARDED on purpose: it imports only config + IronCondorStrategy, both
@@ -1590,6 +1603,29 @@ def _orb_engine_ready() -> bool:
         return False
 
 
+_FLOW_CONN = {"c": None}
+
+
+def _flow_conn():
+    """A read-only handle on the feed store for the order-flow readers.
+
+    r51 — opened once and reused; `None` on any failure, because every consumer
+    already treats a missing connection as "no reading" and an exception here
+    would take the whole tick down for a contributor.
+    """
+    if _FLOW_CONN["c"] is None:
+        try:
+            import sqlite3
+            from data.candle_feed import feed_db_path
+            _FLOW_CONN["c"] = sqlite3.connect(
+                f"file:{feed_db_path()}?mode=ro", uri=True, check_same_thread=False)
+        except Exception as exc:                               # noqa: BLE001
+            logger.warning("[flow] read-only feed handle unavailable, order-flow "
+                           "readings will be absent: %s", exc)
+            _FLOW_CONN["c"] = False
+    return _FLOW_CONN["c"] or None
+
+
 def run_analysis(state: BotState, chain=None) -> dict:
     """Fetch all market data and run analysis pipeline."""
     cache  = get_cache()
@@ -1638,6 +1674,20 @@ def run_analysis(state: BotState, chain=None) -> dict:
         "orb":       (get_orb_engine().data if _orb_engine_ready() else None),
         # OTV4TEST r29 — the tape the session levels are built from (levels v5.0)
         "level_tape": _level_tape(),
+        # 🔴 r51 — `_flow_conn` HAD NO PRODUCER. It is READ by `derived/notes.py`
+        # (tape, defence, break_tape) and by `derived/snapshot.py`, and was set
+        # by NOTHING — so `analysis/order_flow.aggression()` on that path has
+        # never run. PROVEN, not inferred: 400 sampled `strategy_note` payloads
+        # carry the `tape` key ZERO times. Every order-flow reading those two
+        # modules were written to take has been silently absent since the day
+        # they landed. Same shape as the dead FOMC detector: a consumer with no
+        # producer, failing quietly because absence and "measured as zero" look
+        # identical from downstream.
+        # ⚠️ READ-ONLY, AND ITS OWN HANDLE. The feed store is the producer's;
+        # a reader opens it `mode=ro` so no consumer can ever write to the wire
+        # record, and holding a separate connection keeps a slow flow query off
+        # the writer's lock.
+        "_flow_conn": _flow_conn(),
     }
 
     # ── Level.1 (2026-08-18) — WHAT IS PRICE TRADING INTO? ──────────────────
@@ -3576,6 +3626,8 @@ _STRUCTURE_BY_NAME = {
     "GEXPinButterfly":      "butterfly",
     "ATPButterfly":         "butterfly",
     "IronCondorStrategy":   "vertical",
+    # r51 — a long option, so the afternoon debit cutoff governs it like the ORB
+    "Breakout":             "long_debit",
 }
 
 
@@ -4061,6 +4113,24 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     _attempt_hunt(ctx, ms, state, orb=orb, chain=chain,
                   now_hhmm=(_now_disp.strftime("%H:%M") if _now_disp else ""),
                   atr_pct=float(getattr(ctx.get("vol"), "atr_pct", 0.0) or 0.0))
+    # ── r51 (BRK.1) — BREAKOUT, BESIDE THE HUNT AND THE ORB ─────────────────
+    # All three are born from the same opening range and all three are admitted
+    # in the same window. Operator, 2026-09-18: *"I want the orb, hunt, breakout
+    # & sweep all able to fire & non-competing… letting them all go at the same
+    # time is gonna allow us to get the differentiation needed to rule on them
+    # later."* 🔑 THE HEAD-TO-HEAD IS THE POINT — under a cascade the losing
+    # arm's outcome is UNOBSERVABLE, so "the hunt is better under X" could never
+    # be learned. `_fire()` executes it additively; admission's per-type cap is
+    # the only limit.
+    _fire(_safe_strategy("Breakout", lambda: _breakout.generate_signal(
+        orb        = orb,
+        price_now  = ctx["price"],
+        now_et     = (_now_disp.strftime("%H:%M") if _now_disp else ""),
+        chain      = chain,
+        df_1m      = ctx.get("df_1m"),
+        flow_conn  = ctx.get("_flow_conn"),
+        symbol     = INSTRUMENT,
+    ), ctx))
         # 🔴 r195 — THE ENGINE NO LONGER RE-ARMS HERE, AND THAT WAS THE BUG.
         # `mark_triggered()` fired the moment the SIGNAL existed, which
         # re-armed the engine and `_rearm()` WIPES ORBData — direction,

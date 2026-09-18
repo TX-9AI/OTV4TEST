@@ -1,5 +1,8 @@
 """
-execution/position_manager.py  v5.1
+execution/position_manager.py  v5.2
+v5.2  2026-09-18  OTV4TEST r51 (BRK.1) — Breakout joins the table: 09:35-11:30,
+      cap 1, blocking nothing and blocked by nothing. Same window as the ORB it
+      is born from and the hunt it is measured against.
 v5.1  2026-09-18  OTV4TEST r42 — `logging_state()`: the BINARY AND THE GATE for
       every strategy, from ONE walk of the table. `main.py` used to ask
       `eligible_now()` for the list and `why_not()` per refused strategy for the
@@ -225,6 +228,7 @@ _WARNED_LEG_COUNT: set = set()   # SWALLOW T1: warn once on an unreadable count
 ORB = "ORBStrategy"
 RUNAWAY = "RunawayContinuation"
 HUNT = "LiquidityHunt"
+BREAKOUT = "Breakout"
 SWEEP = "SweepCreditSpread"
 TCS = "TrendCreditSpread"
 GEXFLY = "GEXPinButterfly"
@@ -256,6 +260,16 @@ _DEFAULT_RULES = {
     ORB:     AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
     RUNAWAY: AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
     HUNT:    AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
+    # r51 (BRK.1) — the 5-minute opening-range break taken WITHOUT a retest.
+    # Same window as the ORB it is born from and the hunt it competes with,
+    # because all three read the same opening range. ⚠️ NOTHING BLOCKS IT AND IT
+    # BLOCKS NOTHING — the operator ruled the blocking paradigm out entirely
+    # (r50): *"every trade to be 'right' in its own time… I don't see any reason
+    # to stop it from firing if it cleared the bar, even if the thesis is the
+    # opposite of an existing open trade."* The head-to-head against ORB and the
+    # hunt is the POINT, and hierarchy would destroy the counterfactual that
+    # makes it readable.
+    BREAKOUT: AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
     # the credit window was widened to 15:00 by the operator on 2026-09-17
     SWEEP:   AdmissionRule(((9, 35), (15, 0)), max_open_of_type=2),   # 2: it forms a condor
     TCS:     AdmissionRule(((11, 30), (15, 0)), max_open_of_type=1),  # 1: TCS+TCS is in conflict

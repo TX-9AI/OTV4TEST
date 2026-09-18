@@ -1,5 +1,16 @@
 """
-strategy/management.py  v2.4
+strategy/management.py  v2.5
+v2.5  2026-09-18  OTV4TEST r51 (BRK.1) — THE BREAKOUT'S EXHAUSTION EXIT, and
+      the first reader `_midline_atr` / `_momentum_divergence` have ever had.
+      Both survived, fully written and documented, from an `_evaluate_continuation`
+      path deleted with the strategy it served: MEASURED, ZERO CALL SITES.
+      Operator: *"the liquidity hunt has an identified target and the breakout
+      has to identify an EXHAUSTION SIGNAL to get out before it gives back."*
+      Two tiers, order preserved from the original doctrine: EXTENSION tightens
+      (a strong trend can stay extended), DIVERGENCE exits (continuing on fumes).
+      ⚠️ MODE 2, NOT MODE 3 — the stricter both-signals form the operator asked
+      for is deliberately NOT taken here: a first wiring and a behaviour change
+      in one step cannot be told apart when the result arrives.
 v2.4  2026-09-14  OTV4TEST r26 — THE ATP BUTTERFLY IS MANAGED EXACTLY AS THE PIN BUTTERFLY.
       Covered, with the same two declared exits (the 40% floor and the 15:45
       flatten, no target). Every "is this the butterfly" test reads one tuple,
@@ -125,17 +136,40 @@ EXIT_CONDITIONS: Dict[str, Dict[str, str]] = {
         "stop":           "fly value <= entry x (1 - 40%)",          # r24: operator, was 25%
         "flatten":        "the 15:45 hard close",
     },
+    # r51 (BRK.1) — THE BREAKOUT HAS NO TARGET, SO EXHAUSTION IS ITS EXIT.
+    # Operator, 2026-09-18, distinguishing the three ORB-born trades: *"the
+    # liquidity hunt has an identified target and the breakout has to identify
+    # an EXHAUSTION SIGNAL to get out before it gives back."* The runaway exits
+    # on THESIS (the 50 is lost); the hunt exits AT ITS TARGET; this one has
+    # neither, so the exit is the whole trade.
+    # ⚠️ AND r44's TRAIL STUDY IS WHY THE TRAIL CANNOT BE ITS PLAN: across 210
+    # trail-exited fleet trades the trail returned a MEDIAN 42.9% of MFE. A
+    # strategy with no target leaning on that is the worst pairing of the three.
+    # The trail is a FLOOR under a Breakout, never its exit.
+    # 🔑 TWO TIERS, AND THE ORDER MATTERS — this is the doctrine written for the
+    # deleted continuation path, reused rather than reinvented: EXTENSION
+    # tightens because *"a strong trend can stay extended"*, and only
+    # DIVERGENCE — a new favourable extreme on WEAKER momentum, *"the move
+    # continuing on fumes"* — actually exits.
+    "Breakout": {
+        "hard_stop":      "premium <= stop_premium",
+        "structure_stop": "a 1m close back inside the opening range — the break failed",
+        "extension":      ("price stretched from the BB midline -> TIGHTEN the trail, "
+                           "never exit: a strong trend can stay extended"),
+        "exhaustion":     ("a NEW run-favourable extreme on WEAKER 5m momentum -> out. "
+                           "The move is continuing on fumes"),
+    },
 }
-# OTV4TEST r26 — the ATP butterfly's exits are the pin butterfly's, by construction.
+# OTV4TEST r26 — the ATP butterfly's exits are the pin butterfly's, by construction. — the ATP butterfly's exits are the pin butterfly's, by construction.
 BUTTERFLIES = ("GEXPinButterfly", "ATPButterfly")
 EXIT_CONDITIONS["ATPButterfly"] = dict(EXIT_CONDITIONS["GEXPinButterfly"])
 
 MGMT_CHECKS = ("premium", "entry_premium", "pnl_pct", "stop_premium", "trail_stop",
                "target_premium", "underlying_stop", "dist_to_stop", "mfe_pct",
-               "mae_pct", "ticks_held", "fired")
+               "mae_pct", "ticks_held", "fired", "extension_atr")
 
 COVERED = ("RunawayContinuation", "GEXPinButterfly", "SweepCreditSpread",
-           "TrendCreditSpread", "ATPButterfly")
+           "TrendCreditSpread", "ATPButterfly", "Breakout")
 NICKEL = 0.05
 
 
@@ -273,6 +307,46 @@ class ManagementPlan:
                 intent = Intent("CLOSE", f"target_hit pnl={pnl:.1%}", "target", pnl_pct=pnl)
             if intent is None and credit and prem is not None and prem <= NICKEL:
                 intent = Intent("CLOSE", f"nickel_close pnl={pnl:.1%}", "nickel", pnl_pct=pnl)
+
+            # ── 1b. r51 (BRK.1) — THE BREAKOUT'S EXHAUSTION EXIT ─────────────
+            # 🔴 THE MACHINERY WAS ALREADY WRITTEN AND ORPHANED. `_midline_atr`
+            # and `_momentum_divergence` survived, fully documented, from an
+            # `_evaluate_continuation` path deleted with the strategy it served:
+            # MEASURED 2026-09-18, ZERO CALL SITES. This is their first reader.
+            # 🔑 TWO TIERS AND THE ORDER IS THE DOCTRINE, quoted from the block
+            # above them: EXTENSION-FROM-MIDLINE *"tightens the trail hard
+            # (protect the stretched gain) but does NOT exit — a strong trend
+            # can stay extended"*; MOMENTUM DIVERGENCE — a new run-favourable
+            # extreme on weaker momentum, *"the move is continuing on fumes"* —
+            # is the CONFIRMATION that exits.
+            # ⚠️ MODE 2, NOT MODE 3, AND THAT IS DELIBERATE FOR NOW. Their own
+            # note-to-future-self records that a stricter form requiring BOTH
+            # signals *"maps closer to how the operator actually trades — you
+            # don't bail on divergence alone if the move isn't also stretched"*,
+            # left as a code change by his request. BRK.1 is the first trade
+            # with a reason to make it; it is NOT made here, because a
+            # behaviour change and a first wiring in one step cannot be told
+            # apart when the result comes in.
+            if (intent is None and strategy == "Breakout" and exit_engine is not None
+                    and prem is not None):
+                try:
+                    _c = ctx or {}
+                    _tid = str(record.get("trade_id", "") or "")
+                    _dir = "long" if str(record.get("option_side", "")) == "call" else "short"
+                    if exit_engine._momentum_divergence(_tid, record, price, _dir,
+                                                        _c.get("trend"), _c.get("df_5m")):
+                        intent = Intent("CLOSE",
+                                        f"exhaustion: new {_dir} extreme on weaker momentum "
+                                        f"— continuing on fumes pnl={pnl:.1%}",
+                                        "exhaustion", pnl_pct=pnl)
+                    else:
+                        _mid, _atr = exit_engine._midline_atr(_c.get("vol"), _c.get("df_5m"))
+                        if _mid and _atr and price and abs(price - _mid) >= 2.0 * _atr:
+                            t.check("extension_atr", abs(price - _mid) / _atr, None)
+                except Exception as exc:                        # noqa: BLE001
+                    logger.warning("[manage] exhaustion read failed for %s: %s — "
+                                   "the mechanical stops are untouched",
+                                   str(record.get("trade_id", ""))[:8], exc)
 
             # ── 2. THE CALCULATORS — the engine's trail / tightening / theta /
             # velocity, adopted as the plan's own decision ────────────────────

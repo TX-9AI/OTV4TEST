@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_admission.py  v1.0
+tests/check_admission.py  v1.1
 THE ADMISSION TABLE, DRIVEN EXHAUSTIVELY (OTV4TEST r35).
 
+v1.1  2026-09-18  OTV4TEST r51 — A0's restated SPEC gains Breakout, from the
+      operator's 2026-09-18 ruling rather than from `rules()`.
 v1.0  2026-09-17  OTV4TEST r35 — born red at r34 (5ef833e): `risk/admission.py`
       does not exist there, and neither does any single place that can be asked
       "may this plan hand trigger params to this strategy?". Admission was seven
@@ -40,7 +42,7 @@ def check(name, ok, detail=""):
 
 def main():
     from execution.position_manager import decide, Facts, rules, gates, AdmissionRule
-    from execution.position_manager import ORB, RUNAWAY, HUNT, SWEEP, TCS, GEXFLY, ATPFLY
+    from execution.position_manager import ORB, RUNAWAY, HUNT, BREAKOUT, SWEEP, TCS, GEXFLY, ATPFLY
 
     T = rules()
     ALL = [ORB, RUNAWAY, HUNT, SWEEP, TCS, GEXFLY, ATPFLY]
@@ -55,13 +57,17 @@ def main():
         ORB:     (((9, 35), (11, 30)), 1, None),
         RUNAWAY: (((9, 35), (11, 30)), 1, None),
         HUNT:    (((9, 35), (11, 30)), 1, None),
+        # r51 (BRK.1) — the operator's 2026-09-18 ruling, restated from his own
+        # words: *"I want the orb, hunt, breakout & sweep all able to fire &
+        # non-competing"*, same opening range, nothing blocking anything.
+        BREAKOUT: (((9, 35), (11, 30)), 1, None),
         SWEEP:   (((9, 35), (15, 0)), 2, None),
         TCS:     (((11, 30), (15, 0)), 1, None),
         GEXFLY:  (((12, 0), (15, 0)), 1, 1),
         ATPFLY:  (((11, 30), (15, 0)), 1, 1),
     }
-    check("A0 the table holds exactly the seven strategies the box runs",
-          set(T) == set(SPEC), f"{sorted(set(T) ^ set(SPEC))}")
+    check("A0 the table holds exactly the strategies the box runs",
+          set(T) == set(SPEC), f"symmetric difference: {sorted(set(T) ^ set(SPEC))}")
 
     # ── A — windows, at BOTH edges, to the minute ───────────────────────────
     def minus(hhmm):

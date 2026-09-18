@@ -1,5 +1,21 @@
 """
-derived/snapshot.py  v4.3
+derived/snapshot.py  v4.5
+v4.5  2026-09-18  OTV4TEST r51 — the three fields now actually READ, because
+      `_flow_conn` gained a producer in the same revision. Without it
+      `flow_imbalance`, `flow_tagged_frac` and `book_depth` would have written
+      NULL on every row while looking correct.
+v4.4  2026-09-18  OTV4TEST r51 — THE THREE A STOP RUN CANNOT MANUFACTURE:
+      `flow_imbalance` / `flow_tagged_frac` / `flow_prints`, `gamma_regime`
+      (the [-1,+1] pinning-trending score, NOT raw `gex` and NOT the
+      `gex_environment` classification), and `book_depth`. These are BRK.1's
+      surviving entry gates, and gating on them without recording them would be
+      this module's own founding defect for the fourth time (r240/r243/r244).
+      ⚠️ NONE OF THEM CAN BE BACKFILLED — prints purge in three days and the
+      regime is a rolling baseline. The operator's head-to-head starts Monday;
+      every session without these is a session whose "why" is unrecoverable.
+      ⚠️ VOLUME EXPANSION IS DELIBERATELY ABSENT: measured over 736 fleet
+      breaks it does not separate (best lift 1.08x), because a stop run
+      manufactures it.
 v4.3  2026-09-04  r244 — 🔑 ALL THREE PIN MEASURES, NOT ONE.
       `pin_concentration` (29% fail) and the GEX environment behind `pinning`
       (53% fail) GATE every butterfly fire and NEITHER has ever been tested
@@ -251,6 +267,61 @@ class SnapshotEngine(DerivedEngine):
         except Exception:                                       # noqa: BLE001
             pass
         payload["fork"] = fork
+
+        # ══ r51 — THE THREE A STOP RUN CANNOT MANUFACTURE ═════════════════════
+        # BRK.1's surviving gates, recorded RAW at fire time. This module exists
+        # because of exactly one failure, three times over (r240, r243, r244): a
+        # field COMPUTED, used for a DECISION, and never RECORDED — so
+        # `pin_concentration` and the GEX environment gated every butterfly fire
+        # and neither could ever be tested against an outcome. Gating BRK.1 on
+        # regime, aggression and depth without recording them would be the
+        # fourth.
+        # 🔑 AND THE OPERATOR'S HEAD-TO-HEAD IS WHY IT IS URGENT RATHER THAN
+        # TIDY. 2026-09-18: *"when we see them trade head-to-head, we're gonna
+        # uncover the why — why the liquidity hunt is better than the breakout
+        # for conditions X Y & Z."* Outcomes alone answer "which won". Only the
+        # CONDITIONS answer "when". None of these three can be backfilled:
+        # prints purge in three days, and the regime is a rolling baseline that
+        # cannot be reconstructed after the fact.
+        # ⚠️ RAW, NOT THRESHOLDED, and NOT COMPOSITED — this file's own rule.
+        # ⚠️ VOLUME EXPANSION IS DELIBERATELY NOT HERE: measured 2026-09-18 over
+        # 736 fleet breaks, it does not separate a break that made 1R from one
+        # that did not (best lift 1.08x). A stop run MANUFACTURES it, which is
+        # the operator's own insight, so it describes that a break happened and
+        # never whether it holds.
+        _conn = ctx.get("_flow_conn")
+        _agg = None
+        try:
+            if _conn is not None:
+                from analysis.order_flow import aggression as _aggr
+                _agg = _aggr(_conn, self.symbol)
+        except Exception as exc:                                # noqa: BLE001
+            logger.debug("snapshot: aggression unavailable: %s", exc)
+        payload["flow_imbalance"] = _f((_agg or {}).get("imbalance"))
+        payload["flow_tagged_frac"] = _f((_agg or {}).get("tagged_frac"))
+        payload["flow_prints"] = _f((_agg or {}).get("prints"))
+
+        # the PINNING/TRENDING score in [-1,+1] — NOT `gex` (raw net gamma) and
+        # NOT `gex_environment` (a classification). It fails closed on staleness
+        # by its own design, so a null here means "could not be read now".
+        _reg = None
+        try:
+            from derived.gamma_regime import regime as _regime
+            _reg = _regime()
+        except Exception as exc:                                # noqa: BLE001
+            logger.debug("snapshot: gamma regime unavailable: %s", exc)
+        payload["gamma_regime"] = _f(_reg)
+
+        # depth at the touch and how it moved — the book's answer to the same
+        # question the tape answers above, and independent of it.
+        _dep = None
+        try:
+            if _conn is not None:
+                from analysis.order_flow import depth as _depth
+                _dep = _depth(_conn, self.symbol)
+        except Exception as exc:                                # noqa: BLE001
+            logger.debug("snapshot: depth unavailable: %s", exc)
+        payload["book_depth"] = _dep        # null when unreadable, never {}
         return payload
 
     def capture(self, trade_id: str, ctx: dict) -> int:
