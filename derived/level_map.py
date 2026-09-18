@@ -1,5 +1,23 @@
 """
-derived/level_map.py  v1.0
+derived/level_map.py  v1.1
+v1.1  2026-09-18  OTV4TEST r36 — THE LEVEL BOARD IS BUILT FROM THE HOURLY TAPE,
+      EXCLUSIVELY, AND IT REACHES TWELVE WEEKS INSTEAD OF NINE DAYS.
+      Operator, reading his own 1D chart against the live board: three of his
+      five levels above spot did not exist in the ledger at all. Cause: this
+      read 1m, and retention keeps 1m for FIVE DAYS while keeping 1h for SIXTY.
+      Not missing data — UNREAD data (§39.2).
+      🔴 DAILY BARS WERE TRIED FIRST AND RULED OUT. They cannot see overnight:
+      merged `1d` missed the true 24h low by $2.33 on average and $9.13 at worst,
+      because DXFeed aggregates a daily candle over trading hours and the `_EXT`
+      daily bar is a near-copy of the RTH one. Operator: *"the outside RTH levels
+      are the ones I'm most expecting to get swept."* `daily_levels` and
+      `load_daily` were written, measured, and DELETED in the same revision.
+      ⚠️ AND THE DAILY READER HAD A DEFECT WORTH REMEMBERING even though it was
+      deleted: it took the trading date from the stamp's ET date. DXFeed stamps a
+      daily candle at 00:00 UTC OF ITS TRADING DATE, so converting to ET rolled
+      every level back one session. Proven wrong 7 of 7 against the 1m tape. The
+      operator's rule is TIME FIRST, so a board dated one session early is
+      ordered wrong — it would not have been cosmetic.
 v1.0  2026-09-14  OTV4TEST r29 (LVL.8, LVL.9) — LEVELS ARE BUILT FROM THE TAPE.
       Operator, 2026-09-14: *"Levels are session extremes that held. Starting
       from spot, map the most recent up/down levels going backwards in time and
@@ -43,6 +61,7 @@ v1.0  2026-09-14  OTV4TEST r29 (LVL.8, LVL.9) — LEVELS ARE BUILT FROM THE TAPE
       that held, or the lowest low."* A lone print that price never accepted
       through is a held extreme.
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -55,6 +74,9 @@ import pandas as pd
 from analysis.liquidity_mapper import LiquidityMapper
 
 SIDE_HIGH, SIDE_LOW = "high", "low"
+
+
+TAPE_INTERVAL = "1h"   # r36 — the level board's one granularity
 
 
 def _utc_index(df: pd.DataFrame) -> pd.DatetimeIndex:
@@ -169,14 +191,43 @@ def walk(levels: List[dict], spot: float) -> dict:
     return {"up": up, "down": down}
 
 
-def load_tape(db_path: str, symbol: str) -> Optional[pd.DataFrame]:
-    """Every 1m bar the feed store holds for `symbol`, RTH and extended merged.
+def load_tape(db_path: str, symbol: str, interval: str = TAPE_INTERVAL) -> Optional[pd.DataFrame]:
+    """Every HOURLY bar the feed store holds for `symbol`, RTH and extended merged.
+
+    🔴 HOURLY, EXCLUSIVELY (r36, operator's ruling: *"use 1-hr as far back as you
+    can"*, then *"use the hour exclusively"*). This read was 1m until r36 and
+    that capped the level board at NINE DAYS, because retention keeps 1m for five
+    (`RETENTION_DAYS`). Measured 2026-09-17 against the operator's own 1D chart:
+    three of his five levels above spot did not exist in the ledger at all.
+
+    ⚠️ WHY THE HOUR LOSES NOTHING THAT MATTERS HERE. An hourly bar's high/low is
+    an AGGREGATE, not a sample, so it carries the true extreme of its hour.
+    MEASURED on the eight days where both series are complete: merged 1h
+    reproduced the merged-1m 24-hour high AND low to **0.00**, every day. And the
+    mapper's sections are already hour-granular by construction — `Asia 00-08`,
+    `London 08-13`, `NY 13-20` UTC, membership tested on `idx.hour` — so an hourly
+    bar lands in exactly one section with no straddle and no boundary loss.
+
+    ⚠️ WHAT IT DOES COST, STATED RATHER THAN DISCOVERED: the reconcile runs once
+    per new tape bar, so a level accepted through at 10:05 now retires when the
+    10:00 bar closes rather than within the minute, and the newest possible level
+    is up to an hour old. The rejection FACT is unaffected — `_derive_events`
+    reads `ctx["df_1m"]` and takes `df.index[-2]`, the closed MINUTE, so
+    WICKED/REJECTED/ACCEPTED and the sweep's trigger keep 1m granularity. Those
+    are two different jobs and only this one moved.
+
+    ⚠️ DAILY BARS WERE TRIED AND RULED OUT, so nobody re-proposes them: they
+    cannot see overnight. Merged `1d` missed the true 24h low by **$2.33 on
+    average and $9.13 at worst** (09-17: daily 713.32, true 704.19), because
+    DXFeed aggregates a daily candle over trading hours and the `_EXT` daily bar
+    is a near-copy of the RTH one. The operator: *"the outside RTH levels are the
+    ones I'm most expecting to get swept. It's imperative that we know where
+    those levels sit."*
 
     ⚠️ TWO STREAMS, ONE TAPE. RTH bars are stored under `SYM` and the extended
-    session under `SYM_EXT`, which also repeats every RTH bar (identical OHLC,
-    measured 2026-09-14: 1,170 of 1,170 overlapping stamps equal). Both are read
-    and de-duplicated on the stamp. Read-only; None when the store is absent or
-    empty — never an empty frame that reads as "no levels".
+    session under `SYM_EXT`; both are read and de-duplicated on the stamp.
+    Read-only; None when the store is absent or empty — never an empty frame
+    that reads as "no levels".
     """
     try:
         c = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5.0)
@@ -185,8 +236,8 @@ def load_tape(db_path: str, symbol: str) -> Optional[pd.DataFrame]:
     try:
         rows = c.execute(
             "SELECT ts_epoch_ms, open, high, low, close FROM candles"
-            " WHERE symbol IN (?, ?) AND interval='1m' AND close > 0 AND open > 0"
-            " ORDER BY ts_epoch_ms", (symbol, f"{symbol}_EXT")).fetchall()
+            " WHERE symbol IN (?, ?) AND interval=? AND close > 0 AND open > 0"
+            " ORDER BY ts_epoch_ms", (symbol, f"{symbol}_EXT", interval)).fetchall()
     except Exception:                                           # noqa: BLE001
         return None
     finally:

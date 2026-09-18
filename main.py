@@ -1,5 +1,11 @@
 """
-main.py  v4.50
+main.py  v4.51
+v4.51 2026-09-18  OTV4TEST r36 — `ctx["level_tape"]` is the feed store's HOURLY
+      tape, not its 1m one. Retention keeps 1m for five days and 1h for sixty, so
+      the board reached nine days back and now reaches twelve weeks. Measured:
+      merged 1h reproduced the merged-1m 24-hour high AND low to 0.00 on every
+      day both series cover, and the mapper's sections are already hour-granular.
+      The rejection fact is untouched — `_derive_events` reads `ctx["df_1m"]`.
 v4.50 2026-09-14  OTV4TEST r29 — `ctx["level_tape"]`: the feed store's 1m tape (SYM and
       SYM_EXT merged) handed to the level engine, which builds the session levels
       from it (levels v5.0). Read at most once per minute; None when the store
@@ -1356,9 +1362,16 @@ _LEVEL_TAPE_CACHE = (0.0, None)
 
 
 def _level_tape():
-    """OTV4TEST r29 — the 1m tape the level engine builds session levels from.
-    Re-read at most once a minute (a new closed bar is the only thing that can
-    change the answer); None on any failure, logged, never an empty frame."""
+    """The HOURLY tape the level engine builds session levels from (r36).
+
+    r29 built this on the 1m tape, which retention keeps for FIVE DAYS — so the
+    board reached back nine days while twelve weeks of hourly history sat in the
+    same store. The operator, reading his own 1D chart against it: *"use 1-hr as
+    far back as you can"*, then *"use the hour exclusively"*.
+    ⚠️ Re-read at most once a minute still: the cache is cheap and a new closed
+    HOUR is now the only thing that can change the answer, so this is if anything
+    more conservative than it was. None on any failure, logged, never an empty
+    frame — an empty frame reads as "no levels"."""
     global _LEVEL_TAPE_CACHE
     try:
         ts, df = _LEVEL_TAPE_CACHE
@@ -1368,8 +1381,8 @@ def _level_tape():
         from derived.level_map import load_tape
         df = load_tape(feed_db_path(), INSTRUMENT)
         if df is None:
-            logger.warning("[levels] no 1m tape readable for %s — session levels "
-                           "unavailable this minute", INSTRUMENT)
+            logger.warning("[levels] no hourly tape readable for %s — session "
+                           "levels unavailable this minute", INSTRUMENT)
         _LEVEL_TAPE_CACHE = (time.time(), df)
         return df
     except Exception as exc:                                   # noqa: BLE001

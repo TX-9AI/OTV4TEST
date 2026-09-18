@@ -1,5 +1,30 @@
 """
-data/candle_feed.py  v4.12
+data/candle_feed.py  v4.13
+v4.13  2026-09-18  OTV4TEST r36 — THE UNDERLYING'S OWN QUOTE IS SUBSCRIBED
+      (FEED.2, open since 2026-09-13). r64's manifold took FOUR of the five
+      streams for the ticker — Trade, TimeAndSale, Summary, Underlying — and left
+      Quote, because Quote WAS subscribed: per CONTRACT, in
+      `_reconcile_chain_subs`, where the bot needs it to price a spread. So the
+      underlying's own bid/ask was never asked for. MEASURED 2026-09-17: **0 of
+      22,846,560 `quote_series` rows are a non-option symbol.**
+      🔑 IT IS THE ONLY SOURCE OF RESTING DEPTH. The operator's thesis is that
+      size parks at coarse levels and is not worried about minute granularity;
+      `prints` says what TRADED and cannot answer it. Measured the same day,
+      volume within ±$0.25 of a session extreme carries a lift of **1.02x**
+      against a random price in the traded band — i.e. none — and a level that
+      HELD is one price turned away from, so volume AT it conflates absorption
+      with traversal. `bid_size`/`ask_size` do not.
+      ⚠️ COLLECTION ONLY (§31). Nothing reads it; it is banked until there is
+      enough to answer the question with numbers rather than an argument.
+      ⚠️ NO HANDLER CHANGED: `_on_quote` already keys on `event_symbol` and
+      writes `bid_size`/`ask_size`, so it is symbol-agnostic — one line.
+      ⚠️ AND IT RIDES THE WRAPPED, INDEPENDENT SUBSCRIBE, NOT THE CHAIN'S CHUNKED
+      ONE. r118 is why: adding a stream to the per-CONTRACT subscription cost SPX
+      its ENTIRE chain subscription mid-session on 2026-08-25. Each stream here
+      fails alone and names itself in the log.
+      ⚠️ PURGE: it lands in `quote_series`, already `ARTIFACT_DAYS` at 3 days, so
+      the new stream inherits the policy — a subscriber cannot create an unpurged
+      table by accident.
 v4.12 2026-09-06  r288 / DEV.11 — THE DISK GUARD MOVES OUT, to main.py's tick
       loop. v4.11 put it at the top of `run()`'s `while True`, which is the
       RECONNECT loop rather than a tick loop, so the check ran ONCE PER
@@ -1653,10 +1678,37 @@ class CandleFeed:
                     # for it, though it has never published either — retest
                     # during RTH before calling it uncarried, since the 45s
                     # after-hours probe saw only 1 Trade on this arm.
+                    # 🔴 r36 — QUOTE JOINS THE UNDERLYING SET (FEED.2). r64 took
+                    # FOUR of the five streams for the ticker and left Quote,
+                    # because Quote WAS subscribed — per CONTRACT, in
+                    # `_reconcile_chain_subs`, where the bot needs it to price a
+                    # spread. So the underlying's own bid/ask was never asked
+                    # for: measured 2026-09-17, **0 of 22,846,560 `quote_series`
+                    # rows are a non-option symbol**.
+                    # ⚠️ IT IS THE ONLY SOURCE OF RESTING DEPTH. `prints` says
+                    # what TRADED; `bid_size`/`ask_size` say what is WAITING —
+                    # and the operator's question is where size parks, which
+                    # traded volume cannot answer. Measured the same day:
+                    # volume within ±$0.25 of a session extreme carries a lift of
+                    # 1.02x against a random price in the traded band, i.e. none.
+                    # A level that HELD is one price turned away from, so volume
+                    # AT it conflates absorption with traversal. Depth does not.
+                    # ⚠️ COLLECTION ONLY, AND NOTHING READS IT (§31). It is
+                    # subscribed here, stored by `_on_quote` — which already keys
+                    # on `event_symbol` and is symbol-agnostic, so no handler
+                    # changes — and read by no decision. It is banked until there
+                    # is enough of it to answer the question with numbers.
+                    # ⚠️ AND IT RIDES THE WRAPPED, INDEPENDENT SUBSCRIBE BELOW,
+                    # NOT THE CHAIN'S CHUNKED ONE. r118 is why that distinction
+                    # matters: adding a stream to the per-CONTRACT subscription
+                    # cost SPX its ENTIRE chain subscription mid-session on
+                    # 2026-08-25 — greeks, quotes and marks all stopped at the
+                    # same instant. Each stream here fails alone and says so.
                     for _ev, _label in ((Trade, "Trade"),
                                         (TimeAndSale, "TimeAndSale"),
                                         (Summary, "Summary"),
-                                        (Underlying, "Underlying")):
+                                        (Underlying, "Underlying"),
+                                        (Quote, "Quote")):
                         try:
                             await streamer.subscribe(_ev, [self.dx_symbol])
                             logger.info("subscribed %s %s", self.dx_symbol, _label)

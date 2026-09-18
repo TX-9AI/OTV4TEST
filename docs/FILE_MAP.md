@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-284 Python modules across 13 local packages.
+285 Python modules across 13 local packages.
 
-**Reached by:** 114 imported · 11 declared entry points · 77 referenced from a script, unit or doc but never imported · **82 by nothing here**.
+**Reached by:** 114 imported · 11 declared entry points · 78 referenced from a script, unit or doc but never imported · **82 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -108,7 +108,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `analysis/liquidity_mapper.py`
 - **calls:** `config.py`, `utils/math_utils.py`
-- **called by:** `derived/level_map.py`, `main.py`, `shadow/observer.py`, `tests/check_plan_prepares.py`, `tests/check_pool_geometry.py`
+- **called by:** `derived/level_map.py`, `main.py`, `shadow/observer.py`, `tests/check_level_tape.py`, `tests/check_plan_prepares.py`, `tests/check_pool_geometry.py`
 
 ### `analysis/market_state.py`
 - **calls:** (none)
@@ -244,7 +244,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `derived/__init__.py`
 - **calls:** `derived/base.py`
-- **called by:** `derived/levels.py`, `strategy/atp_butterfly_plan.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/orb_plan.py`, `strategy/runaway_plan.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_anchors.py`, `tests/check_atp_butterfly.py`, `tests/check_bfly_vwap_band.py`, `tests/check_gamma_regime.py`, `tests/check_level_map.py`
+- **called by:** `derived/levels.py`, `strategy/atp_butterfly_plan.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/orb_plan.py`, `strategy/runaway_plan.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_anchors.py`, `tests/check_atp_butterfly.py`, `tests/check_bfly_vwap_band.py`, `tests/check_gamma_regime.py`, `tests/check_level_map.py`, `tests/check_level_tape.py`
 
 ### `derived/anchors.py`
 - **calls:** `config.py`, `data/derived_store.py`
@@ -276,7 +276,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `derived/level_map.py`
 - **calls:** `analysis/liquidity_mapper.py`
-- **called by:** `derived/levels.py`, `main.py`, `tests/check_level_map.py`
+- **called by:** `derived/levels.py`, `main.py`, `tests/check_level_map.py`, `tests/check_level_tape.py`
 
 ### `derived/levels.py`
 - **calls:** `config.py`, `derived/__init__.py`, `derived/base.py`, `derived/level_map.py`, `derived/registry.py`
@@ -728,6 +728,10 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_level_source.py`
 - **calls:** `data/derived_store.py`, `derived/levels.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
+### `tests/check_level_tape.py`
+- **calls:** `analysis/liquidity_mapper.py`, `derived/__init__.py`, `derived/level_map.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_liquidity_hunt.py`
