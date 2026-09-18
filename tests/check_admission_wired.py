@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+"""
+tests/check_admission_wired.py  v1.0
+THE ADMISSION TABLE IS LIVE: A STRATEGY OUTSIDE ITS WINDOW IS NEVER ASKED.
+
+v1.0  2026-09-17  OTV4TEST r40 — born red at r39 (ae63024), where `_safe_strategy`
+      had no admission test at all and `attempt_new_entry` never called
+      `eligible_now()`.
+
+WHY THIS FILE EXISTS. r35 moved every entry gate into one table and then said so
+plainly: *"NOTHING IS WIRED YET — attempt_new_entry still runs the old gates."*
+A table nobody reads is not an admission policy, it is documentation. This is the
+revision that reads it, and this is the gate that proves it is read.
+
+⚠️ IT DRIVES `_safe_strategy` RATHER THAN MATCHING ITS TEXT. §21: a checker that
+greps for `_admission_allows` passes on a call whose result is discarded. Every
+assertion below calls the funnel with a probe that RECORDS whether it ran, so
+"not asked" means the strategy function was genuinely never invoked.
+"""
+import os
+import sys
+import tempfile
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+os.environ.setdefault("OT_TRADES_DB", os.path.join(tempfile.mkdtemp(), "t.db"))
+os.environ.setdefault("OT_DERIVED_DB", os.path.join(tempfile.mkdtemp(), "d.db"))
+FAILED, RAN = [], []
+
+
+def check(name, ok, detail=""):
+    RAN.append(name)
+    print(f"  {'PASS' if ok else 'FAIL'}  {name}" + (f"  [{detail}]" if detail else ""))
+    if not ok:
+        FAILED.append(name.split()[0])
+
+
+def guard(name, fn, detail=""):
+    """A MISSING symbol is a RED LINE, never a traceback (r39's lesson, kept)."""
+    try:
+        ok, det = fn(), detail
+    except Exception as exc:                                    # noqa: BLE001
+        ok, det = False, f"{type(exc).__name__}: {exc}"
+    check(name, ok, det)
+    return ok
+
+
+def main():
+    import ast
+    src = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
+
+    # ── A1/A2 — the funnel consults admission, and a refusal never runs fn ──
+    import main as M
+
+    def probe(name, admitted):
+        """Returns (was_asked, returned). `admitted` None = no admission set."""
+        M._set_admission(admitted)
+        ran = {"n": 0}
+
+        def fn():
+            ran["n"] += 1
+            return "SIGNAL"
+        out = M._safe_strategy(name, fn)
+        M._set_admission(None)
+        return ran["n"] > 0, out
+
+    guard("A1 an ADMITTED strategy is asked and its signal returned",
+          lambda: probe("TrendCreditSpread", ["TrendCreditSpread"]) == (True, "SIGNAL"))
+    guard("A2 a strategy NOT admitted this tick is NEVER ASKED — fn does not run",
+          lambda: probe("TrendCreditSpread", ["SweepCreditSpread"]) == (False, None),
+          "this is what removes the NOT ASKED rows: no ask, so no refusal to journal")
+
+    # ── A3 — the ORB dispatches under a label the table does not use ────────
+    guard("A3 the dispatch label 'ORB' resolves to the table key 'ORBStrategy'",
+          lambda: probe("ORB", ["ORBStrategy"])[0] is True
+          and probe("ORB", ["SweepCreditSpread"])[0] is False,
+          "an alias miss would silently gate the ORB shut in its own window")
+
+    # ── A4/A5 — fails OPEN, in both directions ─────────────────────────────
+    guard("A4 with NO admission computed, every strategy is asked (pre-r40 exactly)",
+          lambda: probe("TrendCreditSpread", None)[0] is True)
+    guard("A5 a name the table does not carry is asked — admission has no opinion",
+          lambda: probe("IronCondorStrategy", ["SweepCreditSpread"])[0] is True,
+          "IronCondorStrategy is retired as an entry; a silent veto would hide that")
+    guard("A5b a management dispatch is never gated by the entry table",
+          lambda: probe("CondorManagement", [])[0] is True)
+
+    # ── A6 — every strategy the table DOES carry is genuinely gated ────────
+    from execution import position_manager as pm
+    names = list(pm.rules())
+
+    def all_gated():
+        return all(probe(n, [])[0] is False for n in names)
+    guard("A6 EVERY strategy in the table is gated — none is decorative",
+          all_gated, f"{len(names)} strategies: {', '.join(names)}")
+
+    # ── A7 — the set is CLEARED at entry, before any early return ──────────
+    # ⚠️ THE ORDER IS THE ASSERTION. `_ADMITTED` is module state that outlives
+    # the call; a `return` that left last tick's set live would gate this tick
+    # on a window that has since closed — r207's stale-snapshot class.
+    tree = ast.parse(src)
+    fn_ane = next((n for n in ast.walk(tree)
+                   if isinstance(n, ast.FunctionDef) and n.name == "attempt_new_entry"), None)
+
+    def cleared_first():
+        first = fn_ane.body[0]
+        if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant):
+            first = fn_ane.body[1]          # skip the docstring
+        return (isinstance(first, ast.Expr) and isinstance(first.value, ast.Call)
+                and getattr(first.value.func, "id", "") == "_set_admission"
+                and len(first.value.args) == 1
+                and isinstance(first.value.args[0], ast.Constant)
+                and first.value.args[0].value is None)
+    guard("A7 attempt_new_entry CLEARS admission as its first statement",
+          cleared_first, "before any gate can return past it")
+
+    # ── A8 — and it actually calls the position manager ────────────────────
+    def calls_eligible():
+        return any(isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "eligible_now"
+                   for n in ast.walk(fn_ane))
+    guard("A8 attempt_new_entry asks the position manager which strategies may be asked",
+          calls_eligible, "r35's table is READ, not merely present")
+
+    # ── A9 — the old gate is still standing, and that is deliberate ────────
+    # r40 did NOT remove `has_blocking_position()`. This asserts the STATED
+    # scope so the next revision can see exactly what it inherits, and so the
+    # claim in the changelog cannot drift from the code.
+    def gate_present():
+        return "if not pos_mgr.has_blocking_position():" in src
+    guard("A9 has_blocking_position() still gates the open branch — ADM.1's scope",
+          gate_present, "removing it needs the three direct calls de-duplicated first")
+
+    print()
+    if FAILED:
+        print(f"RED — {len(FAILED)} of {len(RAN)} failed: {', '.join(FAILED)}")
+        return 1
+    print(f"GREEN — {len(RAN)} checks")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

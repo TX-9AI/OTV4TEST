@@ -1,5 +1,29 @@
 """
-main.py  v4.51
+main.py  v4.52
+v4.52 2026-09-17  OTV4TEST r40 — THE ADMISSION TABLE IS LIVE. r35 moved every
+      entry gate into `execution/position_manager.py` and left it INERT:
+      *"NOTHING IS WIRED YET — attempt_new_entry still runs the old gates."*
+      `attempt_new_entry` now asks `eligible_now()` ONCE a tick and
+      `_safe_strategy` — the one funnel every entry dispatch already routes
+      through — refuses everything not on the list. One test, seven call sites,
+      and THE CASCADE ORDER IS UNTOUCHED (r35: that order is load-bearing).
+      🔑 A refused strategy is NEVER ASKED, so `_plan_board.asked()` is never
+      reached and there is no per-tick refusal to journal — which is what ends
+      the 10,116 `NOT ASKED` rows written on 2026-09-17 alone.
+      ⚠️ FAILS OPEN BOTH WAYS, DELIBERATELY: no admission computed for a tick
+      means every name passes (pre-r40 behaviour exactly), and a name the table
+      does not carry passes, because `IronCondorStrategy` is retired as an entry
+      and management dispatches are not admission's business. A table that
+      silenced an unknown name would make ADDING a strategy a silent no-op.
+      ⚠️ CLEARED AS THE FIRST STATEMENT of `attempt_new_entry`, before any gate
+      can return past it — `_ADMITTED` outlives the call, and a stale set would
+      gate this tick on a window that has since closed (r207's class).
+      🔴 `has_blocking_position()` IS STILL CONSULTED on the open branch and
+      that is STATED SCOPE, not an oversight — see ADM.1. Removing it orphans
+      `_attempt_butterfly` and `_attempt_sweep_on_grant`, which are NOT
+      redundant with this function: the first is r161's ADDITIVE EXEMPT path,
+      this function's own butterfly COMPETES for the slot behind
+      `elif signal is None:`. Same strategy, two different questions.
 v4.51 2026-09-18  OTV4TEST r36 — `ctx["level_tape"]` is the feed store's HOURLY
       tape, not its 1m one. Retention keeps 1m for five days and 1h for sixty, so
       the board reached nine days back and now reaches twelve weeks. Measured:
@@ -1148,7 +1172,8 @@ logger = logging.getLogger(__name__)
 
 from utils.time_utils import (
     now_utc, now_et, fmt_et_short, minutes_since, is_rth,
-    seconds_until_rth_open, is_hard_close_time, entries_open
+    seconds_until_rth_open, is_hard_close_time, entries_open,
+    HARD_CLOSE,                      # r40 — admission's past_hard_close fact
 )
 from data.data_cache import get_cache
 from data import disk_watch as _disk_watch
@@ -2922,6 +2947,54 @@ def _plan_skip_management(reason: str) -> None:
         pass
 
 
+# ══ r40 — ADMISSION IS ASKED ONCE A TICK AND READ AT THE ONE FUNNEL ═══════
+# Operator, 2026-09-17: *"I wondered if this entire convoluted process can live
+# in one file that has to drop each gate within to greenlight a plan to pass
+# trigger params to the strategy?"* r35 built that file. NOTHING READ IT.
+#
+# 🔑 WHY THE GATE LIVES IN `_safe_strategy` AND NOT AT SEVEN CALL SITES. Every
+# entry dispatch in this module already funnels through it — ORB, runaway,
+# sweep, TCS, both butterflies and the hunt — so one test covers all of them and
+# THE CASCADE ORDER IS UNTOUCHED. r35's own note says the order is load-bearing;
+# rewriting seven `if` blocks to consult a set would have been seven chances to
+# reorder it by accident.
+#
+# ⚠️ IT FAILS OPEN, ON PURPOSE, IN BOTH DIRECTIONS.
+#   · `_ADMITTED is None` — no admission was computed for this tick, so every
+#     name passes and the dispatch behaves EXACTLY as it did before r40. Any
+#     call path that does not set it is therefore unchanged rather than dead.
+#   · a name the table does not carry passes — `IronCondorStrategy` is retired
+#     as an entry (it is the condor's second leg) and management dispatches are
+#     not admission's business. A table that silences an unknown name would
+#     make ADDING a strategy a silent no-op, which is the failure r35's
+#     `eligible_now` was written to end, arriving from the other side.
+# A strategy that is REFUSED is never asked, and `_plan_board.asked()` is never
+# reached — which is the whole point: there is no per-tick refusal to journal
+# because there is no refusal. The plan did not run.
+_ADMITTED = None                    # frozenset[str] | None — set per tick
+_ADMISSION_ALIAS = {"ORB": "ORBStrategy"}   # dispatch label -> table key
+
+
+def _set_admission(names) -> None:
+    """Publish this tick's admitted set. `None` restores the pre-r40 behaviour."""
+    global _ADMITTED
+    _ADMITTED = None if names is None else frozenset(names)
+
+
+def _admission_allows(name: str) -> bool:
+    """May `name` be ASKED this tick? Unknown names and an unset tick pass."""
+    if _ADMITTED is None:
+        return True
+    key = _ADMISSION_ALIAS.get(name, name)
+    try:
+        from execution import position_manager as _pmod
+        if key not in _pmod.rules():
+            return True                 # admission has no opinion about it
+    except Exception:                                          # noqa: BLE001
+        return True                     # the table is unreadable — do not gate
+    return key in _ADMITTED
+
+
 def _safe_strategy(name: str, fn, ctx=None):
     """v4.9 — run ONE strategy evaluation in isolation.
 
@@ -2942,6 +3015,9 @@ def _safe_strategy(name: str, fn, ctx=None):
     decline, and logs at ERROR naming the strategy: a raise is a defect and must
     never be quiet, but it must not take the rest of the tick with it.
     """
+    # r40 — NOT ADMITTED THIS TICK: not asked, and nothing journalled.
+    if not _admission_allows(name):
+        return None
     try:
         sig = fn()
         # r146 — the plan board learns this strategy was ASKED. AFTER fn().
@@ -3553,6 +3629,13 @@ def _supervise_offers(ctx: dict, state: BotState) -> None:
 
 def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     """Try to generate and execute a trade signal."""
+    # ⚠️ r40 — CLEARED FIRST, BEFORE ANY EARLY RETURN CAN SKIP IT. `_ADMITTED`
+    # is module state that outlives the call. Every gate below returns, and a
+    # return that left LAST tick's admitted set in place would gate this tick
+    # on a window that has since closed — the stale-snapshot class this file
+    # already carries a warning about at the ORB seam (r207). `None` is the
+    # pre-r40 behaviour, so the cleared state is also the safe state.
+    _set_admission(None)
     session  = get_session_guard()
     risk_mgr = get_risk_manager()
     entry_eng = get_entry_engine(state.paper_trading)
@@ -3620,6 +3703,55 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     # through v3's stale-book stalls and is the one strategy with a positive
     # record.
 
+
+    # ══ r40 — ADMISSION, ASKED ONCE, FROM THE ONE TABLE ══════════════════════
+    # r35 moved every entry gate into `execution/position_manager.py` and then
+    # left it INERT: *"NOTHING IS WIRED YET — attempt_new_entry still runs the
+    # old gates."* This is the wiring. `eligible_now()` answers which strategies
+    # MAY BE ASKED this tick; `_safe_strategy` refuses the rest at the funnel.
+    #
+    # 🔑 IT ANSWERS, IT DOES NOT DRIVE. The list comes back and THIS file does
+    # the asking, in the same cascade order as before. The position manager
+    # never reaches into `strategy/` — that is what keeps the one-way flow.
+    #
+    # ⚠️ THE UNIVERSALS ABOVE ARE STILL THE AUTHORITY, AND THAT IS STATED
+    # RATHER THAN HIDDEN. `is_halted()` and `session.can_enter()` have already
+    # run and already returned; passing `trading_day=True` here does not make
+    # them decorative, it avoids a SECOND opinion on a question already
+    # answered by the gate that owns it. `cap_intact` is passed as the live
+    # value anyway, so the table refuses on its own terms if the two ever
+    # disagree — a disagreement that would otherwise be silent.
+    _adm_now = now_et()
+    try:
+        _orb_d = get_orb_engine().data
+        _pm_adm = get_position_manager(state.paper_trading)
+        _tries = {}
+        for _bn in ("GEXPinButterfly", "ATPButterfly"):
+            _tries[_bn] = 1 if _one_per_session_used(_bn) else 0
+        _eligible = _pm_adm.eligible_now(
+            (_adm_now.hour, _adm_now.minute),
+            trading_day     = True,
+            orb_established = bool(_orb_d and _orb_d.orb_high and _orb_d.orb_low),
+            cap_intact      = not risk_mgr.is_halted(),
+            past_hard_close = _adm_now.time() >= HARD_CLOSE,
+            tries_used      = _tries,
+        )
+        _set_admission(_eligible)
+    except Exception as exc:                                   # noqa: BLE001
+        # ⚠️ FAILS OPEN AND SAYS SO. `open_by_strategy()` RAISES rather than
+        # returning {} (r35, deliberately — an empty map reads as "nothing is
+        # open", the permissive answer). So a store that cannot be counted
+        # lands here. Gating everything shut on that would take the box out of
+        # the session silently; the pre-r40 gates are all still in place below,
+        # so falling through to them is the smaller failure — but it is LOUD.
+        _set_admission(None)
+        logger.error("[admission] table unavailable this tick — falling back to "
+                     "the pre-r40 gates, NOTHING is admission-filtered: %s: %s",
+                     type(exc).__name__, exc)
+    else:
+        if state.tick_count % 20 == 0:
+            logger.info("[admission] may be asked: %s",
+                        ", ".join(_eligible) if _eligible else "(none)")
 
     # ── Fetch options chain (shared across strategies) ────────────────────────
     chain = ctx.get("chain") or get_chain_fetcher().fetch_chain()
@@ -5154,6 +5286,20 @@ def main_loop(state: BotState):
                 # ⚠️ CREDIT IS STILL BLOCKED BY AN OPEN ORB OR RUNAWAY DEBIT.
                 # has_blocking_position() counts everything except a butterfly,
                 # so that gate is untouched.
+                # ⚠️ r40 LEFT THIS GATE STANDING, DELIBERATELY. Removing it is
+                # the operator's ruling — *"I WANT sweep to be able to fire
+                # while we have an active runaway in progress"* — and the
+                # admission table's per-type caps are built to replace it. What
+                # stopped r40 is that the three calls ABOVE are NOT redundant
+                # with `attempt_new_entry`: `_attempt_butterfly` here is r161's
+                # ADDITIVE, EXEMPT path (asked every tick of its slot, a fire
+                # APPENDS), while `attempt_new_entry`'s own butterfly sits
+                # behind `elif signal is None:` and COMPETES for the slot. Same
+                # strategy, two different questions. Running both unguarded
+                # asks three strategies twice a tick; deleting these loses the
+                # exemption. That de-duplication is its own revision — see
+                # ADM.1 — and it is not something to improvise at 23:00 on a
+                # box that wakes up trading. The gate stays until then.
                 if not pos_mgr.has_blocking_position():
                     attempt_new_entry(ctx, ms, state)
             else:
