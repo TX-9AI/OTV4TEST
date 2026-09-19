@@ -1,6 +1,6 @@
 # WORKING_AGREEMENT.md — how we operate (read this first, every new thread)
 
-**`WORKING_AGREEMENT.md` v4.16 · 2026-09-19 — §0 through §39, plus §15a, §18a and §36a. See the CHANGELOG at the foot.**
+**`WORKING_AGREEMENT.md` v4.17 · 2026-09-19 — §0 through §40, plus §15a, §18a, §36a and §40.1. See the CHANGELOG at the foot.**
 
 > 🔴 **§0 IS THE FLOOR — AN ATTESTATION, NOT A TIP. Read it first, every thread.**
 > The operator ordered it once before and was told it existed. It did not.
@@ -1640,7 +1640,87 @@ that looks finished while leaving the hard half undone.
 
 ---
 
+## 40. ON A SHARED LINEAGE, "OURS DIFFERS FROM YOURS" IS A CLAIM REQUIRING MEASUREMENT.
+
+Added 2026-09-19 (r65), the operator's ruling — *"Agree. Coordinate adding it on
+both sides."* — after a day of cross-tree defect exchange with the mainline
+control agent.
+
+**A fork and its parent carry the same defect until one of them is SHOWN not
+to.** Three claims were made between the two trees on 2026-09-19 about which one
+carried what, and **all three were wrong**:
+
+- *"you lack r39's named-refusal sentence"* — **ours**. Both trees had it, inherited.
+- *"ours explicitly refuses to blame the tape"* — **theirs**. Both blamed it, four lines later, in a branch neither had read to the end.
+- *"a plain script path is not at risk"* — **theirs**, and it INVERTED the conclusion: a plain script path is the case most at risk, and `PYTHONPATH` is exactly what masks it.
+
+**Every one was settled by RUNNING the thing rather than reading it.** The
+reviewer's confident claim about the other tree is a projection of his own, and
+the cheapest correction is a measurement on the tree being described, **by the
+side that owns it**.
+
+⚠️ **AND THE ENVIRONMENT IS PART OF THE LINEAGE.** The two boxes differed in an
+exported `PYTHONPATH` that neither agent controlled, so reasoning that was sound
+on one was unsound on the other. **A claim about behaviour is a claim about an
+environment**, and "it works here" names a box as much as a commit.
+
+🔑 **THE COROLLARY THAT PAYS FOR ITSELF: SEND THE MECHANISM, NOT THE OUTCOME.**
+The control agent mutated its own guard, found it passing for a reason it had
+not understood, and reported *why* — that `\b` was doing the work its lookahead
+appeared to do. That sentence is what located the same hole here, where the
+boundary was **absent**. An outcome-only report — *"lookahead redundant, kept
+it"* — would have transferred nothing.
+
+⚠️ **THIS SECTION IS HALF OF A PAIR AND THE MAINLINE HALF IS PROPOSED, NOT
+LANDED.** Wording was sent for agreement rather than imposed; their operator has
+not ruled. If the two texts end up differing, **the rule matters more than the
+symmetry** — identical text in two wrong places is worse than fitted text in two
+right ones.
+
+### 40.1 THE SEPARATE FAILURE FOUND THE SAME DAY: A CHECK WHOSE *SHAPE* DESTROYS WHAT IT ASSERTS
+
+Five of these between the two trees in one session, and they are **not** the
+cross-tree failure — they are its cousin, and they get their own subsection so
+neither gets skimmed:
+
+| the shape | what it destroyed |
+|---|---|
+| a **sorted** sign list | the ASSOCIATION — `[-1, 1]` is the same list whichever leg carries which |
+| a fixture built from the assistant's own belief | INDEPENDENCE — it matched itself and could never fail |
+| a probe run in a shell that exported the thing under test | the RUNTIME — the environment supplied the answer |
+| a harness resolving its own temp file wrongly | the RUN — six "REDs" were file-not-found exit codes |
+| a comparison evaluated on an **empty set** | the COMPARISON — 0 vs 0 passes and means nothing |
+
+In every case the check is **well-formed, passes, and is about nothing.**
+
+⚠️ **THE ASYMMETRY IS THE WHOLE DANGER.** A malformed check that FAILS is a
+nuisance and announces itself. One that PASSES is a lie already filed — and
+filed under a green. Three of these five went green.
+
+🔑 **SO: MUTATE THE THING THE CHECK IS ABOUT, NOT ONLY THE CODE AROUND IT.**
+Every one surfaced only when someone broke the exact behaviour the check claimed
+to cover and watched whether it noticed. A baseline must be confirmed GREEN
+first, and a FAIL must be distinguished from a non-zero exit, or the harness
+joins the table above.
+
+---
+
 ## CHANGELOG
+
+**v4.17 — 2026-09-19 — OTV4TEST r65 — §40 ADDED: ON A SHARED LINEAGE, "OURS
+DIFFERS FROM YOURS" IS A CLAIM REQUIRING MEASUREMENT.**
+Operator's ruling: *"Agree. Coordinate adding it on both sides."* Three claims
+were made between this fork and mainline on 2026-09-19 about which tree carried
+which defect, and **all three were wrong** — one ours, two theirs, and one of
+those inverted its own conclusion. Each was settled by running the thing rather
+than reading it. §40.1 records the separate failure found the same day — **a
+check whose SHAPE destroys what it asserts** — kept as its own subsection so the
+two rules cannot be skimmed as one.
+🔑 **THE COROLLARY IS THE PART THAT PAID:** send the MECHANISM, not the outcome.
+Their *"`\b` is doing the work"* located the same hole here, where the boundary
+was absent; *"lookahead redundant"* would have transferred nothing.
+⚠️ **THE MAINLINE HALF IS PROPOSED AND NOT LANDED** — wording sent for agreement
+rather than imposed, and their operator has not ruled.
 
 **v4.16 — 2026-09-19 — OTV4TEST r60 — §38.2 GAINS THE ROUTING GRANT, WITH ITS
 BOUNDARY WRITTEN BESIDE IT.**

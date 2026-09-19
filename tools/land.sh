@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
-# tools/land.sh — v1.12
+# tools/land.sh — v1.13
+# v1.13 (2026-09-19) — OTV4TEST r65. DIRECTIVE PARSING IS WHITESPACE-NORMALISED
+#   AND A `NEG` NAMING A MISSING FILE IS REFUSED. Every directive stripped
+#   exactly one space while this file's own format block documents aligned
+#   columns, so a spec written from the documentation mangled its paths — and
+#   POS failed closed while NEG FAILED OPEN, passing an assertion it had never
+#   evaluated. Both halves fixed: one `_spec_val` parser, and an unresolvable
+#   NEG (or POS) path is a refusal rather than a silent pass.
 # v1.12 (2026-09-10) — OTV4TEST r13. CHECKs run with OT_TRADES_DB and OT_DERIVED_DB
 #   pointed at scratch files: a checker can never reach the box's live stores again
 #   (check_standing_offer S5 landed a fixture as a live open position on 2026-09-10).
@@ -211,6 +218,16 @@
 #   bash /tmp/land/land.sh dtp otv4        # land both, in that order
 #   bash /tmp/land/land.sh otv4            # or one at a time
 #
+# 🔑 v1.13 (r65) — ONE PARSER FOR EVERY DIRECTIVE. Strips the token and ALL
+# following whitespace, so the COLUMN-ALIGNED form documented below parses
+# identically to the single-space form. Before this the two disagreed and the
+# documentation was the losing side.
+_spec_val() {                       # $1 = whole line, $2 = directive token
+  local v="${1#"$2"}"               # drop the token
+  v="${v#"${v%%[![:space:]]*}"}"    # drop every leading space/tab
+  printf '%s' "$v"
+}
+
 # Spec format (one directive per line, `|` separates fields):
 #   REPO   <marker-file> <marker-file>     files that identify the target repo
 #   BASE   <sha>                            commit the payload was built against (v1.8)
@@ -334,7 +351,7 @@ land_one() {
   [ -f "$spec" ]  || { die "$half carries NO land.spec — refusing. A delivery with no content gate is the one you most want stopped."; return 1; }
 
   local rev desc markers repo="" ledger=""
-  rev="$(grep    '^REV '   "$spec" | head -1 | cut -d' ' -f2-)"
+  rev="$(_spec_val "$(grep -E '^REV[[:space:]]' "$spec" | head -1)" REV)"
   # r1 (OTV4TEST) — WHICH LEDGER THIS HALF APPENDS TO. Optional; absent means
   # docs/GENESIS.md, which is every mainline half ever shipped. The fork keeps
   # its own ledger (docs/GENESIS-TEST.md) so a rewire revision is never
@@ -343,10 +360,10 @@ land_one() {
   # ⚠️ ONE LANDER, TWO LEDGERS — deliberately not a forked copy of this file.
   # A second lander drifts from this one silently, and the drift would be in
   # the tool that gates everything else.
-  ledger="$(grep '^LEDGER ' "$spec" | head -1 | cut -d' ' -f2-)"
+  ledger="$(_spec_val "$(grep -E '^LEDGER[[:space:]]' "$spec" | head -1)" LEDGER)"
   [ -n "$ledger" ] || ledger="docs/GENESIS.md"
-  desc="$(grep   '^DESC '  "$spec" | head -1 | cut -d' ' -f2-)"
-  markers="$(grep '^REPO ' "$spec" | head -1 | cut -d' ' -f2-)"
+  desc="$(_spec_val "$(grep -E '^DESC[[:space:]]' "$spec" | head -1)" DESC)"
+  markers="$(_spec_val "$(grep -E '^REPO[[:space:]]' "$spec" | head -1)" REPO)"
   [ -n "$rev" ]     || { die "spec carries no REV"; return 1; }
   [ -n "$desc" ]    || { die "spec carries no DESC"; return 1; }
   [ -n "$markers" ] || { die "spec carries no REPO markers"; return 1; }
@@ -423,19 +440,46 @@ land_one() {
   # ── THE CONTENT GATE: this delivery's own assertions (§15) ──────────────
   # Keyed on CONTENT, not version strings: a header bump with no real edit
   # must fail. On any flag: fail loudly, stage nothing, keep the archive.
-  local g=0 f p
+  #
+  # 🔴 v1.13 (r65) — THE DIRECTIVE VALUE IS WHITESPACE-NORMALISED, AND A `NEG`
+  # THAT NAMES A MISSING FILE IS NOW REFUSED RATHER THAN PASSED.
+  # These parsers stripped EXACTLY ONE SPACE (`${line#NEG }`), while the format
+  # block in this very file documents COLUMN-ALIGNED examples:
+  #     NEG    <path>|<literal string>        must be ABSENT after extraction
+  # A spec written from the documentation therefore produced a path with leading
+  # spaces, and the two directives then failed in OPPOSITE directions:
+  #   · `POS` greps with `!`, so a missing file flags -> FAILS CLOSED, loudly.
+  #     (Measured: this refused the r61 archive with every POS reading MISSING.)
+  #   · `NEG` greps without `!` and swallows the error, so a missing file reads
+  #     as "the string is absent" -> THE ASSERTION PASSES. Silently. Every time.
+  # ⚠️ A `NEG` IS THE ONLY THING PROVING SUPERSEDED CODE IS GONE. A vacuous one
+  # certifies that without looking, which is §15 v1.3's own finding — *"one
+  # failed open and one failed closed… a gate that can do either is unrelated to
+  # the thing it claims to check"* — recurring in the PARSER rather than in the
+  # pattern it was written about.
+  # 🔑 BOTH HALVES ARE NEEDED. Normalising alone would fix a spec written from
+  # the docs and still let a TYPO'd path pass a NEG in silence; refusing a
+  # missing file alone would leave the aligned form failing for a wrong reason.
+  local g=0 f p val
   while IFS= read -r line; do
-    f="${line#POS }"; p="${f#*|}"; f="${f%%|*}"
-    if ! grep -qF "$p" "$repo/$f" 2>/dev/null; then
+    val="$(_spec_val "$line" POS)"; p="${val#*|}"; f="${val%%|*}"
+    if [ ! -f "$repo/$f" ]; then
+      echo "  POS NAMES A FILE THAT DOES NOT EXIST: '$f'"; g=1
+    elif ! grep -qF "$p" "$repo/$f"; then
       echo "  MISSING in $f: $p"; g=1
     fi
-  done < <(grep '^POS ' "$spec")
+  done < <(grep -E '^POS[[:space:]]' "$spec")
   while IFS= read -r line; do
-    f="${line#NEG }"; p="${f#*|}"; f="${f%%|*}"
-    if grep -qF "$p" "$repo/$f" 2>/dev/null; then
+    val="$(_spec_val "$line" NEG)"; p="${val#*|}"; f="${val%%|*}"
+    # 🔴 THE FAIL-OPEN CLOSURE. Without this branch a NEG whose path does not
+    # resolve asserts NOTHING and reports PASS.
+    if [ ! -f "$repo/$f" ]; then
+      echo "  NEG NAMES A FILE THAT DOES NOT EXIST: '$f' — refusing rather than"
+      echo "     passing an assertion that cannot have been evaluated."; g=1
+    elif grep -qF "$p" "$repo/$f"; then
       echo "  STILL PRESENT in $f: $p"; g=1
     fi
-  done < <(grep '^NEG ' "$spec")
+  done < <(grep -E '^NEG[[:space:]]' "$spec")
   if [ "$g" != "0" ]; then
     die "CONTENT GATE FAILED"; return 1
   fi
@@ -457,7 +501,7 @@ land_one() {
   # is how every checker in these trees expects to be invoked.
   local nchk=0 chk
   while IFS= read -r line; do
-    chk="${line#CHECK }"
+    chk="$(_spec_val "$line" CHECK)"
     nchk=$((nchk+1))
     # 🔴 A CHECK MUST NOT INHERIT THIS DELIVERY'S OWN CONTROL VARIABLES, and
     # this was found by the CHECK stage biting its own delivery: r279's
@@ -482,7 +526,7 @@ land_one() {
       echo "     re-run it yourself:  cd $repo && python3 $chk"
       die "A DECLARED CHECK DID NOT PASS"; return 1
     fi
-  done < <(grep '^CHECK ' "$spec")
+  done < <(grep -E '^CHECK[[:space:]]' "$spec")
 
   # ⚠️ A CODE HALF WITH NO CHECK IS REFUSED. Detected from the payload rather
   # than trusted to the author: if this half ships a .py outside docs/ and
@@ -512,7 +556,7 @@ land_one() {
   # would record a deletion that never happened.
   local deleted=0
   while IFS= read -r line; do
-    local target="${line#DEL }"
+    local target; target="$(_spec_val "$line" DEL)"
     [ -z "$target" ] && continue
     if [ ! -e "$repo/$target" ]; then
       die "DEL $target — not present in $repo. The spec describes a repo this is not."
@@ -520,7 +564,7 @@ land_one() {
     fi
     git rm -q -- "$target" || { die "DEL $target failed"; return 1; }
     deleted=$((deleted+1))
-  done < <(grep '^DEL ' "$spec" 2>/dev/null || true)
+  done < <(grep -E '^DEL[[:space:]]' "$spec" 2>/dev/null || true)
   [ "$deleted" -gt 0 ] && echo "  removed $deleted file(s) named by DEL"
 
   if [ -f "$repo/tests/gen_file_map.py" ]; then
