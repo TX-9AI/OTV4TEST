@@ -77,3 +77,6 @@ trades.db
 trades.db-shm
 trades.db-wal
 venv/
+
+# retention_purge.py flock sentinel — runtime state, never committed
+data/retention_purge.lock

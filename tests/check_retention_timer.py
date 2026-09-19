@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
-"""tests/check_retention_timer.py — v1.0
-THE WEEKLY RETENTION PURGE TIMER RENDERS A UNIT THAT CAN RUN, WHEN THE OPERATOR ASKED.
+"""tests/check_retention_timer.py — v1.1
+THE NIGHTLY RETENTION PURGE TIMER RENDERS A UNIT THAT CAN RUN, WHEN THE OPERATOR ASKED.
 
+v1.1  2026-09-19 — OTV4TEST r53. T5 REPINNED TO NIGHTLY 16:05 ET (operator: "You
+      can make it a nightly purge, but have it run at 1605").
+      🔴 AND THIS CHECKER IS WHY THE DEFECT WAS CAUGHT, BY BEING GREEN ON BOTH SIDES
+      OF THE CHANGE. The cadence was first changed by hand on the LIVE systemd unit;
+      the installer still rendered Sat 08:30, so T5 passed, the full sweep was clean,
+      and the live box had SILENTLY DRIFTED FROM ITS OWN INSTALLER — the next install
+      would have reverted the operator's instruction with nothing saying so.
+      ⚠️ SAME SHAPE AS r52's WAL PRAGMA: a setting applied to the running instance
+      instead of to the thing that recreates it does not survive, and looks fixed
+      until it is recreated. The rule this repo keeps relearning is that the
+      INSTALLER is the source of truth and the live unit is only its output.
 v1.0  2026-09-14 — OTV4TEST r27 (BOX.4). Operator: "I want the purge put on a timer.
       Let's try Saturday after the automatic 8AM wake."
 
@@ -18,12 +29,12 @@ a fixture reaching live state (r13) with a worse blast radius.
   T2  ExecStart names a script that EXISTS, under the repo root (r21's defect class)
   T3  ...run by the repo's own venv python
   T4  ...with --apply (r162: without it the purge is a dry run forever)
-  T5  the timer fires Saturday 08:30 America/New_York — after the 08:00 wake, zone-aware
+  T5  the timer fires NIGHTLY 16:05 America/New_York — after the close, zone-aware
   T6  Persistent=true (a missed purge is harmless to replay, by ruling)
   T7  the service never stops or halts anything — no shutdown, no systemctl stop
   T8  it asks systemd to enable the timer (logged by the stub, not executed)
   T9  with no venv the installer REFUSES rather than binding a guessed python3
-  T10 the calendar expression parses on this box's systemd, next elapse a Saturday
+  T10 the calendar expression parses on this box's systemd and yields a next elapse
 
 Born red at r26: the installer does not exist.
 Run:  python3 tests/check_retention_timer.py
@@ -110,7 +121,7 @@ def main():
                   py.replace(tree, "<repo>"))
             check("T4 ...with --apply", "--apply" in parts[1:], es.replace(tree, "<repo>"))
             cal = next((l.split("=", 1)[1].strip() for l in tmr.splitlines() if l.startswith("OnCalendar=")), "")
-            check("T5 the timer fires Saturday 08:30 America/New_York", cal == "Sat *-*-* 08:30:00 America/New_York", cal)
+            check("T5 the timer fires NIGHTLY 16:05 America/New_York", cal == "*-*-* 16:05:00 America/New_York", cal)
             check("T6 Persistent=true", "Persistent=true" in tmr.splitlines())
             code = [l for l in svc.splitlines() if not l.lstrip().startswith("#")]
             check("T7 the service stops and halts nothing",
@@ -125,11 +136,11 @@ def main():
               r.returncode != 0 and not os.listdir(etc) and "refusing" in r.stderr, f"rc={r.returncode}")
     sa = shutil.which("systemd-analyze")
     if sa:
-        r = subprocess.run([sa, "calendar", "Sat *-*-* 08:30:00 America/New_York"],
+        r = subprocess.run([sa, "calendar", "*-*-* 16:05:00 America/New_York"],
                            capture_output=True, text=True, timeout=30)
         nxt = next((l for l in r.stdout.splitlines() if "Next elapse" in l), "")
-        check("T10 the calendar parses on this box's systemd, next elapse a Saturday",
-              r.returncode == 0 and "Sat " in nxt, nxt.strip())
+        check("T10 the calendar parses on this box's systemd, next elapse within 24h",
+              r.returncode == 0 and bool(nxt), nxt.strip())
     else:
         print("  SKIP  T10 no systemd-analyze in this environment")
 

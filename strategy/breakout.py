@@ -1,7 +1,14 @@
 """
-strategy/breakout.py  v1.0
+strategy/breakout.py  v1.1
 THE SPECIFICATION. The plan searches; this declares what it must find.
 
+v1.1  2026-09-19  OTV4TEST r53 — `flow_commit` STOPS BEING A PRIOR. Measured
+      over 255 fleet breaks with prints: signed imbalance >= +0.10 lifts the 1R
+      rate from 52.5% to 65.1% (1.24x, keeps 33%). The prior was 0.15, which
+      measured 61.3% — right neighbourhood, slightly too strict.
+      🔴 AND `tagged_frac` NEVER BINDS: median 1.00, p10 1.00 over the same
+      sample. Kept as insurance against a degraded feed, labelled as insurance
+      rather than evidence.
 v1.0  2026-09-18  OTV4TEST r51 (BRK.1) — the operator's 5-minute opening range
       breakout, taken WITHOUT a retest.
 
@@ -64,8 +71,8 @@ GATES = {
     "RANGE_MIN_PCT":        "FEASIBILITY",   # a 3-cent range cannot be traded
     "RANGE_MAX_PCT":        "FEASIBILITY",   # a gap-day range cannot be stopped
     "ROOM_MIN_R":           "FOUNDATIONAL",  # measured: open air 63.0% vs 49.5%
-    "FLOW_IMBALANCE_MIN":   "SELECTION",     # PRIOR — unmeasured
-    "FLOW_TAGGED_MIN":      "SELECTION",     # PRIOR — unmeasured
+    "FLOW_IMBALANCE_MIN":   "SELECTION",     # MEASURED n=255, lift 1.24x
+    "FLOW_TAGGED_MIN":      "SELECTION",     # measured: NEVER BINDS (tagged=1.00)
     "REGIME_MAX":           "SELECTION",     # PRIOR — unmeasured
     "DEPTH_DEPLETION_MIN":  "SELECTION",     # PRIOR — unmeasured
     "R_FLOOR":              "SELECTION",
@@ -80,7 +87,26 @@ LATEST_ET = str(getattr(config, "BREAKOUT_LATEST_ET", "11:30"))
 # from breaks that REVERTED on the three inputs a stop run cannot manufacture.
 # Until it runs these are declared guesses and are labelled as such in the
 # CONDITIONS text, so a plan row never implies more confidence than exists.
-FLOW_IMBALANCE_MIN = float(getattr(config, "BRK_FLOW_IMBALANCE_MIN", 0.15))
+# 🔑 MEASURED 2026-09-18, n=255 fleet breaks with prints (08-24 → 09-18), streamed
+# from the warehouse. Signed imbalance over the 3 minutes from the break bar,
+# against the same +1R-before-−1R outcome the volume study used:
+#     reached 1R   p25 −0.023   med +0.074   p75 +0.165
+#     stopped      p25 −0.073   med +0.013   p75 +0.099
+#     base rate 52.5%  ·  >= +0.10 -> 65.1% (lift 1.24x, keeps 33%, n=83)
+# The medians sit 6x apart. This is the ONE entry gate with real separation —
+# volume had none (n=736, lift 1.08x) and room_to_run is suggestive on n=46.
+# ⚠️ WAS 0.15 AS A PRIOR, AND THE DATA MOVED IT DOWN: 0.15 measured 61.3% against
+# 0.10's 65.1%, so the guess was in the right place and slightly too strict. The
+# dip at 0.15 is almost certainly noise at this sample size; 0.10 is taken
+# because it is the best-supported point, not because the curve is smooth.
+FLOW_IMBALANCE_MIN = float(getattr(config, "BRK_FLOW_IMBALANCE_MIN", 0.10))
+# 🔴 THIS FLOOR HAS NEVER ONCE BOUND, AND THAT IS RECORDED RATHER THAN QUIETLY
+# KEPT. Measured over the same 255 breaks: `tagged_frac` median 1.00, p10 1.00 —
+# every print on this feed carries an aggressor side, so a 0.60 floor can never
+# fire. The REASONING is still sound (untagged volume stays in the denominator,
+# so a thin tape would otherwise fabricate conviction) and it is kept as cheap
+# insurance against a degraded feed. But it is insurance, not evidence, and a
+# gate that has never gated must say so.
 FLOW_TAGGED_MIN = float(getattr(config, "BRK_FLOW_TAGGED_MIN", 0.60))
 REGIME_MAX = float(getattr(config, "BRK_REGIME_MAX", 0.0))
 DEPTH_DEPLETION_MIN = float(getattr(config, "BRK_DEPTH_DEPLETION_MIN", 0.0))
@@ -107,9 +133,9 @@ class Breakout:
                           "nothing in TIME, which is the whole point of skipping the retest"),
         "flow_commit":   (f"aggressor imbalance >= {FLOW_IMBALANCE_MIN:+.2f} in the break "
                           f"direction with tagged_frac >= {FLOW_TAGGED_MIN:.0%} "
-                          f"(PRIOR, unmeasured — the floor exists because untagged volume "
-                          f"stays in the denominator and a thin tape otherwise fabricates "
-                          f"conviction)"),
+                          f"(MEASURED n=255: >= +0.10 lifts the 1R rate 52.5% -> 65.1%. "
+                          f"The tagged floor has never bound — every print carries a side — "
+                          f"and is kept as insurance against a degraded feed)"),
         "gamma_regime":  (f"regime <= {REGIME_MAX:+.2f} — NOT pinning. A break into a pinning "
                           f"regime is one dealers fade; into a trending regime, one they "
                           f"amplify. (PRIOR, unmeasured)"),

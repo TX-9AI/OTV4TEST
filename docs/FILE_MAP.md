@@ -940,7 +940,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_retention_timer.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+- **called by:** (not imported) — referenced in `deploy/install_retention_purge_timer.sh`, `docs/BACKLOG.md`
 
 ### `tests/check_runaway_break_key.py`
 - **calls:** `database/__init__.py`, `database/trade_logger.py`, `strategy/__init__.py`, `strategy/runaway_continuation.py`

@@ -1,8 +1,31 @@
 #!/usr/bin/env bash
-# deploy/install_retention_purge_timer.sh — v1.0
+# deploy/install_retention_purge_timer.sh — v1.1
+# v1.1  2026-09-19  OTV4TEST r53. THE PURGE GOES NIGHTLY, 16:05 ET, BY INSTRUCTION.
+#       Operator: "You can make it a nightly purge, but have it run at 1605."
+#       🔴 AND THE CADENCE WAS FIRST CHANGED BY HAND ON THE LIVE UNIT, WHICH IS
+#       DRIFT AND NOT A FIX. check_retention_timer reads THIS FILE, not the running
+#       unit, so it stayed green while the box disagreed with it and the next
+#       install would have reverted the instruction silently. Same shape as r52's
+#       per-connection WAL pragma: applied to the running instance instead of to
+#       the thing that recreates it. THE INSTALLER IS THE SOURCE OF TRUTH.
 # v1.0  2026-09-14  OTV4TEST r27 (BOX.4). THE RETENTION PURGE, WEEKLY, SATURDAY 08:30 ET.
 #
-# Operator, 2026-09-14: *"I want the purge put on a timer. Let's try Saturday after
+# 🔑 NIGHTLY 16:05 ET SINCE r53. Operator, 2026-09-18: *"You can make it a nightly
+# purge, but have it run at 1605."* ⚠️ AND HE GATED IT — *"BEFORE YOU INSTALL ANY
+# TIMERS, YOU NEED TO DEAL WITH [the WAL] FIRST"* — because a nightly purge against
+# an unbounded WAL just purges more often into a file that still grows. r52 pinned
+# journal_size_limit at 128 MB; this cadence is installed after that, not before.
+# 🔴 THE WEEKLY CADENCE WAS THE BUG, NOT A PREFERENCE (BOX.7): retention policy here
+# is THREE DAYS and the timer ran ONCE A WEEK. The fleet has no purge timer at all —
+# it trims as step 4 of self_close.py's 16:45 EOD takedown — so when this box was cut
+# off from the warehouse and lost self_close, it silently lost the nightly purge
+# riding in the same chain. 16:05 is after the cash close, inside the 08:00-00:00 up
+# window, and keeps each night's delta small: the purge COSTS DISK BEFORE IT FREES
+# ANY (measured 3.4 -> 2.0 GB free mid-run), so a box that has fallen behind cannot
+# purge its way out.
+#
+# Operator, 2026-09-14 (the original ruling, superseded on cadence only): *"I want
+# the purge put on a timer. Let's try Saturday after
 # the automatic 8AM wake."* And on what it is: *"The retention purge is safe to run
 # anytime any day because its intent is designed to flush out everything except
 # the minimum necessary to preserve ramps that serve tenors. Trades should be
@@ -57,7 +80,7 @@ fi
 
 sudo tee /etc/systemd/system/optbot-retention-purge.service >/dev/null <<UNIT
 [Unit]
-Description=OPT_Trader weekly retention purge — trim stores to the retention windows. No drain, no halt.
+Description=OPT_Trader nightly retention purge — trim stores to the retention windows. No drain, no halt.
 After=network-online.target
 
 [Service]
@@ -76,10 +99,10 @@ UNIT
 
 sudo tee /etc/systemd/system/optbot-retention-purge.timer >/dev/null <<UNIT
 [Unit]
-Description=Retention purge, Saturdays 08:30 ET (after the 08:00 wake)
+Description=Retention purge, nightly 16:05 ET (after the close)
 
 [Timer]
-OnCalendar=Sat *-*-* 08:30:00 America/New_York
+OnCalendar=*-*-* 16:05:00 America/New_York
 Persistent=true
 
 [Install]
