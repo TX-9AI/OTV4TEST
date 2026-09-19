@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.60
+# BACKLOG.md — OTV4TEST — v0.61
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -197,6 +197,15 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.61 — 2026-09-19 — OTV4TEST r56 — DID r44's ORB SIZING FIX REACH THE BREAKOUT? YES, AND ONLY SINCE YESTERDAY.**
+🔑 **THE OPERATOR ASKED THE RIGHT QUESTION AND THE ANSWER WAS NOT OBVIOUS.** r44's risk scalar lives **inside `_size_geometry`**, so it reaches any strategy that reaches that function — and Breakout reached it for the first time at **r55**, when the strategy-name gate in `main.py` was replaced by a `sizes_on_geometry` declaration. It engages because `stop_premium()` is a **base-class method** (`entry_premium × (1 − stop_loss_pct)`), so every long debit has a non-zero one; r44's scale is skipped only when the stop premium is 0, where *"geometry decides, exactly as it did before r44."*
+🔴 **AND THE DANGEROUS PART IS THAT THE OLD PATH AGREED.** Measured: ORB **10** contracts and Breakout **10**, both `orb_geometry`; the pre-r55 `_size_budget` path returns **10 as well** on the same inputs, and the pre-r44 no-stop-premium case returns **3**. **A different rule that coincides is not the same rule**, and nothing would have reported the day it stopped coinciding. R11 therefore pins **the rule and the count**, not the count alone.
+⚠️ **WHAT "RISK-NORMALISED" ACTUALLY MEANS HERE, STATED PLAINLY:** r44 scales off the **premium** stop (25% of premium), not the structure stop distance — when the risk scale engages, `geometry_wanted` is computed and **not used**. That is r44's design and it is identical for both trades, so Breakout matches the ORB, which was the question.
+**MEASUREMENT: check_breakout_research 15 checks green.** check_breakout_research v1.1.
+**LAND THEN BAKE.**
+
+---
 
 **v0.60 — 2026-09-19 — OTV4TEST r55 — BREAKOUT IS THE ORB WITHOUT THE RETEST, AND EVERY INFORMER IS A DIAL READING "any".**
 🔑 **THE OPERATOR SPECIFIED IT IN FOUR MESSAGES AND EACH ONE NARROWED THE DESIGN.** *"Have it trade every break that gets a 1-minute candle acceptance beyond the boundary, stop distance is the extreme of the impulsive candle that registered the break, sized the same as the orb, informers are just observers for 2 weeks."* Then: *"Make it follow the orb structurally, but without a retest. And with better informers."* Then the invariant: *"if we do get an orb trade a breakout trade should've preceded it because it's the same trade but without the retest."* And finally the shape: *"I still want the informer set as triggers in the strategy package, but set the acceptance to 'any' for each of those informers that will emerge as dials in 2 weeks."*

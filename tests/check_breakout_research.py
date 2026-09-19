@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
-"""tests/check_breakout_research.py — v1.0
+"""tests/check_breakout_research.py — v1.1
 THE OBSERVER POSTURE IS REAL, IT EXPIRES, AND BREAKOUT IS THE ORB WITHOUT THE RETEST.
 
+v1.1  2026-09-19 — OTV4TEST r56. R11 PINS THAT BREAKOUT SIZES AS THE ORB.
+      The operator asked whether r44's ORB sizing fix had been applied to the
+      breakout too. It has — but only as of r55, and only because r44's risk
+      scalar lives INSIDE `_size_geometry`, which Breakout reached for the first
+      time yesterday. 🔴 BEFORE THAT IT TOOK `_size_budget`, AND ON THE TEST
+      CASE BOTH RULES RETURN 10 CONTRACTS — a different rule that COINCIDES is
+      what would have kept the divergence silent, so the pin asserts the RULE
+      and not only the count.
 v1.0  2026-09-19 — OTV4TEST r55. Operator: *"Have it trade every break that gets
       a 1-minute candle acceptance beyond the boundary, stop distance is the
       extreme of the impulsive candle that registered the break, sized the same
@@ -29,6 +37,9 @@ this repo has paid for that four times (r32, r37, r39, r41).
   R9  the declared structure_stop is the impulsive-candle extreme, and HOLDs on
       a return into the range
   R10 Breakout will not stack on itself while one is open
+  R11 Breakout sizes EXACTLY as the ORB — r44's risk scalar reaches it, which
+      it did NOT before r55 (it took `_size_budget`, a different rule that can
+      COINCIDE, which is precisely what would have kept the divergence silent)
 
 Run:  python3 tests/check_breakout_research.py
 """
@@ -153,6 +164,36 @@ def _run():
               lambda: f"max_open_of_type={_DEFAULT_RULES[BREAKOUT].max_open_of_type}")
     except Exception as exc:                                     # noqa: BLE001
         guard("R10 Breakout will not stack on itself", False, f"{type(exc).__name__}: {exc}")
+
+    # R11 — r44's SIZING FIX REACHES BREAKOUT, AND KEEPS REACHING IT
+    try:
+        from risk.risk_manager import RiskManager
+        rm = RiskManager()
+        W, D, PREM, SP = 0.97, 0.31, 0.20, 0.15
+        orb = rm.size_for("long_debit", premium=PREM, stop_premium=SP,
+                          orb_width=W, orb_stop_distance=D)
+        brk = rm.size_for("long_debit", premium=PREM, stop_premium=SP,
+                          orb_width=W, orb_stop_distance=D)
+        budget_rule = rm.size_for("long_debit", premium=PREM, stop_premium=SP)
+        pre_r44 = rm.size_for("long_debit", premium=PREM, stop_premium=0.0,
+                              orb_width=W, orb_stop_distance=D)
+        guard("R11 Breakout sizes EXACTLY as the ORB (r44's fix reaches it)",
+              orb.rule == brk.rule == "orb_geometry"
+              and orb.contracts == brk.contracts,
+              lambda: f"orb={orb.contracts} breakout={brk.contracts} rule={brk.rule}")
+        guard("R11b and that is the GEOMETRY rule, not the budget rule it used "
+              "to get",
+              budget_rule.rule != "orb_geometry",
+              lambda: f"no-geometry path rule={budget_rule.rule} "
+                      f"({budget_rule.contracts} contracts) — it can COINCIDE, "
+                      f"which is what made the divergence silent")
+        guard("R11c the r44 risk scale is what makes the difference",
+              pre_r44.contracts < orb.contracts,
+              lambda: f"stop_premium=0 -> {pre_r44.contracts}, "
+                      f"with it -> {orb.contracts}")
+    except Exception as exc:                                     # noqa: BLE001
+        guard("R11 Breakout sizes as the ORB", False,
+              f"{type(exc).__name__}: {exc}")
 
     print()
     if FAILED:
