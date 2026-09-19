@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""tests/check_exit_replay.py — v1.1
+"""tests/check_exit_replay.py — v1.2
 THE PREMIUM-REPLAY TOOL IS GATED (RPL.1).
 
+v1.2  2026-09-19  OTV4TEST r64 — X11/X12/X13: r62's credit flip inverted every
+      credit vertical and nothing here could see it. Asserted PER LEG BY SYMBOL.
 v1.1  2026-09-19  OTV4TEST r63 — X8/X9/X10 added for r63's three repairs to
       r62: the anchored stop regex, and a positive control that can no longer
       pass on an empty set. The band's independence from the derived stop is
@@ -31,6 +33,15 @@ case drives `run()` with an empty fetch and an in-memory row.
   X8  the stop regex is ANCHORED — a prefixed or credit-basis stop is not a premium stop
   X9  a control that applied to NOTHING shouts UNVERIFIED, never passes silently
   X10 ...and when it did apply, the run says to how many
+  X11 a CREDIT VERTICAL is NOT inverted — short leg -1, long leg +1, PER SYMBOL
+  X12 ...and a single-leg debit is not inverted either
+  X13 the flip survives, scoped to the single-leg credit path (guarded, unreachable)
+
+🔴 X11 IS ASSERTED PER LEG BY SYMBOL, NEVER AS A SORTED SIGN LIST. `[-1, 1]` is
+the same list whichever leg carries which, so a sorted comparison cannot see an
+inversion at all — the control agent's equivalent check stayed GREEN on the
+restored defect for exactly that reason, and my own r62 selftest failed on
+CORRECT code for the mirror of it. Sorting destroys the association asserted.
 
 ⚠️ X9/X10 EXIST BECAUSE THE BAND ITSELF IS NOT DIRECTLY OBSERVABLE FROM HERE.
 That the tolerance no longer scales with the derived stop is proven by MUTATION
@@ -116,6 +127,51 @@ guard("X7 option_symbol resolves a single-leg debit",
       lambda: (er.legs_of({"strategy": "ORBStrategy",
                            "option_symbol": "QQQ   260823C00100000"})[0]
                == [(".QQQ260823C100", +1)], ""))
+
+def _credit_not_inverted():
+    """The combo must be `-(spread value)`: short leg NEGATIVE, long POSITIVE."""
+    legs, why = er.legs_of({"strategy": "SweepCreditSpread",
+                            "setup_type": "sweep_credit_short",
+                            "short_symbol": "QQQ   260918C00718000",
+                            "long_symbol": "QQQ   260918C00720000"})
+    if why:
+        return False, why
+    d = dict(legs)
+    return (d.get(".QQQ260918C718") == -1 and d.get(".QQQ260918C720") == +1), str(d)
+
+
+guard("X11 a credit vertical is NOT inverted (per leg, by symbol)",
+      _credit_not_inverted)
+guard("X12 a single-leg debit is not inverted",
+      lambda: (er.legs_of({"strategy": "ORBStrategy",
+                           "option_symbol": "QQQ   260823C00100000"})[0]
+               == [(".QQQ260823C100", +1)], ""))
+
+
+def _guarded_flip():
+    """DRIVE the guarded branch, do not merely assert it exists.
+
+    ⚠️ A SYNTHETIC ROW IS REQUIRED AND THAT IS THE POINT. No row this book can
+    produce reaches this branch — `is_valid` fails closed on a naked short — so
+    a mutation that disables the marker changes nothing observable and a gate
+    resting on real rows would stay green on it (measured: mutation I did).
+    A guarded branch nobody exercises is a branch that rots, so it is called
+    here directly with the shape that would reach it if one ever existed.
+    """
+    naked = er.legs_of({"strategy": "SweepCreditSpread",
+                        "setup_type": "sweep_credit_short",
+                        "option_symbol": "QQQ   260918C00718000"})[0]
+    fires = naked == [(".QQQ260918C718", -1)]        # the flip DID apply
+    d = dict(er.legs_of({"strategy": "SweepCreditSpread",
+                         "setup_type": "sweep_credit_short",
+                         "short_symbol": "QQQ   260918C00718000",
+                         "long_symbol": "QQQ   260918C00720000"})[0])
+    scoped = d.get(".QQQ260918C718") == -1           # ...and NOT to the spread
+    return (fires and scoped), f"single-leg credit={naked}"
+
+
+guard("X13 the flip survives, scoped to single-leg credit only", _guarded_flip)
+
 
 def _regex():
     bad = {"tcs_stop_15%_of_credit": None, "stop_15%_of_credit": None,

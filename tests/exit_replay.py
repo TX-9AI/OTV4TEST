@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """
-tests/exit_replay.py  v1.5
+tests/exit_replay.py  v1.6
+v1.6  2026-09-19  OTV4TEST r64 — r62'S ORIENTATION REWIRE INVERTED EVERY CREDIT
+      VERTICAL. The multi-leg signs already encode favourable orientation
+      (`short -1 / long +1` makes the combo `-(spread)`, which rises as the
+      seller wins), so applying a credit flip on top inverted it: measured,
+      pnl_usd -56.0 against a replayed +28.0 on the one credit row in the book.
+      The flip is now scoped to the single-leg `option_symbol` path, where it is
+      correct and — because `is_valid` fails closed on a naked short —
+      unreachable. Kept guarded rather than deleted.
 v1.5  2026-09-19  OTV4TEST r63 — THREE REPAIRS TO r62'S OWN REPAIR. (1) The stop
       regex had no word boundary, so `tcs_stop_15%_of_credit` and
       `trail_stop_10%` both read as premium stops (measured). (2) The reconcile
@@ -216,6 +224,7 @@ def legs_of(row: dict):
         s = row.get(col)
         if s:
             legs.append((str(s), sign))
+    single_leg = False
     if not legs:
         # r62 — a single-leg debit records its contract in `option_symbol`, a
         # column this function never read: 25 of 44 banked rows carry it and
@@ -223,6 +232,7 @@ def legs_of(row: dict):
         one = row.get("option_symbol")
         if one:
             legs.append((str(one), long_))
+            single_leg = True
     if not legs:
         return None, "no leg symbols on row"
     out = []
@@ -233,10 +243,30 @@ def legs_of(row: dict):
             # position, not a partial answer.
             return None, f"unparseable contract symbol {raw!r}"
         out.append((sym, sign))
-    # orientation: make favourable positive. For a CREDIT position the combo
-    # value FALLS when we win, so flip. r62 — derived, not read off the
-    # writer-less `is_short_position` flag.
-    flip = -1 if _is_credit(row) else 1
+    # 🔴 r64 — THE FLIP APPLIES ONLY TO THE SINGLE-LEG PATH, AND r62 GOT THIS
+    # BACKWARDS. The multi-leg signs ALREADY encode favourable orientation:
+    #   credit vertical  short -1 / long +1 -> combo = -(spread value), which
+    #                    RISES as the spread cheapens, i.e. as the seller wins
+    #   butterfly        1 / -2 / 1         -> combo = the fly's own debit
+    #   single-leg debit +1                 -> premium up is favourable
+    # So r62's `flip = -1 if _is_credit(row)` INVERTED every credit vertical.
+    # MEASURED on the one replayed credit row: pnl_usd -56.0 against a replayed
+    # +28.0 — the book lost, the replay profited. The nine other replayed rows
+    # were byte-identical either way.
+    # ⚠️ AND IT WAS ACCIDENTALLY CORRECT BEFORE r62: `is_short_position` has no
+    # writer (MEAS.2), so `flip` was +1 for every row the tool had ever seen —
+    # which is exactly what the spread columns need. r62 replaced a dead flag
+    # that was right by accident with a live resolver that was wrong on purpose.
+    # Surfaced by the mainline control agent, which had the identical rewire
+    # staged and unlanded; reproduced here before it was believed.
+    # 🔑 ONLY A SINGLE-LEG CREDIT POSITION NEEDS THE FLIP — a naked short, whose
+    # premium falls as it wins. `OptionsSignal.is_valid` FAILS CLOSED on a naked
+    # short (no wing, or a wing inside the short), so nothing in this book can
+    # reach it. The branch is kept GUARDED AND DEAD rather than deleted, so the
+    # next reader does not have to re-derive why it is absent.
+    # ⚠️ "UNREACHABLE TODAY" IS EXACTLY THE KIND OF STATEMENT THAT SILENTLY
+    # STOPS BEING TRUE — if a naked short ever becomes writable, this fires.
+    flip = -1 if (single_leg and _is_credit(row)) else 1
     return [(s, sign * flip) for s, sign in out], ""
 
 
@@ -560,7 +590,15 @@ def selftest() -> int:
     lgo, _wo = legs_of({"strategy": "ORBStrategy",
                         "short_symbol": "QQQ   260918C00718000",
                         "long_symbol": "QQQ   260918C00720000"})
-    ok &= dict(lgc) != dict(lgo)          # same legs, opposite orientation
+    # 🔴 r64 — THIS ASSERTION ENCODED r62'S DEFECT AS A REQUIREMENT. It read
+    # `dict(lgc) != dict(lgo)` — a credit vertical and a debit vertical with the
+    # SAME legs must differ — which is only true while the credit flip is being
+    # wrongly applied on top of signs that already encode orientation. Rewritten
+    # to the contract that replaced it rather than loosened (the r33 precedent):
+    # they are IDENTICAL, and the short leg is NEGATIVE in both.
+    ok &= dict(lgc) == dict(lgo)
+    ok &= dict(lgc).get(".QQQ260918C718") == -1     # short leg, per symbol
+    ok &= dict(lgc).get(".QQQ260918C720") == +1     # long leg, per symbol
     # an unparseable leg refuses the WHOLE trade, by name
     lgx, whx = legs_of({"strategy": "ORBStrategy", "option_symbol": "GARBAGE"})
     ok &= lgx is None and "unparseable" in whx
