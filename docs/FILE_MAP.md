@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-300 Python modules across 13 local packages.
+301 Python modules across 13 local packages.
 
-**Reached by:** 116 imported · 11 declared entry points · 92 referenced from a script, unit or doc but never imported · **81 by nothing here**.
+**Reached by:** 116 imported · 11 declared entry points · 92 referenced from a script, unit or doc but never imported · **82 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -500,7 +500,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `strategy/structure.py`
 - **calls:** (none)
-- **called by:** `execution/exit_engine.py`, `execution/position_manager.py`, `query.py`, `strategy/breakout_plan.py`, `strategy/iron_condor_strategy.py`, `tests/check_sweep_spread.py`, `tests/check_tent.py`, `tests/check_unrealized_sign.py`, `tests/fees.py`
+- **called by:** `execution/exit_engine.py`, `execution/position_manager.py`, `query.py`, `strategy/breakout_plan.py`, `strategy/iron_condor_strategy.py`, `tests/check_sweep_spread.py`, `tests/check_tent.py`, `tests/check_unrealized_sign.py`, `tests/exit_replay.py`, `tests/fees.py`
 
 ### `strategy/sweep_credit_spread.py`
 - **calls:** `analysis/gate_report.py`, `config.py`, `database/trade_logger.py`, `strategy/__init__.py`, `strategy/base_strategy.py`, `strategy/relaxed.py`, `strategy/sweep_plan.py`, `utils/math_utils.py`
@@ -697,6 +697,10 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tests/check_exit_executes.py`
 - **calls:** `execution/exit_engine.py`, `utils/time_utils.py`
 - **called by:** (not imported) — referenced in `docs/PORT_STATE.md`
+
+### `tests/check_exit_replay.py`
+- **calls:** (none)
+- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
 ### `tests/check_ext_polarity.py`
 - **calls:** `config.py`, `data/candle_feed.py`
@@ -1087,7 +1091,7 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
 ### `tests/exit_replay.py`
-- **calls:** (none)
+- **calls:** `strategy/structure.py`
 - **called by:** (not imported) — referenced in `BACKLOG.md`, `devtools.sh`, `docs/BACKLOG.md`
 
 ### `tests/fees.py`

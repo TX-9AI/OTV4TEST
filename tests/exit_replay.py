@@ -1,6 +1,18 @@
 #!/usr/bin/env python3
 """
-tests/exit_replay.py  v1.3
+tests/exit_replay.py  v1.4
+v1.4  2026-09-19  OTV4TEST r62 — THE TOOL REPLAYED NOTHING AND BLAMED THE TAPE.
+      Five defects in one file, four of them masking each other. (1) sys.path
+      carried tests/ and not the repo root, so any repo import silently failed —
+      harmless until this revision needed one. (2) `legs_of` never read
+      `option_symbol`, refusing 25 of 44 banked rows as "no leg symbols".
+      (3) it queried `streamer_symbol=?` with an OCC string, matching 0 of 24
+      traded contracts where 19 have quotes under the transform. (4) the
+      butterfly CENTRE leg was weighted -1 against a position of -2. (5) the
+      closing verdict blamed the tape and named a masked service as the remedy.
+      Plus: orientation derived via `is_credit_vertical` instead of the
+      writer-less `is_short_position`, and a selftest built from real formats
+      on both sides instead of one invented string it handed to itself.
 v1.3  2026-09-07  r299 - relaxed rows kept (operator ruling: it is all paper, and paper vs live is the split that matters).
 v1.2  2026-09-07  r297 - --all-history added: `_r_tool` is shared and now passes it. The default
 window also moves from TODAY to DAY ONE ONWARD via warehouse_source.
@@ -47,13 +59,87 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sqlite3
 import sys
 from collections import defaultdict
 from datetime import datetime
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# 🔴 r62 — THE REPO ROOT, NOT JUST tests/. This inserted ONLY the directory the
+# file lives in, so every `from <repo package> import ...` raised ImportError.
+# Nothing noticed because the one repo import here (`warehouse_source`) is a
+# SIBLING in tests/ and the wrong path satisfies it. Surfaced by the mainline
+# control agent, who hit it rewiring this exact orientation flip and had a
+# fail-closed try/except silently swallow it — the rewire compiled, passed
+# review, produced a clean report and did nothing.
+# ⚠️ MEASURED HERE, AND THE MASK IS AN ENVIRONMENT VARIABLE: this box's
+# interactive shell exports PYTHONPATH=<repo>, so the import resolves for a
+# human and for the R-suite menu; with `env -u PYTHONPATH` the SAME command
+# raises `ModuleNotFoundError: No module named 'database'`. PYTHONPATH is in
+# NEITHER systemd unit, so the file behaves one way by hand and another way
+# anywhere the environment is clean.
+# ⚠️ tests/ STAYS ON THE PATH — `r_ledger` and `warehouse_source` are siblings.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_ROOT = os.path.dirname(_HERE)
+sys.path.insert(0, _HERE)          # sibling tools: r_ledger, warehouse_source
+sys.path.insert(0, _ROOT)          # repo packages: strategy, database, ...
 from r_ledger import _f, DEFAULT_DB  # noqa: E402
+
+# 🔴 r62 — THE ORIENTATION RESOLVER, AND ITS FALLBACK IS LOUD BY CONSTRUCTION.
+# `is_short_position` is a column with NO WRITER (MEAS.2, r31) — measured 0 of
+# 44 rows set — so the flip below was dead code and every CREDIT position was
+# being given the LONG sign, reading its wins as losses. `is_credit_vertical`
+# DERIVES from `strategy`/`setup_type`, real columns present on every row
+# (WORKING_AGREEMENT §22: prefer deriving, it works on rows that already exist).
+# ⚠️ A QUIET `except` HERE WOULD REBUILD THE EXACT DEFECT THIS REVISION FIXES,
+# so the fallback COUNTS itself, says so by name, and FAILS THE SELFTEST.
+# "resolver unavailable" must never again read as "resolver fine".
+RESOLVER_FALLBACKS = 0
+try:
+    from strategy.structure import is_credit_vertical as _resolve_credit  # noqa: E402
+    RESOLVER = "strategy.structure.is_credit_vertical"
+    RESOLVER_ERR = ""
+except Exception as _exc:                                       # noqa: BLE001
+    RESOLVER = ""
+    RESOLVER_ERR = f"{type(_exc).__name__}: {_exc}"
+
+    def _resolve_credit(row):
+        global RESOLVER_FALLBACKS
+        RESOLVER_FALLBACKS += 1
+        return bool(row.get("is_short_position"))
+
+
+def _is_credit(row):
+    """True when the position is a CREDIT structure, so its combo value falls
+    when the trade wins and the path must be inverted to read as favourable."""
+    try:
+        return bool(_resolve_credit(row))
+    except Exception:                                           # noqa: BLE001
+        global RESOLVER_FALLBACKS
+        RESOLVER_FALLBACKS += 1
+        return bool(row.get("is_short_position"))
+
+
+# 🔴 r62 — OCC -> DXFEED STREAMER. The trade columns hold OCC
+# (`QQQ   260911C00718000`); `quote_series` is keyed on streamer
+# (`.QQQ260911C718`). This file queried `WHERE streamer_symbol=?` with the OCC
+# string, so it matched NOTHING: measured, 19 of 24 traded contracts have
+# quotes under the transformed key (up to 44,771 rows on one) and 0 of 24 under
+# the key it was using.
+# ⚠️ THE ROOT MAY CARRY DIGITS — `GOOGL1`, `TSLA1`: OCC's convention for a
+# contract adjusted by a split or special dividend. `[A-Z]+` refuses those and,
+# by this file's own rule, refuses the whole trade. Found by the control agent.
+_OCC_RE = re.compile(r"^([A-Z][A-Z0-9]*)\s*(\d{6})([CP])(\d{8})$")
+
+
+def streamer_symbol(occ):
+    """`QQQ   260911C00718000` -> `.QQQ260911C718`. None when unparseable."""
+    m = _OCC_RE.match(str(occ or "").strip())
+    if not m:
+        return None
+    root, exp, cp, strike = m.groups()
+    k = ("%f" % (int(strike) / 1000.0)).rstrip("0").rstrip(".")
+    return f".{root}{exp}{cp}{k}"
 
 DEFAULT_FEED = os.path.join(os.path.expanduser("~"), "options-trader", "data",
                             "feed_store.db")
@@ -73,22 +159,61 @@ def _ts(v):
 
 
 def legs_of(row: dict):
-    """[(streamer_symbol, +1/-1 in FAVOURABLE orientation)] or (None, reason)."""
+    """[(streamer_symbol, weight in FAVOURABLE orientation)] or (None, reason).
+
+    🔴 r62 — THE CONTRACT SAYS *streamer* AND IT NOW RETURNS streamer. It always
+    said so; it returned whatever the column held, which is OCC. The transform
+    lives HERE, at the one place legs are built, so `wanted`, the S3 index and
+    both fetch providers needed no change and cannot drift from it.
+
+    ⚠️ THE `option_symbol` FALLBACK IS NEW AND IS NOT THE ONE THE OLD DOCSTRING
+    DESCRIBED. That paragraph claimed a `symbol`-PREFIX match "only when it
+    resolves to EXACTLY ONE contract; ambiguity is refused" — **no such fallback
+    has ever existed in this function**, and it must not be built: r36
+    subscribed the UNDERLYING's quotes, so `quote_series` now holds a row keyed
+    exactly `QQQ`, and a prefix match would resolve to it and replay the
+    UNDERLYING'S PRICE PATH as a premium path — plausible numbers, wrong
+    instrument, no error. `option_symbol` is the exact contract the trade
+    recorded; there is nothing to disambiguate.
+
+    ⚠️ A BUTTERFLY IS 1/2/1. The centre was weighted -1 while
+    `entry_engine.py:801` builds `(center_contract, 2, -1)` and its own comment
+    says *"the debit is lower + upper - 2*center"*. Every replayed butterfly
+    path was too high by one centre leg. It could never have shown before,
+    because with the symbols wrong no butterfly ever resolved a quote —
+    FIXING THE OUTER DEFECT IS WHAT MADE THE INNER ONE REACHABLE.
+    """
     short = -1
     long_ = +1
     legs = []
     for col, sign in (("short_symbol", short), ("long_symbol", long_),
                       ("lower_symbol", long_), ("upper_symbol", long_),
-                      ("center_symbol", short)):
+                      ("center_symbol", short * 2)):          # r62 — 1/2/1
         s = row.get(col)
         if s:
             legs.append((str(s), sign))
     if not legs:
+        # r62 — a single-leg debit records its contract in `option_symbol`, a
+        # column this function never read: 25 of 44 banked rows carry it and
+        # every one was refused as "no leg symbols on row".
+        one = row.get("option_symbol")
+        if one:
+            legs.append((str(one), long_))
+    if not legs:
         return None, "no leg symbols on row"
-    # orientation: make favourable positive. For a credit position the
-    # combo value FALLS when we win, so flip.
-    flip = -1 if row.get("is_short_position") else 1
-    return [(s, sign * flip) for s, sign in legs], ""
+    out = []
+    for raw, sign in legs:
+        sym = streamer_symbol(raw)
+        if sym is None:
+            # refuse the WHOLE trade, by name. Half a spread is a different
+            # position, not a partial answer.
+            return None, f"unparseable contract symbol {raw!r}"
+        out.append((sym, sign))
+    # orientation: make favourable positive. For a CREDIT position the combo
+    # value FALLS when we win, so flip. r62 — derived, not read off the
+    # writer-less `is_short_position` flag.
+    flip = -1 if _is_credit(row) else 1
+    return [(s, sign * flip) for s, sign in out], ""
 
 
 def path_for(fetch, legs, t0, t1):
@@ -179,8 +304,40 @@ def _s3_fetch(qrows):
     return fetch
 
 
+# 🔴 r62 — THE POSITIVE CONTROL WAS MODELLING THE WRONG EXIT RULE.
+# It replayed EVERY trade under a hardcoded 25% premium stop and compared the
+# result to `pnl_usd`. Most of this book did not exit on a premium stop at all:
+# measured, the vocabulary is `hard_stop_NN%` / `stop_NN%` / `premium_stop_NN%`
+# (real premium stops), against `orb_trail_stop`, `hard_close_15:45_ET`,
+# `sweep_breach_accepted`, `runaway_thesis_dead`, `runaway_fizzle`, `handoff`
+# and `orb_structure_stop` (which are not).
+# ⚠️ IT SURFACED AS A FALSE ALARM ON A WINNER: a GEXPinButterfly that held to
+# `hard_close_15:45_ET` for +$1,630 was replayed under a 25% stop, exited at
+# -$130, and the control reported the TOOL as suspect. A butterfly has no
+# target and holds to 15:45 behind a 40% floor — the control was asserting a
+# rule the trade never ran under. §20: a canary that fires on correct code is
+# the one that gets loosened and then misses the real thing.
+# ⚠️ AND THE OBVIOUS REGEX IS A TRAP — `(\d+)%` matches the `pnl=-26.5%` tail
+# and yields a 1%, 4% or 9% "stop". The percentage is only meaningful when it
+# is bound to a STOP TOKEN.
+# 🔑 NOT APPLICABLE IS NOT A PASS. A row whose recorded exit was never a
+# premium stop is counted and named separately, never folded into either bucket.
+_STOP_RE = re.compile(r"(?:hard_stop|premium_stop|stop)_(\d+)%")
+
+
+def recorded_stop_pct(row):
+    """The premium stop this row ACTUALLY exited on, or None when its recorded
+    exit was not a premium stop and a stop-replay therefore cannot reconcile."""
+    m = _STOP_RE.search(str(row.get("exit_reason") or ""))
+    if not m:
+        return None
+    pct = int(m.group(1)) / 100.0
+    return pct if 0.0 < pct < 1.0 else None
+
+
 def run(rows, fetch) -> int:
     refused = defaultdict(int)
+    recon_na = defaultdict(int)
     totals = defaultdict(lambda: defaultdict(float))
     counts = defaultdict(int)
     recon_fail = 0
@@ -204,12 +361,18 @@ def run(rows, fetch) -> int:
         entry_val = path[0][1]
         entry_prem = _f(r.get("entry_premium")) or abs(entry_val) or 1.0
         lot = 100.0 * (_f(r.get("contracts")) or 1)
-        # positive control: the recorded stop, replayed, must land near pnl_usd
-        rec_stop = 0.25
-        rec = replay(path, entry_val, entry_prem, ("stop", rec_stop)) * lot
+        # positive control: replay the stop this row ACTUALLY exited on and
+        # require it to land near pnl_usd. r62 — derived per row, not 0.25 for
+        # everything; a row that did not exit on a premium stop is NOT tested.
+        rec_stop = recorded_stop_pct(r)
         pnl = _f(r.get("pnl_usd")) or 0.0
-        if abs(rec - pnl) > max(50.0, RECONCILE_TOL * rec_stop * entry_prem * lot * 4):
-            recon_fail += 1
+        if rec_stop is None:
+            why_na = str(r.get("exit_reason") or "?").split(":")[0].split(" ")[0]
+            recon_na[why_na or "?"] += 1
+        else:
+            rec = replay(path, entry_val, entry_prem, ("stop", rec_stop)) * lot
+            if abs(rec - pnl) > max(50.0, RECONCILE_TOL * rec_stop * entry_prem * lot * 4):
+                recon_fail += 1
         key = (r.get("strategy") or "?", (r.get("option_side") or "?").lower())
         counts[key] += 1
         totals[key]["recorded"] += pnl
@@ -231,13 +394,33 @@ def run(rows, fetch) -> int:
         print("\n  REFUSED (named, per r39 — these are the tool's gaps, not the tape's):")
         for why, n in sorted(refused.items(), key=lambda kv: -kv[1]):
             print(f"    {why:<40} {n}")
+    if recon_na:
+        tot = sum(recon_na.values())
+        print(f"\n  positive control NOT APPLICABLE to {tot} replayed trade(s) — "
+              f"their recorded exit was not a premium stop, so a stop-replay "
+              f"cannot reconcile. NOT a pass and NOT a failure:")
+        for why, n in sorted(recon_na.items(), key=lambda kv: -kv[1]):
+            print(f"    {why:<40} {n}")
     if recon_fail:
         print(f"\n  ⚠️ POSITIVE CONTROL: {recon_fail} trade(s) whose replayed "
               f"recorded-rule pnl did not reconcile with pnl_usd — treat every "
               f"hypothetical above as suspect until this is zero or explained.")
-    if not counts:
-        print("\n  nothing replayable yet — quote_series needs its first live "
-              "sessions (and the series push, s3_push v4.2, to reach control).")
+    if RESOLVER_FALLBACKS or not RESOLVER:
+        print(f"\n  ⚠️ ORIENTATION RESOLVER UNAVAILABLE — {RESOLVER_FALLBACKS} "
+              f"fallback(s) to the writer-less `is_short_position` flag. "
+              f"Every CREDIT path above is INVERTED. ({RESOLVER_ERR})")
+    if not counts and not refused:
+        # 🔴 r62 — GATED ON `not refused`, AND THE s3_push CLAUSE IS DELETED.
+        # `not counts` is true exactly when nothing replayed, which is exactly
+        # when `refused` is populated — so this fired four lines below a block
+        # headed "these are the tool's gaps, not the tape's" and blamed the
+        # tape anyway, as the LAST thing printed. It also sent the reader to
+        # audit `s3_push`, which on THIS box is MASKED BY RULING (r21/BOX.1)
+        # and must never run: a remedy that is unreachable by design is a trap,
+        # not a remedy. A verdict that can only be true when the tape is absent
+        # is now gated on the tape being absent.
+        print("\n  nothing replayable yet — quote_series holds no quotes for "
+              "any traded contract in this window.")
     return 0
 
 
@@ -260,6 +443,10 @@ def run_s3(a) -> int:
     return run(rows, _s3_fetch(qrows))
 
 
+_OCC = "QQQ   260823C00100000"       # r62 — real OCC, as a trade records it
+_ST = ".QQQ260823C100"               # r62 — real streamer, as quote_series keys
+
+
 def selftest() -> int:
     con = sqlite3.connect(":memory:")
     con.execute("CREATE TABLE quote_series (streamer_symbol TEXT, ts_epoch REAL,"
@@ -269,8 +456,8 @@ def selftest() -> int:
         t = i * 15.0
         mid = 1.0 + (t / 300.0) if t <= 300 else 2.0 - 0.8 * ((t - 300) / 300.0)
         con.execute("INSERT INTO quote_series VALUES (?,?,?,?)",
-                    ("X 260823C100", 1000 + t, mid - 0.02, mid + 0.02))
-    legs = [("X 260823C100", +1)]
+                    (_ST, 1000 + t, mid - 0.02, mid + 0.02))
+    legs = [(_ST, +1)]
     path, why = path_for(_sqlite_fetch(con), legs, 1000, 1600)
     ok = bool(path) and not why and len(path) == 41
     r_hold = replay(path, path[0][1], 1.0, ("stop", 0.25))
@@ -280,7 +467,7 @@ def selftest() -> int:
     r_tp = replay(path, path[0][1], 1.0, ("tp", 0.25, 0.50))
     ok &= abs(r_tp - 0.50) < 1e-9
     # v1.1 — the S3 provider must build the IDENTICAL path from the same data
-    qrows = [{"streamer_symbol": "X 260823C100", "ts_epoch": t, "bid_price": b,
+    qrows = [{"streamer_symbol": _ST, "ts_epoch": t, "bid_price": b,
               "ask_price": a2} for t, b, a2 in con.execute(
                   "SELECT ts_epoch, bid_price, ask_price FROM quote_series")]
     path2, _w = path_for(_s3_fetch(qrows), legs, 1000, 1600)
@@ -289,10 +476,55 @@ def selftest() -> int:
     sparse, _ = path_for(_sqlite_fetch(con), legs, 0, 20000)
     cov = len(sparse or []) / ((20000 - 0) / POLL_S)
     ok &= cov < MIN_COVERAGE
-    lg, why2 = legs_of({"is_short_position": 0})
+    lg, why2 = legs_of({})
     ok &= lg is None and "no leg symbols" in why2
+
+    # ── r62 — THE FIXTURE IS BUILT FROM THE REAL FORMATS, BOTH SIDES ────────
+    # The old one wrote "X 260823C100" into quote_series AND handed the same
+    # invented string to legs_of, so it matched itself and could never fail —
+    # §0.4, a fixture built from the assistant's own belief. Every assertion
+    # below crosses the OCC/streamer boundary the tool actually crosses.
+    ok &= streamer_symbol(_OCC) == _ST                       # the transform
+    ok &= streamer_symbol("SPXW  260918P07585000") == ".SPXW260918P7585"
+    ok &= streamer_symbol("CRM   260918C00182500") == ".CRM260918C182.5"
+    ok &= streamer_symbol("GOOGL1260918C00150000") == ".GOOGL1260918C150"
+    ok &= streamer_symbol("not a contract") is None
+    # a single-leg debit resolves THROUGH option_symbol and comes back streamer
+    lg1, w1 = legs_of({"strategy": "ORBStrategy", "option_symbol": _OCC})
+    ok &= (not w1) and lg1 == [(_ST, +1)]
+    # a butterfly is 1/2/1, not 1/1/1
+    lgb, wb = legs_of({"strategy": "GEXPinButterfly",
+                       "lower_symbol": "QQQ   260918C00718000",
+                       "center_symbol": "QQQ   260918C00720000",
+                       "upper_symbol": "QQQ   260918C00722000"})
+    ok &= (not wb) and sorted(sg for _sy, sg in lgb) == [-2, 1, 1]
+    # a CREDIT structure inverts; a debit does not — derived, not flag-read
+    lgc, _wc = legs_of({"strategy": "SweepCreditSpread",
+                        "setup_type": "sweep_credit_short",
+                        "short_symbol": "QQQ   260918C00718000",
+                        "long_symbol": "QQQ   260918C00720000"})
+    lgd, _wd = legs_of({"strategy": "ORBStrategy", "option_symbol": _OCC})
+    ok &= lgc is not None and lgd == [(_ST, +1)]
+    # ⚠️ COMPARE PER SYMBOL, NOT THE SIGN MULTISET. My first cut asserted the
+    # SORTED signs differed — and flipping both legs of a symmetric spread
+    # yields the IDENTICAL multiset, so the assertion failed on correct code.
+    # A test that cannot distinguish the thing it is testing is worse than none.
+    lgo, _wo = legs_of({"strategy": "ORBStrategy",
+                        "short_symbol": "QQQ   260918C00718000",
+                        "long_symbol": "QQQ   260918C00720000"})
+    ok &= dict(lgc) != dict(lgo)          # same legs, opposite orientation
+    # an unparseable leg refuses the WHOLE trade, by name
+    lgx, whx = legs_of({"strategy": "ORBStrategy", "option_symbol": "GARBAGE"})
+    ok &= lgx is None and "unparseable" in whx
+    # 🔴 THE RESOLVER MUST BE PRESENT. A quiet fallback here would rebuild the
+    # exact defect r62 fixes, so "unavailable" is a FAILING selftest and not a
+    # warning nobody reads.
+    resolver_ok = bool(RESOLVER) and RESOLVER_FALLBACKS == 0
+    ok &= resolver_ok
     print("exit_replay selftest:", "ALL PASS" if ok else
-          f"FAIL hold={r_hold} trail={r_trail} tp={r_tp} cov={cov:.2f}")
+          f"FAIL hold={r_hold} trail={r_trail} tp={r_tp} cov={cov:.2f} "
+          f"resolver={RESOLVER or 'UNAVAILABLE: ' + RESOLVER_ERR} "
+          f"fallbacks={RESOLVER_FALLBACKS}")
     return 0 if ok else 1
 
 
