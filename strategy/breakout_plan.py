@@ -1,7 +1,10 @@
 """
-strategy/breakout_plan.py  v1.1
+strategy/breakout_plan.py  v1.2
 THE SEARCH. Every tick, for the setup that satisfies `strategy/breakout.py`.
 
+v1.2  2026-09-19  OTV4TEST r59 — the FADE route read `prep.unmet`, which is
+      EMPTY while acceptance is "any", so DEFER->HUNT / DEFER->SWEEP could not
+      fire for the whole research window. Reads the FITTED dials, like `pooled`.
 v1.1  2026-09-19  OTV4TEST r55 — THE INFORMERS ARE DIALS, NOT A BYPASS.
       Operator: "I still want the informer set as triggers in the strategy
       package, but set the acceptance to 'any'." An earlier cut made them SKIP
@@ -365,7 +368,17 @@ class BreakoutPlan:
         # is a fact about the tape and not an acceptance band.
         pooled = (prep.pool_dist_r is not None
                   and prep.pool_dist_r < B.FITTED_ROOM_MIN_R)
-        fading = ("gamma_regime" in prep.unmet) or ("depth_thin" in prep.unmet)
+        # 🔴 THIS READ `prep.unmet` UNTIL r59, WHICH MADE THE FADE ROUTE DEAD
+        # FOR THE WHOLE RESEARCH WINDOW. With acceptance at "any" NOTHING is
+        # ever unmet, so `fading` was permanently False and DEFER->HUNT /
+        # DEFER->SWEEP could not fire — the twin of the `pooled` bug fixed
+        # beside it, caught only because the operator said he wanted the
+        # breakout and the hunt tailored for BOTH a real break and a fakeout
+        # grab. Routing reads the FITTED dials, like `pooled` does.
+        _reg = (prep.conditions.get("gamma_regime") or (None,))[0]
+        _dep = (prep.conditions.get("depth_thin") or (None,))[0]
+        fading = (not B.accepts_fitted("gamma_regime", _reg)
+                  or not B.accepts_fitted("depth_thin", _dep))
         if pooled and fading and prep.direction and prep.pool_price:
             # price will REACH the pool and stop there -> the hunt has a target
             # it never gives way at all -> the sweep fades the level

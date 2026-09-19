@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
-"""tests/check_breakout_research.py — v1.1
+"""tests/check_breakout_research.py — v1.2
 THE OBSERVER POSTURE IS REAL, IT EXPIRES, AND BREAKOUT IS THE ORB WITHOUT THE RETEST.
 
+v1.2  2026-09-19 — OTV4TEST r59. R12: THE FADE ROUTE WAS DEAD FOR THE WHOLE
+      RESEARCH WINDOW. `fading` read `prep.unmet`, which is EMPTY while every
+      acceptance reads "any", so DEFER->HUNT and DEFER->SWEEP could never fire —
+      the twin of a bug already fixed beside it on `pooled`. Caught only when
+      the operator said he wanted the breakout and the hunt tailored for BOTH a
+      genuine break and a fakeout grab. 🔑 ROUTING IS NOT ADMISSION.
 v1.1  2026-09-19 — OTV4TEST r56. R11 PINS THAT BREAKOUT SIZES AS THE ORB.
       The operator asked whether r44's ORB sizing fix had been applied to the
       breakout too. It has — but only as of r55, and only because r44's risk
@@ -37,6 +43,9 @@ this repo has paid for that four times (r32, r37, r39, r41).
   R9  the declared structure_stop is the impulsive-candle extreme, and HOLDs on
       a return into the range
   R10 Breakout will not stack on itself while one is open
+  R12 the fade route (DEFER->HUNT / DEFER->SWEEP) still discriminates while
+      acceptance is "any" — it reads the FITTED dials, because `prep.unmet` is
+      EMPTY all window and a route keyed on it would be silently dead
   R11 Breakout sizes EXACTLY as the ORB — r44's risk scalar reaches it, which
       it did NOT before r55 (it took `_size_budget`, a different rule that can
       COINCIDE, which is precisely what would have kept the divergence silent)
@@ -164,6 +173,24 @@ def _run():
               lambda: f"max_open_of_type={_DEFAULT_RULES[BREAKOUT].max_open_of_type}")
     except Exception as exc:                                     # noqa: BLE001
         guard("R10 Breakout will not stack on itself", False, f"{type(exc).__name__}: {exc}")
+
+    # R12 — ROUTING SURVIVES THE ACCEPTANCE WINDOW
+    try:
+        guard("R12 the FADE route still discriminates while acceptance is 'any'",
+              B.accepts("gamma_regime", 0.9, inside) is True
+              and B.accepts_fitted("gamma_regime", 0.9) is False
+              and B.accepts_fitted("gamma_regime", -0.5) is True,
+              "admission takes every break; routing still sees a harvest")
+        src_p = open(os.path.join(root, "strategy", "breakout_plan.py"),
+                     encoding="utf-8").read()
+        guard("R12b and it reads the FITTED dials, not prep.unmet "
+              "(which is empty all window)",
+              'fading = ("gamma_regime" in prep.unmet)' not in src_p
+              and "B.accepts_fitted(\"gamma_regime\"" in src_p,
+              "a fade route keyed on unmet is DEAD for the whole window")
+    except Exception as exc:                                     # noqa: BLE001
+        guard("R12 the FADE route still discriminates", False,
+              f"{type(exc).__name__}: {exc}")
 
     # R11 — r44's SIZING FIX REACHES BREAKOUT, AND KEEPS REACHING IT
     try:

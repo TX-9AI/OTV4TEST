@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.63
+# BACKLOG.md — OTV4TEST — v0.64
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -198,6 +198,15 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.64 — 2026-09-19 — OTV4TEST r59 — THE FADE ROUTE WAS DEAD FOR THE WHOLE RESEARCH WINDOW, AND THE ADMISSION RULES WERE VERIFIED RATHER THAN ASSUMED.**
+🔴 **`fading` READ `prep.unmet`, WHICH IS EMPTY ALL WINDOW.** With every acceptance at `any` nothing is ever unmet, so `fading` was permanently False and **`DEFER->HUNT` / `DEFER->SWEEP` could not fire** — the exact twin of the `pooled` bug fixed three lines above it, which I had already caught and then failed to generalise. ⚠️ **IT WOULD HAVE COST THE FORTNIGHT'S FAKEOUT ARM SILENTLY**, and it surfaced only because the operator said what the two weeks is FOR: *"I'm looking for more successful alternatives to the orb trade & hoping the breakout & the hunt can be tailored for both scenarios — either a genuine breakout with volume behind it, or a standard fakeout liquidity grab — both of which have not treated the orb favorably."* 🔑 **ROUTING IS NOT ADMISSION.** Admission asks *may this trade fire* and is deliberately wide open right now; routing asks *what shape is this break*, which is a fact about the tape and must keep reading the FITTED dials. `accepts_fitted()` added; R12 pins it.
+🔑 **AND THE PAIRED-SAMPLE POINT, WHICH MAKES THE FORTNIGHT WORTH MORE THAN ITS TRADE COUNT.** r55 recorded that ~9 trades cannot fit a dial — true, and it understates what the sample CAN do. **The operator's own invariant makes the observations PAIRED**: every ORB trade is preceded by a Breakout trade on the same break, so the two weeks yields *same setup, with and without the retest*, and the setup variance cancels. **Nine paired comparisons can rule on the retest even though nine independent trades could not.** Three buckets: **both fired** (paired — does waiting help?); **Breakout only** (the retest never came and the ORB sat out); **ORB only**, which is **IMPOSSIBLE under the invariant** — if it ever occurs live it is a divergence alarm, and worth treating as one.
+✅ **THE ADMISSION RULES THE OPERATOR RESTATED ARE ALL ALREADY TRUE — CHECKED, NOT ASSUMED.** *"Every trade fires if it can produce a valid plan… we might have 8 open trades at once & that's fine… one of each type may fire, exception: the sweep can have 2 (condor), and each butterfly type gets one attempt per session."* **(1)** `attempt_new_entry` runs in BOTH arms of the tick (r43/r44) — the open-position branch manages first and then still enters; it gates only on the daily loss limit and RTH, with no `has_open_position()` early return. **(2)** There is **no global position cap** anywhere — only per-type rules. **(3)** `_DEFAULT_RULES` is exactly his table: `max_open_of_type=1` everywhere, `SWEEP=2`, `GEXFLY`/`ATPFLY` at `max_tries_per_session=1`. **(4)** *"if we have a call (vertical) sweep, only a complimentary put (vertical) sweep can complete the condor — and vice versa"*: `IronCondorStrategy.authorize()` returns `need = "put" if have == "call" else "call"`, both-open returns nothing-may-fire, and `generate_signal` REFUSES on `authorized_side` when `prep.side != required_side`.
+**MEASUREMENT: 122 of 132, zero regressions.** check_breakout_research v1.2, 17 checks.
+**LAND THEN BAKE.**
+
+---
 
 **v0.63 — 2026-09-19 — OTV4TEST r58 — r57 LANDED A FALSE CLAIM ABOUT THE ORB BUDGET AND THE OPERATOR CAUGHT IT IN MINUTES.**
 🔴 **r57 SAID `ORB_BUDGET_USD` FALLS BACK TO $200 AND THAT A $1,000 ENTRY WAS "ONE ENV VAR AWAY." BOTH FALSE.** *"What you said about the orb budget better be false. The orb budget is set by configure.sh."* **Measured in the running process: `OT_RISK_USD=1050`, `OT_ORB_BUDGET_USD=10000`** — set via `configure.sh` menu item 8, which writes `Environment=` lines into the unit. ⚠️ **AND r44's OWN COMMENT CITES "a $1,050 per-trade budget" — I read that line while writing $200.**

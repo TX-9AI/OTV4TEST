@@ -1,7 +1,10 @@
 """
-strategy/breakout.py  v1.2
+strategy/breakout.py  v1.3
 THE SPECIFICATION. The plan searches; this declares what it must find.
 
+v1.3  2026-09-19  OTV4TEST r59 — `accepts_fitted()`. ROUTING IS NOT ADMISSION:
+      while acceptance reads "any" nothing is ever unmet, so a fade route keyed
+      on the live verdict is DEAD for the whole window. Routing reads the dial.
 v1.2  2026-09-19  OTV4TEST r55 — THE OBSERVER POSTURE, AND THE WIDTH BAND WAS
       ANTI-SELECTIVE. Operator: "trade every break that gets a 1-minute candle
       acceptance beyond the boundary… informers are just observers for 2 weeks."
@@ -158,6 +161,11 @@ FITTED_RANGE_CLEAN_MAX = float(getattr(config, "BRK_RANGE_CLEAN_MAX", 0.0))
 # narrower than the ORB's, and the ORB has no width band, no cleanliness rule,
 # no pool rule and no R floor. Narrow any of these before the fit and an ORB
 # trade can fire that Breakout refused — the two diverge, silently.
+# a date guaranteed past any research window, so `accepts_fitted` always
+# evaluates the dial rather than the acceptance
+from datetime import date as _date
+_FITTED_DATE = _date.max
+
 RESEARCH_UNTIL = str(getattr(config, "BRK_RESEARCH_UNTIL", "") or "")
 
 
@@ -222,6 +230,20 @@ def acceptance(bar: str, today=None):
     if how == "band":
         return (globals()[ref[0]], globals()[ref[1]])
     return globals()[ref]
+
+
+def accepts_fitted(bar: str, value) -> bool:
+    """`accepts`, but ALWAYS against the fitted dial, ignoring the research
+    window.
+
+    🔑 ROUTING IS NOT ADMISSION. While acceptance reads "any" every value
+    clears, so asking "did this bar fail?" to decide where a HARVEST should be
+    handed off would answer "never" for the whole window — and the fade route
+    to the hunt and the sweep would be silently dead exactly when the operator
+    wants both arms covered. The ROUTING question is a fact about the tape
+    ("is this shaping up as a grab?"), not a question about admission.
+    """
+    return accepts(bar, value, _FITTED_DATE)
 
 
 def accepts(bar: str, value, today=None) -> bool:
