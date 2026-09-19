@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-299 Python modules across 13 local packages.
+300 Python modules across 13 local packages.
 
-**Reached by:** 116 imported · 11 declared entry points · 91 referenced from a script, unit or doc but never imported · **81 by nothing here**.
+**Reached by:** 116 imported · 11 declared entry points · 92 referenced from a script, unit or doc but never imported · **81 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -60,9 +60,9 @@ Change these with the most care; a break here reaches everything downstream.
 | `utils/math_utils.py` | 20 | atp_butterfly_plan.py, credit_vertical.py, entry_ladder.py, exit_engine.py |
 | `strategy/sweep_credit_spread.py` | 19 | check_age_gate_gone.py, check_atr_units.py, check_chain_ordering.py, check_dispatch.py |
 | `execution/exit_engine.py` | 17 | check_condor_mgmt.py, check_condor_spec.py, check_condor_stop_suppression.py, check_exit_executes.py |
+| `strategy/base_strategy.py` | 17 | atp_butterfly.py, check_credit_remainder.py, check_entry_gate.py, check_entry_underwater.py |
 | `strategy/criteria.py` | 17 | atp_butterfly_plan.py, check_age_gate_gone.py, check_butterfly_foundational.py, check_criteria.py |
 | `analysis/orb_engine.py` | 16 | base_strategy.py, check_orb_one_order.py, check_orb_plan.py, check_orb_rearm_zone.py |
-| `derived/__init__.py` | 16 | atp_butterfly_plan.py, check_anchors.py, check_atp_butterfly.py, check_bfly_vwap_band.py |
 
 ## Every module
 
@@ -364,7 +364,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `main.py`
 - **calls:** `analysis/__init__.py`, `analysis/chain_snapshot.py`, `analysis/condor_trigger_map.py`, `analysis/entry_snapshot.py`, `analysis/gap_measure.py`, `analysis/gate_report.py`, `analysis/level_grade.py`, `analysis/liquidity_ledger.py`, `analysis/liquidity_mapper.py`, `analysis/market_state.py`, `analysis/orb_engine.py`, `analysis/pitchfork.py`, `analysis/pitchfork_observer.py`, `analysis/signal_journal.py`, `analysis/structure_analyzer.py`, `analysis/trade_readiness.py`, `analysis/trend_engine.py`, `analysis/volatility_engine.py`, `analysis/volatility_measures.py`, `config.py`, `data/__init__.py`, `data/candle_feed.py`, `data/data_cache.py`, `data/disk_watch.py`, `data/gex_data.py`, `data/macro_data.py`, `data/market_data.py`, `data/options_chain.py`, `data/tasty_client.py`, `database/trade_logger.py`, `derived/base.py`, `derived/level_map.py`, `derived/registry.py`, `execution/__init__.py`, `execution/broker_reconcile.py`, `execution/credit_remainder.py`, `execution/entry_engine.py`, `execution/handoff.py`, `execution/ladder_registry.py`, `execution/limit_ladder.py`, `execution/order_confirm.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `notifications/alert_manager.py`, `notifications/telegram_sender.py`, `risk/risk_manager.py`, `risk/session_guard.py`, `strategy/__init__.py`, `strategy/atp_butterfly.py`, `strategy/base_strategy.py`, `strategy/breakout.py`, `strategy/condor_roll.py`, `strategy/criteria.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/liquidity_hunt.py`, `strategy/management.py`, `strategy/orb_strategy.py`, `strategy/plan.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `strategy/trend_credit_spread.py`, `utils/__init__.py`, `utils/blindness_latch.py`, `utils/mem_trace.py`, `utils/time_utils.py`
-- **called by:** `tests/check_admission_wired.py`, `tests/check_atm_iv_stored.py`, `tests/check_atp_butterfly.py`, `tests/check_credit_remainder.py`, `tests/check_rehearsal_toggle.py`, `tests/check_signal_numeric_tail.py`, `tests/check_sweep_stop.py`, `tests/stress_entry_path.py`
+- **called by:** `tests/check_admission_wired.py`, `tests/check_atm_iv_stored.py`, `tests/check_atp_butterfly.py`, `tests/check_credit_remainder.py`, `tests/check_entry_underwater.py`, `tests/check_rehearsal_toggle.py`, `tests/check_signal_numeric_tail.py`, `tests/check_sweep_stop.py`, `tests/stress_entry_path.py`
 
 ### `notifications/__init__.py`
 - **calls:** (none)
@@ -436,7 +436,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `strategy/base_strategy.py`
 - **calls:** `analysis/orb_engine.py`, `data/options_chain.py`
-- **called by:** `execution/entry_engine.py`, `main.py`, `strategy/atp_butterfly.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/liquidity_hunt.py`, `strategy/orb_strategy.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`, `strategy/trend_credit_spread.py`, `tests/check_credit_remainder.py`, `tests/check_entry_gate.py`, `tests/check_orb_geometry.py`, `tests/check_signal_kwargs.py`, `tests/check_sweep_spread.py`, `tests/check_sweep_stop.py`
+- **called by:** `execution/entry_engine.py`, `main.py`, `strategy/atp_butterfly.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/liquidity_hunt.py`, `strategy/orb_strategy.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`, `strategy/trend_credit_spread.py`, `tests/check_credit_remainder.py`, `tests/check_entry_gate.py`, `tests/check_entry_underwater.py`, `tests/check_orb_geometry.py`, `tests/check_signal_kwargs.py`, `tests/check_sweep_spread.py`, `tests/check_sweep_stop.py`
 
 ### `strategy/breakout.py`
 - **calls:** `config.py`, `strategy/breakout_plan.py`
@@ -685,6 +685,10 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tests/check_entry_point_paths.py`
 - **calls:** (none)
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+
+### `tests/check_entry_underwater.py`
+- **calls:** `main.py`, `strategy/base_strategy.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_entry_windows.py`
 - **calls:** `config.py`, `strategy/__init__.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/relaxed.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`, `strategy/trend_credit_spread.py`

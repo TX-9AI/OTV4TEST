@@ -1,5 +1,16 @@
 """
-main.py  v4.58
+main.py  v4.59
+v4.59 2026-09-19  OTV4TEST r61 (ENT.1) — NO TRADE OPENS ALREADY THROUGH ITS OWN
+      STOP. `_execute_entry_signal` refuses, STRICTLY, any signal whose live
+      price is at or beyond its own protective stop. Surfaced by the mainline
+      control agent (8 of 154 ORB trades, -$2,792 there; 0 of 10 measured here)
+      and verified in this tree by reading: orb_strategy.py:280-281 and
+      breakout_plan.py:162-163 each build entry and stop two lines apart with
+      nothing comparing them, and a sweep of the entry path for such a guard
+      returned empty. Placed at the ONE funnel every entry opens through, not in
+      each strategy, so a new strategy inherits it. Gated on
+      `underlying_stop_is_thesis` because LiquidityHunt writes a thesis line
+      into the same column and entry beyond it is that setup's normal state.
 v4.58 2026-09-19  OTV4TEST r55 — GEOMETRY SIZING IS SUPPLIED, NOT NAMED.
       🔴 This read `if signal.strategy_name == "ORBStrategy"`, so Breakout — the
       ORB without the retest, carrying the same geometry — fell through to
@@ -4650,6 +4661,59 @@ def _execute_entry_signal(signal, ctx, ms, state, _sigj=None, *, additive: bool 
             except Exception:
                 pass
         return
+
+    # ── 🔴 ENT.1 (r61) — NO TRADE OPENS ALREADY THROUGH ITS OWN STOP ─────────
+    # Operator's ruling, 2026-09-19: *"any strategy check on the firing tick one
+    # final time that the entry is not crossing the stop before the trade even
+    # opens — not that it would happen often otherwise, but that it should NEVER
+    # happen."* STRICT: at or beyond the stop is through. No band, no constant,
+    # nothing to relax (WORKING_AGREEMENT 36 — the best foundational gate has no
+    # knob at all).
+    #
+    # 🔑 WHY HERE AND NOT IN EACH STRATEGY. This is the ONE function every entry
+    # opens through — `_fire()` reaches it for the dispatch chain, and the two
+    # butterfly sites call it directly, bypassing `_fire` entirely. A check in
+    # seven signal constructors is seven chances to forget and gives a NEW
+    # strategy nothing; a check here is inherited. That is r40's own finding:
+    # the admission gate went at the one funnel rather than at the call sites.
+    #
+    # ⚠️ IT REFUSES, IT DOES NOT PARK (section 37). The firing sequence re-arms and
+    # the next qualifying trigger is taken normally, so this costs no legitimate
+    # entry — it removes exactly the entries that were already lost.
+    #
+    # ⚠️ AND IT IS NOT A SIZING FIX. `entry_engine` computes `_risk` with
+    # `abs(_u_entry - _u_stop)`, which turns an inverted stop into a SMALL risk
+    # and a large `planned_r` — corrupting the R ledger rather than the order.
+    # Repairing that arithmetic would size off a corrupted number; refusing the
+    # entry makes the path unreachable instead of wrong.
+    _und_stop = _sig_num(signal, "underlying_stop")
+    if _und_stop and not getattr(signal, "underlying_stop_is_thesis", False):
+        # the LIVE price on this tick. `ctx["price"]` is bound once per tick in
+        # run_analysis, so inside the tick this is the identical number the
+        # signal was built from; the fallback is for callers outside the loop.
+        try:
+            _px_now = float(ctx.get("price") or 0.0)
+        except Exception:                                      # noqa: BLE001
+            _px_now = 0.0
+        if not _px_now:
+            _px_now = _sig_num(signal, "underlying_entry")
+        _dir = str(getattr(signal, "direction", "") or "").lower()
+        _through = ((_dir == "long" and _px_now <= _und_stop)
+                    or (_dir == "short" and _px_now >= _und_stop))
+        if _px_now and _through:
+            logger.warning(
+                "ENTRY REFUSED — %s %s would open ALREADY THROUGH its own stop: "
+                "price %.4f vs stop %.4f. The sequence re-arms; the next "
+                "trigger is taken normally (ENT.1).",
+                signal.strategy_name, _dir or "?", _px_now, _und_stop)
+            if _sigj is not None:
+                try:
+                    _sigj.journal("disposition",
+                                  outcome="gate_block:entry_underwater",
+                                  signal=_sigj.signal_ctx(signal))
+                except Exception:                              # noqa: BLE001
+                    pass
+            return
 
     # ── 🔴 THE SETUP SCORER IS GONE (r152) ────────────────────────────────────
     # Operator, 2026-08-27: *"What fucking SUM are we still using??? That is

@@ -1,5 +1,11 @@
 """
-strategy/liquidity_hunt.py  v1.2
+strategy/liquidity_hunt.py  v1.3
+v1.3  2026-09-19  OTV4TEST r61 (ENT.1) — declares `underlying_stop_is_thesis`.
+      This file writes `prep.boundary` into `underlying_stop` and its own
+      comment says what that is: *"thesis-dead: a close back through it"*. The
+      new entry-underwater guard refuses any trade opening beyond its stop, and
+      a hunt opens beyond its boundary BY CONSTRUCTION, so it declares the
+      column non-protective at the site that writes it.
 v1.2  2026-09-17  OTV4TEST r33 — THE BOARD COMPOSITION MOVED OUT OF THIS FILE.
       `_board` held the eight lines that prefer the live LevelEngine and fall back
       to the bound store — correct, and the ONLY plan that had them. The sweep and
@@ -335,6 +341,15 @@ class LiquidityHunt:
         sig.run_at_entry = prep.runway
         sig.gamma_leverage = prep.leverage
         sig.is_liquidity_hunt = True
+        # 🔴 ENT.1 (r61) — THIS STRATEGY'S `underlying_stop` IS NOT A STOP.
+        # It is `prep.boundary`, the ORB edge being faded, and the hunt enters
+        # only AFTER price has taken that edge out — so entry on the far side
+        # of it is the setup's DEFINING state, not a defect. Measured on the
+        # banked book: 3 of 8 hunt rows sit that way and all three are correct.
+        # The entry-underwater guard therefore skips this strategy, and it is
+        # declared HERE, beside the line that writes the column, rather than as
+        # a name in a list somewhere else that later rots (r55's finding).
+        sig.underlying_stop_is_thesis = True
         sig.disarms_retest = False                       # the ORB is untouched
         relaxed.tag(sig)
         FINISHED.add((prep.direction, round(prep.boundary, 2)))

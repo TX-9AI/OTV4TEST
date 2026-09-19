@@ -1,5 +1,10 @@
 """
-strategy/base_strategy.py  v4.4
+strategy/base_strategy.py  v4.5
+v4.5  2026-09-19  OTV4TEST r61 (ENT.1) — `underlying_stop_is_thesis` added.
+      The entry-underwater guard has to know whether a strategy's
+      `underlying_stop` is a PRICE STOP or a THESIS LINE, because the column
+      carries both. Defaults to False (a real stop, therefore checked) so the
+      guard is opt-OUT: a new strategy is protected without doing anything.
 v4.4  2026-09-01  r207 — OptionsSignal gains `orb_stop_distance_px`: the
       impulsive wick measured from the boundary it broke, frozen by the engine
       at break time. ⚠️ RECORDED, NEVER READ IN A DECISION — sizing stays on
@@ -70,6 +75,16 @@ class OptionsSignal:
     # ── Underlying price levels ─────────────────────────────────────────────
     underlying_entry:   float = 0.0
     underlying_stop:    float = 0.0
+    # 🔴 ENT.1 (r61) — IS `underlying_stop` A PROTECTIVE STOP, OR A THESIS LINE?
+    # It is not the same quantity in every strategy. ORB and Breakout write a
+    # PROTECTIVE stop (the impulsive/acceptance candle's extreme) — price on the
+    # far side of it means the trade is already stopped. LiquidityHunt writes
+    # `prep.boundary`, the ORB edge it is fading, and entry BEYOND that boundary
+    # is the setup's NORMAL state (measured: 3 of 8 banked hunt rows).
+    # ⚠️ DEFAULT False = "this IS a protective stop" = CHECKED. The opt-out is
+    # deliberate: a NEW strategy inherits the guard and must argue its way out,
+    # which is the only way "this should NEVER happen" survives a new file.
+    underlying_stop_is_thesis: bool = False
     underlying_target:  float = 0.0
     underlying_tp50:    float = 0.0
 
