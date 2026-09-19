@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-"""tests/check_exit_replay.py — v1.0
+"""tests/check_exit_replay.py — v1.1
 THE PREMIUM-REPLAY TOOL IS GATED (RPL.1).
 
+v1.1  2026-09-19  OTV4TEST r63 — X8/X9/X10 added for r63's three repairs to
+      r62: the anchored stop regex, and a positive control that can no longer
+      pass on an empty set. The band's independence from the derived stop is
+      mutation-proven rather than asserted here, and the header says so.
 v1.0  2026-09-19  OTV4TEST r62 — `tests/exit_replay.py` carried six defects and
       NOTHING RAN IT. It is not a `check_*.py`, so the sweep never touched it,
       and its `--selftest` takes an argument the lander's CHECK directive cannot
@@ -24,6 +28,14 @@ case drives `run()` with an empty fetch and an in-memory row.
   X5  a butterfly is weighted 1/2/1
   X6  the verdict cannot blame the tape when refusals exist
   X7  `option_symbol` resolves a single-leg debit
+  X8  the stop regex is ANCHORED — a prefixed or credit-basis stop is not a premium stop
+  X9  a control that applied to NOTHING shouts UNVERIFIED, never passes silently
+  X10 ...and when it did apply, the run says to how many
+
+⚠️ X9/X10 EXIST BECAUSE THE BAND ITSELF IS NOT DIRECTLY OBSERVABLE FROM HERE.
+That the tolerance no longer scales with the derived stop is proven by MUTATION
+(revert it and the butterfly row's verdict flips), not by this file — stated so
+nobody reads X9 as covering it.
 
 Run:  python3 tests/check_exit_replay.py
 """
@@ -104,6 +116,58 @@ guard("X7 option_symbol resolves a single-leg debit",
       lambda: (er.legs_of({"strategy": "ORBStrategy",
                            "option_symbol": "QQQ   260823C00100000"})[0]
                == [(".QQQ260823C100", +1)], ""))
+
+def _regex():
+    bad = {"tcs_stop_15%_of_credit": None, "stop_15%_of_credit": None,
+           "trail_stop_10% pnl=1%": None, "orb_trail_stop pnl=11.8%": None}
+    good = {"hard_stop_20% pnl=-25.0%": 0.20, "stop_40% pnl=-40.4%": 0.40,
+            "premium_stop_15% pnl=-16.0%": 0.15}
+    for k, want in {**bad, **good}.items():
+        got = er.recorded_stop_pct({"exit_reason": k})
+        if got != want:
+            return False, f"{k!r} -> {got}, wanted {want}"
+    return True, f"{len(bad)} rejected, {len(good)} accepted"
+
+
+guard("X8 the stop regex is anchored (prefixed/credit-basis rejected)", _regex)
+
+
+def _run_capture(rows, fetch):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        er.run(rows, fetch)
+    return buf.getvalue()
+
+
+def _flat_row(exit_reason):
+    return {"strategy": "ORBStrategy", "status": "closed", "option_side": "call",
+            "entry_time": "2026-09-18T13:00:00+00:00",
+            "exit_time": "2026-09-18T13:10:00+00:00",
+            "option_symbol": "QQQ   260918C00718000",
+            "exit_reason": exit_reason, "pnl_usd": 0.0,
+            "contracts": 1, "entry_premium": 1.0}
+
+
+def _flat_fetch(sym, lo, hi):
+    t0 = 1789736400.0          # 2026-09-18 13:00:00Z
+    return [(t0 + i * 15.0, 1.0, 1.02) for i in range(41)]
+
+
+def _zero_applied():
+    """Every replayed row exited on something that is NOT a premium stop."""
+    out = _run_capture([_flat_row("orb_trail_stop pnl=1.0%")], _flat_fetch)
+    return ("APPLIED TO NOTHING" in out and "UNVERIFIED" in out), out.strip()[-70:]
+
+
+guard("X9 a control applied to NOTHING shouts UNVERIFIED", _zero_applied)
+
+
+def _applied_count():
+    out = _run_capture([_flat_row("hard_stop_25% pnl=-1.0%")], _flat_fetch)
+    return ("positive control applied to 1 of 1" in out), out.strip()[-70:]
+
+
+guard("X10 ...and when it applied, the run says to how many", _applied_count)
 
 print()
 if FAILED:

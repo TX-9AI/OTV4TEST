@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
-tests/edge_scan.py  v1.2
+tests/edge_scan.py  v1.3
+v1.3  2026-09-19  OTV4TEST r63 — CRASHED ON THE REAL BOOK WHILE ITS SELFTEST
+      PASSED. `scan_features` built `feats` as the UNION of feature keys across
+      rows and then indexed `r[k]` per row, so the first row missing a sparse
+      feature raised `KeyError: 'adx'`. The tool whose job is finding where the
+      edge lives could not run at all, and nothing said so because it is not a
+      `check_*.py` and was therefore invisible to the sweep.
 v1.2  2026-09-07  r299 - relaxed rows kept (operator ruling: it is all paper, and paper vs live is the split that matters).
 v1.1  2026-08-23  S3 default source: trades from raw/trades, fire snapshots
 and plans from raw/derived_* (s3_push v4.3, latest-per-rid). --db/--derived
@@ -108,15 +114,22 @@ def scan_features(rows: list) -> list:
         feats = sorted({k for r in rs for k in r
                         if not k.startswith("_") and _f(r[k]) is not None})
         for k in feats:
-            win = [_f(r[k]) for r in rs if r["_pnl"] > 0 and _f(r[k]) is not None]
-            lose = [_f(r[k]) for r in rs if r["_pnl"] <= 0 and _f(r[k]) is not None]
+            # 🔴 r63 — `feats` is the UNION of keys across rows, so indexing
+            # `r[k]` raised KeyError on the first row missing that feature.
+            # MEASURED: `edge_scan --db trades.db` died on `KeyError: 'adx'`
+            # against the real book while its own selftest passed ALL PASS —
+            # the fire snapshots are not homogeneous (r31/MEAS.4 already
+            # recorded ADX as sparse). A missing feature must simply not
+            # contribute, which is what the `is not None` filter already meant.
+            win = [_f(r.get(k)) for r in rs if r["_pnl"] > 0 and _f(r.get(k)) is not None]
+            lose = [_f(r.get(k)) for r in rs if r["_pnl"] <= 0 and _f(r.get(k)) is not None]
             if min(len(win), len(lose)) < CAND_N:
                 continue
             d = cliffs_delta(win, lose)
             if d is None or abs(d) < BAR["delta"]:
                 continue
             p = mannwhitney_p(win, lose)
-            sessions = len({r["_session"] for r in rs if _f(r[k]) is not None})
+            sessions = len({r["_session"] for r in rs if _f(r.get(k)) is not None})
             half = len(rs) // 2
             d1 = cliffs_delta([_f(r[k]) for r in rs[:half] if r["_pnl"] > 0 and _f(r[k]) is not None],
                               [_f(r[k]) for r in rs[:half] if r["_pnl"] <= 0 and _f(r[k]) is not None])

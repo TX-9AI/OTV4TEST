@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """
-tests/exit_replay.py  v1.4
+tests/exit_replay.py  v1.5
+v1.5  2026-09-19  OTV4TEST r63 — THREE REPAIRS TO r62'S OWN REPAIR. (1) The stop
+      regex had no word boundary, so `tcs_stop_15%_of_credit` and
+      `trail_stop_10%` both read as premium stops (measured). (2) The reconcile
+      band multiplied the tolerance BY the derived stop, so r62 made the check
+      LOOSER on wider stops — 56% of entry cost at a butterfly's 40% — which is
+      backwards; it is keyed on entry cost alone now, and 0.35 is recorded as
+      an UNFITTED prior rather than a measurement. (3) A control that applied to
+      ZERO rows passed silently; it now shouts and marks the hypotheticals
+      UNVERIFIED, and the applied count is reported on every run.
 v1.4  2026-09-19  OTV4TEST r62 — THE TOOL REPLAYED NOTHING AND BLAMED THE TAPE.
       Five defects in one file, four of them masking each other. (1) sys.path
       carried tests/ and not the repo root, so any repo import silently failed —
@@ -145,7 +154,22 @@ DEFAULT_FEED = os.path.join(os.path.expanduser("~"), "options-trader", "data",
                             "feed_store.db")
 POLL_S = 15.0
 MIN_COVERAGE = 0.50
-RECONCILE_TOL = 0.35        # |replayed recorded-rule pnl − pnl_usd| / risk
+# 🔴 r63 — THE BAND IS KEYED ON ENTRY COST ALONE. r62 derived `rec_stop` per
+# row, which was right for the RULE and wrong for the BAND: the old expression
+# multiplied the tolerance BY the stop, and the `0.25 * 4` cancelled only at
+# 0.25. So deriving the stop silently made the check LOOSER on wider stops —
+# 28% of cost at a 20% stop, 35% at 25%, and 56% at a butterfly's 40%. A wider
+# stop meaning a looser check is backwards: the band must not move with the
+# thing it is testing. Found by the mainline control agent in its own tree and
+# reported here before we had noticed it.
+# ⚠️ 0.35 IS AN INHERITED PRIOR AND IT IS NOT FITTED. §31 governs: it has never
+# been tested against outcomes. Measured on this book 2026-09-19, the ELIGIBLE
+# set is n=2 and its deviations are 1.5% and 2.1% of entry cost against a band
+# of 35% and 56% — roughly 20x looser than anything observed. That is a
+# MECHANISM and not a threshold (§12): two observations cannot set a tolerance,
+# so the VALUE is left alone and only its SHAPE is corrected here. Tightening
+# it needs a deviation distribution this book cannot yet supply.
+RECONCILE_TOL = 0.35        # fraction of ENTRY COST, not of risk
 
 TRAILS = [(0.25, 0.10), (0.25, 0.15), (0.50, 0.15), (0.50, 0.25), (0.75, 0.25)]
 STOPS = [0.15, 0.25]
@@ -322,7 +346,19 @@ def _s3_fetch(qrows):
 # is bound to a STOP TOKEN.
 # 🔑 NOT APPLICABLE IS NOT A PASS. A row whose recorded exit was never a
 # premium stop is counted and named separately, never folded into either bucket.
-_STOP_RE = re.compile(r"(?:hard_stop|premium_stop|stop)_(\d+)%")
+# 🔴 r63 — THE WORD BOUNDARY IS THE LOAD-BEARING PART. r62 shipped this
+# unanchored and SEARCHED, so the match walked straight through any prefix:
+# measured, `tcs_stop_15%_of_credit` -> 0.15 and `trail_stop_10%` -> 0.10, both
+# read as premium stops they are not. We emit neither string today, but
+# `orb_trail_stop` already exists and a percentage on it is one line away.
+# ⚠️ THE LOOKAHEAD IS A BACKSTOP, NOT THE FIX, and the distinction is measured
+# rather than assumed: the mainline control agent deleted `(?!_of_)` from its
+# own copy expecting red and got GREEN, because with `\b` the character before
+# `stop` in `tcs_stop` is `_`, a word character, so the boundary alone rejects
+# it. The lookahead only bites on a BARE `stop_15%_of_credit`. Kept, because it
+# is free and the next emitter may not carry a prefix — but it is not what
+# closes the hole here, and a reader should not think it is.
+_STOP_RE = re.compile(r"\b(?:hard_stop|premium_stop|stop)_(\d{1,3})%(?!_of_)")
 
 
 def recorded_stop_pct(row):
@@ -338,6 +374,7 @@ def recorded_stop_pct(row):
 def run(rows, fetch) -> int:
     refused = defaultdict(int)
     recon_na = defaultdict(int)
+    recon_applied = 0
     totals = defaultdict(lambda: defaultdict(float))
     counts = defaultdict(int)
     recon_fail = 0
@@ -371,7 +408,8 @@ def run(rows, fetch) -> int:
             recon_na[why_na or "?"] += 1
         else:
             rec = replay(path, entry_val, entry_prem, ("stop", rec_stop)) * lot
-            if abs(rec - pnl) > max(50.0, RECONCILE_TOL * rec_stop * entry_prem * lot * 4):
+            recon_applied += 1
+            if abs(rec - pnl) > max(50.0, RECONCILE_TOL * entry_prem * lot):
                 recon_fail += 1
         key = (r.get("strategy") or "?", (r.get("option_side") or "?").lower())
         counts[key] += 1
@@ -401,6 +439,16 @@ def run(rows, fetch) -> int:
               f"cannot reconcile. NOT a pass and NOT a failure:")
         for why, n in sorted(recon_na.items(), key=lambda kv: -kv[1]):
             print(f"    {why:<40} {n}")
+    # 🔴 r63 — "0 did not reconcile" OUT OF 0 APPLIED IS THE MOST CONVINCING
+    # POSSIBLE ZERO AND MEANS NOTHING AT ALL. A silent pass here would certify
+    # every hypothetical above on the strength of a check that never ran.
+    if counts and not recon_applied:
+        print("\n  🔴 POSITIVE CONTROL APPLIED TO NOTHING — not one replayed "
+              "trade exited on a premium stop, so the control did not run at "
+              "all. EVERY HYPOTHETICAL ABOVE IS UNVERIFIED.")
+    elif recon_applied:
+        print(f"\n  positive control applied to {recon_applied} of "
+              f"{sum(counts.values())} replayed trade(s).")
     if recon_fail:
         print(f"\n  ⚠️ POSITIVE CONTROL: {recon_fail} trade(s) whose replayed "
               f"recorded-rule pnl did not reconcile with pnl_usd — treat every "

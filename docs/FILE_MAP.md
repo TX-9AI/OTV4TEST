@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-301 Python modules across 13 local packages.
+303 Python modules across 13 local packages.
 
-**Reached by:** 116 imported · 11 declared entry points · 92 referenced from a script, unit or doc but never imported · **82 by nothing here**.
+**Reached by:** 116 imported · 11 declared entry points · 95 referenced from a script, unit or doc but never imported · **81 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -674,6 +674,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** (none)
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
+### `tests/check_edge_scan.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
 ### `tests/check_engine_status.py`
 - **calls:** `data/derived_store.py`, `derived/base.py`
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
@@ -1006,6 +1010,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** (none)
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
+### `tests/check_stop_sweep.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
 ### `tests/check_strike_beyond.py`
 - **calls:** `strategy/sweep_credit_spread.py`
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
@@ -1076,11 +1084,11 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/edge_scan.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `devtools.sh`
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/BACKLOG.md`
 
 ### `tests/entry_profile.py`
 - **calls:** (none)
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/eod_compare.py`
 - **calls:** `config.py`
@@ -1152,7 +1160,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/stop_sweep.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `devtools.sh`
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/BACKLOG.md`
 
 ### `tests/stress_entry_path.py`
 - **calls:** `execution/entry_ladder.py`, `execution/exit_engine.py`, `main.py`, `strategy/__init__.py`, `strategy/gex_pin_butterfly.py`, `strategy/relaxed.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`
