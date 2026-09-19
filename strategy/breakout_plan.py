@@ -1,7 +1,17 @@
 """
-strategy/breakout_plan.py  v1.0
+strategy/breakout_plan.py  v1.1
 THE SEARCH. Every tick, for the setup that satisfies `strategy/breakout.py`.
 
+v1.1  2026-09-19  OTV4TEST r55 — THE INFORMERS ARE DIALS, NOT A BYPASS.
+      Operator: "I still want the informer set as triggers in the strategy
+      package, but set the acceptance to 'any'." An earlier cut made them SKIP
+      `cond()`; he ruled against it and he was right — a bypass has to be
+      un-bypassed later, and that code is code nobody has run. Every bar is a
+      real trigger again; `B.accepts(bar, value)` carries the acceptance.
+      ⚠️ The FADE route reads the FITTED dial, not the live acceptance: while
+      acceptance is "any" every pool distance clears room_to_run, so asking
+      "did room_to_run fail?" would never route a harvest to the sweep.
+      Declares `sizes_on_geometry` so it sizes as the ORB does.
 v1.0  2026-09-18  OTV4TEST r51 (BRK.1).
 
 🔑 WHAT THIS FILE IS FOR, IN THE OPERATOR'S WORDS (2026-09-18): *"The plan file
@@ -104,7 +114,22 @@ class BreakoutPreparation:
         self.persist = ()
 
     def cond(self, name, current, met):
-        """Record one declared bar: its value now, and whether it cleared."""
+        """Record one declared bar: its value now, and whether it cleared.
+
+        🔑 EVERY BAR IS A REAL TRIGGER. r55 briefly made the informers BYPASS
+        this method during the research window; the operator ruled otherwise —
+        *"I still want the informer set as triggers in the strategy package, but
+        set the acceptance to 'all'."* That is the better shape: the plan still
+        refuses to form unless EVERY bar clears, and what changed is the
+        ACCEPTANCE BAND, declared on the spec beside the bar it belongs to.
+        Nothing here is special-cased, so nothing here has to be un-special-cased
+        when the window closes.
+        ⚠️ AND THE FIT DOES NOT NEED A BYPASS TO BE POSSIBLE: each informer's
+        CONTINUOUS value is recorded every tick (`flow_imbalance`, `regime`,
+        `depth_ratio`, `pool_dist_r`, `range_width_pct`), so any threshold can be
+        fitted afterwards from the values themselves — which is strictly more
+        than a stored would-have boolean could ever have told us.
+        """
         required = self.spec.CONDITIONS.get(name, "")
         self.conditions[name] = (current, required, bool(met))
         if not met:
@@ -140,6 +165,16 @@ class BreakoutPreparation:
             entry_premium=c.mark, contract=c,
         )
         sig.is_breakout = True
+        # 🔑 THE ORB'S SIZING, BY SUPPLYING THE GEOMETRY RATHER THAN BY BEING
+        # NAMED. RiskManager.size_for's own docstring: *"Geometry is a sub-rule
+        # of long_debit, selected by the caller SUPPLYING orb_width /
+        # orb_stop_distance rather than by naming ORB. A second strategy that
+        # wants risk-normalised sizing supplies the geometry; it does not get
+        # added to a list somewhere that later rots."* Breakout is that second
+        # strategy. ⚠️ The flag is explicit because the hunt and the runaway
+        # ALSO carry orb_range_high/low — keying on the field would silently
+        # re-size two strategies that never asked for it.
+        sig.sizes_on_geometry = True
         sig.breakout_edge = self.edge
         sig.breakout_target_src = self.target_src
         sig.disarms_retest = False          # the ORB keeps its own arm
@@ -191,14 +226,14 @@ class BreakoutPlan:
         width = (hi - lo) if (hi and lo and hi > lo) else None
         wpct = (width / px) if (width and px) else None
         t.check("range_width_pct", wpct, None)
-        prep.cond("orb_range", wpct,
-                  bool(wpct is not None and B.RANGE_MIN_PCT <= wpct <= B.RANGE_MAX_PCT))
+        prep.cond("orb_range", wpct, B.accepts("orb_range", wpct))
 
         # ── nothing live inside it (r39 retires them TRAVERSED) ────────────
         board = self._board(px, hi, lo)
         inside = [l for l in (board.get("above", []) + board.get("below", []))
                   if hi and lo and lo <= float(l.get("price") or 0) <= hi]
-        prep.cond("range_clean", float(len(inside)), not inside)
+        prep.cond("range_clean", float(len(inside)),
+                  B.accepts("range_clean", float(len(inside))))
 
         # ── THE BREAK: a CLOSED bar's CLOSE beyond the edge (r5) ───────────
         bar = df_1m.iloc[-2]
@@ -229,15 +264,16 @@ class BreakoutPlan:
         signed = (imb if direction == "long" else -imb) if imb is not None else None
         prep.cond("flow_commit", signed,
                   bool(signed is not None and tag is not None
-                       and signed >= B.FLOW_IMBALANCE_MIN and tag >= B.FLOW_TAGGED_MIN))
+                       and B.accepts("flow_commit", signed)
+                       and B.accepts("flow_tagged", tag)))
 
         reg = self._regime()
         t.check("regime", reg, None)
-        prep.cond("gamma_regime", reg, bool(reg is not None and reg <= B.REGIME_MAX))
+        prep.cond("gamma_regime", reg, B.accepts("gamma_regime", reg))
 
         dep = self._depth(flow_conn, symbol)
         t.check("depth_ratio", dep, None)
-        prep.cond("depth_thin", dep, bool(dep is not None and dep >= B.DEPTH_DEPLETION_MIN))
+        prep.cond("depth_thin", dep, B.accepts("depth_thin", dep))
 
         # ── the structure: stop, risk, reach, room ─────────────────────────
         bhi = _f(bar.get("high") if hasattr(bar, "get") else bar["high"])
@@ -254,7 +290,7 @@ class BreakoutPlan:
         t.check("pool_name", None, None, note=str(prep.pool_name or "open air"))
         t.check("pool_dist_r", prep.pool_dist_r, None)
         prep.cond("room_to_run", prep.pool_dist_r,
-                  bool(pool is None or (prep.pool_dist_r or 0) >= B.ROOM_MIN_R))
+                  bool(pool is None or B.accepts("room_to_run", prep.pool_dist_r or 0)))
 
         # the reach: the NEARER of the measured move and the pool's near edge
         measured = (bc + width) if (direction == "long" and bc and width) else \
@@ -281,12 +317,12 @@ class BreakoutPlan:
             return prep
         reach = abs((prep.target or bc) - bc)
         prep.r = (reach / prep.risk) if (prep.risk and prep.risk > 0) else None
-        t.check("r", prep.r, bool(prep.r and prep.r >= B.R_FLOOR))
+        t.check("r", prep.r, B.accepts("r", prep.r))
         t.check("stop_survivable", prep.risk, bool(prep.risk and prep.risk > 0))
         t.check("target", prep.target, prep.target is not None)
-        if not prep.r or prep.r < B.R_FLOOR:
-            t.refuse("r", f"R {prep.r:.2f} below the {B.R_FLOOR:.2f} floor"
-                     if prep.r else "R unmeasurable")
+        if not B.accepts("r", prep.r):
+            t.refuse("r", f"R {prep.r:.2f} outside acceptance "
+                          f"{B.acceptance('r')}" if prep.r else "R unmeasurable")
             return prep
 
         # ══ THE TRIGGER, AND IT IS COMPOUND ═══════════════════════════════
@@ -322,7 +358,13 @@ class BreakoutPlan:
         an ordinary DECLINE, because a permission issued on a shrug is worse
         than silence.
         """
-        pooled = prep.pool_dist_r is not None and prep.pool_dist_r < B.ROOM_MIN_R
+        # ⚠️ THE FADE ROUTE READS THE FITTED DIAL, NOT THE LIVE ACCEPTANCE.
+        # While acceptance is "any" every pool distance clears room_to_run, so
+        # asking "did room_to_run fail?" would never route a harvest to the
+        # sweep. The ROUTING question is "is a pool sitting in the path?", which
+        # is a fact about the tape and not an acceptance band.
+        pooled = (prep.pool_dist_r is not None
+                  and prep.pool_dist_r < B.FITTED_ROOM_MIN_R)
         fading = ("gamma_regime" in prep.unmet) or ("depth_thin" in prep.unmet)
         if pooled and fading and prep.direction and prep.pool_price:
             # price will REACH the pool and stop there -> the hunt has a target

@@ -1,7 +1,15 @@
 """
-strategy/breakout.py  v1.1
+strategy/breakout.py  v1.2
 THE SPECIFICATION. The plan searches; this declares what it must find.
 
+v1.2  2026-09-19  OTV4TEST r55 — THE OBSERVER POSTURE, AND THE WIDTH BAND WAS
+      ANTI-SELECTIVE. Operator: "trade every break that gets a 1-minute candle
+      acceptance beyond the boundary… informers are just observers for 2 weeks."
+      `observe_only()` auto-expires at BRK_OBSERVE_UNTIL and FAILS CLOSED.
+      🔴 orb_range MEASURED ANTI-SELECTIVE on n=747 — it refused 38% of breaks
+      and kept the worse half (0.94x in, 1.10x out). Widened to feasibility-only.
+      ROOM_MIN_R recategorised FOUNDATIONAL -> SELECTION: a resting pool is
+      EVIDENCE about a break, not part of what makes it a Breakout.
 v1.1  2026-09-19  OTV4TEST r53 — `flow_commit` STOPS BEING A PRIOR. Measured
       over 255 fleet breaks with prints: signed imbalance >= +0.10 lifts the 1R
       rate from 52.5% to 65.1% (1.24x, keeps 33%). The prior was 0.15, which
@@ -63,19 +71,29 @@ logger = logging.getLogger(__name__)
 # 🔑 THE THREE FOUNDATIONAL ONES ARE FOUNDATIONAL FOR ONE REASON: they decide
 # whether this is a BREAKOUT at all. Take the window away and it is a different
 # trade; take the close-beyond away and it is the wick-triggered entry r5 ruled
-# out; take room_to_run away and it is a trade INTO a resting pool, which is the
-# hunt's setup, not this one.
+# out.
+# 🔑 STRUCTURALLY THIS IS THE ORB WITHOUT THE RETEST (operator, 2026-09-19:
+# *"Make it follow the orb structurally, but without a retest. And with better
+# informers."*). Same boundary, same impulsive-candle stop, same geometry
+# sizing — the ORB's own rules, reused rather than re-derived. What differs is
+# WHEN it enters (immediately on acceptance, not after the level proves itself)
+# and WHAT it weighs (the informers below). ⚠️ ROOM_MIN_R WAS FOUNDATIONAL AND
+# IS NOT: a resting pool ahead is EVIDENCE about a break, not part of what
+# makes it a Breakout — the operator ruled the informers observers, which only
+# makes sense for a SELECTION gate.
 GATES = {
     "EARLIEST_ET":          "FOUNDATIONAL",
     "LATEST_ET":            "FOUNDATIONAL",
-    "RANGE_MIN_PCT":        "FEASIBILITY",   # a 3-cent range cannot be traded
-    "RANGE_MAX_PCT":        "FEASIBILITY",   # a gap-day range cannot be stopped
-    "ROOM_MIN_R":           "FOUNDATIONAL",  # measured: open air 63.0% vs 49.5%
-    "FLOW_IMBALANCE_MIN":   "SELECTION",     # MEASURED n=255, lift 1.24x
-    "FLOW_TAGGED_MIN":      "SELECTION",     # measured: NEVER BINDS (tagged=1.00)
-    "REGIME_MAX":           "SELECTION",     # PRIOR — unmeasured
-    "DEPTH_DEPLETION_MIN":  "SELECTION",     # PRIOR — unmeasured
-    "R_FLOOR":              "SELECTION",
+    "FITTED_RANGE_MIN_PCT": "FEASIBILITY",   # dial: "any" — the ORB has no width band
+    "FITTED_RANGE_MAX_PCT": "FEASIBILITY",   # dial: "any" — measured neutral, n=747
+    "FITTED_ROOM_MIN_R":    "SELECTION",     # dial: "any" until 2026-10-03, then 1.23x on n=46
+    "FITTED_FLOW_IMBALANCE_MIN": "SELECTION", # dial: "any" until 2026-10-03, then n=255 1.24x
+    "FLOW_TAGGED_MIN":      "SELECTION",     # dial: "any" — and it has NEVER bound (tagged=1.00)
+    "FITTED_REGIME_MAX":    "SELECTION",     # dial: "any" — never yet measurable
+    "FITTED_DEPTH_DEPLETION_MIN": "SELECTION", # dial: "any" — no history exists to fit it
+    "FITTED_R_FLOOR":       "SELECTION",     # dial: "any" (the ORB has no R floor)
+    "FITTED_RANGE_CLEAN_MAX": "SELECTION",   # dial: "any" — the ORB has no such rule
+    "RESEARCH_UNTIL":       "FOUNDATIONAL",  # the acceptance-ALL window's expiry
 }
 
 # ── the window (admission also carries it; this is the strategy's own claim) ──
@@ -99,21 +117,137 @@ LATEST_ET = str(getattr(config, "BREAKOUT_LATEST_ET", "11:30"))
 # 0.10's 65.1%, so the guess was in the right place and slightly too strict. The
 # dip at 0.15 is almost certainly noise at this sample size; 0.10 is taken
 # because it is the best-supported point, not because the curve is smooth.
-FLOW_IMBALANCE_MIN = float(getattr(config, "BRK_FLOW_IMBALANCE_MIN", 0.10))
-# 🔴 THIS FLOOR HAS NEVER ONCE BOUND, AND THAT IS RECORDED RATHER THAN QUIETLY
-# KEPT. Measured over the same 255 breaks: `tagged_frac` median 1.00, p10 1.00 —
-# every print on this feed carries an aggressor side, so a 0.60 floor can never
-# fire. The REASONING is still sound (untagged volume stays in the denominator,
-# so a thin tape would otherwise fabricate conviction) and it is kept as cheap
-# insurance against a degraded feed. But it is insurance, not evidence, and a
-# gate that has never gated must say so.
+FITTED_FLOW_IMBALANCE_MIN = float(getattr(config, "BRK_FLOW_IMBALANCE_MIN", 0.10))
 FLOW_TAGGED_MIN = float(getattr(config, "BRK_FLOW_TAGGED_MIN", 0.60))
-REGIME_MAX = float(getattr(config, "BRK_REGIME_MAX", 0.0))
-DEPTH_DEPLETION_MIN = float(getattr(config, "BRK_DEPTH_DEPLETION_MIN", 0.0))
-ROOM_MIN_R = float(getattr(config, "BRK_ROOM_MIN_R", 1.0))
-R_FLOOR = float(getattr(config, "BRK_R_FLOOR", 1.0))
-RANGE_MIN_PCT = float(getattr(config, "BRK_RANGE_MIN_PCT", 0.0005))
-RANGE_MAX_PCT = float(getattr(config, "BRK_RANGE_MAX_PCT", 0.0125))
+FITTED_REGIME_MAX = float(getattr(config, "BRK_REGIME_MAX", 0.0))
+FITTED_DEPTH_DEPLETION_MIN = float(getattr(config, "BRK_DEPTH_DEPLETION_MIN", 0.0))
+FITTED_ROOM_MIN_R = float(getattr(config, "BRK_ROOM_MIN_R", 1.0))
+FITTED_R_FLOOR = float(getattr(config, "BRK_R_FLOOR", 1.0))
+# 🔑 MEASURED 2026-09-19, n=747 breaks. THE OLD BAND (0.05%-1.25%) WAS THE
+# DOMINANT FILTER AND IT WAS ANTI-SELECTIVE: it refused 38% of breaks and the
+# ones it KEPT did worse than the ones it threw away — 47.3% (0.94x) inside
+# against 55.7% (1.10x) outside, the only candidate band scoring below no gate
+# at all. ⚠️ AND NO BAND IS AN EDGE: the best of seven candidates managed 1.08x
+# on n=302 (~1.4 SE), the volume story again. Width is FEASIBILITY, never a
+# prediction. ⚠️ THE ORB HAS NO WIDTH BAND AT ALL — it answers a degenerate
+# range by sizing ONE LOT LOUDLY rather than refusing — so a band here is a
+# divergence from the trade this one is meant to mirror.
+FITTED_RANGE_MIN_PCT = float(getattr(config, "BRK_RANGE_MIN_PCT", 0.0023))
+FITTED_RANGE_MAX_PCT = float(getattr(config, "BRK_RANGE_MAX_PCT", 0.0350))
+FITTED_RANGE_CLEAN_MAX = float(getattr(config, "BRK_RANGE_CLEAN_MAX", 0.0))
+
+# ── ACCEPTANCE: "ALL", FOR TWO WEEKS (operator, 2026-09-19) ─────────────────
+# *"Have it trade every break that gets a 1-minute candle acceptance beyond the
+# boundary… informers are just observers for 2 weeks."* And, on the shape:
+# *"I still want the informer set as triggers in the strategy package, but set
+# the acceptance to 'all'."*
+# 🔑 SO NOTHING IS BYPASSED. Every informer below is still a DECLARED TRIGGER;
+# the plan still refuses to form unless every one of them clears; the strategy
+# still re-checks the PERSISTENT ones on the firing tick. What widens is the
+# ACCEPTANCE BAND, declared here beside the bar it belongs to. An earlier cut of
+# r55 made the informers skip the trigger machinery instead, and the operator
+# ruled against it — rightly: a bypass has to be un-bypassed later, and the code
+# that un-bypasses it is code nobody has run.
+# 🔑 THE FIT DOES NOT NEED A NARROW BAND TO BE POSSIBLE. Every informer's
+# CONTINUOUS value is recorded on every tick, so any threshold can be fitted
+# afterwards from the values themselves — more than a stored boolean verdict
+# could have given us.
+# 🔑 AND "ALL" IS WHAT MAKES THE OPERATOR'S INVARIANT TRUE: *"if we do get an
+# orb trade a breakout trade should've preceded it, because it's the same trade
+# but without the retest."* That holds only while Breakout's acceptance is no
+# narrower than the ORB's, and the ORB has no width band, no cleanliness rule,
+# no pool rule and no R floor. Narrow any of these before the fit and an ORB
+# trade can fire that Breakout refused — the two diverge, silently.
+RESEARCH_UNTIL = str(getattr(config, "BRK_RESEARCH_UNTIL", "") or "")
+
+
+def research_active(today=None) -> bool:
+    """Is the acceptance-ALL window still open?  ⚠️ FAILS CLOSED: an unreadable
+    or absent date means the FITTED bands bind, never that everything is taken."""
+    if not RESEARCH_UNTIL:
+        return False
+    try:
+        from datetime import date, datetime
+        from zoneinfo import ZoneInfo
+        d = today or datetime.now(ZoneInfo("America/New_York")).date()
+        return d <= date.fromisoformat(RESEARCH_UNTIL)
+    except Exception:                                            # noqa: BLE001
+        return False
+
+
+# ── THE DIALS ───────────────────────────────────────────────────────────────
+# 🔑 ONE ACCEPTANCE PER INFORMER, AND TODAY EVERY ONE OF THEM IS "any".
+# Operator, 2026-09-19: *"set the acceptance to 'any' for each of those
+# informers that will emerge as dials in 2 weeks."*
+# Each entry below IS the dial. Today it reads "any" — the bar is evaluated,
+# recorded and narrated exactly as always, and every value clears it. In two
+# weeks each one is replaced by the number the data gives, one informer at a
+# time, and nothing else in this file or the plan has to change.
+# ⚠️ "any" IS AN ACCEPTANCE, NOT AN ABSENCE. The bar is still a declared
+# trigger; the plan still refuses to form a plan unless it clears; the strategy
+# still re-checks the PERSISTENT ones on the firing tick. A row that reads
+# `flow_commit +0.02 (accept any)` is telling the truth about both halves.
+_DIALS = {
+    # informer        how it is compared          the number it becomes
+    "flow_commit":   (">=", "FITTED_FLOW_IMBALANCE_MIN"),
+    "gamma_regime":  ("<=", "FITTED_REGIME_MAX"),
+    "depth_thin":    (">=", "FITTED_DEPTH_DEPLETION_MIN"),
+    "room_to_run":   (">=", "FITTED_ROOM_MIN_R"),
+    "range_clean":   ("<=", "FITTED_RANGE_CLEAN_MAX"),
+    "orb_range":     ("band", ("FITTED_RANGE_MIN_PCT", "FITTED_RANGE_MAX_PCT")),
+    "r":             (">=", "FITTED_R_FLOOR"),
+    "flow_tagged":   (">=", "FLOW_TAGGED_MIN"),
+}
+
+
+def _dial(bar: str) -> str:
+    """How this informer's acceptance READS on a plan row: "accept any", or the
+    number. ⚠️ A row must never imply a threshold that is not being applied."""
+    band = acceptance(bar)
+    if band == "any":
+        return "accept any"
+    if isinstance(band, tuple):
+        return f"{band[0]:.2%}-{band[1]:.2%}"
+    how, _ = _DIALS[bar]
+    return f"{how} {band:+.2f}"
+
+
+def acceptance(bar: str, today=None):
+    """This informer's acceptance right now: the string "any", or the dial."""
+    if bar not in _DIALS:
+        return "any"
+    if research_active(today):
+        return "any"
+    how, ref = _DIALS[bar]
+    if how == "band":
+        return (globals()[ref[0]], globals()[ref[1]])
+    return globals()[ref]
+
+
+def accepts(bar: str, value, today=None) -> bool:
+    """Does this informer's ACCEPTANCE admit `value`?
+
+    ⚠️ "any" ADMITS AN ABSENT READING TOO. While the acceptance is "any" the
+    operator's instruction is to trade every accepted break, so an unreadable
+    regime or an empty book must not quietly refuse — that would be a gate
+    nobody declared, which is this repo's oldest failure shape.
+    """
+    band = acceptance(bar, today)
+    if band == "any":
+        return True
+    if value is None:
+        return False
+    how, _ = _DIALS[bar]
+    v = float(value)
+    if how == "band":
+        return band[0] <= v <= band[1]
+    return v >= band if how == ">=" else v <= band
+
+
+if research_active():
+    logger.info("[breakout] ACCEPTANCE=any on %s — each informer is still a "
+                "declared trigger; these are the dials that get numbers on %s",
+                ", ".join(sorted(_DIALS)), RESEARCH_UNTIL)
 
 class Breakout:
     """The specification. `breakout_plan.BreakoutPlan` satisfies it or stays silent."""
@@ -124,27 +258,27 @@ class Breakout:
     CONDITIONS = {
         "entry_window":  f"{EARLIEST_ET}-{LATEST_ET} ET",
         "orb_range":     (f"a 5-minute opening range is established and its width is "
-                          f"{RANGE_MIN_PCT:.2%}-{RANGE_MAX_PCT:.2%} of spot — neither a "
+                          f"{_dial('orb_range')} of spot — neither a "
                           f"three-cent range nor a gap-day monster"),
         "range_clean":   ("no live level sits inside the range — r39 retires them TRAVERSED, "
                           "so a level still inside means the board has not caught up"),
         "break_close":   ("a CLOSED 1m bar's CLOSE beyond the range edge — r5's rule, bodies "
                           "decide and wicks test. This is the anti-fakeout gate that costs "
                           "nothing in TIME, which is the whole point of skipping the retest"),
-        "flow_commit":   (f"aggressor imbalance >= {FLOW_IMBALANCE_MIN:+.2f} in the break "
-                          f"direction with tagged_frac >= {FLOW_TAGGED_MIN:.0%} "
+        "flow_commit":   (f"aggressor imbalance {_dial('flow_commit')} in the break "
+                          f"direction with tagged_frac {_dial('flow_tagged')} "
                           f"(MEASURED n=255: >= +0.10 lifts the 1R rate 52.5% -> 65.1%. "
                           f"The tagged floor has never bound — every print carries a side — "
                           f"and is kept as insurance against a degraded feed)"),
-        "gamma_regime":  (f"regime <= {REGIME_MAX:+.2f} — NOT pinning. A break into a pinning "
+        "gamma_regime":  (f"regime {_dial('gamma_regime')} — NOT pinning. A break into a pinning "
                           f"regime is one dealers fade; into a trending regime, one they "
                           f"amplify. (PRIOR, unmeasured)"),
         "depth_thin":    (f"resting depth ahead of price DEPLETING, not refilling "
-                          f"(>= {DEPTH_DEPLETION_MIN:+.2f}) — the book's answer to the same "
+                          f"({_dial('depth_thin')}) — the book's answer to the same "
                           f"question flow_commit asks of the tape, and independent of it. "
                           f"(PRIOR, unmeasured)"),
         "room_to_run":   (f"OPEN AIR ahead, or the nearest named pool at least "
-                          f"{ROOM_MIN_R:.1f}R away. MEASURED: open air reached 1R 63.0% vs "
+                          f"{_dial('room_to_run')} away. MEASURED: open air reached 1R 63.0% vs "
                           f"49.5% with a pool ahead (n=327, base 51.4%) — but n=46 on the "
                           f"open-air arm, so it is a BINARY and no distance threshold is "
                           f"claimed"),

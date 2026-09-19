@@ -1,5 +1,14 @@
 """
-strategy/management.py  v2.5
+strategy/management.py  v2.6
+v2.6  2026-09-19  OTV4TEST r55 — THE DECLARED EXIT DESCRIBED AN EXIT THAT
+      DOES NOT EXIST. `structure_stop` read "a 1m close back inside the opening
+      range — the break failed", but BOTH evaluation paths read
+      `underlying_stop` (this file's own outs loop, and exit_engine's
+      `orb_structure_stop`), which for a Breakout IS the impulsive candle's
+      extreme. 🔑 Operator: "If it comes back into the range but doesn't trigger
+      a stop, make it HOLD." The code already did; the file did not say so — and
+      this string is what the board NARRATES and what the next editor would have
+      implemented against. Corrected to the ORB's wording verbatim.
 v2.5  2026-09-18  OTV4TEST r51 (BRK.1) — THE BREAKOUT'S EXHAUSTION EXIT, and
       the first reader `_midline_atr` / `_momentum_divergence` have ever had.
       Both survived, fully written and documented, from an `_evaluate_continuation`
@@ -153,7 +162,21 @@ EXIT_CONDITIONS: Dict[str, Dict[str, str]] = {
     # continuing on fumes"* — actually exits.
     "Breakout": {
         "hard_stop":      "premium <= stop_premium",
-        "structure_stop": "a 1m close back inside the opening range — the break failed",
+        # 🔴 THIS SAID "a 1m close back inside the opening range — the break
+        # failed" UNTIL r55, AND THE CODE NEVER DID THAT. `structure_stop` is
+        # evaluated against `underlying_stop` (management.py's own outs loop,
+        # and exit_engine's `orb_structure_stop` reads
+        # `record["underlying_stop"]`), which for a Breakout IS the impulsive
+        # candle's extreme. So the declared condition described an exit that
+        # does not exist — and this string is what the board NARRATES and what
+        # the next editor would have implemented against.
+        # 🔑 OPERATOR, 2026-09-19: *"If it comes back into the range but doesn't
+        # trigger a stop, make it HOLD."* That is what the code already does;
+        # now it is what the file SAYS. The ORB's structure stop, verbatim —
+        # this trade follows the ORB structurally, without the retest.
+        "structure_stop": ("a 1m close through underlying_stop (the impulsive-candle "
+                           "extreme that registered the break) — a return INTO the "
+                           "range with the stop intact is a HOLD, never an exit"),
         "extension":      ("price stretched from the BB midline -> TIGHTEN the trail, "
                            "never exit: a strong trend can stay extended"),
         "exhaustion":     ("a NEW run-favourable extreme on WEAKER 5m momentum -> out. "

@@ -1,5 +1,14 @@
 """
-config.py  v4.23
+config.py  v4.24
+v4.24  2026-09-19  OTV4TEST r55 — BRK_RESEARCH_UNTIL. One date is the whole
+      switch: until it passes, every Breakout informer's acceptance reads "any"
+      — each is still a DECLARED TRIGGER the plan must clear, and the BAND is
+      what is wide. After it, each dial takes the number the data gives.
+      ⚠️ FAILS CLOSED: an unreadable or absent date means the fitted dials bind.
+      🔴 AND NO DIAL IS PINNED HERE. An earlier cut set BRK_R_FLOOR=0.0 to force
+      acceptance, which would have left Breakout with NO R floor FOREVER — the
+      research posture leaking into the fitted value it exists to restore. The
+      window widens acceptance; it never edits a dial.
 v4.23  2026-09-18  OTV4TEST r44 — THREE CONSTANTS RE-ANCHORED TO THE RIGHT
       QUANTITY. ORB_RISK_USD (the geometry rule normalised to the OPENING RANGE,
       not the budget: every stop distance on a 0.97 range risked $26-32, 3% of a
@@ -745,6 +754,35 @@ ORB_BUDGET_USD     = float(os.environ.get("OT_ORB_BUDGET_USD",
 # so this scales the losses too, and it is deliberately ONE ENV VAR so it can be
 # dialled to a fraction while it proves itself, without a revision.
 ORB_RISK_USD = float(os.environ.get("OT_ORB_RISK_USD", RISK_PER_TRADE_USD))
+
+# ── BREAKOUT RESEARCH POSTURE (OTV4TEST r55, operator 2026-09-19) ────────────
+# *"Have it trade every break that gets a 1-minute candle acceptance beyond the
+# boundary, stop distance is the extreme of the impulsive candle that registered
+# the break, sized the same as the orb, informers are just observers for 2
+# weeks."*  And: *"Make it follow the orb structurally, but without a retest."*
+# 🔑 THE BARS LISTED HERE ARE EVALUATED AND RECORDED BUT DO NOT BLOCK. Each one
+# still writes the verdict it WOULD have given, beside the trade's outcome —
+# that counterfactual arm is the only thing that makes a later fit possible,
+# because a gate you never let refuse can never be shown to have been right.
+# 🔑 WHY THIS EXACT SET: the operator's invariant is that *"if we do get an orb
+# trade a breakout trade should've preceded it, because it's the same trade but
+# without the retest."* That holds only while Breakout's binding bars are a
+# SUBSET of the ORB's. The ORB has no width band, no level-cleanliness rule, no
+# pool rule and no R floor — so every one of those must observe, or an ORB trade
+# could fire that Breakout had refused, and the two would have silently diverged.
+# What is left binding is the window, the 1m acceptance, and whether the trade
+# can physically be placed — which IS the ORB, minus the retest.
+# 🔑 ONE DATE IS THE WHOLE SWITCH. Until it passes, every informer's acceptance
+# reads "any" — each is still a DECLARED TRIGGER the plan must clear, and the
+# band is what is wide. After it, each dial takes the number the data gives.
+# ⚠️ THE CODE FAILS CLOSED: an unreadable or absent date means the fitted dials
+# bind, never that everything is accepted. A research posture that quietly
+# becomes permanent is this repo's oldest failure shape; this one cannot.
+# ⚠️ AND NO DIAL IS PINNED HERE. An earlier cut of r55 set BRK_R_FLOOR=0.0 to
+# force acceptance, which would have left Breakout with NO R floor FOREVER —
+# the research posture leaking into the fitted value it is supposed to restore.
+# The window widens acceptance; it never edits a dial.
+BRK_RESEARCH_UNTIL = os.environ.get("OT_BRK_RESEARCH_UNTIL", "2026-10-03")
 
 # ── r44 — HOW WIDE THE THESIS LINE IS ──────────────────────────────────────
 # 🔑 A LEVEL IS PRECISE TO ABOUT ONE BAR OF NOISE, and the thesis test used to

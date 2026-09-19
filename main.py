@@ -1,5 +1,16 @@
 """
-main.py  v4.57
+main.py  v4.58
+v4.58 2026-09-19  OTV4TEST r55 — GEOMETRY SIZING IS SUPPLIED, NOT NAMED.
+      🔴 This read `if signal.strategy_name == "ORBStrategy"`, so Breakout — the
+      ORB without the retest, carrying the same geometry — fell through to
+      `_size_budget`, the RESTRICTIVE rule. The operator asked for it "sized the
+      same as the orb"; it was not, and nothing said so because both paths
+      return a SizingResult. ⚠️ `RiskManager.size_for`'s own docstring forbids
+      exactly this list: geometry is selected by the caller SUPPLYING the
+      geometry, and "does not get added to a list somewhere that later rots."
+      The sizer refused a name list; the caller kept one anyway.
+      Now keyed on an explicit `sizes_on_geometry` flag — NOT on
+      `orb_range_high`, which the hunt and runaway also carry.
 v4.57 2026-09-18  OTV4TEST r51 (BRK.1) — BREAKOUT IS DISPATCHED, and
       `ctx["_flow_conn"]` FINALLY HAS A PRODUCER. The second is the larger
       find: that key is read by `derived/notes.py` and `derived/snapshot.py`
@@ -4675,7 +4686,20 @@ def _execute_entry_signal(signal, ctx, ms, state, _sigj=None, *, additive: bool 
                or _STRUCTURE_BY_NAME.get(getattr(signal, "strategy_name", ""))
                or "long_debit")          # fail closed, as the debit cutoff does
     _orb_w = _orb_d = 0.0
-    if getattr(signal, "strategy_name", "") == "ORBStrategy":
+    # 🔑 r55 — GEOMETRY IS SUPPLIED, NOT NAMED. `RiskManager.size_for` says so
+    # itself: *"Geometry is a sub-rule of long_debit, selected by the caller
+    # SUPPLYING orb_width / orb_stop_distance rather than by naming ORB. A
+    # second strategy that wants risk-normalised sizing supplies the geometry;
+    # it does not get added to a list somewhere that later rots."*
+    # 🔴 AND THE CALLER KEPT A NAME LIST ANYWAY. Until now this read
+    # `== "ORBStrategy"`, so Breakout — which is the ORB without the retest and
+    # carries the same geometry — fell through to `_size_budget`, the
+    # RESTRICTIVE rule. The operator asked for it "sized the same as the orb";
+    # it was not, and nothing said so because both paths return a SizingResult.
+    # ⚠️ KEYED ON AN EXPLICIT FLAG, NOT ON orb_range_high: the hunt and the
+    # runaway both carry that field and neither asked to be re-sized.
+    if (getattr(signal, "strategy_name", "") == "ORBStrategy"
+            or getattr(signal, "sizes_on_geometry", False)):
         # Geometry INPUTS only — the rule itself (floor, clamp, degenerate→1)
         # lives in the sizer, so there is exactly one place it can be wrong.
         _orb_w = abs(float(getattr(signal, "orb_range_high", 0) or 0)

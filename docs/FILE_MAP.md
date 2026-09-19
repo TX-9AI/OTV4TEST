@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-298 Python modules across 13 local packages.
+299 Python modules across 13 local packages.
 
-**Reached by:** 116 imported · 11 declared entry points · 90 referenced from a script, unit or doc but never imported · **81 by nothing here**.
+**Reached by:** 116 imported · 11 declared entry points · 91 referenced from a script, unit or doc but never imported · **81 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -352,7 +352,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `execution/position_manager.py`
 - **calls:** `analysis/orb_engine.py`, `config.py`, `data/tasty_client.py`, `database/trade_logger.py`, `execution/__init__.py`, `execution/exit_engine.py`, `execution/resting_orders.py`, `notifications/alert_manager.py`, `risk/risk_manager.py`, `strategy/management.py`, `strategy/structure.py`, `utils/time_utils.py`
-- **called by:** `main.py`, `tests/check_admission.py`, `tests/check_admission_wired.py`, `tests/check_breakout.py`, `tests/check_butterfly_nonblocking.py`, `tests/check_credit_remainder.py`, `tests/check_liquidity_hunt.py`, `tests/check_manage_call.py`, `tests/check_plan_prepares.py`, `tests/check_sweep_stop.py`
+- **called by:** `main.py`, `tests/check_admission.py`, `tests/check_admission_wired.py`, `tests/check_breakout.py`, `tests/check_breakout_research.py`, `tests/check_butterfly_nonblocking.py`, `tests/check_credit_remainder.py`, `tests/check_liquidity_hunt.py`, `tests/check_manage_call.py`, `tests/check_plan_prepares.py`, `tests/check_sweep_stop.py`
 
 ### `execution/resting_orders.py`
 - **calls:** `analysis/orb_engine.py`, `config.py`, `data/tasty_client.py`, `database/trade_logger.py`, `execution/order_confirm.py`, `utils/time_utils.py`
@@ -440,11 +440,11 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `strategy/breakout.py`
 - **calls:** `config.py`, `strategy/breakout_plan.py`
-- **called by:** `main.py`, `strategy/breakout_plan.py`, `tests/check_breakout.py`
+- **called by:** `main.py`, `strategy/breakout_plan.py`, `tests/check_breakout.py`, `tests/check_breakout_research.py`
 
 ### `strategy/breakout_plan.py`
 - **calls:** `analysis/order_flow.py`, `config.py`, `data/derived_store.py`, `derived/gamma_regime.py`, `derived/levels.py`, `strategy/__init__.py`, `strategy/breakout.py`, `strategy/orb_plan.py`, `strategy/plan.py`, `strategy/structure.py`
-- **called by:** `strategy/breakout.py`, `tests/check_breakout.py`
+- **called by:** `strategy/breakout.py`, `tests/check_breakout.py`, `tests/check_breakout_research.py`
 
 ### `strategy/condor_roll.py`
 - **calls:** `config.py`, `data/tasty_client.py`, `database/trade_logger.py`, `execution/entry_ladder.py`, `execution/exit_engine.py`, `execution/limit_ladder.py`, `execution/order_confirm.py`, `notifications/alert_manager.py`, `strategy/plan.py`, `utils/time_utils.py`
@@ -472,7 +472,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `strategy/management.py`
 - **calls:** `execution/exit_engine.py`, `strategy/plan.py`
-- **called by:** `execution/position_manager.py`, `main.py`, `tests/check_atp_butterfly.py`, `tests/check_breakout.py`, `tests/check_management_plan.py`
+- **called by:** `execution/position_manager.py`, `main.py`, `tests/check_atp_butterfly.py`, `tests/check_breakout.py`, `tests/check_breakout_research.py`, `tests/check_management_plan.py`
 
 ### `strategy/orb_plan.py`
 - **calls:** `analysis/orb_engine.py`, `config.py`, `derived/__init__.py`, `derived/anchors.py`, `strategy/orb_strategy.py`, `strategy/plan.py`, `utils/math_utils.py`
@@ -583,6 +583,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_breakout.py`
+- **calls:** `execution/position_manager.py`, `strategy/breakout.py`, `strategy/breakout_plan.py`, `strategy/management.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
+### `tests/check_breakout_research.py`
 - **calls:** `execution/position_manager.py`, `strategy/breakout.py`, `strategy/breakout_plan.py`, `strategy/management.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
