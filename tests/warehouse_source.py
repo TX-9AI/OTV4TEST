@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """
-tests/warehouse_source.py  v1.3
+tests/warehouse_source.py  v1.4
+v1.4  2026-09-20  OTV4TEST r69 (S3.14) — `stream_series()` ADDED. `load_series`
+materialises a whole date (~230k prints per symbol-day, hundreds of MB) and a
+19-session corpus run was OOM-reaped on a box with 908 MB of physical RAM.
+`_envelopes` was already a generator, so the accumulator was the only ceiling.
+Same path, same dedupe posture, peak footprint of one object. `load_series` is
+unchanged, so every existing caller is byte-for-byte unaffected.
+
 v1.3  2026-09-07  r301 - DAY_ONE 2026-08-25 -> 2026-09-01, epoch 3. Moves in
 lockstep with day_trader_pro's ENGINE_EPOCH: two constants in two repos meaning
 one thing is the drift this codebase keeps finding, so they ship together.
@@ -158,6 +165,38 @@ def load_series(table, dates, symbols=None, s3=None):
         if isinstance(rec, list):
             rows.extend(r for r in rec if isinstance(r, dict))
     return rows, meta
+
+
+def stream_series(table, dates, symbols=None, s3=None, meta=None):
+    """Yield series rows ONE AT A TIME. Same source, same dedupe posture, a
+    fraction of the memory. -> generator of dict; pass `meta` to read the
+    objects-listed/read counters afterwards.
+
+    🔴 r69 — WHY THIS EXISTS. `load_series` materialises a whole date into a
+    list: ~230,000 prints for ONE symbol-day, several hundred MB of Python
+    dicts. This box has 908 MB of PHYSICAL RAM (measured; the 2 GB swapfile is
+    separate), and a 19-session × 3-symbol corpus run was reaped by the OOM
+    killer mid-study on 2026-09-20. The rows were never needed all at once —
+    every consumer so far folds them into per-interval buckets immediately.
+    🔑 `_envelopes` WAS ALREADY A GENERATOR and each object carries only ~2,400
+    rows, so the ceiling was `load_series`'s accumulator and nothing else.
+    Peak footprint becomes one object plus the caller's buckets.
+    ⚠️ THE CALLER MUST NOT RE-ACCUMULATE. `list(stream_series(...))` is
+    `load_series` with extra steps and the same OOM; the point is to fold as
+    you go. Said here because the failure mode is a one-word change at the call
+    site that silently restores the ceiling.
+    ⚠️ IT IS THE SAME PATH, NOT A SECOND ONE (§38.1, §36a). It reuses
+    `_envelopes` and the same record-shape handling as `load_series`, so a
+    change to either reaches both; it is not a parallel reader that can drift.
+    """
+    meta = meta if meta is not None else Meta(f"{table} {dates[0]}..{dates[-1]}")
+    s3 = s3 or client()
+    for env in _envelopes(s3, table, dates, meta, symbols):
+        rec = env.get("record")
+        if isinstance(rec, list):
+            for r in rec:
+                if isinstance(r, dict):
+                    yield r
 
 
 def load_derived(table, dates, s3=None):

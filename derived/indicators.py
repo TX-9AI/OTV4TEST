@@ -1,6 +1,13 @@
 """
-derived/indicators.py  v4.0
+derived/indicators.py  v4.1
 Owns `indicator_series`. Tier 1 — path-dependent values.
+
+v4.1  2026-09-20  OTV4TEST r69 (IND.1) — THE PER-TIMEFRAME LOOP HAD NEVER RUN.
+      `list(trend.votes)` on a Dict yields its KEYS, so every vote was a string,
+      every `getattr(vote,"timeframe")` was None, and the loop skipped all of
+      them. 0 of 18,529 rows ever carried an EMA and every row was
+      `interval='primary'`. One line: `.values()`. FORWARD-ONLY — history stays
+      null. Gated by tests/check_indicator_votes.py.
 
 v4.0  2026-08-22  See docs/DERIVED_STORES.md.
 
@@ -128,7 +135,25 @@ class IndicatorEngine(DerivedEngine):
         # One row per timeframe the trend engine voted on, so ADX is recorded
         # PER FRAME rather than only the primary — the per-frame values are
         # what a later study needs to see disagreement.
-        votes = list(getattr(trend, "votes", []) or []) if trend else []
+        # 🔴 r69 — `TrendState.votes` IS A DICT, AND `list(a_dict)` YIELDS ITS KEYS.
+        # This read `list(trend.votes)`, so `votes` was a list of the timeframe
+        # STRINGS ('5m', '15m', ...). The loop below then asks each string for
+        # `.timeframe`, gets None, and `continue`s EVERY iteration — so `rows`
+        # stayed empty on every tick and the fallback below wrote the four EMAs
+        # as None. MEASURED: 0 of 18,529 rows in this table have ever carried an
+        # `ema_fast`, and EVERY row is `interval='primary'`.
+        # 🔑 SO THE PER-FRAME LOOP HAS NEVER ONCE EXECUTED, which costs more than
+        # the EMAs: its own comment says it exists "so ADX is recorded PER FRAME
+        # rather than only the primary — the per-frame values are what a later
+        # study needs to see disagreement." That disagreement signal has never
+        # been recorded at all.
+        # ⚠️ AND THE 2026-08-24 FIX BELOW MASKED IT PERMANENTLY. That change
+        # keyed the fallback on the OUTCOME so a gap shows up as thin rows
+        # rather than no rows — correct, and it worked: a row appears every
+        # tick, so nothing ever looked broken. The SYMPTOM was fixed and the
+        # CAUSE was never found. Thin plausible data instead of an error is the
+        # class this repo keeps paying for.
+        votes = list(trend.votes.values()) if trend and getattr(trend, "votes", None) else []
         if votes:
             for vote in votes:
                 tf = getattr(vote, "timeframe", None)
