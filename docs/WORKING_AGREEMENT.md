@@ -1,6 +1,6 @@
 # WORKING_AGREEMENT.md — how we operate (read this first, every new thread)
 
-**`WORKING_AGREEMENT.md` v4.17 · 2026-09-19 — §0 through §40, plus §15a, §18a, §36a and §40.1. See the CHANGELOG at the foot.**
+**`WORKING_AGREEMENT.md` v4.18 · 2026-09-20 — §0 through §40, plus §15a, §18a, §36a and §40.1. See the CHANGELOG at the foot.**
 
 > 🔴 **§0 IS THE FLOOR — AN ATTESTATION, NOT A TIP. Read it first, every thread.**
 > The operator ordered it once before and was told it existed. It did not.
@@ -246,7 +246,8 @@ layer** vs. a direct prompt. Nested quotes collide with that wrapping.
   🔑 **AMENDED 2026-09-14 (OTV4TEST r28), MEASURED WITH `systemctl list-unit-files`:**
   the box now has **two timers, both by ruling** — `optbot-midnight-halt.timer`
   (00:00 ET, r21, BOX.2: the backstop in case it is left up) and
-  `optbot-retention-purge.timer` (Saturday 08:30 ET, r27, BOX.4). It still has no
+  `optbot-retention-purge.timer` (**nightly 16:05 ET**, r53; originally Saturday
+  08:30 ET at r27, BOX.4/BOX.7). It still has no
   `ot-eod`, `candle-logger`, `eod-bot`, `self-close` or shadow units, and `s3-push`
   stays masked. The box is started at **08:00 ET daily by an AWS EventBridge
   schedule that lives outside this repo** — a failed wake is invisible from here,
@@ -334,7 +335,8 @@ on this fork; `OBSERVATIONS.md` was never here) and let it stack.
 THE FORK BOX CANNOT REACH IT.** QQQ-TEST is segregated from `day_trader_pro` by
 design (r1), so every number and label below is unreachable from here and citing
 one to the operator while he is on this box is the §3 trap wearing a menu. **On
-this box the menu is `./devtools.sh` in the repo root (v3.0, r17)** — SENSORS,
+this box the menu is `./devtools.sh` in the repo root (v3.5 as of r67; v3.0 at
+r17 — §24: a doctrine line pinned to a version string rots on the next bump)** — SENSORS,
 DEBUG / LOGS, the R SUITE, GIT & LAND and CLAUDE CODE, all running locally
 against this box's own stores. The rule below still holds in its general form:
 **check whether a menu item already does it before writing a one-off** — just
@@ -917,7 +919,9 @@ MAINLINE r162**, which armed `warehouse/retention_purge.py`. The purge exists to
 keep disk available and removes only rows past its windows — the minimum the
 tenors' ramps need (1m candles 5 days, 5m 10, 15m 20, 1h 60, daily never) — and
 `trades` and every ledger are `NEVER_PURGE`. On the fleet it rides `self_close`
-after an S3 drain; on this box it runs from its own Saturday timer (r27, BOX.4).
+after an S3 drain; on this box it runs from its own **nightly 16:05 ET** timer
+(r53 — r27 installed it weekly and that was the bug, not a preference: a
+THREE-DAY retention policy enforced on a SEVEN-DAY timer, BOX.7).
 Operator, 2026-09-14: *"safe to run anytime any day."* What accumulates is the
 depth inside those windows, which is what this rule protects.
 
@@ -1223,9 +1227,39 @@ PINNING with the apex on the pin — are tested inline against no constant. Ther
 is nothing to pass to `relaxed.widen()`, so they cannot be loosened even by
 mistake.
 
-## 36a. EVERY S3-SOURCED READER GOES THROUGH `WarehouseCache.load`.
+## 36a. EVERY S3-SOURCED READER GOES THROUGH ~~`WarehouseCache.load`~~ `tests/warehouse_source.py` ON THIS FORK.
 
-Added 2026-09-05 (r272), correcting SNS.4, which said `load_derived()`.
+🔴 **CORRECTED 2026-09-20 (OTV4TEST r67, DOC.3) — THE NAMED FUNCTION DOES NOT
+EXIST IN THIS REPO, AND THE RULE POINTED AWAY FROM THE ONE THAT DOES.**
+Measured on this box: `grep -rn "WarehouseCache" --include=*.py` returns
+**zero hits**, and there is no `warehouse_reader.py` — `warehouse/` holds
+`midnight_halt`, `retention_purge`, `s3_push` and `self_close`, and nothing
+else. **The one path here is `tests/warehouse_source.py`**, which §38.1 already
+names as the single sanctioned route, carrying the mandatory CDC dedupe
+(*latest wins by `pushed_at_utc`*) and the objects-listed-vs-read report so a
+flat day and a dead credential cannot look alike.
+
+⚠️ **SO TWO SECTIONS OF THIS FILE NAMED TWO DIFFERENT FUNCTIONS FOR ONE JOB,
+AND THE ONE IN THE RULE WAS ABSENT.** That is §25's own failure mode — *"a
+doctrine document naming a path is a path that rots"* — sitting inside the
+section whose entire subject is naming the right function.
+
+🔑 **AND THE IRONY IS THE PART WORTH KEEPING.** This section exists because
+SNS.4 named the WRONG function, `load_derived()`. On this fork `load_derived`
+is **correct**: it is what `tests/warehouse_source.py` exports (`:163`) and
+what `tests/edge_scan.py` calls (`:285-286`). So the correction inherited from
+mainline pointed the next reader here AWAY from the right answer. **A rule
+ported across a fork boundary is a claim about the fork, and §40 says a claim
+about the other tree requires measurement — including when the other tree is
+your own parent.**
+
+**THE MAINLINE TEXT IS KEPT BELOW, STRUCK, per the r240 precedent** — a row a
+later entry contradicts is a wrong answer rather than history, and the
+reasoning about *why a cache is not a bare partition read* is still exactly why
+`warehouse_source` carries what it carries. Read it as mainline's shape; use
+this fork's function.
+
+~~Added 2026-09-05 (r272), correcting SNS.4, which said `load_derived()`.~~
 
 **It said the wrong function, and the reason it was wrong is the point.**
 `warehouse_reader.load_derived` carries the natural-key collapse, the forward
@@ -1537,7 +1571,8 @@ not hold surfaces at the worst moment: *after* the work and *after* the approval
   false. Recurring work is a **timer the operator installs**, proposed with its
   schedule, its command, and what it will report. ⚠️ See BOX.1: a revision once
   assumed three timers that never existed here. As of r27 the box has exactly
-  two, both ruled — the midnight halt (BOX.2) and the Saturday purge (BOX.4) —
+  two, both ruled — the midnight halt (BOX.2) and the **nightly 16:05 ET**
+  purge (BOX.4, moved off Saturday by r53) —
   and §3 lists them as measured.
 - **REPORT OUTCOMES FAITHFULLY.** BUILT, PUSHED and BAKED are three claims and
   are never merged (§18). **A check that could not run is reported as NOT RUN,
@@ -1707,6 +1742,25 @@ joins the table above.
 
 ## CHANGELOG
 
+**v4.18 — 2026-09-20 — OTV4TEST r67 — FACTS ONLY, NO RULE CHANGED: THIS FILE
+DESCRIBED A FUNCTION THAT DOES NOT EXIST AND A TIMER THAT HAD ALREADY MOVED.**
+§36a named `WarehouseCache.load` as the one path for every S3-sourced read;
+**there is no `WarehouseCache` and no `warehouse_reader.py` anywhere in this
+tree**, and §38.1 already names the real one, `tests/warehouse_source.py` — so
+two sections named two functions for one job and the one in the RULE was
+absent. Worse, the mainline text it was ported from exists to warn against
+`load_derived`, which on this fork is the CORRECT and only entry point. Struck,
+not deleted (r240). And the retention purge was described as **Saturday 08:30
+ET in FOUR places** while it has run **nightly at 16:05 ET since r53** —
+verified against the live unit AND `deploy/install_retention_purge_timer.sh`,
+which agree. **r54 corrected exactly this in the BACKLOG six days ago**, writing
+that *a backlog that misdescribes live state is worse than one merely behind,
+because it is read as the record of what the box does* — and the one document
+§25 makes a new thread read SECOND was never corrected. Same finding, one
+document over. §13's devtools version un-pinned per §24.
+⚠️ **NOTHING HERE CHANGES A RULE.** Every edit replaces a statement of fact
+that was measurably false with the measured one.
+
 **v4.17 — 2026-09-19 — OTV4TEST r65 — §40 ADDED: ON A SHARED LINEAGE, "OURS
 DIFFERS FROM YOURS" IS A CLAIM REQUIRING MEASUREMENT.**
 Operator's ruling: *"Agree. Coordinate adding it on both sides."* Three claims
@@ -1807,7 +1861,7 @@ file describing the box it *used to be* is the same defect as the four-month-dea
 **v4.12 — 2026-09-14 — OTV4TEST r28 — OBSOLETE REFERENCES CORRECTED, FACTS ONLY.**
 Found reading this file against the box on the first morning of the week. §3
 said the box had no midnight halt and three units; it has two ruled timers
-(midnight halt, Saturday purge) and an 08:00 ET wake outside the repo, measured.
+(midnight halt, nightly 16:05 ET purge) and an 08:00 ET wake outside the repo, measured.
 §30 said pruning is disabled; it has been armed since mainline r162, and the
 operator ruled it safe any time. §34 said tests never run on a box; this box is
 its own control. §38.7 cited "almost no timers". The opening line, §12 and

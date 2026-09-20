@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# devtools.sh  v3.4  — OTV4TEST box menu
+# devtools.sh  v3.5  — OTV4TEST box menu
+# v3.5  2026-09-20  OTV4TEST r67 (BOX.9) — bake() STAMPS THE SHUTDOWN CAUSE so
+#       the bot's STOPPED alert says "bake" rather than the same
+#       "systemctl stop/restart" a hand stop and the midnight halt both printed.
 # v3.4  2026-09-18  OTV4TEST r42 — PLAN STATUS NOW: what every plan is doing at
 #       this moment and since when. Operator: "can you just have each plan report
 #       its last known status & a time stamp?" ⚠️ It is the TRANSITION STREAM READ
@@ -283,6 +286,13 @@ bake() {
   # leaves the old process up is the "LANDED ≠ BAKED" confusion r3 named — but it
   # is a change: a failed bake now needs a fix, not a shrug.
   confirm "BAKE: stop $BOT + $FEED, pull, purge bytecode, start $FEED then $BOT?" || { echo "cancelled"; return; }
+  # r67 (BOX.9) — SAY THAT THIS IS A BAKE, before the services are signalled.
+  # Without it the bot's STOPPED alert reads "systemctl stop/restart", which is
+  # also what a hand stop and the midnight backstop said. Format is
+  # `<epoch>|<text>` and utils/shutdown_cause.py is the other writer of it;
+  # check_shutdown_cause C5 drives THIS line and parses it with THAT reader,
+  # because two writers of one format that are never compared will drift.
+  mkdir -p "$REPO/data" && printf '%s|%s\n' "$(date +%s)" "bake — restarting on a new revision" > "$REPO/data/SHUTDOWN_CAUSE" 2>/dev/null
   sudo systemctl stop "$BOT" "$FEED"
   ( cd "$REPO" && git pull --ff-only ) || { echo "  pull FAILED — services are DOWN; fix the pull, then bake again"; return 0; }
   find "$REPO" -name __pycache__ -type d -not -path "*/venv/*" -exec rm -rf {} + 2>/dev/null

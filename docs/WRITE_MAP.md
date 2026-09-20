@@ -13,21 +13,21 @@ Regenerated in the land gate; a stale map fails `--check`.
 
 | table | created by | written by | read by |
 |---|---|---|---|
-| `character_axis_sample` | `derived/character_engine.py` | `derived/character_engine.py` (insert), `warehouse/retention_purge.py` (delete) | — |
-| `character_ledger` | `derived/character_engine.py` | `derived/character_engine.py` (insert/update) | — |
+| `character_axis_sample` | `derived/character_engine.py` | `derived/character_engine.py` (insert), `warehouse/retention_purge.py` (delete) | `warehouse/s3_push.py` |
+| `character_ledger` | `derived/character_engine.py` | `derived/character_engine.py` (insert/update) | `warehouse/s3_push.py` |
 | `derived_engine_status` | `derived/base.py` | `derived/base.py` (insert) | `tools/manifold_health.py` |
-| `exit_counterfactual` | `derived/counterfactual.py` | `derived/counterfactual.py` (insert) | — |
-| `fire_snapshot` | `data/derived_store.py` | `data/derived_store.py` (insert) | `tests/edge_scan.py` |
-| `fork_series` | `data/derived_store.py` | `data/derived_store.py` (insert), `warehouse/retention_purge.py` (delete) | `derived/anchors.py`, `main.py`, `query.py`, `status.py`, `tests/check_derived_layer.py` |
-| `gate_disposition` | `analysis/gate_report.py` | `analysis/gate_report.py` (insert) | `query.py`, `tests/check_audit_20260823.py` |
-| `indicator_series` | `data/derived_store.py` | `data/derived_store.py` (insert), `warehouse/retention_purge.py` (delete) | `derived/anchors.py` |
+| `exit_counterfactual` | `derived/counterfactual.py` | `derived/counterfactual.py` (insert) | `warehouse/s3_push.py` |
+| `fire_snapshot` | `data/derived_store.py` | `data/derived_store.py` (insert) | `tests/edge_scan.py`, `warehouse/s3_push.py` |
+| `fork_series` | `data/derived_store.py` | `data/derived_store.py` (insert), `tests/check_purge_reclaim.py` (insert), `warehouse/retention_purge.py` (delete) | `derived/anchors.py`, `main.py`, `query.py`, `status.py`, `tests/check_derived_layer.py`, `warehouse/s3_push.py` |
+| `gate_disposition` | `analysis/gate_report.py` | `analysis/gate_report.py` (insert) | `query.py`, `tests/check_audit_20260823.py`, `warehouse/s3_push.py` |
+| `indicator_series` | `data/derived_store.py` | `data/derived_store.py` (insert), `tests/check_purge_reclaim.py` (insert), `warehouse/retention_purge.py` (delete) | `derived/anchors.py`, `warehouse/s3_push.py` |
 | `level_event` | `data/derived_store.py` | `data/derived_store.py` (insert), `tests/check_plan_prepares.py` (update), `tests/check_runaway_plan.py` (delete) | `tests/check_level_map.py`, `tests/check_level_rejection.py`, `tests/check_sweep_excursion.py` |
-| `level_ledger` | `data/derived_store.py` | `data/derived_store.py` (insert/update), `tests/check_level_map.py` (insert) | `derived/anchors.py`, `derived/levels.py`, `tests/check_level_rejection.py` |
-| `plan_check` | `strategy/plan.py` | `strategy/plan.py` (insert), `warehouse/retention_purge.py` (delete) | `strategy/sweep_credit_spread.py`, `tests/check_bfly_vwap_band.py`, `tests/check_chain_ordering.py`, `tests/check_plan_prepares.py`, `tests/check_plan_wiring.py`, `tests/check_tick_join.py` |
-| `plan_ledger` | `derived/plan_ledger.py` | `derived/plan_ledger.py` (insert/update), `tests/check_purge_pushed.py` (update) | `query.py`, `tests/check_audit_20260823.py`, `tests/check_butterfly_legs.py`, `tests/check_missed_inert.py`, `tests/check_plan_lifecycle.py`, `tests/edge_scan.py` |
-| `plan_tick` | `strategy/plan.py`, `tests/check_plan_board.py` | `strategy/plan.py` (insert), `tests/check_plan_board.py` (insert), `tests/check_plan_status.py` (delete), `tests/check_tick_join.py` (insert), `warehouse/retention_purge.py` (delete) | `main.py`, `query.py`, `tests/check_atp_butterfly.py`, `tests/check_bfly_vwap_band.py`, `tests/check_butterfly_foundational.py`, `tests/check_butterfly_legs.py`, `tests/check_chain_ordering.py`, `tests/check_condor_mgmt.py`, `tests/check_liquidity_hunt.py`, `tests/check_management_plan.py`, `tests/check_not_asked_reasons.py`, `tests/check_orb_plan.py`, `tests/check_orb_sequence.py`, `tests/check_plan_prepares.py`, `tests/check_plan_signal.py`, `tests/check_plan_wiring.py`, `tests/check_runaway_plan.py`, `tests/check_tcs_narrates.py`, `tests/check_tcs_plan.py`, `tools/plan_board.py` |
-| `strategy_note` | `derived/notes.py` | `derived/notes.py` (insert) | `tests/check_management_plan.py`, `tests/check_tick_join.py` |
-| `surface_series` | `data/derived_store.py` | `data/derived_store.py` (insert), `warehouse/retention_purge.py` (delete) | `derived/anchors.py`, `derived/gamma_regime.py`, `main.py`, `query.py`, `tests/check_gamma_regime.py` |
+| `level_ledger` | `data/derived_store.py` | `data/derived_store.py` (insert/update), `tests/check_level_map.py` (insert) | `derived/anchors.py`, `derived/levels.py`, `tests/check_level_rejection.py`, `warehouse/s3_push.py` |
+| `plan_check` | `strategy/plan.py` | `strategy/plan.py` (insert), `tests/check_purge_reclaim.py` (insert), `warehouse/retention_purge.py` (delete) | `strategy/sweep_credit_spread.py`, `tests/check_bfly_vwap_band.py`, `tests/check_chain_ordering.py`, `tests/check_plan_prepares.py`, `tests/check_plan_wiring.py`, `tests/check_tick_join.py`, `warehouse/s3_push.py` |
+| `plan_ledger` | `derived/plan_ledger.py` | `derived/plan_ledger.py` (insert/update), `tests/check_purge_pushed.py` (update) | `query.py`, `tests/check_audit_20260823.py`, `tests/check_butterfly_legs.py`, `tests/check_missed_inert.py`, `tests/check_plan_lifecycle.py`, `tests/edge_scan.py`, `warehouse/s3_push.py` |
+| `plan_tick` | `strategy/plan.py`, `tests/check_plan_board.py` | `strategy/plan.py` (insert), `tests/check_plan_board.py` (insert), `tests/check_plan_status.py` (delete), `tests/check_purge_reclaim.py` (insert), `tests/check_tick_join.py` (insert), `warehouse/retention_purge.py` (delete) | `main.py`, `query.py`, `tests/check_atp_butterfly.py`, `tests/check_bfly_vwap_band.py`, `tests/check_butterfly_foundational.py`, `tests/check_butterfly_legs.py`, `tests/check_chain_ordering.py`, `tests/check_condor_mgmt.py`, `tests/check_liquidity_hunt.py`, `tests/check_management_plan.py`, `tests/check_not_asked_reasons.py`, `tests/check_orb_plan.py`, `tests/check_orb_sequence.py`, `tests/check_plan_prepares.py`, `tests/check_plan_signal.py`, `tests/check_plan_wiring.py`, `tests/check_runaway_plan.py`, `tests/check_tcs_narrates.py`, `tests/check_tcs_plan.py`, `tools/plan_board.py`, `warehouse/s3_push.py` |
+| `strategy_note` | `derived/notes.py` | `derived/notes.py` (insert) | `tests/check_management_plan.py`, `tests/check_tick_join.py`, `warehouse/s3_push.py` |
+| `surface_series` | `data/derived_store.py` | `data/derived_store.py` (insert), `tests/check_purge_reclaim.py` (insert), `warehouse/retention_purge.py` (delete) | `derived/anchors.py`, `derived/gamma_regime.py`, `main.py`, `query.py`, `tests/check_gamma_regime.py`, `warehouse/s3_push.py` |
 
 ## feed_store.db
 
@@ -38,13 +38,13 @@ Regenerated in the land gate; a stale map fails `--check`.
 | `chain_subs` | `data/candle_feed.py`, `data/options_chain.py` | `data/options_chain.py` (insert) | — |
 | `chain_subs_aux` | `analysis/tenor_publish.py` | `analysis/tenor_publish.py` (delete/insert) | `data/candle_feed.py` |
 | `feed_meta` | `data/candle_feed.py` | `data/candle_feed.py` (insert) | `data/market_data.py`, `tools/manifold_status.py` |
-| `greeks_series` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `tests/check_purge_lock.py` (insert), `tests/check_purge_reclaim.py` (delete/insert), `warehouse/retention_purge.py` (delete) | `analysis/second_order.py`, `derived/surface.py` |
-| `last_trade` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `warehouse/retention_purge.py` (delete) | — |
-| `prints` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `tests/check_orb_geometry.py` (delete/insert), `warehouse/retention_purge.py` (delete) | `analysis/order_flow.py`, `analysis/tape_at_level.py`, `derived/anchors.py` |
-| `quote_series` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `tests/check_purge_reclaim.py` (insert), `tests/exit_replay.py` (insert), `warehouse/retention_purge.py` (delete) | `analysis/order_flow.py`, `tests/check_manifold_board.py`, `tools/manifold_health.py` |
-| `session_summary` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `tests/check_manifold_windows.py` (update), `warehouse/retention_purge.py` (delete) | — |
-| `theo_series` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `warehouse/retention_purge.py` (delete) | — |
-| `underlying_series` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `warehouse/retention_purge.py` (delete) | — |
+| `greeks_series` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `tests/check_purge_lock.py` (insert), `tests/check_purge_reclaim.py` (delete/insert), `warehouse/retention_purge.py` (delete) | `analysis/second_order.py`, `derived/surface.py`, `tools/manifold_status.py`, `warehouse/s3_push.py` |
+| `last_trade` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `warehouse/retention_purge.py` (delete) | `tools/manifold_status.py`, `warehouse/s3_push.py` |
+| `prints` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `tests/check_orb_geometry.py` (delete/insert), `warehouse/retention_purge.py` (delete) | `analysis/order_flow.py`, `analysis/tape_at_level.py`, `derived/anchors.py`, `tools/manifold_status.py`, `warehouse/s3_push.py` |
+| `quote_series` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `tests/check_purge_reclaim.py` (insert), `tests/exit_replay.py` (insert), `warehouse/retention_purge.py` (delete) | `analysis/order_flow.py`, `tests/check_manifold_board.py`, `tools/manifold_health.py`, `tools/manifold_status.py`, `warehouse/s3_push.py` |
+| `session_summary` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `tests/check_manifold_windows.py` (update), `warehouse/retention_purge.py` (delete) | `tools/manifold_status.py`, `warehouse/s3_push.py` |
+| `theo_series` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `warehouse/retention_purge.py` (delete) | `tools/manifold_status.py`, `warehouse/s3_push.py` |
+| `underlying_series` | `data/candle_feed.py` | `data/candle_feed.py` (insert), `warehouse/retention_purge.py` (delete) | `tools/manifold_status.py`, `warehouse/s3_push.py` |
 
 ## resting_orders.db
 
@@ -62,6 +62,6 @@ Regenerated in the land gate; a stale map fails `--check`.
 ## Flags
 
 - **No writer** (0): none
-- **No external reader** (8): `character_axis_sample`, `character_ledger`, `exit_counterfactual`, `last_trade`, `resting_orders`, `session_summary`, `theo_series`, `underlying_series`
+- **No external reader** (1): `resting_orders`
 
 ⚠️ *No external reader* is not automatically a defect — a table written today for a study run in a month is exactly the point of the derived layer. It IS a defect when nobody ever intends to read it, and this list is where that question gets asked.

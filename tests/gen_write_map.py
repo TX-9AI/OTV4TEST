@@ -1,7 +1,41 @@
 #!/usr/bin/env python3
 """
-tests/gen_write_map.py  v4.3
+tests/gen_write_map.py  v4.4
 Generates docs/WRITE_MAP.md — what every box writes, and who writes it.
+
+v4.4  2026-09-20  OTV4TEST r67 (MAP.5) — THE SAME BLINDNESS AS v4.3, ONE
+      PUNCTUATION MARK OVER, AND THIS TIME IN THE READ COLUMN. v4.3 taught
+      this file to resolve `f"DELETE FROM {table}"` inside a loop over the
+      module's own constants, because the purge deletes that way. It never
+      learned the OTHER placeholder spelling: `warehouse/s3_push.py` reads
+      TWENTY tables as `"SELECT * FROM %s" % table`, and every one was
+      invisible. The map credited it with the two tables it names literally
+      and its flag list reported SEVEN tables as having NO READER while
+      s3_push was pushing all seven to the warehouse.
+      🔑 THREE SHAPES WERE NEEDED AND ALL THREE ARE LOCAL EVIDENCE, never
+      cross-module inference: (1) `_sql_template` matches the `%`-format
+      substitution as well as the f-string; (2) `_iter_members` is an explicit
+      recursion instead of a whitelist walk, so a CONDITIONAL iterable
+      (`SERIES_TABLES if tables is None else tables`) contributes the branches
+      that resolve; (3) `_param_consts` resolves a loop over a PARAMETER from
+      this module's own call sites, which is how `tables=DERIVED_SERIES_TABLES`
+      reaches the one generic pusher that serves two stores.
+      ⚠️ CONSERVATISM IS UNCHANGED — an unresolvable branch, name or call
+      contributes NOTHING rather than a guess, and attribution is still gated
+      on tables some module CREATEs.
+      ⚠️ MEASURED FALSE-POSITIVE SURFACE, because "it should be safe" is not
+      a measurement: exactly THREE modules in the tree own module-level string
+      collections naming real tables — `s3_push` (20), `retention_purge` (23)
+      and `manifold_health` (1) — and the regenerated map's ONLY diff is
+      s3_push entering the read column. The purge does not appear as a reader
+      of what it counts before deleting, because `render()` already excludes a
+      table's own writers from "read by".
+      ⚠️ ONE RESIDUE, NAMED RATHER THAN LEFT TO BE REDISCOVERED:
+      `push_table(..., "circuit_breaker_events", ...)` passes the table as a
+      STRING LITERAL ARGUMENT to a parameterised pusher — a fourth shape this
+      does not resolve. That table already has `query.py` as a reader, so no
+      flag is affected; `check_map_accuracy` R1b pins the gap so it is a known
+      exclusion rather than a silent one.
 
 v4.3  2026-09-14  OTV4TEST r28 (MAP.3) — THE PURGE'S DELETES WERE INVISIBLE,
       ON THE ONE PATH THAT HAD JUST DELETED LIVE ROWS. `warehouse/retention_purge.py`
@@ -134,26 +168,106 @@ def _string_members(node):
     return vals
 
 
-def _iter_members(node, consts):
+def _iter_members(node, consts, params=None):
     """Members of a `for` iterable built only from this module's literal constants.
-    -> list of strings, or None when anything in it is not resolvable."""
-    names = set()
-    for sub in ast.walk(node):
-        if isinstance(sub, ast.Name):
-            names.add(sub.id)
-        elif isinstance(sub, ast.Attribute) and sub.attr not in _ITER_METHODS:
+    -> list of strings, or None when anything in it is not resolvable.
+
+    v4.4 — REWRITTEN FROM A WHITELIST WALK TO AN EXPLICIT RECURSION. The walk
+    form collected every `ast.Name` under the node and refused any node type it
+    did not recognise, which made the two forms below unreachable: a
+    conditional iterable trips over `IfExp`/`Compare`/`Is`, and a parameter
+    name is a `Name` that is simply not in `consts`. Recursing per node type
+    keeps r28's rule — AN UNRESOLVABLE PIECE CONTRIBUTES NOTHING AND NEVER A
+    GUESS — while letting the resolvable pieces through.
+
+    `params` maps a parameter name to the module constants passed for it at
+    this module's own call sites (see `_param_consts`). It is None when the
+    loop is not inside a function.
+    """
+    # a literal collection written in place
+    m = _string_members(node)
+    if m is not None:
+        return m or None
+
+    if isinstance(node, ast.Name):
+        if node.id in consts:
+            return list(consts[node.id])
+        # v4.4 — a PARAMETER, resolved from this module's own call sites.
+        if params and node.id in params:
+            return list(params[node.id]) or None
+        return None
+
+    # list(...) / sorted(...) / tuple(...) / set(...)
+    if isinstance(node, ast.Call):
+        if (isinstance(node.func, ast.Name) and node.func.id in _ITER_WRAPPERS
+                and node.args):
+            return _iter_members(node.args[0], consts, params)
+        # <dict>.items() / <dict>.keys()
+        if (isinstance(node.func, ast.Attribute)
+                and node.func.attr in _ITER_METHODS):
+            return _iter_members(node.func.value, consts, params)
+        return None
+
+    # ⚠️ A CONDITIONAL ITERABLE CONTRIBUTES THE BRANCHES THAT RESOLVE.
+    # `SERIES_TABLES if tables is None else tables` is the real shape in
+    # `warehouse/s3_push.py`: one branch is a module constant, the other is a
+    # caller-supplied parameter. Taking the union of whatever resolves is the
+    # same conservatism as everywhere else in this file — a branch that cannot
+    # be resolved adds nothing, so the answer is never wider than the evidence.
+    if isinstance(node, ast.IfExp):
+        out = []
+        for side in (node.body, node.orelse):
+            got = _iter_members(side, consts, params)
+            if got:
+                out.extend(got)
+        return sorted(set(out)) or None
+
+    # A + B, both of which must resolve.
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        lhs = _iter_members(node.left, consts, params)
+        rhs = _iter_members(node.right, consts, params)
+        if lhs is None or rhs is None:
             return None
-        elif not isinstance(sub, (ast.Name, ast.Attribute, ast.Call, ast.BinOp,
-                                  ast.Add, ast.Load)):
-            return None
-    out = []
-    for n in sorted(names):
-        if n in _ITER_WRAPPERS:
+        return lhs + rhs
+
+    return None
+
+
+def _param_consts(tree, consts):
+    """{function name: {parameter name: [table names]}} from THIS module's calls.
+
+    🔑 v4.4 — WHY THIS EXISTS AND WHY IT IS NOT GENERAL DATAFLOW. `s3_push`
+    has ONE generic pusher, `push_series(..., tables=None, ...)`, serving two
+    stores: it is called once with the default and once with
+    `tables=DERIVED_SERIES_TABLES`. The table names are module constants and
+    the call site is in the SAME FILE, twelve lines from the loop — so the
+    evidence is entirely local and no cross-module inference is involved.
+    ⚠️ ONLY A BARE `Name` THAT IS A MODULE CONSTANT COUNTS. A computed value,
+    an imported name or a call result resolves to nothing, which leaves the
+    loop exactly as invisible as it was before v4.4 rather than guessed at.
+    """
+    funcs = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            a = node.args
+            funcs[node.name] = [p.arg for p in (a.posonlyargs + a.args)]
+    out = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
             continue
-        if n not in consts:
-            return None
-        out.extend(consts[n])
-    return out or None
+        fname = node.func.id
+        if fname not in funcs:
+            continue
+        names = funcs[fname]
+        slot = out.setdefault(fname, {})
+        for i, arg in enumerate(node.args):
+            if i < len(names) and isinstance(arg, ast.Name) and arg.id in consts:
+                slot.setdefault(names[i], []).extend(consts[arg.id])
+        for kw in node.keywords:
+            if (kw.arg and isinstance(kw.value, ast.Name)
+                    and kw.value.id in consts):
+                slot.setdefault(kw.arg, []).extend(consts[kw.value.id])
+    return out
 
 
 def _loop_sql(src: str):
@@ -172,6 +286,14 @@ def _loop_sql(src: str):
                 consts[st.targets[0].id] = m
     if not consts:
         return []
+    # v4.4 — which function each `for` sits in, so a loop over a PARAMETER can
+    # be resolved from this module's own call sites.
+    params_of = _param_consts(tree, consts)
+    fn_of = {}
+    for fn in ast.walk(tree):
+        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for sub in ast.walk(fn):
+                fn_of[id(sub)] = fn.name
     out = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.For):
@@ -181,25 +303,59 @@ def _loop_sql(src: str):
             tgt = tgt.elts[0]
         if not isinstance(tgt, ast.Name):
             continue
-        members = _iter_members(node.iter, consts)
+        members = _iter_members(node.iter, consts,
+                                params_of.get(fn_of.get(id(node), ""), {}))
         if not members:
             continue
         for sub in (n for st in node.body for n in ast.walk(st)):
-            if not isinstance(sub, ast.JoinedStr):
-                continue
-            parts, uses = [], False
-            for v in sub.values:
-                if isinstance(v, ast.Constant):
-                    parts.append(str(v.value))
-                elif isinstance(v.value, ast.Name) and v.value.id == tgt.id:
-                    parts.append("\0")
-                    uses = True
-                else:
-                    parts.append("?")
-            if uses:
-                tmpl = "".join(parts)
+            tmpl = _sql_template(sub, tgt.id)
+            if tmpl is not None:
                 out.extend(tmpl.replace("\0", m) for m in members)
     return out
+
+
+def _sql_template(sub, var):
+    """SQL text with the loop variable replaced by \0, or None.
+
+    🔴 v4.4 — THIS USED TO MATCH `ast.JoinedStr` AND NOTHING ELSE, so it saw
+    ONE of the two ways Python writes a placeholder. r28 taught this file the
+    f-string form because `warehouse/retention_purge.py` deletes that way;
+    `warehouse/s3_push.py` reads twenty tables ONE OPERATOR OVER, as
+    `"SELECT * FROM %s" % table`, and every one of them was invisible. The map
+    therefore credited it with the two tables it names literally and reported
+    SEVEN tables as having no reader at all while it was pushing them to the
+    warehouse the whole fleet reports from.
+    ⚠️ SAME DEFECT, SAME FILE, ONE PUNCTUATION MARK APART — which is the
+    argument for matching on the SHAPE OF THE SUBSTITUTION rather than on one
+    spelling of it, and for the gate below that checks the ANSWER instead of
+    the mechanism (`check_map_accuracy` R1/R1b).
+    """
+    # f"... {var} ..."
+    if isinstance(sub, ast.JoinedStr):
+        parts, uses = [], False
+        for v in sub.values:
+            if isinstance(v, ast.Constant):
+                parts.append(str(v.value))
+            elif isinstance(v.value, ast.Name) and v.value.id == var:
+                parts.append("\0")
+                uses = True
+            else:
+                parts.append("?")
+        return "".join(parts) if uses else None
+
+    # "... %s ..." % var   —   ONLY a bare Name on the right. A tuple means
+    # several substitutions and the table's position stops being knowable, so
+    # it resolves to nothing rather than to a guess.
+    if (isinstance(sub, ast.BinOp) and isinstance(sub.op, ast.Mod)
+            and isinstance(sub.left, ast.Constant)
+            and isinstance(sub.left.value, str)
+            and isinstance(sub.right, ast.Name) and sub.right.id == var):
+        text = sub.left.value
+        if text.count("%s") != 1:
+            return None
+        return text.replace("%s", "\0")
+
+    return None
 
 # Which database each table lives in. Derived from the module that CREATEs it,
 # so a table moving file moves here automatically.

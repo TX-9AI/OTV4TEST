@@ -1,5 +1,12 @@
 """
-main.py  v4.59
+main.py  v4.60
+v4.60 2026-09-20  OTV4TEST r67 (BOX.9) — THE STOPPED ALERT NAMES WHICH SHUTDOWN
+      IT WAS. The SIGTERM handler hardcoded "systemctl stop/restart", so a hand
+      stop, a bake and the midnight backstop were one sentence on the emergency
+      channel and the operator told them apart by the clock. It now reads the
+      stamp the automated paths leave (`utils/shutdown_cause`), and fails
+      closed onto the old wording. No trading path touched.
+
 v4.59 2026-09-19  OTV4TEST r61 (ENT.1) — NO TRADE OPENS ALREADY THROUGH ITS OWN
       STOP. `_execute_entry_signal` refuses, STRICTLY, any signal whose live
       price is at or beyond its own protective stop. Surfaced by the mainline
@@ -6089,6 +6096,22 @@ def main():
     # just dies silently with no Telegram notification.
     def _handle_shutdown(signum, frame):
         reason = "systemctl stop/restart" if signum == signal.SIGTERM else "manual interrupt"
+        # 🔴 r67 / BOX.9 — THAT STRING WAS EVERY ROUTE DOWN. A hand stop, a bake
+        # and the midnight backstop all arrive as SIGTERM, so the emergency
+        # channel printed one sentence for three causes and the operator had to
+        # infer which from the timestamp (§0.5). The automated paths now STAMP
+        # themselves — `warehouse/midnight_halt.py` and `devtools.sh` bake() —
+        # and a stop with no stamp is a HAND stop, which is the honest default
+        # and needs no new machinery on the path a human drives.
+        # ⚠️ FAILS CLOSED ONTO THE OLD WORDING: absent, stale, malformed or
+        # unreadable all yield None, and a mislabelled shutdown would be worse
+        # than an unlabelled one.
+        if signum == signal.SIGTERM:
+            try:
+                from utils.shutdown_cause import label
+                reason = label(reason)
+            except Exception:                                   # noqa: BLE001
+                pass
         logger.info(f"Shutdown signal received ({reason}) — sending alert and exiting")
         try:
             get_alert_manager().send_shutdown_alert(

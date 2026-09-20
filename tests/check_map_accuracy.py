@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
-"""tests/check_map_accuracy.py — v1.0
+"""tests/check_map_accuracy.py — v1.1
 THE GENERATED MAPS ARE CHECKED FOR ACCURACY, NOT ONLY FOR FRESHNESS.
+
+v1.1  2026-09-20 — OTV4TEST r67 (MAP.5). THE READ COLUMN HAD NEVER BEEN
+      CHECKED IN EITHER DIRECTION. v1.0 gated writers, entry points and
+      tables-on-disk; `warehouse/s3_push.py` read twenty tables through a
+      placeholder spelling the generator did not know, and the map's own
+      "No external reader" flag was wrong on SEVEN of its EIGHT entries with
+      every freshness gate green. R1/R1b/R1c/R2 added.
 
 v1.0  2026-09-14 — OTV4TEST r28 (MAP.2, MAP.3). Both `--check` gates ask "does
       the map regenerate identical?", which a map blind to a writer passes every
@@ -15,6 +22,10 @@ v1.0  2026-09-14 — OTV4TEST r28 (MAP.2, MAP.3). Both `--check` gates ask "does
   W1  every table in the purge's policy dicts is a `retention_purge` DELETE on the map
   W1b ...and no NEVER_PURGE table is (the resolution must stay conservative)
   W1c the rendered WRITE_MAP row for each of those tables names the purge
+  R1  every table s3_push reads AT RUNTIME is credited to it on the map
+  R1b ...and it is credited with nothing it does not read (over-attribution)
+  R1c the one unresolved shape (a literal-arg table) still has a named reader
+  R2  no table on the "No external reader" line has a reader in its own row
   E1  every repo script a deploy/ unit launches is a declared ENTRY_POINT
   E1b ...and every one of them EXISTS (r21's defect class: a unit naming no file)
   E2  every repo script tools/land.sh runs is a declared ENTRY_POINT
@@ -112,6 +123,64 @@ def main():
                  if "`warehouse/retention_purge.py` (delete" not in rows.get(t, ""))
     check("W1c the rendered row of each purged table names the purge",
           not bad, "missing: " + ", ".join(bad) if bad else "")
+
+    # ── R: THE READ COLUMN, WHICH NOTHING HAS EVER CHECKED ────────────────
+    # 🔴 r67 (MAP.5). W, E and L cover writers, entry points and tables-on-disk.
+    # NOTHING asked whether a single "read by" entry was right or complete, and
+    # `warehouse/s3_push.py` read TWENTY tables through `"... FROM %s" % table`
+    # that the generator could not see. The flag line the map exists to produce
+    # — "No external reader" — was wrong on SEVEN of its EIGHT entries while
+    # every freshness gate stayed green. A generator fix with no gate behind it
+    # is just waiting for the third placeholder spelling.
+    # 🔑 THE EXPECTATION IS THE MODULE'S OWN RUNTIME TUPLES, on W1's precedent:
+    # imported, never re-derived from source, so this cannot agree with the
+    # generator's mistake the way a source-reading check would (§0.4, §40.1).
+    sp = _load("warehouse/s3_push.py", "_sp_under_check")
+    pushed = (set(sp.SERIES_TABLES) | set(sp.DERIVED_SERIES_TABLES)
+              | set(sp.DERIVED_TABLES))
+    unmapped = sorted(t for t in pushed if t not in creates and t not in writes)
+    missing = sorted(t for t in pushed
+                     if t not in unmapped
+                     and "warehouse/s3_push.py" not in reads.get(t, set()))
+    check("R1 every table s3_push reads at runtime is a reader row on the map",
+          not missing,
+          "missing: " + ", ".join(missing) if missing else f"{len(pushed)} tables")
+
+    # ⚠️ THE CONTROL, AND IT IS THE HALF THAT CATCHES OVER-ATTRIBUTION.
+    # §40.1: mutate the thing the check is about. R1 alone would pass if the
+    # resolver simply credited s3_push with EVERY table in the tree, which is
+    # the failure mode a looser substitution actually produces.
+    not_pushed = sorted(t for t in (set(creates) | set(writes)) - pushed
+                        if "warehouse/s3_push.py" in reads.get(t, set())
+                        and t not in ("candles", "trades"))
+    check("R1b s3_push is credited with NOTHING it does not read",
+          not not_pushed, "over-attributed: " + ", ".join(not_pushed))
+
+    # ⚠️ THE RESIDUE IS PINNED, NOT HIDDEN. `push_table(..., "circuit_breaker_
+    # events", ...)` passes its table as a STRING LITERAL ARGUMENT — a shape
+    # the resolver does not follow. It costs no flag only because that table
+    # has another reader, so THAT is what is asserted: the day it does not,
+    # this goes red and names the gap instead of the map quietly being wrong.
+    cbe = reads.get("circuit_breaker_events", set())
+    check("R1c the unresolved literal-arg table still has a named reader",
+          bool(cbe - {"warehouse/s3_push.py"}),
+          ", ".join(sorted(cbe)) or "NO READER — the residue now costs a flag")
+
+    # ⚠️ AND THE RENDERED FLAG MUST AGREE WITH THE RENDERED ROWS. The flag line
+    # is what a human acts on when deciding a stream is dead weight; a row
+    # naming readers while the flag calls the table unread is the laundered
+    # green §18 warns about, one artifact over.
+    flag = [ln for ln in rendered.splitlines() if "No external reader" in ln]
+    flagged = set()
+    if flag:
+        flagged = {x.strip().strip("`") for x in flag[0].split(":", 1)[1].split(",")
+                   if x.strip().strip("`")}
+    contra = sorted(t for t in flagged
+                    if [x for x in reads.get(t, set())
+                        if x not in writes.get(t, {})
+                        and x not in creates.get(t, set())])
+    check("R2 no table on the 'No external reader' line has a reader in its row",
+          not contra, "contradicted: " + ", ".join(contra))
 
     # ── E: entry points the import graph cannot see ───────────────────────
     units = _unit_scripts()

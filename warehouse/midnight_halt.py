@@ -1,5 +1,17 @@
 #!/usr/bin/env python3
-"""warehouse/midnight_halt.py — v1.0
+"""warehouse/midnight_halt.py — v1.1
+
+v1.1 (2026-09-20) — OTV4TEST r67 / BOX.9 + BOX.10. TWO THINGS THIS COULD NOT
+SAY. (1) IT NEVER NAMED ITSELF: the bot's STOPPED alert read "systemctl
+stop/restart" for a hand stop, a bake and this backstop alike, so the operator
+could only tell them apart BY THE CLOCK. It now stamps `HALT_CAUSE` through
+`utils/shutdown_cause.record()` and the bot's SIGTERM handler reads it — best
+effort, wrapped, and it can never prevent the halt. (2) IT COULD NOT TELL
+ITSELF IT HAD FAILED: the `subprocess.run` result was captured and discarded
+and `main()` returned 0 regardless, so a refused `sudo` finished SUCCESSFULLY
+and the box billed all night with the journal saying "halting". The return code
+is read, a failure logs at ERROR and exits non-zero so the UNIT goes to failed.
+⚠️ A zero is still not proof the box went down — see the note at the call site.
 
 v1.0 (2026-09-06) — r289 / EOD.3. IF THIS BOX IS STILL UP AT MIDNIGHT ET, STOP.
 
@@ -55,6 +67,10 @@ log = logging.getLogger(__name__)
 # ⚠️ AN ESCAPE HATCH THAT SURVIVES A BAKE, because the one night the operator
 # genuinely wants a box up all night is the night this must not fight him. Same
 # sentinel idiom as FEED_MAINTENANCE and DRILL_DISK — a file, no restart.
+# r67 — the text the operator sees on the STOPPED alert. It is a constant so
+# the gate can assert the alert says this and not a paraphrase of it.
+HALT_CAUSE = "midnight backstop — no drain"
+
 HOLD_FLAG = os.environ.get(
     "OT_NO_MIDNIGHT_HALT",
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -85,7 +101,42 @@ def main(argv=None) -> int:
     # a metadata round trip and an IAM permission — to a backstop whose entire
     # value is that it cannot fail in novel ways.
     log.info("still up at midnight ET — halting (backstop, no drain)")
-    subprocess.run(["sudo", "shutdown", "-h", "now"], capture_output=True)
+
+    # 🔑 r67 — SAY WHY, LOCALLY, BEFORE SIGNALLING. This unit carries no
+    # `Environment=` lines and therefore no Telegram token (r287), and the
+    # header above forbids acquiring one. So the cause is STAMPED and the bot's
+    # own SIGTERM handler — which already has the token and a working path —
+    # names it on the alert the operator receives anyway. Every shutdown used
+    # to read "systemctl stop/restart", identical to a bake and to a hand stop.
+    # ⚠️ BEST EFFORT, AND WRAPPED SO IT CAN NEVER PREVENT THE HALT. The import
+    # and the write are both inside the guard: a backstop that failed to stop
+    # the box because its LABELLING broke would be the cure killing the patient.
+    try:
+        from utils.shutdown_cause import record
+        record(HALT_CAUSE)
+    except Exception as exc:                                    # noqa: BLE001
+        log.warning("could not stamp the shutdown cause (%s) — halting anyway", exc)
+
+    r = subprocess.run(["sudo", "shutdown", "-h", "now"], capture_output=True)
+
+    # 🔴 r67 — THE RESULT WAS CAPTURED AND THEN THROWN AWAY, and `main()`
+    # returned 0 unconditionally. So this unit printed "halting" and finished
+    # SUCCESSFULLY whether or not anything halted: a backstop that cannot tell
+    # itself it failed, which is §0.5 in the one place the box's whole overnight
+    # bill depends on. A non-zero exit now puts the UNIT into a failed state,
+    # which is a signal systemd already carries and the journal already keeps.
+    # ⚠️ THE HONEST LIMIT, STATED RATHER THAN IMPLIED: `shutdown -h now` returns
+    # 0 as soon as it SCHEDULES the halt. A non-zero code is definite proof of
+    # failure — the sudo/permission class, which is the realistic one — but a
+    # zero is NOT proof of success. Proving the box actually went down can only
+    # be done from somewhere that is not the box. Nothing PAGES on this yet
+    # (BOX.10); it is visible in `systemctl status` and the journal.
+    if r.returncode != 0:
+        log.error("HALT FAILED — `sudo shutdown -h now` exited %d: %s | %s",
+                  r.returncode,
+                  (r.stderr or b"").decode("utf-8", "replace").strip() or "(no stderr)",
+                  "THE BOX IS STILL UP AND WILL BILL UNTIL THE NEXT WAKE")
+        return 1
     return 0
 
 
