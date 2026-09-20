@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-307 Python modules across 13 local packages.
+310 Python modules across 13 local packages.
 
-**Reached by:** 117 imported · 11 declared entry points · 100 referenced from a script, unit or doc but never imported · **79 by nothing here**.
+**Reached by:** 118 imported · 12 declared entry points · 101 referenced from a script, unit or doc but never imported · **79 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -371,8 +371,8 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
 ### `notifications/alert_manager.py`
-- **calls:** `config.py`, `notifications/telegram_sender.py`, `utils/time_utils.py`
-- **called by:** `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `main.py`, `risk/risk_manager.py`, `strategy/condor_roll.py`, `tests/check_startup_alert.py`, `tools/eod_summary.py`, `warehouse/self_close.py`
+- **calls:** `config.py`, `notifications/telegram_sender.py`, `utils/agent_status.py`, `utils/time_utils.py`
+- **called by:** `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `main.py`, `risk/risk_manager.py`, `strategy/condor_roll.py`, `tests/check_claude_boot.py`, `tests/check_startup_alert.py`, `tools/eod_summary.py`, `warehouse/self_close.py`
 
 ### `notifications/telegram_sender.py`
 - **calls:** `config.py`
@@ -613,6 +613,10 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tests/check_chain_ordering.py`
 - **calls:** `derived/plans.py`, `strategy/__init__.py`, `strategy/plan.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+
+### `tests/check_claude_boot.py`
+- **calls:** `notifications/alert_manager.py`, `utils/__init__.py`, `utils/agent_status.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_condor_mgmt.py`
 - **calls:** `database/trade_logger.py`, `execution/exit_engine.py`, `strategy/__init__.py`, `strategy/condor_roll.py`, `strategy/iron_condor_strategy.py`, `strategy/plan.py`, `strategy/sweep_plan.py`
@@ -1206,6 +1210,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** (none)
 - **called by:** (entry point)
 
+### `tools/claude_boot.py`
+- **calls:** `utils/agent_status.py`
+- **called by:** (entry point)
+
 ### `tools/debug_status.py`
 - **calls:** `config.py`
 - **called by:** (entry point)
@@ -1244,7 +1252,11 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `utils/__init__.py`
 - **calls:** (none)
-- **called by:** `main.py`, `tests/check_holiday_aware.py`, `tests/check_market_calendar.py`, `tests/check_shutdown_cause.py`, `utils/time_utils.py`
+- **called by:** `main.py`, `tests/check_claude_boot.py`, `tests/check_holiday_aware.py`, `tests/check_market_calendar.py`, `tests/check_shutdown_cause.py`, `utils/time_utils.py`
+
+### `utils/agent_status.py`
+- **calls:** (none)
+- **called by:** `notifications/alert_manager.py`, `tests/check_claude_boot.py`, `tools/claude_boot.py`
 
 ### `utils/blindness_latch.py`
 - **calls:** (none)

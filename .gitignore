@@ -68,6 +68,16 @@ data/signal_journal/
 # ship someone else's maintenance window to the fleet.
 data/FEED_MAINTENANCE
 data/REHEARSAL_OFF
+# 🔴 r68 — THREE MORE SENTINELS THAT WERE NEVER LISTED, AND THE COMMENT ABOVE
+# PREDICTED EXACTLY THIS. `NO_MIDNIGHT_HALT` (r21) and `DRILL_DISK` have been
+# untracked by the same luck since they were introduced, and r67 added
+# `SHUTDOWN_CAUSE` as a third — found because it showed up in `git status`
+# right after that bake. `AGENT_STATUS` is r68's own and is listed with them
+# rather than becoming a fourth instance of the same gap.
+data/NO_MIDNIGHT_HALT
+data/DRILL_DISK
+data/SHUTDOWN_CAUSE
+data/AGENT_STATUS
 env/
 ohlc/
 orb_range.json

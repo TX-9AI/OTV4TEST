@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
-tests/gen_file_map.py  v4.7
+tests/gen_file_map.py  v4.8
+
+v4.8  2026-09-20  OTV4TEST r68 — `tools/claude_boot.py` DECLARED. It is launched
+      by optbot-claude-boot.service (BOX.11) and nothing imports it, so without
+      the declaration it would print as an ORPHAN on every land — the noise
+      this list exists to prevent — and `check_map_accuracy` E1 would refuse
+      the delivery outright.
 v4.7  2026-09-17  OTV4TEST r34 — ENTRY_POINTS names query.py and status.py at the
       repo root again (they moved back). An entry point is matched on PATH since
       v4.3, so a stale entry would have printed both as ORPHANS on every land.
@@ -135,6 +141,10 @@ ENTRY_POINTS = {
     "warehouse/self_close.py",     # self-close unit (fleet only; not on this box)
     # run by tools/land.sh on every land
     "tools/check_land_discipline.py",
+    # r68 — optbot-claude-boot.service (this box, BOX.11). Raises an agent
+    # session in tmux at boot; nothing imports it, which is what an entry
+    # point IS.
+    "tools/claude_boot.py",
     # CLI helpers, run by hand or by a script
     "analysis/get_orb_range.py",
     "utils/check_sdk.py",

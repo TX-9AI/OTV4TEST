@@ -1,5 +1,16 @@
 """
-notifications/alert_manager.py  v4.3
+notifications/alert_manager.py  v4.4
+v4.4  2026-09-20  OTV4TEST r68 (BOX.11) — THE BOOT ALERT SAYS WHETHER AN AGENT
+      SESSION IS UP. Operator: "on a reboot, I get a telegram notification of
+      the new ip address. Can I get added to that 'Claude is up' ... and 'Agent
+      not available' if it fails." It sits beside the IP because both answer
+      one question — can he get onto this box and start working now. THREE
+      states, not two: `up (<mode>)`, `NOT AVAILABLE (<reason>)`, or `status
+      unknown` when the stamp is absent or stale, because a missing field and a
+      failed lookup must not look alike (§0.5, r22's own rule for the IP).
+      Read from `utils/agent_status`; NEVER waits and never blocks the alert
+      (§29). No new message and no second credential store (§18a).
+
 v4.3  2026-09-13  OTV4TEST r22 — THE BOOT ALERT CARRIES THE BOX'S PUBLIC IP.
       Operator: the public IP changes on every stop/start, so getting onto a
       misbehaving box meant the AWS console and its two-factor login first —
@@ -240,9 +251,28 @@ class AlertManager:
         if ip is None:
             logger.warning("startup alert: public IP unavailable (%s)", why)
         ipf  = f" | IP {ip}" if ip else f" | IP unavailable ({why})"
+        # r68 / BOX.11 — IS AN AGENT SESSION UP? The operator asked for this on
+        # THIS message, beside the IP, because both answer the same question:
+        # can he get onto this box and start working right now.
+        # ⚠️ THREE STATES, NOT TWO, AND THE THIRD IS THE HONEST ONE. "up" and
+        # "NOT AVAILABLE" are claims; when the stamp is missing or stale the
+        # alert says UNKNOWN rather than guessing either way — r22's own rule
+        # for the IP field one line above, that a missing field and a failed
+        # lookup must not look alike (§0.5).
+        # ⚠️ IT NEVER WAITS. §29 — nothing on this box may be load-bearing for
+        # trading — so this reads whatever is on disk at send time and blocks
+        # on nothing. The raiser is ORDERED before the bot so the stamp is
+        # normally there; if it is not, the alert still goes out on time.
+        agent = None
+        try:
+            from utils.agent_status import read as _agent_read
+            agent = _agent_read()
+        except Exception as exc:                                # noqa: BLE001
+            logger.warning("startup alert: agent status unreadable (%s)", exc)
+        agentf = f" | Claude {agent}" if agent else " | Claude status unknown"
         self._send(
             f"\U0001F680 OptionsBot [{mode}] STARTED | "
-            f"{instrument}{rt}{ipf} | "
+            f"{instrument}{rt}{ipf}{agentf} | "
             f"{fmt_et_short()}"
         )
 
