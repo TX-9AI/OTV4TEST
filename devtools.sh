@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# devtools.sh  v3.5  — OTV4TEST box menu
+# devtools.sh  v3.6  — OTV4TEST box menu
+# v3.6  2026-09-20  OTV4TEST r70 (BOX.12/AUTH.1) — PURGE, THEN KILL, THEN
+#       LAUNCH ON THE SUBSCRIPTION. HAND OFF and RESUME PURGE THE
+#       tmpfs SCRATCHPADS after killing tmux. /tmp is RAM here (455 MB tmpfs of
+#       908 MB physical) and session scratchpads are keyed by session id, so
+#       they accumulate forever. A full tmpfs kills every Bash spawn silently —
+#       which is exactly what happened on the control box. Transcripts are on
+#       ext4 and unaffected, so the previous thread is still reviewable.
 # v3.5  2026-09-20  OTV4TEST r67 (BOX.9) — bake() STAMPS THE SHUTDOWN CAUSE so
 #       the bot's STOPPED alert says "bake" rather than the same
 #       "systemctl stop/restart" a hand stop and the midnight halt both printed.
@@ -371,6 +378,51 @@ _claude_guard() {
   return 0
 }
 
+# 🔴 r70 — /tmp IS tmpfs, WHICH IS RAM. Measured on this box: /tmp is a 455 MB
+# tmpfs (half of 908 MB physical), and ONE agent session's scratchpad reached
+# 108 MB in a day — three git clones living in memory the bot could not have.
+# ⚠️ AND THE SCRATCHPAD PATH IS KEYED BY SESSION ID
+# (`/tmp/claude-<uid>/<project>/<session-uuid>/scratchpad`), so EVERY new
+# session mints a new directory and NOTHING removes the old ones. This box has
+# been protected only by its daily reboot — tmpfs is volatile — while the
+# control box, which does not reboot daily, filled its tmpfs completely.
+# 🔑 WHAT THAT COSTS IS NOT DISK, IT IS THE SHELL. When tmpfs fills, every Bash
+# spawn needs a temp file for its shell snapshot and dies BEFORE executing:
+# instant exit 1, no stdout, no stderr, Read/Write unaffected because those
+# never spawn. An agent that looks brain-dead rather than out of space, with
+# nothing logged anywhere — §0.5's class in the worst possible place.
+# ⚠️ TRANSCRIPTS ARE NOT AT RISK AND THAT IS STRUCTURAL, NOT LUCK. They live in
+# `~/.claude/projects/...` on EXT4 (measured: /dev/nvme0n1p1, 82 MB over 10
+# files), a different filesystem entirely — so this purge cannot reach them and
+# `tools/last_session.py` still reads the previous thread afterwards. That is
+# what makes it safe to purge aggressively here.
+# 🔴 r70 — LAUNCH ON THE SUBSCRIPTION, NEVER ON API CREDITS. Operator's
+# instruction, 2026-09-20. Measured that day: no key is set anywhere on this
+# box — shell unset, the boot unit carries none, the rc files carry none — and
+# `~/.claude.json` authenticates through `oauthAccount`. So today it is already
+# right BY ACCIDENT, and one stray `export ANTHROPIC_API_KEY=` in a profile
+# would silently move every session onto metered credits with nothing saying
+# so. This makes it right BY CONSTRUCTION: the launch strips the variables
+# rather than trusting that nobody set them.
+# ⚠️ IT UNSETS, IT DOES NOT READ. Nothing here prints or tests a value (§18a).
+CLAUDE_ENV="env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u CLAUDE_API_KEY -u ANTHROPIC_BASE_URL"
+
+_claude_purge_scratch() {
+  local uid root before after
+  uid="$(id -u)"; root="/tmp/claude-${uid}"
+  # ⚠️ FAIL CLOSED ON THE PATH. A cleanup that globs wrong is worse than none;
+  # the shape is pinned and an unexpected value REFUSES rather than deleting.
+  case "$root" in
+    /tmp/claude-[0-9]*) : ;;
+    *) echo "  scratch purge REFUSED — unexpected path '$root'"; return 1 ;;
+  esac
+  if [ ! -d "$root" ]; then echo "  scratch: nothing to purge"; return 0; fi
+  before="$(df -Pm /tmp 2>/dev/null | awk 'NR==2{print $4}')"
+  rm -rf "${root:?}"/* 2>/dev/null
+  after="$(df -Pm /tmp 2>/dev/null | awk 'NR==2{print $4}')"
+  echo "  scratch purged: /tmp free ${before}M -> ${after}M"
+}
+
 _claude_kill_all_tmux() {
   # HAND OFF and RESUME start a NEW thread: anything still running belongs to
   # the old one, and a stale tmux is how two threads end up editing one tree.
@@ -388,6 +440,12 @@ mi_claude_handoff() {
   echo "  HAND OFF: a FRESH Claude thread, bootstrapped from docs/HANDOFF.md."
   echo "  This kills this menu and EVERY tmux session on the box."
   confirm "proceed?" || { pause; return; }
+  # ⚠️ ORDER IS THE OPERATOR'S AND THE REASON IS NOT COSMETIC: PURGE FIRST,
+  # THEN KILL. If tmpfs is already full, the tmux kill itself may not spawn —
+  # every process needs a temp file for its shell snapshot, which is the exact
+  # failure being fixed. Freeing space first guarantees room for every step
+  # after it. Anything still holding a scratchpad is about to be killed anyway.
+  _claude_purge_scratch
   _claude_kill_all_tmux
   cd "$REPO" || exit 1
   # ⚠️ THE PROMPT IS READ BY THE INNER SHELL, NOT THIS ONE. `\$(cat ...)` is
@@ -403,11 +461,11 @@ mi_claude_handoff() {
   fi
   if [ -f "$CLAUDE_BOOTSTRAP" ]; then
     exec tmux new-session -s "$CLAUDE_TMUX" \
-      "cd '$REPO' && claude --remote-control qqq-test \"\$(cat '$CLAUDE_BOOTSTRAP')\$([ -f '$CLAUDE_NOW' ] && printf '%s' '
+      "cd '$REPO' && $CLAUDE_ENV claude --remote-control qqq-test \"\$(cat '$CLAUDE_BOOTSTRAP')\$([ -f '$CLAUDE_NOW' ] && printf '%s' '
 
 Also read docs/HANDOFF_NOW.md first — a one-time note for this handoff: where things stand, what to read on Monday, and the open items. Delete it once you have read it.')\"; exec bash"
   else
-    exec tmux new-session -s "$CLAUDE_TMUX" "cd '$REPO' && claude --remote-control qqq-test; exec bash"
+    exec tmux new-session -s "$CLAUDE_TMUX" "cd '$REPO' && $CLAUDE_ENV claude --remote-control qqq-test; exec bash"
   fi
 }
 
@@ -426,9 +484,10 @@ mi_claude_resume() {
   echo "  RESUME: continue the LAST Claude thread on this box."
   echo "  This kills this menu and EVERY tmux session."
   confirm "proceed?" || { pause; return; }
+  _claude_purge_scratch
   _claude_kill_all_tmux
   cd "$REPO" || exit 1
-  exec tmux new-session -s "$CLAUDE_TMUX" "claude --remote-control qqq-test --continue; exec bash"
+  exec tmux new-session -s "$CLAUDE_TMUX" "$CLAUDE_ENV claude --remote-control qqq-test --continue; exec bash"
 }
 
 mi_claude_resume_pick() {
@@ -436,9 +495,10 @@ mi_claude_resume_pick() {
   echo "  RESUME [other]: Claude's own thread picker."
   echo "  This kills this menu and EVERY tmux session."
   confirm "proceed?" || { pause; return; }
+  _claude_purge_scratch
   _claude_kill_all_tmux
   cd "$REPO" || exit 1
-  exec tmux new-session -s "$CLAUDE_TMUX" "claude --remote-control qqq-test --resume; exec bash"
+  exec tmux new-session -s "$CLAUDE_TMUX" "$CLAUDE_ENV claude --remote-control qqq-test --resume; exec bash"
 }
 
 # ── THE MENU IS DATA — numbers are assigned at render time ─────────────────

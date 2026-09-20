@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
-"""tools/claude_boot.py — v1.0
+"""tools/claude_boot.py — v1.1
 RAISE AN AGENT SESSION AT BOOT, AND PROVE IT IS ACTUALLY RUNNING.
+
+v1.1  2026-09-20 — OTV4TEST r70 (BOX.12). PURGES STALE tmpfs SCRATCHPADS
+      before raising, and appends free-tmpfs to the status so it reaches the
+      boot alert. /tmp is RAM (455 MB of 908 MB here) and scratch dirs are
+      keyed by session id, so they accumulate until every Bash spawn dies
+      silently — which is what happened on control.
 
 v1.0  2026-09-20 — OTV4TEST r68 (BOX.11). The operator: *"Can we have a tmux
       session Claude --continue added to the boot sequence on this box so that
@@ -76,6 +82,14 @@ def claude_bin() -> str:
             return cand
     return ""
 RC_NAME = "qqq-test"
+# 🔴 r70 / AUTH.1 — LAUNCH ON THE SUBSCRIPTION, NEVER ON API CREDITS.
+# Operator's instruction. Measured 2026-09-20: no key is set anywhere on this
+# box and `~/.claude.json` authenticates through `oauthAccount` — so today it
+# is right BY ACCIDENT. One stray export would move every boot session onto
+# metered credits with nothing saying so. Stripped at the launch rather than
+# trusted. ⚠️ IT UNSETS; IT NEVER READS OR PRINTS A VALUE (§18a).
+ENV_STRIP = ("env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN"
+             " -u CLAUDE_API_KEY -u ANTHROPIC_BASE_URL")
 BRIEF = os.path.join(_root, "docs", "HANDOFF.md")
 
 # The settle budget. `claude` needs a few seconds to be a real process; the
@@ -165,6 +179,105 @@ def _settle(budget: float = SETTLE_S) -> bool:
     return agent_alive()
 
 
+def tmpfs_free_mb(path: str = "/tmp") -> int | None:
+    """Free megabytes on the filesystem holding `path`, or None."""
+    try:
+        st = os.statvfs(path)
+        return int(st.f_bavail * st.f_frsize / (1024 * 1024))
+    except Exception:                                           # noqa: BLE001
+        return None
+
+
+def purge_scratch(root: str | None = None) -> tuple[int, int | None]:
+    """Remove OTHER sessions' scratch directories. -> (removed, free_mb_after).
+
+    🔴 r70 (BOX.12) — /tmp IS tmpfs, WHICH IS RAM. 455 MB here of 908 MB
+    physical, and the scratchpad path is keyed by SESSION ID, so every new
+    session mints a directory and nothing removes the old ones. This box has
+    been protected only by its daily reboot; the control box, which does not
+    reboot daily, filled its tmpfs completely and EVERY Bash spawn then died
+    instantly with no stdout and no stderr — a temp file is needed for the
+    shell snapshot, so it fails before executing. An agent that looks
+    brain-dead rather than out of space.
+    ⚠️ TRANSCRIPTS ARE ON EXT4 (`~/.claude/projects/...`), a different
+    filesystem, so this cannot reach them and `tools/last_session.py` still
+    reviews the previous thread afterwards. That is measured, not assumed.
+    ⚠️ FAILS CLOSED ON THE PATH. The root is rebuilt from `os.getuid()` and
+    must match `/tmp/claude-<digits>` exactly; anything else removes nothing.
+    A cleanup that globs wrong is worse than no cleanup.
+    ⚠️ AND IT NEVER REMOVES THE LIVE SESSION'S OWN DIRECTORY — `CLAUDE_SCRATCH`
+    names it when set, so a purge at boot cannot delete the working directory
+    of the session it is about to raise.
+
+    🔴 IT ARCHIVES; IT DOES NOT DELETE. Raised by the mainline control agent
+    2026-09-20 from a concrete near-miss on their box: an entire unlanded
+    revision — the ported raiser, its unit and its gate — was sitting in the
+    scratchpad of a session that had been handed off, and a deleting purge
+    would have destroyed it. The transcript described the build without
+    containing it. **The harness itself directs every agent to put working
+    files in the scratchpad**, so treating that directory as disposable is
+    wrong by construction. Bytes move to `~/claude_scratch_archive` on ext4
+    (5.9 GB free, no quota) and the retention sweep is the ONLY deleting path.
+    Their S3.13 is the same lesson at fleet scale: 492,945 objects deleted on
+    a reading that turned out to be wrong.
+    """
+    import re
+    import shutil
+    # ⚠️ `root` IS A PARAMETER ONLY SO THE GATE CAN DRIVE THIS WITHOUT TOUCHING
+    # THE BOX'S REAL SCRATCH ROOT — production passes nothing. A checker that
+    # had to delete from the live path to test itself would be r13's class (a
+    # fixture reaching live state) with a very bad blast radius.
+    root = root or ("/tmp/claude-%d" % os.getuid())
+    if not (re.fullmatch(r"/tmp/claude-\d+", root)
+            or re.fullmatch(r"/tmp/[A-Za-z0-9_]*scratchtest[A-Za-z0-9_]*", root)):
+        return 0, tmpfs_free_mb()
+    if not os.path.isdir(root):
+        return 0, tmpfs_free_mb()
+    keep = os.environ.get("CLAUDE_SCRATCH", "")
+    arch = os.path.join(os.path.expanduser("~"), "claude_scratch_archive")
+    # ⚠️ ONE LEVEL UNDER $HOME AND CARRYING NO `.git`, deliberately: `land.sh`
+    # resolves its target by scanning `$HOME/*/` for a `.git` plus repo
+    # markers, so an archive root that never holds one at its own top level
+    # cannot be mistaken for a checkout.
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    moved = 0
+    for name in os.listdir(root):
+        p = os.path.join(root, name)
+        if keep and (os.path.abspath(keep) == p
+                     or os.path.abspath(keep).startswith(p + os.sep)):
+            continue                                  # the live session's own
+        try:
+            os.makedirs(arch, exist_ok=True)
+            shutil.move(p, os.path.join(arch, "%s-%s" % (stamp, name)))
+            moved += 1
+        except Exception:                                       # noqa: BLE001
+            pass
+    _sweep_archive(arch)
+    return moved, tmpfs_free_mb()
+
+
+ARCHIVE_DAYS = 14
+
+
+def _sweep_archive(arch: str, days: int = ARCHIVE_DAYS) -> int:
+    """The ONLY path that deletes. Bounded retention so archiving is not an
+    unbounded trade of disk for reversibility."""
+    import shutil
+    if not os.path.isdir(arch):
+        return 0
+    cutoff = time.time() - days * 86400
+    gone = 0
+    for name in os.listdir(arch):
+        p = os.path.join(arch, name)
+        try:
+            if os.path.getmtime(p) < cutoff:
+                shutil.rmtree(p) if os.path.isdir(p) else os.unlink(p)
+                gone += 1
+        except Exception:                                       # noqa: BLE001
+            pass
+    return gone
+
+
 def bring_up(dry: bool = False) -> tuple[bool, str]:
     """-> (ok, status text). Tries --continue, then falls back to a FRESH
     thread bootstrapped from the brief, and reports WHICH ONE came up.
@@ -188,7 +301,8 @@ def bring_up(dry: bool = False) -> tuple[bool, str]:
 
     # 1 — the operator's first choice: continue the last thread.
     _kill()
-    _raise("%s --remote-control %s --continue; exec bash" % (binp, RC_NAME))
+    _raise("%s %s --remote-control %s --continue; exec bash"
+           % (ENV_STRIP, binp, RC_NAME))
     if _settle():
         return True, "up (continue)"
 
@@ -199,10 +313,11 @@ def bring_up(dry: bool = False) -> tuple[bool, str]:
     # the argument at the first one and hands Claude a truncated brief.
     _kill()
     if os.path.exists(BRIEF):
-        _raise("%s --remote-control %s \"$(cat %s)\"; exec bash"
-               % (binp, RC_NAME, _sh_quote(BRIEF)))
+        _raise("%s %s --remote-control %s \"$(cat %s)\"; exec bash"
+               % (ENV_STRIP, binp, RC_NAME, _sh_quote(BRIEF)))
     else:
-        _raise("%s --remote-control %s; exec bash" % (binp, RC_NAME))
+        _raise("%s %s --remote-control %s; exec bash"
+               % (ENV_STRIP, binp, RC_NAME))
     if _settle():
         return True, ("up (fresh brief)" if os.path.exists(BRIEF)
                       else "up (fresh, NO BRIEF FOUND)")
@@ -233,10 +348,37 @@ def main(argv=None) -> int:
     # ⚠️ ANY escape still leaves a STATUS and still exits 0. The unit is ordered
     # before the bot; a traceback here must never become a failed unit with no
     # explanation on the alert. B7 drives exactly this path.
+    # 🔴 r70 — ONLY PURGE WHEN WE ARE ACTUALLY GOING TO RAISE. Found by the
+    # mainline control agent's review before this shipped: the first cut ran
+    # the purge UNCONDITIONALLY and `bring_up()` returns "already running"
+    # WITHOUT killing anything when a session is live. Under systemd
+    # `CLAUDE_SCRATCH` is unset, so nothing was protected — meaning
+    # `systemctl start optbot-claude-boot.service` against a LIVE session would
+    # have archived that running agent's working directory out from under it
+    # and left it running. The operator ran exactly that command on 2026-09-20.
+    # 🔑 GATING ON `agent_alive()` MAKES THE PURGE AND THE RAISE ONE DECISION:
+    # we only reclaim when we are replacing, which is the only moment it is safe.
+    freed = tmpfs_free_mb()
+    if a.dry_run or agent_alive():
+        print("claude_boot: a session is live — scratch purge SKIPPED")
+    else:
+        try:
+            n, freed = purge_scratch()
+            if n:
+                print("claude_boot: archived %d stale scratch dir(s)" % n)
+        except Exception as exc:                                # noqa: BLE001
+            print("claude_boot: scratch purge skipped (%s)" % type(exc).__name__)
+
     try:
         ok, text = bring_up(dry=a.dry_run)
     except Exception as exc:                                    # noqa: BLE001
         ok, text = False, "NOT AVAILABLE (raiser error: %s)" % type(exc).__name__
+    # 🔑 THE FREE-SPACE FIGURE RIDES THE STATUS STRING, so it reaches the boot
+    # Telegram beside the IP with NO change to alert_manager — the operator
+    # sees "tmpfs 454M free" every morning instead of discovering a full one
+    # when a shell dies three days later.
+    if freed is not None:
+        text = "%s, tmpfs %dM free" % (text, freed)
     record(text)
     print("claude_boot: %s" % text)
     # ⚠️ EXIT 0 EVEN ON FAILURE, DELIBERATELY. This unit is ordered BEFORE the

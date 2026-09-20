@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """
-tests/gen_write_map.py  v4.4
+tests/gen_write_map.py  v4.5
+
+v4.5  2026-09-20  OTV4TEST r70 — §20 IN THIS REPO'S OWN COMMENTARY. `RE_DELETE`
+      matched the English sentence "a checker that had to DELETE FROM THE live
+      path" inside a `#` comment and invented a table called `the`, which
+      over-attributed a reader and turned `check_map_accuracy` R1b RED on a
+      delivery that changed no SQL. Comments and docstrings are now stripped
+      before the regex scan (strings are NOT — every real statement is one).
+      §20's corollary decides the direction: fix the pattern, never the prose.
 Generates docs/WRITE_MAP.md — what every box writes, and who writes it.
 
 v4.4  2026-09-20  OTV4TEST r67 (MAP.5) — THE SAME BLINDNESS AS v4.3, ONE
@@ -137,6 +145,66 @@ RE_DBFILE = re.compile(r"([a-z_]+)\.db")
 # that declares it. An unresolvable name substitutes nothing and the table goes
 # back to being invisible — which is the old behaviour, never a wrong answer.
 RE_CONST = re.compile(r"^([A-Z][A-Z0-9_]*)\s*=\s*[\"']([a-z_][a-z0-9_]*)[\"']\s*$", re.M)
+
+
+def _strip_prose(src: str) -> str:
+    """Source with COMMENTS and DOCSTRINGS removed, for regex SQL scanning.
+
+    🔴 r70 — §20, FOUND IN THIS REPO'S OWN COMMENTARY. `RE_DELETE` matched the
+    ordinary English sentence *"a checker that had to DELETE FROM THE live
+    path"* in a `#` comment and invented a table called `the`, which then
+    over-attributed a reader and turned `check_map_accuracy` R1b red on a
+    delivery that changed no SQL whatsoever.
+    🔑 §20's COROLLARY DECIDES WHICH SIDE TO FIX: *"If you find yourself
+    carefully NOT spelling a name so a grep stays green, stop — the canary is
+    wrong, not the prose."* Rewording the comment would have degraded the
+    record to protect the tool. r20 solved the identical collision by running
+    its assertions on TOKENISED code; this does the same.
+    ⚠️ STRINGS ARE NOT STRIPPED, AND THAT IS THE WHOLE CONSTRAINT — every real
+    SQL statement in this tree IS a string literal. Only COMMENT tokens and
+    DOCSTRINGS (a bare string EXPRESSION statement, which SQL never is) are
+    removed, so no executable SQL can be lost.
+    ⚠️ AND IT FAILS OPEN: if the source will not tokenise or parse, the
+    original text is returned and the old behaviour stands rather than a file
+    silently contributing nothing.
+    """
+    import io
+    import tokenize
+    try:
+        drop = {}
+        for tok in tokenize.generate_tokens(io.StringIO(src).readline):
+            if tok.type == tokenize.COMMENT:
+                drop.setdefault(tok.start[0], []).append(tok.start[1])
+        lines = src.splitlines(keepends=True)
+        for ln_no, cols in drop.items():
+            i = ln_no - 1
+            if 0 <= i < len(lines):
+                nl = "\n" if lines[i].endswith("\n") else ""
+                lines[i] = lines[i][:min(cols)] + nl
+        txt = "".join(lines)
+    except Exception:                                           # noqa: BLE001
+        return src
+    try:
+        tree = ast.parse(txt)
+    except SyntaxError:
+        return txt
+    spans = []
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if not isinstance(node, (ast.Module, ast.FunctionDef,
+                                 ast.AsyncFunctionDef, ast.ClassDef)) or not body:
+            continue
+        first = body[0]
+        if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
+                and isinstance(first.value.value, str)):
+            spans.append((first.lineno, first.end_lineno))
+    if not spans:
+        return txt
+    lines = txt.splitlines(keepends=True)
+    for a, b in spans:
+        for i in range(a - 1, min(b, len(lines))):
+            lines[i] = "\n" if lines[i].endswith("\n") else ""
+    return "".join(lines)
 
 
 def _resolve_consts(src: str) -> str:
@@ -405,7 +473,7 @@ def scan():
             raw = open(os.path.join(ROOT, rel), encoding="utf-8").read()
         except Exception:                                       # noqa: BLE001
             continue
-        sources[rel] = _resolve_consts(raw)
+        sources[rel] = _resolve_consts(_strip_prose(raw))
         looped[rel] = _loop_sql(raw)
     for rel, src in sources.items():
         for t in RE_CREATE.findall(src):

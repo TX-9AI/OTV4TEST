@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-312 Python modules across 13 local packages.
+313 Python modules across 13 local packages.
 
-**Reached by:** 119 imported · 12 declared entry points · 102 referenced from a script, unit or doc but never imported · **79 by nothing here**.
+**Reached by:** 119 imported · 12 declared entry points · 103 referenced from a script, unit or doc but never imported · **79 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -616,6 +616,10 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_claude_boot.py`
 - **calls:** `notifications/alert_manager.py`, `utils/__init__.py`, `utils/agent_status.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
+### `tests/check_claude_purge.py`
+- **calls:** (none)
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_condor_mgmt.py`
@@ -1232,7 +1236,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tools/last_session.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `docs/HANDOFF.md`
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/HANDOFF.md`
 
 ### `tools/manifold_health.py`
 - **calls:** `config.py`, `utils/time_utils.py`
