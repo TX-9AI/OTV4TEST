@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-304 Python modules across 13 local packages.
+305 Python modules across 13 local packages.
 
-**Reached by:** 116 imported · 11 declared entry points · 97 referenced from a script, unit or doc but never imported · **80 by nothing here**.
+**Reached by:** 116 imported · 11 declared entry points · 97 referenced from a script, unit or doc but never imported · **81 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -835,6 +835,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
 ### `tests/check_observe_always.py`
+- **calls:** (none)
+- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+
+### `tests/check_oi_retry.py`
 - **calls:** (none)
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 

@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """
-warehouse/retention_purge.py  v1.5
+warehouse/retention_purge.py  v1.6
+v1.6  2026-09-19  OTV4TEST r66 — `plan_tick` / `plan_check` 7 -> 90 DAYS. These
+      two ARE the wargaming corpus: the replay harness runs exclusively on the
+      tick log, so this number IS its reach. At 7 days a harness run on one
+      Saturday sees a different corpus from the run before it, and no refinement
+      can be compared against a fixed population. Measured before the ruling
+      rather than after: ~7 MB per session (plan_tick 13.3 MB + plan_check
+      21.2 MB over five sessions), so 90 days is ~440 MB against 5.9 GB free.
+      ⚠️ A LONGER HOLD, NOT AN EXEMPTION — these stay OUT of NEVER_PURGE, and
+      the disk arithmetic above is what bounds the window.
 v1.5  2026-09-08  OTV4TEST r3 — `level_event` joins NEVER_PURGE beside level_ledger:
       the rejection fact is evidence for every handoff and must outlive the horizons.
 v1.4  2026-09-05  r270 / ASK.1 — `character_axis_sample` added at 20 days,
@@ -210,9 +219,27 @@ DERIVED_ARTIFACT_DAYS = {
 # Monday. ⚠️ NOT in NEVER_PURGE despite being plan-shaped: `plan_ledger` is the
 # biography and is protected; these two are the per-TICK spine, 2.38M rows over
 # five days fleet-wide, and the warehouse is their home.
+# 🔴 r66 — 7 -> 90 DAYS. THIS IS THE WARGAMING CORPUS, NOT TELEMETRY.
+# Operator's ruling, 2026-09-19: the replay harness runs EXCLUSIVELY on the tick
+# log, so its reach IS this number. At 7 days a harness run on a Saturday sees a
+# different corpus from the one run the Saturday before, and no refinement can
+# be compared against a fixed population.
+# 📊 MEASURED BEFORE THE RULING, so the cost was known rather than assumed:
+# plan_tick 13.3 MB + plan_check 21.2 MB over five trading sessions = ~7 MB per
+# session. 30 days ~145 MB · 60 ~290 MB · 90 ~440 MB, against 5.9 GB free and a
+# feed_store that already holds 1.6 GB. 90 days buys ~63 sessions for a quarter
+# of what the feed costs.
+# ⚠️ AND IT IS WHAT THE LOG CAN ANSWER THAT JUSTIFIES IT: 141 distinct named
+# checks, each carrying its VALUE and its VERDICT, 24,663 plan/tick pairs joined
+# on ts_epoch+symbol+strategy, median 14 checks per plan per tick. That supports
+# re-thresholding any existing gate, re-evaluating the whole conjunction, and
+# promoting a record-only `n/a` anchor into a gate — none of which needs the
+# feed, and none of which is possible on a corpus that has already been deleted.
+# ⚠️ NOT `NEVER_PURGE`. A bounded window is still a purge; this is a longer
+# hold, not an exemption, and the disk argument above is what bounds it.
 DERIVED_CDC_DAYS = {
-    "plan_tick":   7,
-    "plan_check":  7,
+    "plan_tick":   90,
+    "plan_check":  90,
 }
 
 # 🔑 r255 — DATE-PARTITIONED FILE TREES under data/. Not tables: the unit of

@@ -1,5 +1,26 @@
 """
-data/open_interest.py  v4.2
+data/open_interest.py  v4.3
+v4.3  2026-09-19  OTV4TEST r66 — A FALSE ALARM ON EVERY CYCLE, AND THE RETRY
+      WAS NEVER BROKEN. `OI: fetch failed for 100 symbol(s)` has appeared on
+      13 of 13 cycles over seven days, always exactly _BATCH — and it is
+      COSMETIC. v4.2's guard keyed the RETRY DECISION to the string
+      "loop is closed", but it only controls whether a warning is logged: the
+      `for attempt in (1, 2)` loop runs the second attempt regardless. Measured,
+      every cycle carries exactly ONE warning followed by a successful
+      `fetched 534 symbol(s), 534 cached` — the batch recovered on attempt 2.
+      ⚠️ I FIRST READ THAT LINE AS 100 LOST CONTRACTS AND DERIVED A CHAIN-WIDE
+      70.8% FROM IT. Both wrong; the disproof was one line below the warning in
+      the same journal. Real coverage is 449 NON-ZERO of 534 fetched (~84%),
+      and the 85 zeros are contracts with genuinely no open interest.
+      🔑 FIXED ANYWAY, AND THE REASON IS §17: an alarm that fires every cycle
+      for a self-healing condition is one that gets filtered, and a REAL OI
+      failure would then be indistinguishable from the noise. Attempt 1 now
+      retries silently; the warning fires only if the retry also fails, and
+      names the retry when it does.
+      ⚠️ THIS CHANGES NO GEX NUMBER. It does not raise OI coverage and does not
+      alter which butterflies fire. The ~16% of strikes with no OI still fall to
+      `oi_proxy` — quadratic in gamma where real OI is linear — and that is a
+      DATA GAP, not a fetch defect. Left open deliberately.
 v4.2  2026-09-09  OTV4TEST r6 — one event loop per fetch, immediate retry on a
       closed loop: the first batch of every cycle failed "Event loop is closed"
       because each batch ran under its own asyncio.run(); OI arrived (226
@@ -178,9 +199,27 @@ def fetch_open_interest(session, occ_symbols: Iterable[str],
                     rows = await get_market_data_by_type(session, options=batch)
                     break
                 except Exception as e:                         # noqa: BLE001
-                    if attempt == 1 and "loop is closed" in str(e).lower():
+                    # 🔴 r66 — THE WARNING WAS A FALSE ALARM AND THE RETRY
+                    # ALWAYS WORKED. The string guard decides only whether to
+                    # LOG; the `for attempt in (1, 2)` loop proceeds to the
+                    # second attempt either way. So an attempt-1 failure whose
+                    # message did not contain "loop is closed" was logged as
+                    # `OI: fetch failed for 100 symbol(s)` and then IMMEDIATELY
+                    # RECOVERED on attempt 2 — measured, 13 of 13 cycles carry
+                    # exactly ONE warning followed by a successful fetch line.
+                    # ⚠️ IT IS NOT 100 LOST CONTRACTS. That reading is wrong and
+                    # it was mine; `534 fetched, 534 cached` on the same cycle
+                    # is the disproof, sitting one line below the warning.
+                    # 🔴 WHY IT IS STILL WORTH FIXING: a warning that fires on
+                    # every cycle for a condition that self-heals is §17's alarm
+                    # that gets filtered — and when OI genuinely fails, the line
+                    # will be INDISTINGUISHABLE from the one everybody learned
+                    # to ignore. Retry silently on attempt 1; warn only when the
+                    # retry ALSO fails, and say so in the message.
+                    if attempt == 1:
                         continue
-                    logger.warning("OI: fetch failed for %d symbol(s): %s", len(batch), e)
+                    logger.warning("OI: fetch failed for %d symbol(s) after "
+                                   "retry: %s", len(batch), e)
             out.append(rows or [])
         return out
 
