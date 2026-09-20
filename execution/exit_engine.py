@@ -1,5 +1,12 @@
 """
-execution/exit_engine.py  v4.18
+execution/exit_engine.py  v4.19
+v4.19  2026-09-20  OTV4TEST r71 (LATE.1) — THE VERTICAL'S CLOSE LABEL IS
+      DERIVED FROM `VERTICAL_HOLD_TO_ET` INSTEAD OF SPELLED. The operator moved
+      the credit hold to 15:50; the branch still wrote `hard_close_15:45_ET`,
+      which would have put a FALSE TIME on every late credit exit in the book.
+      The superseded "held to 15:45 and not past it" doctrine is STRUCK, not
+      deleted (r240). ⚠️ THE FIVE GENUINE `hard_close_15:45_ET` SITES ARE
+      UNTOUCHED — they are the real hard close and W7 pins the count at 5.
 v4.18  2026-09-18  OTV4TEST r44 — TWO EXIT CONSTANTS RE-ANCHORED.
       (1) THE THESIS LINE HAS A WIDTH. It was asserted to the cent: the hunt's
       line was 718.50, a bar closed 718.57 — SEVEN CENTS — and price then fell
@@ -2043,18 +2050,41 @@ class ExitEngine:
         # force every EOD exit marketable, the exact failure time_utils v3.8
         # fixed. A SHORT VERTICAL HAS THE OPPOSITE SIGN. It decays TOWARD the
         # holder, so 15:40-15:45 is the steepest part of its curve.
-        # ⚠️ HELD TO 15:45 AND NOT PAST IT. Every instrument except SPX is
+        # 🔴 r71 — THIS BOUND MOVED TO 15:50 BY THE OPERATOR'S RULING, and the
+        # original reasoning is STRUCK RATHER THAN DELETED (r240: a line a later
+        # ruling contradicts is a wrong answer, not history).
+        # ⚠️ ~~HELD TO 15:45 AND NOT PAST IT.~~ Every instrument except SPX is
         # American-style and physically settled, so a spread finishing BETWEEN
         # the strikes assigns the short and leaves an unhedged overnight stock
         # position — "defined risk" is true at settlement, not through
         # assignment. The paper engine has no assignment model and would show a
         # clean result that does not survive going live.
+        # 🔑 HE WAS SHOWN THAT PARAGRAPH VERBATIM BEFORE THE CHANGE AND
+        # REAFFIRMED. His counter-argument is the substance of the ruling:
+        # *"It's still defined risk, even on assignment."* He is right about the
+        # OPTION legs — a vertical through both strikes loses the width and no
+        # more. What he is accepting is the STOCK left behind on a
+        # between-strikes finish.
+        # ⚠️ AND THE EXPOSURE IS A FAILED FLATTEN, NOT A HELD POSITION: 15:50
+        # still exits before the 16:00 expiry, so what this spends is MARGIN —
+        # the final reconcile sweep is 15:57, so 7 minutes after the close
+        # attempt instead of 12, in the thinnest liquidity of the day.
         _vnow = datetime.now(ET)
         _vert_close = ((_vnow.hour, _vnow.minute) >= VERTICAL_HOLD_TO_ET
                        if VERTICAL_HOLD_TO_CLOSE else is_hard_close_time())
         if _vert_close:
             decision.should_exit = True
-            decision.exit_reason = "hard_close_15:45_ET"
+            # 🔴 r71 — THE LABEL IS DERIVED FROM THE CONSTANT, NEVER TYPED. It
+            # read "hard_close_15:45_ET" on a branch whose bound is
+            # VERTICAL_HOLD_TO_ET, so the moment that constant moved the reason
+            # string would have named a time that did not fire. That is what
+            # r44 paid for when a hunt exit carried the runaway's label and
+            # cost a wrong diagnosis inside the same session.
+            # ⚠️ THE OTHER FIVE `hard_close_15:45_ET` SITES IN THIS FILE ARE
+            # LEFT ALONE ON PURPOSE — they are the genuine HARD_CLOSE_ET path,
+            # which is still 15:45. Only the vertical branch moved.
+            decision.exit_reason = ("vertical_hold_close_%02d:%02d_ET"
+                                    % VERTICAL_HOLD_TO_ET)
             return decision
 
         # ── TC.6 TREND CREDIT SPREAD — BREACH OR NICKEL, NOTHING ELSE ────

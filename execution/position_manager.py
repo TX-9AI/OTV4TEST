@@ -1,5 +1,13 @@
 """
-execution/position_manager.py  v5.2
+execution/position_manager.py  v5.3
+v5.3  2026-09-20  OTV4TEST r71 (LATE.1) — THE TWO CREDIT WINDOWS CLOSE AT
+      15:40, NOT 15:00. The operator's ruling: the late institutional moves he
+      has watched repeatedly were unreachable BY CONSTRUCTION — admission shut
+      at 15:00, so no plan ever ran and no row records a decline.
+      ⚠️ CREDITS ONLY. A debit is flattened by the 15:40 ladder, so widening a
+      DEBIT to 15:40 admits a trade into its own flatten window — an entry with
+      no hold time at all. `check_late_credit_window` W2/W3 pin that
+      structurally, with no literal that can go stale.
 v5.2  2026-09-18  OTV4TEST r51 (BRK.1) — Breakout joins the table: 09:35-11:30,
       cap 1, blocking nothing and blocked by nothing. Same window as the ORB it
       is born from and the hunt it is measured against.
@@ -271,8 +279,28 @@ _DEFAULT_RULES = {
     # makes it readable.
     BREAKOUT: AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
     # the credit window was widened to 15:00 by the operator on 2026-09-17
-    SWEEP:   AdmissionRule(((9, 35), (15, 0)), max_open_of_type=2),   # 2: it forms a condor
-    TCS:     AdmissionRule(((11, 30), (15, 0)), max_open_of_type=1),  # 1: TCS+TCS is in conflict
+    # 🔴 r71 — AND TO 15:40 ON 2026-09-20, FOR THE LATE-DAY MOVE. Operator:
+    # *"I've seen multiple end of day moves now that I'm convinced smart money
+    # is intentionally placing those orders to keep zero DTE traders out of it.
+    # Well, I'll have none of that."* Evidenced on 2026-09-16: QQQ fell 11.66
+    # points from 711.78 (11:47) to 700.12 (15:27); a london support was
+    # REJECTED at 14:53 then ACCEPTED THROUGH at 14:57:45 with three more
+    # supports wicked one second later, and chain net GEX crossed zero into
+    # TRENDING at 15:00:15 with 5.2 points still to come. **The sweep — the
+    # strategy that exists to trade swept levels — was DORMANT from 14:00**
+    # ("entry_window: past 14:00 ET — observing only") and the box took NO
+    # position in the direction of the day's defining move.
+    # ⚠️ ONLY THE CREDIT PAIR IS WIDENED, AND THAT IS THE FLATTEN RULES
+    # DECIDING IT RATHER THAN A PREFERENCE. `FLATTEN_WINDOW_OPEN_ET` is 15:40
+    # and DEBIT positions start flattening there; credit verticals are exempt
+    # and hold to `VERTICAL_HOLD_TO_ET`. Both butterflies are DEBIT structures
+    # — measured on the book, `net_debit` 0.26 and 0.47 with `credit_received`
+    # 0.0 on both — so a 15:40 entry would open them into their own ladder and
+    # hold nothing. The operator's own reasoning arrived here first: *"in order
+    # to properly harvest a late move like that we would have to use Credit
+    # spreads."*
+    SWEEP:   AdmissionRule(((9, 35), (15, 40)), max_open_of_type=2),  # 2: it forms a condor
+    TCS:     AdmissionRule(((11, 30), (15, 40)), max_open_of_type=1), # 1: TCS+TCS is in conflict
     # the GEX fly's cutoff was raised from 14:00 to 15:00 by the operator
     GEXFLY:  AdmissionRule(((12, 0), (15, 0)), max_open_of_type=1, max_tries_per_session=1),
     ATPFLY:  AdmissionRule(((11, 30), (15, 0)), max_open_of_type=1, max_tries_per_session=1),

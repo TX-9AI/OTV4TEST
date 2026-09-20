@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 """
-tests/check_admission.py  v1.1
+tests/check_admission.py  v1.2
 THE ADMISSION TABLE, DRIVEN EXHAUSTIVELY (OTV4TEST r35).
 
+v1.2  2026-09-20  OTV4TEST r71 — A's restated SPEC moves SWEEP and TCS to
+      15:40, from the operator's 2026-09-20 ruling rather than from `rules()`.
+      🔑 THIS CHECK WENT RED ON r71 AND THAT IS IT WORKING. It restates the
+      window table INSIDE the checker by design (r35, §0.4) so a fixture cannot
+      agree with the belief under test — so a superseded ruling MUST turn it
+      red. RE-POINTED AT THE NEW CONTRACT, NOT LOOSENED (r33/r43/r64).
 v1.1  2026-09-18  OTV4TEST r51 — A0's restated SPEC gains Breakout, from the
       operator's 2026-09-18 ruling rather than from `rules()`.
 v1.0  2026-09-17  OTV4TEST r35 — born red at r34 (5ef833e): `risk/admission.py`
@@ -61,8 +67,16 @@ def main():
         # words: *"I want the orb, hunt, breakout & sweep all able to fire &
         # non-competing"*, same opening range, nothing blocking anything.
         BREAKOUT: (((9, 35), (11, 30)), 1, None),
-        SWEEP:   (((9, 35), (15, 0)), 2, None),
-        TCS:     (((11, 30), (15, 0)), 1, None),
+        # r71 (LATE.1) — the operator's 2026-09-20 ruling, restated from his own
+        # words: *"let's just widen the credit trade window to 1540 for entries
+        # & make the credit window flatten at 1550"*, because the late
+        # institutional moves he is after are placed AFTER the hour at which
+        # 0DTE day traders stop opening. These two are the CREDIT strategies and
+        # they are the only ones that move; the debit windows below still close
+        # at 15:00 because a debit is flattened by the 15:40 ladder and an entry
+        # inside its own flatten window is an entry with no hold time at all.
+        SWEEP:   (((9, 35), (15, 40)), 2, None),
+        TCS:     (((11, 30), (15, 40)), 1, None),
         GEXFLY:  (((12, 0), (15, 0)), 1, 1),
         ATPFLY:  (((11, 30), (15, 0)), 1, 1),
     }

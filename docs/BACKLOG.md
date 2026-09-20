@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.75
+# BACKLOG.md — OTV4TEST — v0.76
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -219,10 +219,32 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 | id | item | closed |
 |---|---|---|
 | **ORB.3** | The runaway carried velocity stall through the shared evaluator. Closed OTV4TEST r3: the runaway's exit list is its own (§30.4) and the stall is off it. | r3 |
+| **LATE.1** | The credit entry windows closed at 15:00 and every trade flattened at 15:45, so the late-session institutional moves the operator has watched repeatedly were unreachable by construction — not declined, never even asked for. Closed OTV4TEST r71 by his ruling: credit entries to 15:40, credit flatten to 15:50. Debit windows and the 15:45 hard close are UNCHANGED. | r71 |
 
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.76 — 2026-09-20 — OTV4TEST r71 — THE LATE WINDOW OPENS, AND THE TWO
+CHECKERS THAT WENT RED WERE BOTH RIGHT.** LATE.1 ✅ — `SweepCreditSpread` and
+`TrendCreditSpread` admit to **15:40**, and `VERTICAL_HOLD_TO_ET` moves 15:45 →
+**15:50**. The operator's ruling, in his words: *"let's just widen the credit
+trade window to 1540 for entries & make the credit window flatten at 1550.
+Extreme? Maybe, but manually trading I would hold until the closing bell."*
+⚠️ **ONLY THE CREDITS MOVE.** A debit is flattened by the 15:40 ladder, so
+widening a debit entry to 15:40 would admit a trade into its own flatten window
+— an entry with no hold time at all. `check_late_credit_window` W2/W3 pin that
+structurally rather than by literal, so the class cannot be reintroduced by a
+later widening. 🔑 **THE HARD CLOSE AND THE VERTICAL HOLD WERE THE SAME MINUTE
+UNTIL NOW**, and separating them is what made two existing checkers go red:
+`check_admission` restates the operator's window table by design (§0.4) and
+`check_manage_call` M3c asserted *both* legs flatten at 15:45. **Both were
+re-pointed at the new contract rather than loosened** (r33/r43/r64) — M3c now
+pins the GAP (debit out, credit held) and a new M3d pins the hold itself, both
+minutes DERIVED from config. That `check_manage_call` carried `import config`
+**unused** since r99 is the evidence a derived value was always intended where
+a literal got written. Assignment risk is unchanged: a vertical held five extra
+minutes is still defined-risk, on assignment included.
 
 **v0.75 — 2026-09-20 — OTV4TEST r70 — THE SCRATCHPAD IS RAM, AND IT KILLED A
 PEER'S SHELL BEFORE IT COULD KILL OURS.** BOX.12 ✅ (purge-then-kill-then-launch,

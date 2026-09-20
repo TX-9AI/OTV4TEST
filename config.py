@@ -1,5 +1,13 @@
 """
-config.py  v4.24
+config.py  v4.25
+v4.25  2026-09-20  OTV4TEST r71 (LATE.1) — VERTICAL_HOLD_TO_ET 15:45 -> 15:50
+      by the operator's ruling, so credit verticals entered in the new 15:40
+      window have a hold time at all. The INHERITED DOCTRINE entry below is
+      amended in place rather than left reading the old bound, because §32
+      makes that block the thing you read before changing this constant.
+      ⚠️ THE EXPOSURE IS A FAILED FLATTEN, NOT A HELD POSITION — both 15:45
+      and 15:50 exit before the 16:00 expiry. What is spent is the margin
+      between the close attempt and the last reconcile sweep at 15:57.
 v4.24  2026-09-19  OTV4TEST r55 — BRK_RESEARCH_UNTIL. One date is the whole
       switch: until it passes, every Breakout informer's acceptance reads "any"
       — each is still a DECLARED TRIGGER the plan must clear, and the BAND is
@@ -211,9 +219,16 @@ ENTRY_LIMIT_LADDER [0.50, 0.25, 0.00] @ 15s.
 PENNY_CLASSES + PRICE_INCREMENT_BOUNDARY. Option quote
         increments are class- AND level-dependent; `round(px, 2)` posts invalid
         limits on nickel/dime classes.
-VERTICAL_HOLD_TO_ET (15:45). Credit verticals are exempt
-        from the 15:40 flatten ladder; debit positions keep it, because the
-        mark-limit phase is what stops every EOD exit paying the full spread.
+VERTICAL_HOLD_TO_ET (15:45 -> 15:50, OTV4TEST r71).
+        Credit verticals are exempt from the 15:40 flatten ladder; debit
+        positions keep it, because the mark-limit phase is what stops every
+        EOD exit paying the full spread.
+        🔴 THE 15:45 IN THIS ENTRY IS SUPERSEDED — struck, not deleted (r240).
+        The operator raised the credit hold to 15:50 on 2026-09-20 to reach
+        the late institutional moves. This block is what WA §32 requires be
+        read BEFORE a bound is changed, so it is the one place that must not
+        still say 15:45 after the bound moved. THE EXEMPTION IS WHAT THIS
+        ENTRY IS ABOUT AND THE EXEMPTION IS UNCHANGED — only its end moved.
 CONDOR_RATCHET_STANDALONE_ONLY. The ratchet closed
         UNTESTED legs on a reversal; scoped to standalone only.
 CONDOR_MAX_QUOTE_WIDTH (0.25 of mid). A ranking never
@@ -1504,7 +1519,28 @@ CONDOR_RATCHET_STANDALONE_ONLY = os.environ.get(
 # ⚠️ COST, stated rather than hidden: verticals then close AT 15:45 with no
 # limit phase of their own, so they pay the crossing. A few cents on a spread
 # that has already decayed; a worse fill on one still near its short strike.
-VERTICAL_HOLD_TO_ET         = (15, 45)
+# 🔴 r71 — 15:45 -> 15:50 BY THE OPERATOR'S RULING, 2026-09-20. *"Widen the
+# credit trade window to 1540 for entries & make the credit window flatten at
+# 1550. Extreme? Maybe, but manually trading I would hold until the closing
+# bell."* The doctrine below was put to him verbatim BEFORE the change and he
+# reaffirmed it, with the counter-argument recorded here because it is the
+# substance of the ruling: *"It's still defined risk, even on assignment."*
+# ⚠️ WHAT HE IS RIGHT ABOUT, AND WHAT THE RESIDUAL IS. The OPTION legs are
+# bounded — a vertical finishing through both strikes loses the width, full
+# stop. What is NOT bounded by the structure is the position left behind when
+# the spread finishes BETWEEN the strikes: the short assigns, the long expires
+# worthless, and an unhedged stock position carries overnight. That is why the
+# original bound was 15:45.
+# 🔑 AND THE EXPOSURE IS A FAILED FLATTEN, NOT A HELD POSITION. Both 15:45 and
+# 15:50 exit before the 16:00 expiry, so assignment requires the flatten NOT TO
+# FILL. What this change actually spends is MARGIN: the wind-down reconcile
+# sweeps fire at 15:45, 15:50 and 15:57, so the final truth-check is now 7
+# minutes after the close attempt instead of 12, in the thinnest liquidity of
+# the day.
+# ⚠️ AND PAPER CANNOT FALSIFY IT. This engine has NO assignment model, so the
+# result will look clean on this box whether the reasoning holds or not. Stated
+# on the record rather than discovered live.
+VERTICAL_HOLD_TO_ET         = (15, 50)
 VERTICAL_HOLD_TO_CLOSE      = os.environ.get("OT_VERTICAL_HOLD_1545", "1") == "1"
 # Minutes per bar of the ATR feeding sigma. 5m frame by default; wrong here
 # scales sqrt(T) and silently moves every POP.

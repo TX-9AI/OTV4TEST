@@ -1,6 +1,21 @@
 #!/usr/bin/env python3
 """
-tests/check_manage_call.py  v1.0
+tests/check_manage_call.py  v1.1
+
+v1.1  2026-09-20  OTV4TEST r71 (LATE.1) — M3c RE-POINTED, M3d ADDED, BOTH
+      MINUTES DERIVED. Until r71 the hard close and the vertical hold were THE
+      SAME MINUTE, so an assertion written against 15:45 could not say which of
+      the two it was pinning — and M3c ("both flattened") went red the moment
+      the operator separated them. RE-POINTED AT THE NEW CONTRACT, NOT LOOSENED
+      (r33/r43/r64): M3c now pins THE GAP — at `HARD_CLOSE_ET` the debit goes
+      and the credit STAYS — and M3d pins the hold itself.
+      🔑 BOTH READ FROM `config`, PLUS AN ASSERT THAT THE HOLD IS AFTER THE
+      CLOSE, so one literal can never again stand for two different facts.
+      ⚠️ THE EVIDENCE IT WAS ALWAYS MEANT TO BE DERIVED WAS IN THE FILE: this
+      module has carried `import config` UNUSED since v1.0.
+v1.0  2026-08-24  OTV4 r99 (ea6d773, MAINLINE — inherited at the fork) —
+      born RED at df44518 (r98) on M1, M3, M4. That commit is the one that
+      introduced "verticals hold to 15:45"; r71 is what supersedes it.
 
 r99 — THE MANAGE BRANCH MUST BE CALLABLE, AND THE FLATTEN MUST HOLD VERTICALS.
 
@@ -13,7 +28,9 @@ Born RED at df44518 (r98) on M1, M3, M4. Plain script (WA 36).
   M2  the call is exercised for real: a stub PositionManager receives the
       exact kwargs main passes and does not raise
   M3  flatten_all HOLDS a credit vertical before VERTICAL_HOLD_TO_ET and
-      FLATTENS it after (executed against a patched clock)
+      FLATTENS it after (executed against a patched clock). r71 — the hard
+      close and the hold are no longer the same minute, so M3c pins the gap
+      (debit out, credit held) and M3d pins the hold itself.
   M4  main.py's hard-close branch runs a manage pass while verticals are held
 
 Run:  python3 tests/check_manage_call.py
@@ -86,10 +103,29 @@ try:
     failed = p.flatten_all("hard_close_15:45_ET")
     check("M3a 15:41 — debit flattened, vertical HELD", booked == ["DEBT0001"] and not failed, f"booked={booked} failed={failed}")
     check("M3b 15:41 — held vertical stays in open records", any(r["trade_id"] == "VERT0001" for r in p._open_records))
-    tu.now_et = lambda: datetime(2026, 8, 24, 15, 45, tzinfo=ET)
+    # 🔴 r71 (LATE.1) — M3c USED TO READ "15:45 — both flattened", AND IT WENT
+    # RED ON THE CREDIT-WINDOW DELIVERY. That is the gate working: until r71 the
+    # hard close and the vertical hold were THE SAME MINUTE, so a check written
+    # against 15:45 could not tell which of the two it was actually pinning.
+    # The operator's 2026-09-20 ruling separates them — credits hold to 15:50 —
+    # so the check is RE-POINTED AT THE NEW CONTRACT rather than loosened
+    # (r33/r43/r64): 15:45 now asserts the debit goes and the credit STAYS, and
+    # a new M3d asserts the credit goes at the hold time. Both minutes are
+    # DERIVED from config so the same ambiguity cannot come back.
+    hold_h, hold_m = config.VERTICAL_HOLD_TO_ET
+    hard_h, hard_m = config.HARD_CLOSE_ET
+    assert (hard_h, hard_m) < (hold_h, hold_m), "the hold must be AFTER the hard close"
+    tu.now_et = lambda: datetime(2026, 8, 24, hard_h, hard_m, tzinfo=ET)
     p = _PM(); p._open_records = [dict(vert), dict(deb)]; booked.clear()
     p.flatten_all("hard_close_15:45_ET")
-    check("M3c 15:45 — both flattened", sorted(booked) == ["DEBT0001", "VERT0001"], f"booked={booked}")
+    check(f"M3c {hard_h:02d}:{hard_m:02d} hard close — debit flattened, credit STILL HELD",
+          booked == ["DEBT0001"] and any(r["trade_id"] == "VERT0001" for r in p._open_records),
+          f"booked={booked}")
+    tu.now_et = lambda: datetime(2026, 8, 24, hold_h, hold_m, tzinfo=ET)
+    p = _PM(); p._open_records = [dict(vert), dict(deb)]; booked.clear()
+    p.flatten_all("hard_close_15:45_ET")
+    check(f"M3d {hold_h:02d}:{hold_m:02d} vertical hold — both flattened",
+          sorted(booked) == ["DEBT0001", "VERT0001"], f"booked={booked}")
 finally:
     tu.now_et = _orig
 
