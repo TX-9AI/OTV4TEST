@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_volt_plan.py  v1.0
+tests/check_volt_plan.py  v1.1
 
+v1.1  2026-09-21  OTV4TEST r74 — V17/V17b/V17c: it must be able to fire from
+      the OPEN. Fixtures rebuilt on the 1-minute frame.
 v1.0  2026-09-21  OTV4TEST r72 (CTRL.1) — born RED at 7e8a19c, where the VOLT
       modules do not exist and V0's guard refuses to continue. 25 checks.
 
@@ -44,7 +46,7 @@ try:
     import pandas as pd
     import config
     from strategy.volt_plan import (VoltPlan, VOL_MULT, VOL_LOOKBACK_BARS,
-                                    TRAIL_ARM_R, TRAIL_LOCK_FRAC)
+                                    MIN_BARS, TRAIL_ARM_R, TRAIL_LOCK_FRAC)
     from strategy.volt_strategy import VoltStrategy
     from execution.position_manager import rules, decide, Facts, VOLT, ORB
     _ok_imports = True
@@ -91,22 +93,20 @@ class _Chain:
         self.calls = [_C(float(int(spot) + i)) for i in (-2, -1, 0, 1, 2)]
         self.puts  = [_C(float(int(spot) + i)) for i in (-2, -1, 0, 1, 2)]
 
-def frame(bars_5m, session_open=100.0):
-    """bars_5m: list of (close, volume). Builds a 1m frame that aggregates to
-    exactly those 5m bars, with the FIRST bar's open = session_open."""
+def frame(bars_1m, session_open=100.0):
+    """bars_1m: list of (close, volume) — ONE ROW PER MINUTE, because r74 moved
+    the gate to the 1-minute frame so VOLT can fire from the open."""
     rows, idx = [], []
     t0 = dt.datetime(2026, 9, 21, 9, 30)
-    for bi, (close, vol) in enumerate(bars_5m):
-        for mi in range(5):
-            ts = t0 + dt.timedelta(minutes=bi * 5 + mi)
-            o = session_open if (bi == 0 and mi == 0) else close
-            rows.append({"open": o, "high": max(o, close) + 0.05,
-                         "low": min(o, close) - 0.05, "close": close,
-                         "volume": vol / 5.0})
-            idx.append(ts)
+    for bi, (close, vol) in enumerate(bars_1m):
+        ts = t0 + dt.timedelta(minutes=bi)
+        o = session_open if bi == 0 else close
+        rows.append({"open": o, "high": max(o, close) + 0.05,
+                     "low": min(o, close) - 0.05, "close": close, "volume": vol})
+        idx.append(ts)
     return pd.DataFrame(rows, index=pd.DatetimeIndex(idx))
 
-NEED = VOL_LOOKBACK_BARS + 3
+NEED = VOL_LOOKBACK_BARS + 2
 def bars(last_close, last_vol, base_close=100.0, base_vol=1000.0, session_open=100.0):
     b = [(base_close, base_vol)] * NEED
     return b + [(last_close, last_vol), (last_close, last_vol)]   # +forming
@@ -306,6 +306,33 @@ _p_itm = VoltPlan().prepare(chain=_OnlyITM(101.4), price_now=101.4,
 check("V16c with NO OTM strike quoted it refuses rather than falling back to ATM",
       not _p_itm.ready and _p_itm.contract is None,
       f"ready={_p_itm.ready} contract={_p_itm.contract}")
+
+# ── V17 — IT MUST BE ABLE TO FIRE FROM THE OPEN (r74, the operator's spec) ──
+# 🔴 r72 GATED ON COMPLETED 5-MINUTE BARS AND DEMANDED EIGHT — 40 minutes of
+# session — so a window opening at 09:35 could not fire before 10:15. Measured
+# over 18 replayed sessions it NEVER fired in the first 40 minutes. Operator,
+# 2026-09-21: *"It should be able to fire immediately. I want to move on the
+# first sense that volume is expanding and It needs to jump on."*
+# This drives the REAL plan with only MIN_BARS+1 minutes of tape.
+_min_df = frame([(100.0, 1000.0)] * MIN_BARS + [(101.0, 1000.0 * (VOL_MULT + 0.5))] * 2,
+                session_open=100.0)
+_p_min = VoltPlan().prepare(chain=_Chain(101.0), price_now=101.0,
+                            df_1m=_min_df, now_hhmm="09:36")
+check("V17 fires with only MIN_BARS+1 minutes of tape — no 40-minute warm-up",
+      _p_min.ready and _p_min.contract is not None,
+      f"ready={_p_min.ready} with {MIN_BARS + 2} one-minute bars "
+      f"(r72 needed 8 FIVE-minute bars = 40 minutes)")
+check("V17b the warm-up matches the STUDY (3 bars), it does not exceed it",
+      MIN_BARS == 3,
+      f"MIN_BARS={MIN_BARS}; the study behind the 1.25x threshold used "
+      f"mean(vols[max(0,i-6):i]) and required 3")
+# and the ENTRY frame is one minute while the EXIT frame stays five
+import inspect as _insp
+from strategy import volt_plan as _vp
+check("V17c the gate reads a ONE-minute frame (entry and exit frames differ)",
+      "ts.minute)" in _insp.getsource(_vp._bars_1m)
+      and "minute // 5" not in _insp.getsource(_vp._bars_1m),
+      "exit_engine._evaluate_volt still reads df_5m — that is the operator's stop ruling")
 
 print(f"\n{'PASS' if not FAIL else 'FAIL'}: {len(FAIL)} problem(s) {FAIL}")
 sys.exit(1 if FAIL else 0)

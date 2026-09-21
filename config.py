@@ -1,5 +1,9 @@
 """
-config.py  v4.26
+config.py  v4.27
+v4.27  2026-09-21  OTV4TEST r74 — VOLT's entry frame drops to ONE MINUTE and
+      its warm-up to THREE bars, so it fires from 09:37 instead of 10:15. The
+      operator's spec: *"It should be able to fire immediately… move on the
+      first sense that volume is expanding."* The exit frame stays five minutes.
 v4.26  2026-09-20  OTV4TEST r72 — the VOLT_* block: the control arm's declared
       priors in ONE place, read by both volt_plan.py and exit_engine.py.
 v4.25  2026-09-20  OTV4TEST r71 (LATE.1) — VERTICAL_HOLD_TO_ET 15:45 -> 15:50
@@ -1570,7 +1574,30 @@ VERTICAL_HOLD_TO_ET         = (15, 50)
 # the evidence, not the margin — and the study measured the UNDERLYING with an
 # ATR stop while VOLT trades an OPTION against a STRUCTURE stop.
 VOLT_VOL_MULT           = float(os.environ.get("OT_VOLT_VOL_MULT", "1.25"))
-VOLT_VOL_LOOKBACK_BARS  = int(os.environ.get("OT_VOLT_VOL_LOOKBACK_BARS", "6"))
+# 🔴 r74 — THE ENTRY FRAME IS ONE MINUTE, NOT FIVE, AND IT IS A SPECIFICATION.
+# The operator, 2026-09-21, watching VOLT sit dead through the open: *"No,
+# that's unacceptable. It should be able to fire immediately. I want to move on
+# the first sense that volume is expanding and It needs to jump on."*
+# WHAT r72 SHIPPED WAS UNREACHABLE FOR A THIRD OF ITS OWN WINDOW. The volume
+# gate read COMPLETED 5-MINUTE bars and demanded eight of them, which is 40
+# minutes of session — so a window opening at 09:35 could not fire before
+# 10:15. MEASURED over 18 replayed sessions: earliest first entry 10:15, median
+# 10:35, latest 11:10. NOT ONCE in the first 40 minutes.
+# ⚠️ AND THE SHIPPED GATE WAS STRICTER THAN THE ONE THAT WAS MEASURED. The
+# study behind the 1.25x number used `mean(vols[max(0,i-6):i])` and required
+# only THREE prior bars — it tolerated a short baseline early in the session.
+# The plan then demanded eight. The number was justified by one rule and
+# enforced by another.
+# MEASURED AFTER THE CHANGE, same 19 QQQ sessions: 24.2 trades per session
+# against 2.0, first fire 09:37 against 10:15.
+# ⚠️ THE EXIT FRAME IS UNCHANGED AND STAYS FIVE MINUTES — the operator's
+# earlier ruling that a close beyond the entry is the dead thesis. Entry frame
+# and exit frame are independent, and conflating them is what produced the
+# unreachable window in the first place.
+VOLT_VOL_LOOKBACK_BARS  = int(os.environ.get("OT_VOLT_VOL_LOOKBACK_BARS", "5"))
+# the fewest completed 1m bars before the gate may be evaluated at all. THREE,
+# matching the study exactly rather than exceeding it.
+VOLT_MIN_BARS           = int(os.environ.get("OT_VOLT_MIN_BARS", "3"))
 # 🔑 THE STOP IS THE ENTRY — operator's ruling 2026-09-21: "Use a structural
 # stop. A close beyond where the trade opened is a dead thesis." There is no
 # lookback and no floor because there is no stop DISTANCE to degenerate. The two

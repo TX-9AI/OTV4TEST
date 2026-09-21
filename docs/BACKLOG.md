@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.78
+# BACKLOG.md — OTV4TEST — v0.79
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -226,6 +226,31 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.79 — 2026-09-21 — OTV4TEST r74 — VOLT COULD NOT FIRE IN A THIRD OF ITS
+OWN WINDOW, AND THE GATE I SHIPPED WAS STRICTER THAN THE ONE I MEASURED.**
+CTRL.1 ◐ — VOLT sat dead through the 09:35 open writing *"input(s) absent:
+bars_5m"* on every tick. 🔴 **CAUSE:** the volume gate read COMPLETED
+5-MINUTE bars and demanded EIGHT of them — 40 minutes of session — so a window
+opening at 09:35 could not fire before 10:15. **Measured across 18 replayed
+sessions: earliest first entry 10:15, median 10:35, latest 11:10. NOT ONCE in
+the first 40 minutes** — and that was in yesterday's replay output, which I
+reported as "2 trades per session" without noticing none could start before
+10:15. ⚠️ **AND THE SHIPPED GATE EXCEEDED THE MEASURED ONE.** The study behind
+the 1.25x threshold used `mean(vols[max(0,i-6):i])` and required only THREE
+prior bars; the plan demanded eight. The number was justified by one rule and
+enforced by a stricter one. 🔑 **THE OPERATOR'S SPEC, NOT AN OPTION:** *"It
+should be able to fire immediately. I want to move on the first sense that
+volume is expanding and It needs to jump on."* The entry frame drops to ONE
+MINUTE and the warm-up to THREE bars — matching the study exactly rather than
+exceeding it. **Measured after, same 19 QQQ sessions: 24.2 trades/session
+against 2.0, first fire 09:37 against 10:15.** ⚠️ **THE EXIT FRAME IS
+UNCHANGED at five minutes** — his earlier stop ruling. Entry and exit frames
+are independent, and conflating them is exactly what made the window
+unreachable. ⚠️ **AND THE NUMBER HE NEEDS BEFORE IT RUNS: 77% still exit on
+the stop and meanR stays −0.034.** VOLT now reliably JUMPS ON momentum; it
+does not yet HOLD it, and 24 trades a session at −0.034R is a different bleed
+rate from 2. Stated rather than buried.
 
 **v0.78 — 2026-09-21 — OTV4TEST r73 — THE RULE NEVER FAILED; IT WAS DEFEATED
 BY A CLOCK.** LOG.1 ✅ — the operator, this morning: *"I don't need 20,000 rows

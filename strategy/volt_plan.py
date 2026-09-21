@@ -1,5 +1,15 @@
 """
-strategy/volt_plan.py  v1.0
+strategy/volt_plan.py  v1.1
+v1.1  2026-09-21  OTV4TEST r74 — THE ENTRY FRAME DROPS TO ONE MINUTE AND THE
+      WARM-UP TO THREE BARS. v1.0 gated on COMPLETED 5-MINUTE bars and demanded
+      eight of them — 40 minutes — so a window opening at 09:35 could not fire
+      before 10:15, measured at NEVER in the first 40 minutes across 18
+      sessions. The operator: *"It should be able to fire immediately. I want
+      to move on the first sense that volume is expanding and It needs to jump
+      on."* Measured after: 24.2 trades/session against 2.0, first fire 09:37.
+      ⚠️ THE EXIT FRAME IS UNCHANGED at five minutes — his stop ruling. Entry
+      and exit frames are independent, and conflating them is what made the
+      window unreachable.
 v1.0  2026-09-20  OTV4TEST r72 — VOLT (VOLume Trade). THE CONTROL ARM.
 
 🔑 WHY THIS EXISTS, AND IT IS NOT AN EDGE CLAIM.
@@ -40,7 +50,7 @@ question: from a signal bar, does price reach +0.5 ATR before -1.0 ATR within
   the SIMPLEST read available: one comparison, zero parameters, nothing to
   fit. For a control those are the same virtue.
 
-  VOLUME = the 5m bar >= 1.25x the mean of the trailing 6 completed 5m bars.
+  VOLUME = the 5m bar >= 1.25x the mean of the trailing five completed 1m bars.
   1.25x fires on ~9% of in-window bars (n=445 of the measured sample), which
   is what gives the control enough trades to be measurable at all. 2.0x reads
   higher (72.0%) on n=50 and 3.0x produced n=2 — too rare to study.
@@ -85,6 +95,7 @@ GATES = {
     "WINDOW_OPEN_ET":     "SELECTION",     # the slot, matched to the ORB's
     "WINDOW_CLOSE_ET":    "SELECTION",
     "VOL_LOOKBACK_BARS":  "SELECTION",     # what "rising" is measured against
+    "MIN_BARS":           "FEASIBILITY",   # fewest bars before the gate can be read
     "TRAIL_ARM_R":        "SELECTION",     # exit geometry, the operator's spec
     "TRAIL_LOCK_FRAC":    "SELECTION",
     "QUOTE_FLOOR":        "FEASIBILITY",   # a contract with no quote cannot fill
@@ -98,7 +109,8 @@ GATES = {
 
 # ── DECLARED PRIORS — every one is recorded on the row and none is proven ────
 VOL_MULT           = float(getattr(config, "VOLT_VOL_MULT", 1.25))
-VOL_LOOKBACK_BARS  = int(getattr(config, "VOLT_VOL_LOOKBACK_BARS", 6))
+VOL_LOOKBACK_BARS  = int(getattr(config, "VOLT_VOL_LOOKBACK_BARS", 5))
+MIN_BARS           = int(getattr(config, "VOLT_MIN_BARS", 3))
 TRAIL_ARM_R        = float(getattr(config, "VOLT_TRAIL_ARM_R", 0.50))
 TRAIL_LOCK_FRAC    = float(getattr(config, "VOLT_TRAIL_LOCK_FRAC", 0.50))
 WINDOW_OPEN_ET     = tuple(getattr(config, "VOLT_WINDOW_OPEN_ET", (9, 35)))
@@ -178,16 +190,26 @@ def _median_range(bars):
     return rs[n // 2] if n % 2 else (rs[n // 2 - 1] + rs[n // 2]) / 2.0
 
 
-def _bars_5m(df_1m):
-    """Completed 5-minute bars as (open, high, low, close, volume), oldest
-    first, from the 1m frame. Returns [] on anything unexpected — a control
-    that guesses when its input is malformed is not a control."""
+def _bars_1m(df_1m):
+    """Completed 1-minute bars as (open, high, low, close, volume), oldest
+    first. Returns [] on anything unexpected — a control that guesses when its
+    input is malformed is not a control.
+
+    🔑 ONE MINUTE, NOT FIVE, AND THAT IS THE WHOLE POINT (r74). r72 aggregated
+    to 5m here and then demanded eight completed bars, which is 40 minutes of
+    session — so VOLT could not fire before 10:15 in a window that opens at
+    09:35. Measured over 18 sessions: it NEVER fired in the first 40 minutes.
+    The operator's spec: *"It should be able to fire immediately. I want to
+    move on the first sense that volume is expanding and It needs to jump on."*
+    ⚠️ THE EXIT FRAME IS STILL FIVE MINUTES — `exit_engine._evaluate_volt`
+    reads `df_5m`, by his earlier ruling. Entry and exit frames are
+    independent; conflating them is what made the window unreachable."""
     if df_1m is None or getattr(df_1m, "empty", True):
         return []
     out, cur, cur_key = [], None, None
     try:
         for ts, row in df_1m.iterrows():
-            key = (ts.hour, ts.minute // 5)
+            key = (ts.hour, ts.minute)
             h, l = float(row.get("high")), float(row.get("low"))
             o, c = float(row.get("open")), float(row.get("close"))
             v = float(row.get("volume") or 0.0)
@@ -201,7 +223,7 @@ def _bars_5m(df_1m):
         if cur is not None:
             out.append(cur)                 # the FORMING bar, last
     except (AttributeError, TypeError, ValueError) as exc:
-        logger.debug("volt: 5m aggregation skipped: %s", exc)
+        logger.debug("volt: 1m frame read skipped: %s", exc)
         return []
     return out
 
@@ -259,7 +281,7 @@ class VoltPlan:
         prep = VoltPreparation(t)
         prep.price = price_now
 
-        bars = _bars_5m(df_1m)
+        bars = _bars_1m(df_1m)
         # completed bars only — the forming bar's volume is a partial count and
         # gating on it would fire early on a bar that ends up ordinary.
         completed = bars[:-1] if len(bars) >= 1 else []
@@ -274,7 +296,12 @@ class VoltPlan:
         t.check("entry_window", 1.0, ok=True)
         t.check("price_now", price_now)
 
-        if len(completed) < VOL_LOOKBACK_BARS + 2:
+        # ⚠️ THREE, NOT VOL_LOOKBACK_BARS+2. r72 demanded eight COMPLETED bars
+        # while the study that produced the 1.25x threshold required only
+        # three and tolerated a short baseline — the number was justified by
+        # one rule and enforced by a stricter one, and the difference was a
+        # third of the trading window.
+        if len(completed) < MIN_BARS + 1:
             # ⚠️ starved() CLOSES the tick and writes the row. A hold() after
             # it writes a SECOND row for one decision — 'could not evaluate'
             # would then appear twice with different wording.
