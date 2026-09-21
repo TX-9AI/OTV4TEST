@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_volt_plan.py  v1.3
+tests/check_volt_plan.py  v1.4
 
+v1.4  2026-09-21  OTV4TEST r80 — V19e/V19f: the two instruments are
+      COMPLEMENTARY. Born red 1 of 33 at 8f0e2c1 on V19e, driving the EXACT
+      live state r79 failed to exit.
 v1.3  2026-09-21  OTV4TEST r79 — V19/V19b/V19c/V19d: PAR DELTA IS AN EXIT.
       Born red 2 of 31 at cd8d775 on V19 and V19c. V19b and V19d are the
       CONTROLS and are green on BOTH sides by design — a rung that exited
@@ -407,6 +410,13 @@ _par_df = pd.DataFrame(
     index=pd.DatetimeIndex([dt.datetime(2026, 9, 21, 17, 40),
                             dt.datetime(2026, 9, 21, 17, 45),
                             dt.datetime(2026, 9, 21, 17, 50)]))
+def _drive_on(frame, rec, prem):
+    EE.is_hard_close_time = lambda: False
+    try:
+        return EE.ExitEngine().evaluate(dict(rec), prem, df_1m=frame, df_5m=frame)
+    finally:
+        EE.is_hard_close_time = _orig_hct
+
 def _drive(rec, prem):
     EE.is_hard_close_time = lambda: False
     try:
@@ -422,7 +432,9 @@ check("V19 delta AT PAR exits — the operator's ruling, driven through evaluate
 # 🔑 THE CONTROL, AND IT IS THE HALF THAT KEEPS THE RULE HONEST: a healthy
 # position BELOW par must be UNTOUCHED. A rung that exited everything would
 # look identical on V19 alone and would silently delete the strategy.
-_d2 = _drive({**_par_rec, "current_delta": 0.55}, 2.10)
+_atm_df = _par_df.copy()
+_atm_df["close"] = [734.4, 734.6, 734.50]          # near the 734 strike
+_d2 = _drive_on(_atm_df, {**_par_rec, "current_delta": 0.55}, 2.10)
 check("V19b CONTROL: below par the trade is HELD — the rung is not a guillotine",
       not _d2.should_exit,
       f"exit={_d2.should_exit} reason={_d2.exit_reason!r}")
@@ -441,6 +453,28 @@ _d4 = _drive(_par_rec, 7.00)                     # 5.59 intrinsic -> 20% extrins
 check("V19d CONTROL: fat extrinsic and no delta -> HELD, not exited",
       not _d4.should_exit,
       f"exit={_d4.should_exit} reason={_d4.exit_reason!r}")
+
+# ── V19e — THE TWO INSTRUMENTS ARE COMPLEMENTARY (r80) ────────────────────
+# 🔴 r79 SHIPPED WITH EXTRINSIC AS A FALLBACK AND THE RUNG DID NOT FIRE LIVE.
+# 81b1afae, 2026-09-21 14:08 ET: feed delta 0.9675 — UNDER the 0.98 bar — on a
+# contract priced at 99.3% intrinsic (mark 5.97 vs 5.93). A 0DTE deep-ITM
+# delta print LAGS WHAT THE PRICE ALREADY SAYS, so gating extrinsic behind
+# "only if delta is absent" let a position that was unambiguously stock walk
+# past the ruling written to catch it. THIS IS THE EXACT LIVE STATE.
+_live_df = _par_df.copy()
+_live_df["close"] = [739.80, 739.90, 739.93]       # the ACTUAL 14:08 ET tape
+_d5 = _drive_on(_live_df, {**_par_rec, "current_delta": 0.9675}, 5.97)
+check("V19e delta BELOW par but extrinsic AT par still exits — either counts",
+      _d5.should_exit and "volt_delta_par" in (_d5.exit_reason or ""),
+      f"exit={_d5.should_exit} reason={_d5.exit_reason!r} — this is 81b1afae's "
+      f"live state at 14:08 ET, which r79 held")
+
+# CONTROL: a mid-delta position with real extrinsic is still untouched, so the
+# widening did not turn the rung into a guillotine.
+_d6 = _drive_on(_live_df, {**_par_rec, "current_delta": 0.9675}, 7.50)
+check("V19f CONTROL: same delta, FAT extrinsic -> HELD",
+      not _d6.should_exit,
+      f"exit={_d6.should_exit} reason={_d6.exit_reason!r}")
 
 print(f"\n{'PASS' if not FAIL else 'FAIL'}: {len(FAIL)} problem(s) {FAIL}")
 sys.exit(1 if FAIL else 0)

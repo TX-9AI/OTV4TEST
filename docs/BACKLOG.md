@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.84
+# BACKLOG.md — OTV4TEST — v0.85
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -229,6 +229,18 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.85 — 2026-09-21 — OTV4TEST r80 — r79'S PAR RUNG DID NOT FIRE, AND THE
+DEFECT WAS MINE.** Shipped at 14:08 ET; 81b1afae sailed straight past it. The
+feed read **delta 0.9675**, under the 0.98 bar, on a contract priced at
+**99.3% intrinsic** (mark 5.97 vs 5.93). **A 0DTE deep-ITM delta print LAGS
+WHAT THE PRICE ALREADY SAYS.** r79 gated extrinsic behind *"only if delta is
+absent"* — a fallback — so a position that was unambiguously stock walked past
+the ruling written to catch it. The two are **complementary: either instrument
+reaching par is par.** 🔑 And fixing it exposed a second gap the fixtures
+found: **a mark BELOW intrinsic is bad data, not zero extrinsic** — a crossed
+or stale quote computed 0% and fired the rung on a position nowhere near par.
+Now fails closed. Born red 1 of 33, V19e driving the EXACT live state.
 
 **v0.84 — 2026-09-21 — OTV4TEST r79 — PAR DELTA IS AN EXIT.** EXT.1.
 Operator, live on VOLT 81b1afae at +468% with FOUR CENTS of extrinsic left:

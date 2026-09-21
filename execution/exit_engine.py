@@ -1,5 +1,11 @@
 """
-execution/exit_engine.py  v4.22
+execution/exit_engine.py  v4.23
+v4.23  2026-09-21  OTV4TEST r80 — r79's PAR RUNG DID NOT FIRE AND THE DEFECT
+      WAS MINE. Extrinsic was gated behind "only if delta is absent", so
+      81b1afae sailed past it live: feed delta 0.9675 under the 0.98 bar while
+      the same contract priced at 99.3% intrinsic. A 0DTE deep-ITM delta print
+      LAGS WHAT THE PRICE ALREADY SAYS. The two are complementary — EITHER
+      reaching par is par.
 v4.22  2026-09-21  OTV4TEST r79 (EXT.1) — PAR DELTA IS AN EXIT. Operator,
       live on a VOLT call at +468% with FOUR CENTS of extrinsic left: *"We
       need an extrinsic/intrinsic metered exit"*, then *"When Delta reaches
@@ -1178,7 +1184,15 @@ class ExitEngine:
         _par_why = None
         if _delta >= VOLT_DELTA_PAR:
             _par_why = f"delta {_delta:.3f} >= par {VOLT_DELTA_PAR:.2f}"
-        elif _delta <= 1e-6 and current_premium > 0:
+        # 🔴 r80 — THE TWO INSTRUMENTS ARE COMPLEMENTARY, NOT A FALLBACK, AND
+        # r79 GOT THAT WRONG. Shipped live at 14:08 ET, the rung did NOT fire
+        # on 81b1afae: the feed read delta 0.9675, under the 0.98 bar, while
+        # the SAME contract was priced at 99.3% intrinsic (mark 5.97 vs 5.93).
+        # A 0DTE deep-ITM delta print lags what the PRICE already says, so
+        # gating extrinsic behind "only if delta is absent" let a position
+        # that was unambiguously stock walk straight past a ruling written to
+        # catch it. EITHER instrument reaching par is par.
+        if _par_why is None and current_premium > 0:
             _k = float(record.get("strike", 0.0) or 0.0)
             _spot = None
             for _fr in (df_1m, df_5m):
@@ -1186,11 +1200,19 @@ class ExitEngine:
                     _spot = float(_fr["close"].iloc[-1]); break
             if _k > 0 and _spot is not None:
                 _intr = max(0.0, _spot - _k) if direction == "long" else max(0.0, _k - _spot)
-                _ext_frac = max(0.0, current_premium - _intr) / current_premium
-                if _ext_frac <= VOLT_EXT_STOCKLIKE:
-                    _par_why = (f"no delta from the feed; extrinsic "
+                # ⚠️ A MARK BELOW INTRINSIC IS BAD DATA, NOT ZERO EXTRINSIC.
+                # A crossed or stale quote would otherwise compute 0% and fire
+                # this rung on a position that may be nowhere near par. FAIL
+                # CLOSED: hold, and let the catastrophic floor do its job.
+                if current_premium + 1e-9 < _intr:
+                    _intr = None
+                _ext_frac = (max(0.0, current_premium - _intr) / current_premium
+                             if _intr is not None else None)
+                if _ext_frac is not None and _ext_frac <= VOLT_EXT_STOCKLIKE:
+                    _par_why = (f"extrinsic "
                                 f"{_ext_frac:.1%} <= {VOLT_EXT_STOCKLIKE:.0%} "
-                                f"(mark {current_premium:.2f} vs intrinsic {_intr:.2f})")
+                                f"(mark {current_premium:.2f} vs intrinsic {_intr:.2f}; "
+                                f"delta {_delta:.3f})")
         if _par_why:
             decision.should_exit = True
             decision.exit_reason = f"volt_delta_par: {_par_why}"
