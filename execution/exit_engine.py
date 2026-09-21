@@ -1,5 +1,10 @@
 """
-execution/exit_engine.py  v4.20
+execution/exit_engine.py  v4.21
+v4.21  2026-09-21  OTV4TEST r75 — THE STRUCTURE STOP MUST READ A BAR THAT
+      POSTDATES THE ENTRY. Found live: VOLT took 7 trades in 90 seconds, each
+      stopped in ~14s against the 09:45 close while entering at 09:52. The
+      replay had this guard; the shipped code did not, so every measurement
+      that authorised the design was blind to it.
 v4.20  2026-09-21  OTV4TEST r72 (CTRL.1) — `_evaluate_volt`, the control arm's
       OWN exit path: hard close, the universal catastrophic floor, a STRUCTURE
       stop and an R-trail. Four rules, deliberately not `_evaluate_orb` — that
@@ -1154,6 +1159,39 @@ class ExitEngine:
         # read at all, so the trade is held on the catastrophic premium floor
         # alone. Said once per trade rather than silently.
         frame = df_5m
+        # 🔴 r75 — THE BAR MUST POSTDATE THE ENTRY. Found LIVE on 2026-09-21:
+        # VOLT took SEVEN trades in 90 seconds, every one stopped in ~14s by
+        # `1m close 731.22 below structure` — and 731.22 was the close of the
+        # 09:45 bar, which had already happened when the 09:52 trade opened.
+        # The stop EQUALS the entry (r72's ruling), so any completed bar whose
+        # close sits the wrong side of entry kills the trade instantly, and a
+        # STALE bar does it before the trade has existed for one tick.
+        # ⚠️ THE REPLAY HAD THIS GUARD AND THE SHIPPED CODE DID NOT — the
+        # harness skipped closes at or before the entry, so the defect was
+        # invisible in every measurement that authorised the design.
+        # ⚠️ IT FAILS CLOSED: with no bar NEWER than the entry there is nothing
+        # to test the thesis against yet, so the trade is held on the
+        # catastrophic premium floor alone rather than exited on stale data.
+        if frame is not None and len(frame) >= 2:
+            try:
+                _entry_ts = record.get("entry_time")
+                if _entry_ts:
+                    _et = pd.Timestamp(_entry_ts)
+                    if _et.tzinfo is not None:
+                        _et = _et.tz_convert(None)
+                    _bar_ts = pd.Timestamp(frame.index[-2])
+                    if _bar_ts.tzinfo is not None:
+                        _bar_ts = _bar_ts.tz_convert(None)
+                    if _bar_ts <= _et:
+                        if not record.get("_volt_stale_said"):
+                            record["_volt_stale_said"] = 1
+                            logger.info("[exit] VOLT %s: newest completed 5m bar "
+                                        "(%s) predates the entry (%s) — holding "
+                                        "until a bar exists that can test it.",
+                                        trade_id[:8], _bar_ts, _et)
+                        return decision
+            except (ValueError, TypeError, AttributeError, IndexError) as _exc:
+                logger.debug("volt: entry/bar timestamp compare skipped: %s", _exc)
         if frame is None or len(frame) < 2:
             if not record.get("_volt_no5m"):
                 record["_volt_no5m"] = 1

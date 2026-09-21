@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.79
+# BACKLOG.md — OTV4TEST — v0.80
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -226,6 +226,22 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.80 — 2026-09-21 — OTV4TEST r75 — THE EXIT WAS READING A BAR THAT HAD
+ALREADY HAPPENED, AND IT CHURNED SEVEN TRADES IN NINETY SECONDS.** CTRL.1 ◐ —
+found LIVE at 09:53 ET, minutes after r74 let VOLT fire. Every trade exited in
+~14 seconds on `volt_structure_stop: 1m close 731.22 below structure` — and
+**731.22 was the close of the 09:45 bar**, already history when the 09:52 trade
+opened. 🔴 **THE STOP EQUALS THE ENTRY** (r72's ruling), so any completed bar
+sitting the wrong side of entry kills the trade — and a STALE bar does it
+before the trade has existed for a single tick. ⚠️ **THE REPLAY HAD THIS GUARD
+AND THE SHIPPED CODE DID NOT.** The harness skipped closes at or before the
+entry, so every measurement that authorised this design was blind to the
+defect — §21 from the other side: a harness KINDER than production hides what
+production will do. GATE: V18 drives the real exit engine with a completed bar
+that predates the entry and proves it does NOT stop; **V18b is the control** —
+a bar that genuinely postdates the entry still DOES stop it, so the fix is a
+correction and not a mute.
 
 **v0.79 — 2026-09-21 — OTV4TEST r74 — VOLT COULD NOT FIRE IN A THIRD OF ITS
 OWN WINDOW, AND THE GATE I SHIPPED WAS STRICTER THAN THE ONE I MEASURED.**

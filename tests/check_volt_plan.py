@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_volt_plan.py  v1.1
+tests/check_volt_plan.py  v1.2
 
+v1.2  2026-09-21  OTV4TEST r75 — V18/V18b: the exit bar must POSTDATE the
+      entry. Found LIVE, not in review.
 v1.1  2026-09-21  OTV4TEST r74 — V17/V17b/V17c: it must be able to fire from
       the OPEN. Fixtures rebuilt on the 1-minute frame.
 v1.0  2026-09-21  OTV4TEST r72 (CTRL.1) — born RED at 7e8a19c, where the VOLT
@@ -333,6 +335,51 @@ check("V17c the gate reads a ONE-minute frame (entry and exit frames differ)",
       "ts.minute)" in _insp.getsource(_vp._bars_1m)
       and "minute // 5" not in _insp.getsource(_vp._bars_1m),
       "exit_engine._evaluate_volt still reads df_5m — that is the operator's stop ruling")
+
+# ── V18 — THE EXIT BAR MUST POSTDATE THE ENTRY (r75) ──────────────────────
+# 🔴 FOUND LIVE, NOT IN A REVIEW. On 2026-09-21 VOLT took SEVEN trades in 90
+# seconds, every one stopped in ~14 seconds by "1m close 731.22 below
+# structure" — and 731.22 was the 09:45 bar's close, already history when the
+# 09:52 trade opened. The stop EQUALS the entry (r72), so a stale completed bar
+# on the wrong side kills a trade before it has existed for one tick.
+# ⚠️ THE REPLAY HAD THIS GUARD AND THE SHIPPED CODE DID NOT, which is why every
+# measurement that authorised the design was blind to it — §21's lesson from
+# the other side: a harness that is KINDER than production hides the defect.
+_stale_rec = {"trade_id": "VOLT0003", "strategy": "VOLT", "direction": "long",
+              "entry_premium": 1.00, "contracts": 1, "underlying_entry": 731.70,
+              "underlying_stop": 731.70, "underlying_target": 732.20,
+              "stop_premium": 0.75,
+              "entry_time": "2026-09-21T13:52:21+00:00"}
+# the newest COMPLETED bar closes BELOW the entry but is OLDER than the entry
+_stale_df = pd.DataFrame(
+    [{"open": 730.8, "high": 731.5, "low": 730.7, "close": 731.22, "volume": 1.0},
+     {"open": 731.2, "high": 731.3, "low": 731.0, "close": 731.10, "volume": 1.0},
+     {"open": 731.1, "high": 731.2, "low": 731.0, "close": 731.15, "volume": 1.0}],
+    index=pd.DatetimeIndex([dt.datetime(2026, 9, 21, 13, 40),
+                            dt.datetime(2026, 9, 21, 13, 45),
+                            dt.datetime(2026, 9, 21, 13, 50)]))
+EE.is_hard_close_time = lambda: False
+try:
+    _ds = EE.ExitEngine().evaluate(dict(_stale_rec), 1.00, df_1m=_stale_df, df_5m=_stale_df)
+finally:
+    EE.is_hard_close_time = _orig_hct
+check("V18 a completed bar OLDER than the entry does NOT stop the trade",
+      not _ds.should_exit,
+      f"exit={_ds.should_exit} reason={_ds.exit_reason!r} — the 13:45 close "
+      f"predates the 13:52:21 entry; stopping on it is the r75 churn defect")
+# and a bar that genuinely postdates the entry still DOES stop it
+_fresh_df = _stale_df.copy()
+_fresh_df.index = pd.DatetimeIndex([dt.datetime(2026, 9, 21, 13, 55),
+                                    dt.datetime(2026, 9, 21, 14, 0),
+                                    dt.datetime(2026, 9, 21, 14, 5)])
+EE.is_hard_close_time = lambda: False
+try:
+    _fs = EE.ExitEngine().evaluate(dict(_stale_rec), 1.00, df_1m=_fresh_df, df_5m=_fresh_df)
+finally:
+    EE.is_hard_close_time = _orig_hct
+check("V18b CONTROL: a bar AFTER the entry still stops it — the fix is not a mute",
+      _fs.should_exit and "structure_stop" in _fs.exit_reason,
+      f"exit={_fs.should_exit} reason={_fs.exit_reason!r}")
 
 print(f"\n{'PASS' if not FAIL else 'FAIL'}: {len(FAIL)} problem(s) {FAIL}")
 sys.exit(1 if FAIL else 0)
