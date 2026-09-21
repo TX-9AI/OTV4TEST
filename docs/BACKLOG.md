@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.85
+# BACKLOG.md — OTV4TEST — v0.86
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -229,6 +229,24 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.86 — 2026-09-21 — OTV4TEST r81 — r71'S CREDIT WINDOW NEVER REACHED THE
+CODE.** LATE.2. The operator, reading his own board at 14:11 ET: *"I could've
+swore we just widened the credit window for entries yesterday. That was one of
+the biggest changes we made — what happened here?"* **It was widened in the
+admission table and nowhere else.** `VERTICAL_HOLD_TO_ET` moved to 15:50, the
+table moved to 15:40, and **four separate literals stayed at 14:00** —
+`sweep_plan.LATEST_ET`, `TCS_ENTRY_END_ET`, `CONDOR_ENTRY_CUTOFF_ET`,
+`CREDIT_ENTRY_END_ET`. 🔑 **THE PLAN RUNS BEFORE ADMISSION**, stamps DORMANT and
+never emits a signal, so the widened window is never consulted. 🔴 **THE CONFIG
+FILE PREDICTED THIS AT r317** — *"invisible until someone changes the number —
+and then three paths move and the sweep does not, silently"* — and it happened
+anyway, because the fork wrote `sweep_plan.py` reading **`SWEEP_CS_LATEST_ET_FORK`
+and `SWEEP_CS_EARLIEST_ET_FORK`, neither of which has ever existed in config**,
+so `getattr` defaults were the only source. ⚠️ **AND r71'S OWN GATE PASSED:**
+`check_late_credit_window` imports **no plan module** — it tested the table that
+changed, never the gate that decides. Every credit END now derives from one
+constant. Born red 5 of 5.
 
 **v0.85 — 2026-09-21 — OTV4TEST r80 — r79'S PAR RUNG DID NOT FIRE, AND THE
 DEFECT WAS MINE.** Shipped at 14:08 ET; 81b1afae sailed straight past it. The

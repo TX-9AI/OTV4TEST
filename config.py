@@ -1,5 +1,12 @@
 """
-config.py  v4.28
+config.py  v4.29
+v4.29  2026-09-21  OTV4TEST r81 (LATE.2) — r71'S 15:40 CREDIT WINDOW NEVER
+      REACHED THE CODE. The admission table moved and FOUR literals stayed at
+      14:00, and THE PLAN RUNS BEFORE ADMISSION, so the credit plans went
+      dormant at 14:00 for a full session while the table said 15:40. Every
+      credit END now DERIVES from `CREDIT_ENTRY_END_ET`; two `*_FORK` keys the
+      fork's plans read were added, having never existed — the r317 defect
+      reintroduced under new names.
 v4.28  2026-09-21  OTV4TEST r79 (EXT.1) — VOLT_DELTA_PAR, VOLT_EXT_STOCKLIKE
       and VOLT_STOCKLIKE_ATR_MULT. Operator, live on a call at +468% holding
       four cents of extrinsic: *"When Delta reaches PAR, we need to get the
@@ -1133,7 +1140,14 @@ DEBIT_BLOCK_ACTIVE          = os.environ.get("OT_DEBIT_BLOCK_ACTIVE", "1") == "1
 # ⚠️ AND THE STRATEGY IS STILL HELD BY `OT_TCS_ACTIVE=0` in the systemd
 # drop-in on all 15 boxes. Restoring the window does NOT unpark it; clearing
 # that flag is a separate, deliberate act.
-TCS_ENTRY_END_ET            = (14, 0)   # r238: operator-spec'd. Was
+# 🔴 r81 — DERIVED FROM THE ONE CREDIT END (was a literal (14, 0)). The TCS is
+# a CREDIT vertical and r71's ruling covers it; tcs_plan.py:285 was stamping
+# "past TCS_ENTRY_END_ET 14:00 — observing only" while admission said 15:40.
+# ⚠️ DEFINED BELOW, BESIDE `CREDIT_ENTRY_END_ET`, because it is DERIVED from it
+# and that constant does not exist yet at this point in the file. Left here as
+# a pointer rather than as a second literal — repeating the number is the
+# defect r81 exists to remove. See "THE ONE CREDIT END" further down.
+_TCS_ENTRY_END_ET_NOTE      = "derived below from CREDIT_ENTRY_END_ET (r81)"  # was
                                         #   end, inherited verbatim from the
                                         #   deleted global cutoff so behaviour
                                         #   is unchanged while TCS is OFF.
@@ -1689,7 +1703,17 @@ CONDOR_ENTRY_START_ET       = CREDIT_ENTRY_START_ET   # was (11, 11)
 # "11:11")` — the DEFAULT was the only source, so the sweep kept 11:11 while
 # the other three moved. check_sweep_spread's S8a caught it; I had not.
 SWEEP_CS_EARLIEST_ET        = f"{CREDIT_ENTRY_START_ET[0]}:{CREDIT_ENTRY_START_ET[1]:02d}"
-CONDOR_ENTRY_CUTOFF_ET      = (14, 0)   # Standard entry cutoff
+# 🔴 r81 (LATE.2) — 15:40 BY THE OPERATOR'S r71 RULING, WHICH NEVER REACHED
+# THIS NUMBER. r71 widened the ADMISSION TABLE to 15:40 and moved
+# VERTICAL_HOLD_TO_ET to 15:50, and the credit plans went on refusing at 14:00
+# for a full session, because THE PLAN RUNS BEFORE ADMISSION: sweep_plan and
+# tcs_plan stamp DORMANT and never emit a signal, so the widened window is
+# never consulted. Measured on the board 2026-09-21 14:11 ET — "past 14:00 ET
+# — observing only" and "past TCS_ENTRY_END_ET 14" — with admission reading
+# (15,40) at the same instant. The r317 block BELOW PREDICTED THIS EXACT
+# FAILURE and it still happened, which is why r81 derives every credit END
+# from this one constant rather than repeating the number.
+CONDOR_ENTRY_CUTOFF_ET      = (15, 40)  # r81: was (14,0); r71's ruling
 # 🔴 r317 — THE END SIDE, WHICH THE TWO EARLIER FIXES BOTH MISSED.
 # `sweep_credit_spread.LATEST_ET` read `getattr(config, "SWEEP_CS_LATEST_ET",
 # "14:00")` and THE KEY DID NOT EXIST, so the default was the only source —
@@ -1704,6 +1728,25 @@ CONDOR_ENTRY_CUTOFF_ET      = (14, 0)   # Standard entry cutoff
 # `management.py` reference no window constant and run to the 15:45 flatten.
 CREDIT_ENTRY_END_ET         = CONDOR_ENTRY_CUTOFF_ET   # one END for every credit path
 SWEEP_CS_LATEST_ET          = f"{CREDIT_ENTRY_END_ET[0]}:{CREDIT_ENTRY_END_ET[1]:02d}"
+# 🔴 r81 — THE FIFTH CREDIT PATH, AND IT IS THE r317 DEFECT REINTRODUCED UNDER
+# A NEW NAME. r317 repaired `SWEEP_CS_LATEST_ET` above after the key-did-not-
+# exist defect bit twice; this fork then wrote `strategy/sweep_plan.py` reading
+# `SWEEP_CS_LATEST_ET_FORK`, WHICH HAS NEVER EXISTED IN THIS FILE, so its
+# `getattr(..., (14, 0))` default was the only source and the sweep sat at
+# 14:00 while r71 moved everything else. Derived, never repeated — a literal
+# here would be the same bug with a different number.
+# ⚠️ THE START SIDE WAS ON A SILENT DEFAULT TOO. `sweep_plan.py:97` reads
+# `SWEEP_CS_EARLIEST_ET_FORK` and that key has never existed either; its
+# (9, 35) default merely HAPPENS to match the admission table today, which is
+# r317's warning word for word — invisible until someone moves the number.
+SWEEP_CS_EARLIEST_ET_FORK   = (9, 35)   # r81: matches admission SWEEP start
+SWEEP_CS_LATEST_ET_FORK     = CREDIT_ENTRY_END_ET
+# 🔑 THE ONE CREDIT END. Every credit path resolves to this single constant and
+# none of them carries its own number: the sweep (both key spellings), the TCS,
+# and the condor that forms from two of their legs. r71's ruling moved the
+# admission window and FOUR separate literals stayed at 14:00; deriving them is
+# what makes the next ruling reach the code instead of half of it.
+TCS_ENTRY_END_ET            = CREDIT_ENTRY_END_ET
 
 # ─── EXIT MANAGEMENT ──────────────────────────────────────────────────────────
 
