@@ -1,5 +1,7 @@
 """
-config.py  v4.25
+config.py  v4.26
+v4.26  2026-09-20  OTV4TEST r72 — the VOLT_* block: the control arm's declared
+      priors in ONE place, read by both volt_plan.py and exit_engine.py.
 v4.25  2026-09-20  OTV4TEST r71 (LATE.1) — VERTICAL_HOLD_TO_ET 15:45 -> 15:50
       by the operator's ruling, so credit verticals entered in the new 15:40
       window have a hold time at all. The INHERITED DOCTRINE entry below is
@@ -1541,6 +1543,62 @@ CONDOR_RATCHET_STANDALONE_ONLY = os.environ.get(
 # result will look clean on this box whether the reasoning holds or not. Stated
 # on the record rather than discovered live.
 VERTICAL_HOLD_TO_ET         = (15, 50)
+
+# ══ VOLT (VOLume Trade) — THE CONTROL ARM, OTV4TEST r72 ════════════════════
+# 🔑 EVERY ONE OF THESE IS A DECLARED PRIOR (WA §31) AND NONE IS PROVEN ON A
+# TRADE. They live HERE, once, because volt_plan.py and exit_engine.py both
+# read them and two constants in two modules meaning one thing is the drift
+# this codebase keeps finding.
+#
+# VOLT exists to be the NULL HYPOTHESIS MADE TRADEABLE: two gates, same window
+# as the morning four, blocking nothing. If it keeps pace with the gated
+# strategies the gates are decoration; if it does not, they are earning their
+# keep. ⚠️ A THIRD GATE DESTROYS THE MEASUREMENT — put it in a new strategy.
+#
+# THE TWO NUMBERS THAT COULD HAVE BEEN GUESSED WERE MEASURED INSTEAD, on 247
+# symbol-sessions of 15-second tape (13 names x 19 sessions, 08-24..09-18),
+# asking: from a signal bar does price reach +0.5 ATR before -1.0 ATR within 30
+# minutes? That geometry breaks even at 66.7%.
+#   DIRECTION: close vs the SESSION OPEN won at EVERY volume threshold
+#     (68.8% / 66.7% / 72.0% at 1.25x / 1.5x / 2.0x), beating bar-direction,
+#     close-vs-EMA20 and a two-close trend. It is also the simplest read
+#     available — one comparison, nothing to fit.
+#   VOLUME 1.25x: fires on ~9% of in-window bars (n=445), which is what makes
+#     the control measurable at all. 2.0x reads higher on n=50; 3.0x gave n=2.
+# ⚠️ HONEST LIMIT: the winning cell was chosen from 12, so +2.1pp over
+# breakeven is INSIDE that search's noise. The cross-threshold consistency is
+# the evidence, not the margin — and the study measured the UNDERLYING with an
+# ATR stop while VOLT trades an OPTION against a STRUCTURE stop.
+VOLT_VOL_MULT           = float(os.environ.get("OT_VOLT_VOL_MULT", "1.25"))
+VOLT_VOL_LOOKBACK_BARS  = int(os.environ.get("OT_VOLT_VOL_LOOKBACK_BARS", "6"))
+# 🔑 THE STOP IS THE ENTRY — operator's ruling 2026-09-21: "Use a structural
+# stop. A close beyond where the trade opened is a dead thesis." There is no
+# lookback and no floor because there is no stop DISTANCE to degenerate. The two
+# designs it replaced both blew up on exactly that: a 3-bar structural extreme
+# scored WORST -120R and the signal bar's own extreme -749R, both because a
+# tight structure put the stop at the entry and R exploded. Measured over 19
+# sessions x 4 symbols with the real plan: the ruling gives worst -1.49R.
+# the trail arms on DISTANCE, not premium — the operator's spec, and r44's scar:
+# a premium-fraction floor could sit BELOW entry, so arming could guarantee a loss.
+VOLT_TRAIL_ARM_R        = float(os.environ.get("OT_VOLT_TRAIL_ARM_R", "0.50"))
+VOLT_TRAIL_LOCK_FRAC    = float(os.environ.get("OT_VOLT_TRAIL_LOCK_FRAC", "0.50"))
+VOLT_WINDOW_OPEN_ET     = (9, 35)
+VOLT_WINDOW_CLOSE_ET    = (11, 30)
+# 🔴 VOLT SIZES OFF RISK_PER_TRADE_USD, **NOT** ORB_BUDGET_USD, AND THE
+# DIFFERENCE IS THE WHOLE COMPARISON. Live (configure.sh): OT_RISK_USD=1050 and
+# OT_ORB_BUDGET_USD=10000. VOLT uses ONLY the budget rule — it deliberately does
+# not import the ORB's `min(geometry, budget/cost)` clamp, because that clamp is
+# an ORB prior and importing it would smuggle a third rule into a two-gate
+# control. So inheriting the $10,000 CEILING would have sized VOLT at ~73
+# contracts on a $1.36 premium against the handful the ORB's geometry actually
+# takes — and a control that trades 10-50x the size of the arm it measures
+# produces a P&L comparison that means nothing.
+# ⚠️ FOUND BY REPLAY, and only because the operator caught that the replay was
+# reading the $200 DEFAULT rather than the live environment (ENV.1's family: a
+# measurement taken outside the environment it describes).
+VOLT_BUDGET_USD         = float(os.environ.get("OT_VOLT_BUDGET_USD",
+                                               str(RISK_PER_TRADE_USD)))
+
 VERTICAL_HOLD_TO_CLOSE      = os.environ.get("OT_VERTICAL_HOLD_1545", "1") == "1"
 # Minutes per bar of the ATR feeding sigma. 5m frame by default; wrong here
 # scales sqrt(T) and silently moves every POP.

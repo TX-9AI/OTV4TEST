@@ -1,5 +1,12 @@
 """
-main.py  v4.60
+main.py  v4.61
+v4.61 2026-09-21  OTV4TEST r72 (CTRL.1) — VOLT dispatched ADDITIVELY beside the
+      Breakout, so all five morning arms see the same setups and no arm's
+      outcome is hidden by another's fill (r51's ruling, applied to the GATES
+      rather than to four theses). Declared `long_debit` in _STRUCTURE_BY_NAME
+      rather than left to the fallback — that map's own warning is that a
+      missing name is silently long_debit, and relying on a default to be right
+      is how it stops being right.
 v4.60 2026-09-20  OTV4TEST r67 (BOX.9) — THE STOPPED ALERT NAMES WHICH SHUTDOWN
       IT WAS. The SIGTERM handler hardcoded "systemctl stop/restart", so a hand
       stop, a bake and the midnight backstop were one sentence on the emergency
@@ -1347,6 +1354,7 @@ if TYPE_CHECKING:                     # v4.9 — resolves the quoted annotation 
                                       # cost and lets the undefined-name gate
                                       # run at ZERO tolerance instead of one.
 from strategy.orb_strategy import ORBStrategy
+from strategy.volt_strategy import VoltStrategy
 from strategy.runaway_continuation import RunawayContinuationStrategy
 from strategy.sweep_credit_spread import SweepCreditSpreadStrategy
 from strategy.gex_pin_butterfly import GEXPinButterflyStrategy
@@ -1398,6 +1406,7 @@ def _disk_sender():
 
 # Strategy singletons
 _orb_strategy     = ORBStrategy()
+_volt_strategy    = VoltStrategy()   # r72 — the control arm
 _runaway_strategy = RunawayContinuationStrategy()
 _sweep_cs_strategy = SweepCreditSpreadStrategy()
 _gex_bfly_strategy = GEXPinButterflyStrategy()
@@ -3657,6 +3666,11 @@ _STRUCTURE_BY_NAME = {
     "IronCondorStrategy":   "vertical",
     # r51 — a long option, so the afternoon debit cutoff governs it like the ORB
     "Breakout":             "long_debit",
+    # r72 — VOLT buys a single option. Its window closes at 11:30 so the
+    # afternoon cutoff cannot bite, but it is DECLARED rather than defaulted:
+    # this map's own warning is that a missing name is silently long_debit, and
+    # relying on the fallback to be right is how it stops being right.
+    "VOLT":                 "long_debit",
 }
 
 
@@ -4158,6 +4172,25 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
         chain      = chain,
         df_1m      = ctx.get("df_1m"),
         flow_conn  = ctx.get("_flow_conn"),
+        symbol     = INSTRUMENT,
+    ), ctx))
+    # ── r72 — VOLT, THE CONTROL ARM, BESIDE ALL FOUR ──────────────────────
+    # Two gates: direction (close vs the session open) and rising volume. No
+    # ADX, no regime, no levels, no R floor. 🔑 ITS ONLY JOB IS TO MAKE THE
+    # OTHERS' GATES MEASURABLE — r51's head-to-head reasoning applied to the
+    # gates themselves rather than to four different theses. Operator,
+    # 2026-09-20: *"construct 1 more trade strategy & plan… as a control
+    # group… Nothing more complicated."*
+    # ⚠️ ADDITIVE, exactly like the Breakout above: `_fire()` executes it on
+    # its own and admission's per-type cap is the only limit, so VOLT taking a
+    # trade never costs the ORB one and the comparison stays clean.
+    _fire(_safe_strategy("VOLT", lambda: _volt_strategy.generate_signal(
+        chain      = chain,
+        price_now  = ctx["price"],
+        df_1m      = ctx.get("df_1m"),
+        now_et     = (_now_disp.strftime("%H:%M") if _now_disp else ""),
+        vol_state  = ctx.get("vol"),
+        macro      = ctx.get("macro"),
         symbol     = INSTRUMENT,
     ), ctx))
         # 🔴 r195 — THE ENGINE NO LONGER RE-ARMS HERE, AND THAT WAS THE BUG.

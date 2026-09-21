@@ -1,0 +1,311 @@
+#!/usr/bin/env python3
+"""
+tests/check_volt_plan.py  v1.0
+
+v1.0  2026-09-21  OTV4TEST r72 (CTRL.1) — born RED at 7e8a19c, where the VOLT
+      modules do not exist and V0's guard refuses to continue. 25 checks.
+
+r72 — VOLT, THE CONTROL ARM. Born RED at 7e8a19c (r71), where the modules do
+not exist and V0 refuses to continue.
+
+🔑 WHAT THIS GATE IS REALLY PROTECTING. VOLT's entire value is that it gates on
+TWO things. A third gate does not make it a better strategy — it destroys the
+measurement the strategy exists to produce. V9 pins the gate COUNT for exactly
+that reason: the failure mode here is not a bug, it is a well-meaning addition.
+
+Drives the REAL plan, the REAL admission table and the REAL exit engine against
+fixtures (WA §21 — a test that reads source text proves nothing about runtime).
+
+  V0  the modules import and VOLT is registered
+  V1  window 09:35-11:30, half-open at BOTH edges, driven through decide()
+  V2  it blocks nothing and is blocked by nothing — the control property
+  V3  outside the window the plan is DORMANT and prepares nothing
+  V4  the volume gate REFUSES below the prior and PASSES at/above it
+  V5  direction is close vs the SESSION OPEN, driven BOTH ways
+  V6  the stop is the structural extreme of the last N 5m bars
+  V7  the trail arms at exactly ARM_R x R and its floor is NEVER below entry
+  V8  the exit engine routes VOLT to its OWN evaluator, not the ORB's
+  V9  SCOPE: exactly two gates refuse an otherwise-valid setup
+
+Run:  python3 tests/check_volt_plan.py
+"""
+from __future__ import annotations
+import os, sys, datetime as dt
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+FAIL: list = []
+
+def check(name, ok, detail=""):
+    print(f"  {'PASS' if ok else 'FAIL'}  {name}" + (f"  — {detail}" if detail else ""))
+    if not ok:
+        FAIL.append(name.split()[0])
+
+_imp_err = ""
+try:
+    import pandas as pd
+    import config
+    from strategy.volt_plan import (VoltPlan, VOL_MULT, VOL_LOOKBACK_BARS,
+                                    TRAIL_ARM_R, TRAIL_LOCK_FRAC)
+    from strategy.volt_strategy import VoltStrategy
+    from execution.position_manager import rules, decide, Facts, VOLT, ORB
+    _ok_imports = True
+except Exception as exc:                                   # noqa: BLE001
+    _imp_err = f"{type(exc).__name__}: {exc}"
+    _ok_imports = False
+
+check("V0 VOLT modules import and the strategy is registered", _ok_imports, _imp_err)
+if not _ok_imports:
+    print(f"\nFAIL: {len(FAIL)} problem(s) {FAIL}")
+    sys.exit(1)
+
+T = rules()
+check("V0b VOLT is in the admission table", VOLT in T, f"keys={sorted(T)}")
+
+# ── V1 — the window, at both edges, through the REAL decide() ───────────────
+def admits(hhmm, **kw):
+    return bool(decide(Facts(strategy=VOLT, now_et=hhmm, orb_established=True, **kw)))
+w = T[VOLT].window
+check("V1 window is 09:35-11:30, half-open at BOTH edges",
+      w == ((9, 35), (11, 30)) and not admits((9, 34)) and admits((9, 35))
+      and admits((11, 29)) and not admits((11, 30)),
+      f"window={w} 09:34={admits((9,34))} 09:35={admits((9,35))} "
+      f"11:29={admits((11,29))} 11:30={admits((11,30))}")
+check("V1b VOLT's window is IDENTICAL to the ORB's — or it is not a control",
+      T[VOLT].window == T[ORB].window, f"volt={T[VOLT].window} orb={T[ORB].window}")
+
+# ── V2 — the control property: non-competing ───────────────────────────────
+blocks = set(getattr(T[VOLT], "blocks", ()) or ())
+blocked = set(getattr(T[VOLT], "blocked_by", ()) or ())
+check("V2 VOLT blocks nothing and is blocked by nothing",
+      not blocks and not blocked, f"blocks={sorted(blocks)} blocked_by={sorted(blocked)}")
+check("V2b VOLT still admits with an ORB already open (non-competing)",
+      admits((10, 0), open_by_strategy={ORB: 1}), "an open ORB must not exclude the control")
+
+# ── fixtures ───────────────────────────────────────────────────────────────
+class _C:
+    def __init__(self, strike, mark=1.00, delta=0.5, gamma=0.01):
+        self.strike, self.mark, self.delta, self.gamma = strike, mark, delta, gamma
+        self.expiry = "2026-09-21"
+class _Chain:
+    def __init__(self, spot):
+        # integer strikes straddling spot, so a nearest-OTM exists either way
+        self.calls = [_C(float(int(spot) + i)) for i in (-2, -1, 0, 1, 2)]
+        self.puts  = [_C(float(int(spot) + i)) for i in (-2, -1, 0, 1, 2)]
+
+def frame(bars_5m, session_open=100.0):
+    """bars_5m: list of (close, volume). Builds a 1m frame that aggregates to
+    exactly those 5m bars, with the FIRST bar's open = session_open."""
+    rows, idx = [], []
+    t0 = dt.datetime(2026, 9, 21, 9, 30)
+    for bi, (close, vol) in enumerate(bars_5m):
+        for mi in range(5):
+            ts = t0 + dt.timedelta(minutes=bi * 5 + mi)
+            o = session_open if (bi == 0 and mi == 0) else close
+            rows.append({"open": o, "high": max(o, close) + 0.05,
+                         "low": min(o, close) - 0.05, "close": close,
+                         "volume": vol / 5.0})
+            idx.append(ts)
+    return pd.DataFrame(rows, index=pd.DatetimeIndex(idx))
+
+NEED = VOL_LOOKBACK_BARS + 3
+def bars(last_close, last_vol, base_close=100.0, base_vol=1000.0, session_open=100.0):
+    b = [(base_close, base_vol)] * NEED
+    return b + [(last_close, last_vol), (last_close, last_vol)]   # +forming
+
+plan = VoltPlan()
+def prep(last_close, last_vol, now="10:00", session_open=100.0, spot=None):
+    df = frame(bars(last_close, last_vol, session_open=session_open), session_open)
+    px = spot if spot is not None else last_close
+    return plan.prepare(chain=_Chain(px), price_now=px, df_1m=df, now_hhmm=now)
+
+# ── V3 — dormant outside the window ────────────────────────────────────────
+p_out = prep(101.0, 5000.0, now="11:31")
+check("V3 outside the window the plan prepares NOTHING",
+      not p_out.ready and p_out.contract is None,
+      f"ready={p_out.ready}")
+
+# ── V4 — the volume gate, both sides of the prior ──────────────────────────
+lo = prep(101.0, 1000.0 * (VOL_MULT - 0.15))
+hi = prep(101.0, 1000.0 * (VOL_MULT + 0.50))
+check("V4 volume BELOW the prior refuses", not lo.ready,
+      f"ratio={lo.vol_ratio} mult={VOL_MULT}")
+check("V4b volume ABOVE the prior prepares a trade", hi.ready and hi.contract is not None,
+      f"ratio={hi.vol_ratio} ready={hi.ready}")
+
+# ── V5 — direction is close vs the SESSION OPEN, both ways ─────────────────
+up   = prep(101.0, 5000.0, session_open=100.0)
+down = prep( 99.0, 5000.0, session_open=100.0)
+check("V5 close ABOVE the session open -> long/call",
+      up.direction == "long" and up.side == "call", f"{up.direction}/{up.side}")
+check("V5b close BELOW the session open -> short/put",
+      down.direction == "short" and down.side == "put", f"{down.direction}/{down.side}")
+
+# ── V6 — the structure stop is the N-bar extreme ───────────────────────────
+# ⚠️ RE-POINTED at r72's ruling, not loosened (r33/r43/r64). The operator,
+# 2026-09-21: *"Use a structural stop. A close beyond where the trade opened is
+# a dead thesis."* The stop IS the entry. The two designs this replaced — a
+# 3-bar structural extreme and the signal bar's own extreme — both allowed the
+# stop to land AT the entry when structure was tight, so risk -> 0 and R
+# exploded (measured worst -120R and -749R over 19 sessions x 4 symbols).
+check("V6 the stop IS the entry — a close back through it is the dead thesis",
+      up.stop is not None and abs(up.stop - up.price) < 1e-9,
+      f"stop={up.stop} price={up.price}")
+check("V6b R comes from the SIGNAL BAR's range, not from the stop distance",
+      up.risk_px is not None and up.risk_px > 0,
+      f"R={up.risk_px} (the stop supplies no distance, so the trail needs another scale)")
+
+# ── V7 — the trail arms on DISTANCE and can never floor below entry ────────
+entry = 100.0
+risk = up.risk_px          # the signal bar's range, which is what the trail scales on
+armed_at = entry + TRAIL_ARM_R * risk
+check("V7 trail arm price is exactly ARM_R x R above entry",
+      abs((up.trail_arm_px - up.price) - TRAIL_ARM_R * up.risk_px) < 1e-9,
+      f"arm={up.trail_arm_px} price={up.price} R={up.risk_px} ARM_R={TRAIL_ARM_R}")
+floors = [entry + TRAIL_LOCK_FRAC * (pk - entry) for pk in (armed_at, entry + 5 * risk)]
+check("V7b the trail floor is NEVER below entry (r44's scar)",
+      all(fl >= entry for fl in floors), f"floors={[round(f,4) for f in floors]}")
+
+# ── V8 — the exit engine routes VOLT to its OWN evaluator ──────────────────
+import execution.exit_engine as EE
+seen = {}
+class _Spy(EE.ExitEngine):
+    def _evaluate_volt(self, record, current_premium, df_1m, df_5m=None):
+        seen["volt"] = True
+        return EE.ExitDecision()
+    def _evaluate_orb(self, record, current_premium, df_1m, df_5m=None):
+        seen["orb"] = True
+        return EE.ExitDecision()
+rec = {"trade_id": "VOLT0001", "strategy": "VOLT", "direction": "long",
+       "entry_premium": 1.00, "contracts": 1, "underlying_entry": 100.0,
+       "underlying_stop": 99.0, "stop_premium": 0.75, "trail_activation": 1.5}
+try:
+    _Spy().evaluate(rec, 1.00, df_1m=None, df_5m=None)
+except Exception as exc:                                   # noqa: BLE001
+    seen["err"] = f"{type(exc).__name__}: {exc}"
+check("V8 a VOLT record routes to _evaluate_volt, NOT the ORB evaluator",
+      seen.get("volt") and not seen.get("orb"), f"{seen}")
+
+# ── V9 — SCOPE: exactly two gates ──────────────────────────────────────────
+gates = set()
+if not prep(101.0, 1000.0 * (VOL_MULT - 0.15)).ready: gates.add("volume")
+# direction never REFUSES — it only picks a side; it is a gate in the sense
+# that it decides WHAT is traded. Both sides must produce a trade.
+if up.ready and down.ready: gates.add("direction")
+check("V9 SCOPE: two gates and only two — volume refuses, direction selects",
+      gates == {"volume", "direction"},
+      f"{sorted(gates)}; a THIRD gate belongs in a NEW strategy, not in the control")
+
+# ── V10 — the STRATEGY (not just the plan) builds a usable signal ──────────
+# drives VoltStrategy.generate_signal end to end, because a plan that prepares
+# and a strategy that never fires is the r51 class of defect.
+_sig = VoltStrategy().generate_signal(
+    chain=_Chain(101.0), price_now=101.0,
+    df_1m=frame(bars(101.0, 1000.0 * (VOL_MULT + 0.50), session_open=100.0), 100.0),
+    now_et="10:00")
+check("V10 VoltStrategy builds a signal whose stop IS the entry (r72 ruling)",
+      _sig is not None and _sig.strategy_name == "VOLT"
+      and _sig.direction == "long" and _sig.option_side == "call"
+      and _sig.underlying_stop > 0
+      and abs(_sig.underlying_stop - _sig.underlying_entry) < 1e-9
+      and bool(getattr(_sig, "underlying_stop_is_thesis", False)),
+      f"sig={None if _sig is None else (_sig.strategy_name, _sig.direction, _sig.underlying_stop)}")
+_sig_lo = VoltStrategy().generate_signal(
+    chain=_Chain(101.0), price_now=101.0,
+    df_1m=frame(bars(101.0, 1000.0 * (VOL_MULT - 0.15), session_open=100.0), 100.0),
+    now_et="10:00")
+check("V10b below the volume prior the STRATEGY returns None", _sig_lo is None, f"{_sig_lo}")
+# ── V11 — the priors live in config, once ─────────────────────────────────
+check("V11 every VOLT prior is declared in config (one source, not two)",
+      all(hasattr(config, k) for k in
+          ("VOLT_VOL_MULT", "VOLT_VOL_LOOKBACK_BARS",
+           "VOLT_TRAIL_ARM_R", "VOLT_TRAIL_LOCK_FRAC"))
+      and config.VOLT_VOL_MULT == VOL_MULT and config.VOLT_TRAIL_ARM_R == TRAIL_ARM_R,
+      "volt_plan and exit_engine must not carry separate defaults")
+
+# ── V12 — the r61 opt-out is LOAD-BEARING now, not incidental ──────────────
+# r61's entry-underwater guard is STRICT ("at or beyond the stop is through")
+# and VOLT's stop EQUALS its entry by ruling. Without this declaration the
+# guard would refuse EVERY VOLT trade and the control would never fire once.
+check("V12 VOLT declares underlying_stop_is_thesis — or r61's strict guard kills every trade",
+      _sig is not None and bool(getattr(_sig, "underlying_stop_is_thesis", False))
+      and abs(_sig.underlying_stop - _sig.underlying_entry) < 1e-9,
+      f"stop={None if _sig is None else _sig.underlying_stop} "
+      f"entry={None if _sig is None else _sig.underlying_entry}")
+
+# ── V13 — the trail MUST still arm now that stop == entry ─────────────────
+# 🔴 THE RULING BROKE THIS AND THE GATE IS HOW IT WAS CAUGHT. _evaluate_volt
+# scaled R on |entry - stop|, which r72 makes ZERO, so the trail would never
+# arm and no trade would ever lock a gain — silently, with no error anywhere.
+# R now comes from `underlying_target` (= entry + 1R). Driven, not read.
+_rec = {"trade_id": "VOLT0002", "strategy": "VOLT", "direction": "long",
+        "entry_premium": 1.00, "contracts": 1, "underlying_entry": 100.0,
+        "underlying_stop": 100.0, "underlying_target": 101.0, "stop_premium": 0.75}
+_df = pd.DataFrame(
+    [{"open": 100.0, "high": 100.0, "low": 100.0, "close": c, "volume": 1.0}
+     for c in (100.0, 100.9, 100.9)],
+    index=pd.DatetimeIndex([dt.datetime(2026, 9, 21, 10, m) for m in (0, 1, 2)]))
+# ⚠️ PIN THE CLOCK. `is_hard_close_time()` reads the real wall clock, so this
+# check passed or failed depending on the hour it was run — a test whose
+# verdict depends on when you run it is not a test (§21's cousin).
+_orig_hct = EE.is_hard_close_time
+EE.is_hard_close_time = lambda: False
+try:
+    _d = EE.ExitEngine().evaluate(dict(_rec), 1.20, df_1m=_df, df_5m=_df)
+finally:
+    EE.is_hard_close_time = _orig_hct
+check("V13 the trail ARMS even though the stop equals the entry (on the 5m frame)",
+      _d.new_trail_stop is not None and _d.new_trail_stop >= 100.0,
+      f"trail={_d.new_trail_stop} (None means it never armed — the r72 ruling's trap)")
+
+# ── V14 — the stop is read on the 5-MINUTE frame, the operator's ruling ───
+# Same record, same 1m data, but NO 5m frame: the structure stop must not be
+# evaluated off df_1m by accident. Measured: on 1m closes 93% of trades die on
+# the stop and the trail almost never arms (win 6.8% vs 18.8% on 5m).
+EE.is_hard_close_time = lambda: False
+try:
+    _d1 = EE.ExitEngine().evaluate(dict(_rec), 1.20, df_1m=_df, df_5m=None)
+finally:
+    EE.is_hard_close_time = _orig_hct
+check("V14 with no 5m frame VOLT does NOT fall back to 1m for the structure stop",
+      not _d1.should_exit and _d1.new_trail_stop is None,
+      f"exit={_d1.should_exit} reason={_d1.exit_reason!r} — a silent 1m fallback "
+      f"would triple the stop-out rate")
+
+# ── V15 — the budget is $1,050, the operator's ruling 2026-09-21 ──────────
+# 🔴 IT MUST TRACK RISK_PER_TRADE_USD, **NOT** ORB_BUDGET_USD. Live values
+# (configure.sh): OT_RISK_USD=1050, OT_ORB_BUDGET_USD=10000. VOLT uses ONLY the
+# budget rule — it does not import the ORB's min(geometry, budget/cost) clamp,
+# because that clamp is an ORB prior — so inheriting the $10,000 CEILING sized
+# it at ~73 contracts on a $1.36 premium against the handful the ORB takes.
+# A control that trades 10-50x the size of the arm it measures produces a P&L
+# comparison that means nothing.
+check("V15 VOLT's budget tracks RISK_PER_TRADE_USD, not the ORB's ceiling",
+      abs(config.VOLT_BUDGET_USD - config.RISK_PER_TRADE_USD) < 1e-9,
+      f"volt={config.VOLT_BUDGET_USD} risk_per_trade={config.RISK_PER_TRADE_USD} "
+      f"orb_ceiling={config.ORB_BUDGET_USD}")
+
+# ── V16 — the nearest OTM strike, the operator's ruling 2026-09-21 ────────
+# long -> strike strictly ABOVE spot; short -> strictly BELOW. Driven both ways
+# through the REAL plan, and the chain straddles spot so an ATM pick would be
+# available if the rule were wrong.
+_up  = prep(101.4, 5000.0, session_open=100.0, spot=101.4)
+_dn  = prep( 98.6, 5000.0, session_open=100.0, spot=98.6)
+check("V16 a LONG takes the nearest strike ABOVE spot",
+      _up.contract is not None and float(_up.contract.strike) > _up.price,
+      f"strike={None if _up.contract is None else _up.contract.strike} spot={_up.price}")
+check("V16b a SHORT takes the nearest strike BELOW spot",
+      _dn.contract is not None and float(_dn.contract.strike) < _dn.price,
+      f"strike={None if _dn.contract is None else _dn.contract.strike} spot={_dn.price}")
+# and it FAILS CLOSED rather than falling back to ATM
+class _OnlyITM:
+    def __init__(s, spot):
+        s.calls = [_C(float(int(spot) - i)) for i in (1, 2, 3)]   # all below spot
+        s.puts  = [_C(float(int(spot) + i)) for i in (1, 2, 3)]   # all above spot
+_df_ok = frame(bars(101.4, 1000.0 * (VOL_MULT + 0.50), session_open=100.0), 100.0)
+_p_itm = VoltPlan().prepare(chain=_OnlyITM(101.4), price_now=101.4,
+                            df_1m=_df_ok, now_hhmm="10:00")
+check("V16c with NO OTM strike quoted it refuses rather than falling back to ATM",
+      not _p_itm.ready and _p_itm.contract is None,
+      f"ready={_p_itm.ready} contract={_p_itm.contract}")
+
+print(f"\n{'PASS' if not FAIL else 'FAIL'}: {len(FAIL)} problem(s) {FAIL}")
+sys.exit(1 if FAIL else 0)

@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 """
-tests/check_admission.py  v1.2
+tests/check_admission.py  v1.3
 THE ADMISSION TABLE, DRIVEN EXHAUSTIVELY (OTV4TEST r35).
 
+v1.3  2026-09-21  OTV4TEST r72 — A's restated SPEC gains VOLT at 09:35-11:30,
+      from the operator's request rather than from `rules()`. 🔑 THIS CHECK
+      WENT RED ON r72 AND THAT IS IT WORKING: it restates the table INSIDE the
+      checker by design (r35, §0.4) so a fixture cannot agree with the belief
+      under test, which means a NEW STRATEGY MUST make it red. Re-pointed at
+      the new contract, never loosened (r33/r43/r64).
 v1.2  2026-09-20  OTV4TEST r71 — A's restated SPEC moves SWEEP and TCS to
       15:40, from the operator's 2026-09-20 ruling rather than from `rules()`.
       🔑 THIS CHECK WENT RED ON r71 AND THAT IS IT WORKING. It restates the
@@ -48,10 +54,10 @@ def check(name, ok, detail=""):
 
 def main():
     from execution.position_manager import decide, Facts, rules, gates, AdmissionRule
-    from execution.position_manager import ORB, RUNAWAY, HUNT, BREAKOUT, SWEEP, TCS, GEXFLY, ATPFLY
+    from execution.position_manager import ORB, RUNAWAY, HUNT, BREAKOUT, SWEEP, TCS, GEXFLY, ATPFLY, VOLT
 
     T = rules()
-    ALL = [ORB, RUNAWAY, HUNT, SWEEP, TCS, GEXFLY, ATPFLY]
+    ALL = [ORB, RUNAWAY, HUNT, SWEEP, TCS, GEXFLY, ATPFLY, VOLT]
 
     def ok(strategy, hhmm, **kw):
         return decide(Facts(strategy=strategy, now_et=hhmm, orb_established=True, **kw))
@@ -75,6 +81,13 @@ def main():
         # they are the only ones that move; the debit windows below still close
         # at 15:00 because a debit is flattened by the 15:40 ladder and an entry
         # inside its own flatten window is an entry with no hold time at all.
+        # r72 — VOLT, THE CONTROL ARM. Restated from the operator's request
+        # (2026-09-20: *"construct 1 more trade strategy & plan… as a control
+        # group… a window of 0935 to 1130"*), NOT read from rules().
+        # ⚠️ ITS WINDOW MUST EQUAL THE ORB'S — a control measured over a
+        # different period measures the period. check_volt_plan V1b pins that
+        # equality from the other side.
+        VOLT:    (((9, 35), (11, 30)), 1, None),
         SWEEP:   (((9, 35), (15, 40)), 2, None),
         TCS:     (((11, 30), (15, 40)), 1, None),
         GEXFLY:  (((12, 0), (15, 0)), 1, 1),

@@ -1,5 +1,10 @@
 """
-execution/position_manager.py  v5.3
+execution/position_manager.py  v5.4
+v5.4  2026-09-21  OTV4TEST r72 (CTRL.1) — VOLT joins the table: 09:35-11:30,
+      cap 1, blocking NOTHING and blocked by NOTHING. ⚠️ ITS WINDOW MUST EQUAL
+      THE ORB'S OR IT IS NOT A CONTROL — a yardstick measured over a different
+      period measures the period. Pinned from both sides by check_admission and
+      check_volt_plan V1b.
 v5.3  2026-09-20  OTV4TEST r71 (LATE.1) — THE TWO CREDIT WINDOWS CLOSE AT
       15:40, NOT 15:00. The operator's ruling: the late institutional moves he
       has watched repeatedly were unreachable BY CONSTRUCTION — admission shut
@@ -241,6 +246,11 @@ SWEEP = "SweepCreditSpread"
 TCS = "TrendCreditSpread"
 GEXFLY = "GEXPinButterfly"
 ATPFLY = "ATPButterfly"
+# r72 — VOLT (VOLume Trade), THE CONTROL ARM. Two gates and nothing else, in
+# the same window as the morning four, blocking nothing and blocked by nothing.
+# Its purpose is to make the OTHER strategies' gates measurable: if VOLT keeps
+# pace, the gates are decoration; if it does not, they are earning their keep.
+VOLT = "VOLT"
 
 
 @dataclass(frozen=True)
@@ -299,6 +309,12 @@ _DEFAULT_RULES = {
     # hold nothing. The operator's own reasoning arrived here first: *"in order
     # to properly harvest a late move like that we would have to use Credit
     # spreads."*
+    # r72 — VOLT sits in the MORNING slot with the ORB, runaway, hunt and
+    # breakout. ⚠️ THE WINDOW MUST MATCH THEIRS OR IT IS NOT A CONTROL — a
+    # yardstick measured over a different period measures the period.
+    # blocks/blocked_by are EMPTY by construction (r51's ruling: under a
+    # cascade the losing arm's outcome is unobservable).
+    VOLT:    AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
     SWEEP:   AdmissionRule(((9, 35), (15, 40)), max_open_of_type=2),  # 2: it forms a condor
     TCS:     AdmissionRule(((11, 30), (15, 40)), max_open_of_type=1), # 1: TCS+TCS is in conflict
     # the GEX fly's cutoff was raised from 14:00 to 15:00 by the operator

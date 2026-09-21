@@ -1,5 +1,17 @@
 """
-execution/exit_engine.py  v4.19
+execution/exit_engine.py  v4.20
+v4.20  2026-09-21  OTV4TEST r72 (CTRL.1) — `_evaluate_volt`, the control arm's
+      OWN exit path: hard close, the universal catastrophic floor, a STRUCTURE
+      stop and an R-trail. Four rules, deliberately not `_evaluate_orb` — that
+      path carries theta bleed, the FVG trail and the 100%-TP ladder, and
+      routing VOLT through it would make the yardstick a variant of the thing
+      it measures.
+      🔑 TWO OPERATOR RULINGS LIVE HERE. The stop is read on the **5-MINUTE**
+      frame (15s/1m/5m give win 3.7/6.8/18.8% — at 1m, 93% of trades die on the
+      stop and the trail never arms), and R comes from `underlying_target`, NOT
+      from |entry-stop|, because the stop EQUALS the entry and a trail scaled on
+      zero would never arm. The hard-close label is DERIVED from HARD_CLOSE_ET
+      so it does not become a sixth stale literal (r71's W7 caught exactly that).
 v4.19  2026-09-20  OTV4TEST r71 (LATE.1) — THE VERTICAL'S CLOSE LABEL IS
       DERIVED FROM `VERTICAL_HOLD_TO_ET` INSTEAD OF SPELLED. The operator moved
       the credit hold to 15:50; the branch still wrote `hard_close_15:45_ET`,
@@ -663,6 +675,7 @@ from config import (
     BUTTERFLY_MAX_HOLD_MIN, TRAIL_LOCK_PCT, TRAIL_ACTIVATION_PCT, FVG_MIN_SIZE_PCT,
     THETA_LOOKAHEAD_MIN, RTH_MINUTES, FVG_TRAIL_ARM_PCT, FVG_TRAIL_LOCK_PCT,
     THESIS_BAND_WICKS, THESIS_BAND_LOOKBACK, TRAIL_GAIN_LOCK,
+    VOLT_TRAIL_ARM_R, VOLT_TRAIL_LOCK_FRAC, HARD_CLOSE_ET,
     CONT_INSURANCE_STOP,
     MAX_LOSS_PCT, POST_TARGET_TRAIL_LOCK_PCT, FVG_FLOOR_MAX_LOCK_PCT,
     USE_5M_FVG_TRAIL, SWEEP_POST_TARGET_TRAIL,
@@ -1047,6 +1060,14 @@ class ExitEngine:
             return self._evaluate_orb(record, current_premium, df_1m, df_5m)
         elif strategy == "LiquidityHunt":                       # r12: the runaway's family
             return self._evaluate_orb(record, current_premium, df_1m, df_5m)
+        elif strategy == "VOLT":
+            # r72 — THE CONTROL ARM GETS ITS OWN EVALUATOR, AND THAT IS THE
+            # POINT. Routing it to `_evaluate_orb` would hand it theta bleed,
+            # the FVG trail and the 100%-TP ladder — ORB-specific machinery
+            # that would make VOLT a variant of the ORB instead of a yardstick
+            # for it. Four rules, matching the operator's spec verbatim:
+            # a STRUCTURE stop and a trail that arms on STOP DISTANCE.
+            return self._evaluate_volt(record, current_premium, df_1m, df_5m)
         else:
             # Unknown directional strategies take the sweep rules (25% stop,
             # hard close — survivable defaults), but NEVER silently: an
@@ -1060,6 +1081,134 @@ class ExitEngine:
             return self._evaluate_sweep(record, current_premium, df_1m, df_5m)
 
     # \u2500\u2500\u2500 ORB Exit \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+    def _evaluate_volt(self, record: TradeRecord,
+                       current_premium: float,
+                       df_1m: Optional[pd.DataFrame],
+                       df_5m: Optional[pd.DataFrame] = None) -> ExitDecision:
+        """VOLT exits. FIRST MATCH WINS, and there are only four:
+          1. HARD CLOSE     — the universal 15:45 flatten.
+          2. CATASTROPHIC FLOOR — premium <= entry*(1-MAX_LOSS_PCT). §36 calls
+                              the catastrophic cap UNIVERSAL and FOUNDATIONAL,
+                              so it is not a VOLT gate and is not up for
+                              simplification.
+          3. STRUCTURE STOP — last CLOSED 5m candle closes through
+                              `underlying_stop` (the 3x5m structural extreme
+                              the plan fixed). Close-based on iloc[-2] so an
+                              intrabar wick survives — the same rule and the
+                              same idiom as the ORB's structure stop.
+          4. R-TRAIL        — arms when the UNDERLYING has travelled
+                              VOLT_TRAIL_ARM_R x R in favour, R = |entry-stop|.
+                              Once armed the floor is
+                              `entry + L x (peak - entry)` on the UNDERLYING.
+
+        🔑 WHY THE TRAIL IS ON DISTANCE AND NOT PREMIUM — the operator's spec
+        ("arms at 50% based on stop distance") and r44's scar. The old trail
+        floor was a fraction of PREMIUM and could sit BELOW ENTRY: at a +20%
+        arm an 80% lock floors at 0.96 of entry, so ARMING THE TRAIL COULD
+        GUARANTEE A LOSS. `entry + L x (peak - entry)` is >= entry by
+        construction, and measuring it on the underlying means option decay
+        cannot arm or disarm it.
+        """
+        decision = ExitDecision()
+        trade_id = str(record.get("trade_id", ""))
+        entry_prem = float(record.get("entry_premium", 0.0) or 0.0)
+        direction = record.get("direction", "long")
+        if entry_prem > 0:
+            decision.current_pnl_pct = (current_premium - entry_prem) / entry_prem
+            decision.current_pnl_usd = ((current_premium - entry_prem)
+                                        * float(record.get("contracts", 0) or 0)
+                                        * CONTRACT_MULTIPLIER)
+
+        # 1 ── HARD CLOSE
+        # ⚠️ DERIVED from HARD_CLOSE_ET, not spelled. r71 established the rule:
+        # a label reading 15:45 on a trade that closed at another minute is a
+        # FALSE RECORD of what happened. The five pre-existing literals are the
+        # older sites check_late_credit_window W7 pins; a NEW one would make
+        # six and would go stale the day that constant moves.
+        if is_hard_close_time():
+            decision.should_exit = True
+            decision.exit_reason = "hard_close_%02d:%02d_ET" % tuple(HARD_CLOSE_ET)
+            return decision
+
+        # 2 ── CATASTROPHIC FLOOR (universal, never a VOLT decision)
+        stop_prem = float(record.get("stop_premium", 0.0) or 0.0) or (
+            entry_prem * (1 - MAX_LOSS_PCT))
+        if stop_prem > 0 and current_premium <= stop_prem:
+            decision.should_exit = True
+            decision.exit_reason = (f"volt_premium_floor: {current_premium:.2f} "
+                                    f"<= {stop_prem:.2f}")
+            logger.info("VOLT FLOOR: %s %s", trade_id[:8], decision.exit_reason)
+            return decision
+
+        # 🔑 THE FRAME IS THE OPERATOR'S RULING, 2026-09-21, AND IT IS NOT A
+        # DETAIL. VOLT enters off a 5-MINUTE volume bar, so its invalidation is
+        # read on the frame it fires on. MEASURED over 19 sessions x 4 symbols
+        # with the real plan, the SAME rule on three frames:
+        #     15s closes   134 trades  win  3.7%  meanR -0.055  trail exits  4
+        #     1m closes    117 trades  win  6.8%  meanR -0.030  trail exits  5
+        #     5m closes     96 trades  win 18.8%  meanR +0.067  trail exits 13
+        # At 1m, 93% of trades die on the stop and almost none live long enough
+        # to arm the trail — the thesis never gets to express itself.
+        # ⚠️ FAILS CLOSED-ISH: without the 5m frame the structure stop cannot be
+        # read at all, so the trade is held on the catastrophic premium floor
+        # alone. Said once per trade rather than silently.
+        frame = df_5m
+        if frame is None or len(frame) < 2:
+            if not record.get("_volt_no5m"):
+                record["_volt_no5m"] = 1
+                logger.warning("[exit] VOLT %s has no 5m frame — structure stop "
+                               "cannot be evaluated; premium floor is the only "
+                               "stop this tick.", trade_id[:8])
+            return decision
+        last_close = float(frame.iloc[-2]["close"])
+        entry_px = float(record.get("underlying_entry", 0.0) or 0.0)
+        stop_px = float(record.get("underlying_stop", 0.0) or 0.0)
+
+        # 3 ── STRUCTURE STOP — a close THROUGH the structural extreme
+        if stop_px > 0:
+            through = (last_close < stop_px) if direction == "long" else (last_close > stop_px)
+            if through:
+                decision.should_exit = True
+                decision.exit_reason = (
+                    f"volt_structure_stop: 1m close {last_close:.2f} "
+                    f"{'below' if direction == 'long' else 'above'} "
+                    f"structure {stop_px:.2f}")
+                logger.info("VOLT STOP: %s %s", trade_id[:8], decision.exit_reason)
+                return decision
+
+        # 4 ── THE R-TRAIL, on the UNDERLYING
+        # 🔴 R DOES NOT COME FROM THE STOP. Under r72's ruling the stop IS the
+        # entry, so `abs(entry - stop)` is ZERO and a trail scaled on it would
+        # NEVER ARM — the trade would hold to the structure stop or the hard
+        # close with no lock, every time. R is the signal bar's range, carried
+        # on the record as `underlying_target` (the plan sets target = entry +
+        # 1R), so this reads it back out of a persisted column rather than
+        # recomputing anything.
+        target_px = float(record.get("underlying_target", 0.0) or 0.0)
+        if entry_px <= 0 or target_px <= 0:
+            return decision                      # inert without both ends
+        risk = abs(target_px - entry_px)
+        if risk <= 0:
+            return decision
+        gain = (last_close - entry_px) if direction == "long" else (entry_px - last_close)
+        peak = float(record.get("_volt_peak", entry_px) or entry_px)
+        peak = max(peak, last_close) if direction == "long" else min(peak, last_close)
+        record["_volt_peak"] = peak
+        if gain < VOLT_TRAIL_ARM_R * risk:
+            return decision                      # not armed yet
+        floor = (entry_px + VOLT_TRAIL_LOCK_FRAC * (peak - entry_px) if direction == "long"
+                 else entry_px - VOLT_TRAIL_LOCK_FRAC * (entry_px - peak))
+        decision.new_trail_stop = floor
+        breached = (last_close < floor) if direction == "long" else (last_close > floor)
+        if breached:
+            decision.should_exit = True
+            decision.exit_reason = (
+                f"volt_trail_stop: 1m close {last_close:.2f} through the "
+                f"{VOLT_TRAIL_LOCK_FRAC:.0%} lock {floor:.2f} "
+                f"(armed at {VOLT_TRAIL_ARM_R:g}R, peak {peak:.2f})")
+            logger.info("VOLT TRAIL: %s %s", trade_id[:8], decision.exit_reason)
+        return decision
 
     def _evaluate_orb(self, record: TradeRecord,
                        current_premium: float,
