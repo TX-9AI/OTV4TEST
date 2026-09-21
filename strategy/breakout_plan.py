@@ -1,7 +1,12 @@
 """
-strategy/breakout_plan.py  v1.2
+strategy/breakout_plan.py  v1.3
 THE SEARCH. Every tick, for the setup that satisfies `strategy/breakout.py`.
 
+v1.3  2026-09-21  OTV4TEST r77 — emit() imported OptionsSignal from
+      `strategy.structure`, which does not export it. ImportError on EVERY tick
+      from 09:37:04; 127 crashes in one session and NOT ONE Breakout trade,
+      ever. Lazy import, so check_imports passed; _safe_strategy caught the
+      raise, so the board showed a stale skip label instead of a crash.
 v1.2  2026-09-19  OTV4TEST r59 — the FADE route read `prep.unmet`, which is
       EMPTY while acceptance is "any", so DEFER->HUNT / DEFER->SWEEP could not
       fire for the whole research window. Reads the FITTED dials, like `pooled`.
@@ -152,7 +157,18 @@ class BreakoutPreparation:
 
     def emit(self, strategy_name: str):
         """Build the signal from what the PLAN selected. The strategy picks nothing."""
-        from strategy.structure import OptionsSignal as Signal
+        # 🔴 r77 — `OptionsSignal` LIVES IN base_strategy, NOT structure.
+        # This raised ImportError on EVERY tick from the moment Breakout first
+        # had a signal to build: 127 crashes on 2026-09-21, first at 09:37:04,
+        # and the strategy has NEVER ONCE produced a trade.
+        # ⚠️ WHY NOTHING CAUGHT IT. The import is LAZY — inside emit() — so the
+        # module imports cleanly and `check_imports` passes; the path only runs
+        # when a breakout actually forms. And `_safe_strategy` CATCHES the
+        # raise, logs it and continues, so the board showed a stale skip label
+        # ("position open — managing") instead of a crash. A gate that reads
+        # source text, a checker that imports the module, and a dashboard that
+        # reads plan rows were ALL blind to it simultaneously.
+        from strategy.base_strategy import OptionsSignal as Signal
         c = self.contract
         sig = Signal(
             strategy_name=strategy_name,

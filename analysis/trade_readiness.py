@@ -1,5 +1,9 @@
 """
-analysis/trade_readiness.py  v4.3
+analysis/trade_readiness.py  v4.4
+v4.4  2026-09-21  OTV4TEST r77 — the dead `sweep_reversal_strategy` import
+      is gone. That module was deleted at r33; the import has raised ever since,
+      been swallowed, and `target = 0.20` has been the real behaviour. NO
+      behaviour change — the constant is what already ran.
 v4.3  2026-09-09  OTV4TEST r12 (HYG.1) — `_combine` and `momentum_val` dedented out of
       ramp(): they were nested and unreachable; every readiness path raised NameError
       behind the import guard. Predecessor defect #8; ports as a fix.
@@ -1129,11 +1133,14 @@ class TradeReadinessEngine:
                 direction = "short" if kind == "high_sweep" else ("long" if kind == "low_sweep" else "")
                 if not direction:
                     return
-                try:
-                    from strategy.sweep_reversal_strategy import _sweep_target_delta
-                    target = _sweep_target_delta(tr.conv_ema)
-                except Exception:
-                    target = 0.20
+                # 🔴 r77 — `strategy.sweep_reversal_strategy` WAS DELETED AT r33.
+                # This import has raised ModuleNotFoundError on every pass since,
+                # been swallowed by the `except`, and `target = 0.20` has been the
+                # REAL behaviour for the whole of that time. The code claimed a
+                # computed delta and delivered a constant. Made honest rather
+                # than left as a lie the reader has to run to discover.
+                # ⚠️ NO BEHAVIOUR CHANGE — 0.20 is exactly what ran before.
+                target = 0.20
             else:  # continuation: with the trend
                 # PHASE B (r58): the writer emits "dir" directly (measured
                 # vote); rows before r58 computed the same field from the

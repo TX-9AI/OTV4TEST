@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.81
+# BACKLOG.md — OTV4TEST — v0.82
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -226,6 +226,30 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.82 — 2026-09-21 — OTV4TEST r77 — BREAKOUT WAS NEVER GATED. IT WAS
+CRASHING, 127 TIMES IN ONE SESSION, AND THREE SAFETY NETS WERE BLIND AT
+ONCE.** The operator, watching the board: *"Surely we've gotten a breakout
+trade by now?"* 🔴 `breakout_plan.emit()` did `from strategy.structure import
+OptionsSignal` — a module that has **never** exported it. ImportError on every
+tick from **09:37:04**, the moment Breakout first had a signal to build, and
+**not one Breakout trade, ever.** 🔑 **WHY NOTHING CAUGHT IT, and this is the
+finding:** (1) the import is LAZY, inside a function, so the module imports
+cleanly and `check_imports` passes; (2) `_safe_strategy` CATCHES the raise by
+design — *"other strategies unaffected"* — so nothing failed loudly; (3) the
+plan therefore never wrote a row, so the board fell through to a STALE skip
+label, *"position open — managing"*, and the dashboard reported a MARKET
+CONDITION where there was a CRASH. Invisible to the import checker, swallowed
+by the dispatch guard, mislabelled on the board. ⚠️ **AND THE GATE FOUND A
+SECOND ONE**: `trade_readiness` lazily imported `sweep_reversal_strategy`,
+**deleted at r33** — guarded, so `target = 0.20` has been the real behaviour
+ever since while the code claimed a computed delta. No behaviour change;
+the constant is what already ran. GATE: `check_lazy_imports.py` L0–L3, born
+RED 3 of 4, resolving **181 deferred imports** tree-wide — it checks the CLASS
+(§20), so the next one cannot be reintroduced elsewhere. ⚠️ Its first cut
+flagged three CORRECT lines (`from derived import anchors` — a submodule is
+not an attribute until imported); the PATTERN was tightened rather than the
+lines exempted.
 
 **v0.81 — 2026-09-21 — OTV4TEST r76 — SIX STRATEGIES CARRIED A POSITION CAP
 NO RULING EVER AUTHORISED, AND IT WAS REFUSING TRADES LIVE.** The operator:
