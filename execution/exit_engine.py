@@ -1,5 +1,17 @@
 """
-execution/exit_engine.py  v4.21
+execution/exit_engine.py  v4.22
+v4.22  2026-09-21  OTV4TEST r79 (EXT.1) — PAR DELTA IS AN EXIT. Operator,
+      live on a VOLT call at +468% with FOUR CENTS of extrinsic left: *"We
+      need an extrinsic/intrinsic metered exit"*, then *"When Delta reaches
+      PAR, we need to get the fuck out."* At par delta the position is stock
+      carrying an expiry — no convexity left to absorb a pullback — so a
+      run-fraction trail costs full dollars exactly when the trade has already
+      won: 81b1afae held $4,630 with a leash worth $2,880 and $45 of theta
+      risk. `_evaluate_volt` gains rung 2b, above the structure stop and the
+      trail. Reads `current_delta`; falls back to extrinsic/mark off the same
+      frames when the feed hands us none, because delta->1 and extrinsic->0
+      are ONE condition in two instruments and a missing field must not
+      silently disable a ruling.
 v4.21  2026-09-21  OTV4TEST r75 — THE STRUCTURE STOP MUST READ A BAR THAT
       POSTDATES THE ENTRY. Found live: VOLT took 7 trades in 90 seconds, each
       stopped in ~14s against the 09:45 close while entering at 09:52. The
@@ -681,6 +693,7 @@ from config import (
     THETA_LOOKAHEAD_MIN, RTH_MINUTES, FVG_TRAIL_ARM_PCT, FVG_TRAIL_LOCK_PCT,
     THESIS_BAND_WICKS, THESIS_BAND_LOOKBACK, TRAIL_GAIN_LOCK,
     VOLT_TRAIL_ARM_R, VOLT_TRAIL_LOCK_FRAC, HARD_CLOSE_ET,
+    VOLT_DELTA_PAR, VOLT_EXT_STOCKLIKE,                      # r79 EXT.1
     CONT_INSURANCE_STOP,
     MAX_LOSS_PCT, POST_TARGET_TRAIL_LOCK_PCT, FVG_FLOOR_MAX_LOCK_PCT,
     USE_5M_FVG_TRAIL, SWEEP_POST_TARGET_TRAIL,
@@ -1144,6 +1157,44 @@ class ExitEngine:
             decision.exit_reason = (f"volt_premium_floor: {current_premium:.2f} "
                                     f"<= {stop_prem:.2f}")
             logger.info("VOLT FLOOR: %s %s", trade_id[:8], decision.exit_reason)
+            return decision
+
+        # 2b ── PAR DELTA (r79, EXT.1) — THE OPERATOR'S RULING, 2026-09-21:
+        #    *"When Delta reaches PAR, we need to get the fuck out."*
+        # 🔑 AT PAR DELTA THIS IS NO LONGER AN OPTION. It is stock carrying an
+        # expiry: every reason to have BOUGHT an option — convexity, the cheap
+        # tail, defined risk — has already been spent, and what remains is a
+        # 1.0-delta directional bet whose give-back is dollar-for-dollar with
+        # the underlying. MEASURED LIVE on 81b1afae: mark 5.63 against 5.59
+        # intrinsic, delta 0.983, $45 of theta risk left against $2,880 of
+        # leash. The trail cannot fix this because a run-fraction leash costs
+        # FULL DOLLARS precisely when convexity has stopped paying for it.
+        # ⚠️ THE FALLBACK IS THE SAME FACT READ OFF PRICE, NOT A SECOND RULE.
+        # delta -> 1 and extrinsic -> 0 are one condition in two instruments,
+        # so a feed that hands us no delta must NOT silently disable the exit
+        # (§0.5: absent is not false). `current_delta` is stashed by
+        # position_manager only for single-leg longs; VOLT is always one.
+        _delta = abs(float(record.get("current_delta", 0.0) or 0.0))
+        _par_why = None
+        if _delta >= VOLT_DELTA_PAR:
+            _par_why = f"delta {_delta:.3f} >= par {VOLT_DELTA_PAR:.2f}"
+        elif _delta <= 1e-6 and current_premium > 0:
+            _k = float(record.get("strike", 0.0) or 0.0)
+            _spot = None
+            for _fr in (df_1m, df_5m):
+                if _fr is not None and len(_fr) > 0:
+                    _spot = float(_fr["close"].iloc[-1]); break
+            if _k > 0 and _spot is not None:
+                _intr = max(0.0, _spot - _k) if direction == "long" else max(0.0, _k - _spot)
+                _ext_frac = max(0.0, current_premium - _intr) / current_premium
+                if _ext_frac <= VOLT_EXT_STOCKLIKE:
+                    _par_why = (f"no delta from the feed; extrinsic "
+                                f"{_ext_frac:.1%} <= {VOLT_EXT_STOCKLIKE:.0%} "
+                                f"(mark {current_premium:.2f} vs intrinsic {_intr:.2f})")
+        if _par_why:
+            decision.should_exit = True
+            decision.exit_reason = f"volt_delta_par: {_par_why}"
+            logger.info("VOLT PAR DELTA: %s %s", trade_id[:8], decision.exit_reason)
             return decision
 
         # 🔑 THE FRAME IS THE OPERATOR'S RULING, 2026-09-21, AND IT IS NOT A

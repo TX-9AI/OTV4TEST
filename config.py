@@ -1,5 +1,10 @@
 """
-config.py  v4.27
+config.py  v4.28
+v4.28  2026-09-21  OTV4TEST r79 (EXT.1) — VOLT_DELTA_PAR, VOLT_EXT_STOCKLIKE
+      and VOLT_STOCKLIKE_ATR_MULT. Operator, live on a call at +468% holding
+      four cents of extrinsic: *"When Delta reaches PAR, we need to get the
+      fuck out."* At par delta the position is stock with an expiry and the
+      trail's give-back is dollar-for-dollar with the underlying.
 v4.27  2026-09-21  OTV4TEST r74 — VOLT's entry frame drops to ONE MINUTE and
       its warm-up to THREE bars, so it fires from 09:37 instead of 10:15. The
       operator's spec: *"It should be able to fire immediately… move on the
@@ -1609,6 +1614,35 @@ VOLT_MIN_BARS           = int(os.environ.get("OT_VOLT_MIN_BARS", "3"))
 # a premium-fraction floor could sit BELOW entry, so arming could guarantee a loss.
 VOLT_TRAIL_ARM_R        = float(os.environ.get("OT_VOLT_TRAIL_ARM_R", "0.50"))
 VOLT_TRAIL_LOCK_FRAC    = float(os.environ.get("OT_VOLT_TRAIL_LOCK_FRAC", "0.50"))
+# ══ r79 (EXT.1) — THE EXTRINSIC METER ══════════════════════════════════════
+# Operator, 2026-09-21, on a VOLT call at +468% with FOUR CENTS of extrinsic
+# left: *"We need an extrinsic/intrinsic metered exit."*
+# 🔑 INTRINSIC IS EARNED; EXTRINSIC IS WHAT YOU ARE STILL PAYING FOR. When the
+# extrinsic has decayed away the position is NOT AN OPTION any more — it is
+# stock with an expiry: delta ~1.0 and NO CONVEXITY LEFT TO ABSORB A PULLBACK.
+# A give-back expressed as a FRACTION OF THE RUN therefore costs full dollars
+# exactly when the trade has already won. MEASURED LIVE on 81b1afae: mark 5.63
+# against 5.59 intrinsic — 0.8% extrinsic, $45 of total remaining theta risk —
+# while the 50%-of-run trail sat 2.88 points away, which at delta 0.983 is
+# $2,880 of the $4,630 held. The same leash on a delta-0.30 position costs
+# about $860, because the curvature eats the move. THE SAME RULE IS THREE
+# TIMES MORE EXPENSIVE ON THE POSITION THAT HAS ALREADY WON.
+# 🔴 THE RULING IS AN EXIT, NOT A LEASH. Operator, same session, after seeing
+# the meter: *"When Delta reaches PAR, we need to get the fuck out."* A
+# position at par delta is no longer a trade thesis expressed as an option —
+# it is stock carrying an expiry, and every argument for holding an option
+# (convexity, defined risk, the cheap tail) has already been spent.
+VOLT_DELTA_PAR          = float(os.environ.get("OT_VOLT_DELTA_PAR", "0.98"))
+# The FALLBACK when the feed hands us no delta — the SAME fact read off price
+# instead of off the greeks, so the rule cannot be silently disabled by a
+# missing field (§0.5: absent is not the same as false).
+VOLT_EXT_STOCKLIKE      = float(os.environ.get("OT_VOLT_EXT_STOCKLIKE", "0.02"))
+# The leash once stock-like, in ATR(5m) units. NOT a fitted number: today's
+# worst 5m close-pullback was 0.295 pts against an ATR of 0.571, so 1.0x ATR
+# is ~2x the deepest retrace the move actually made. ⚠️ AN UNFITTED PRIOR
+# (§31) — arm E of PREREG_TRAIL.md measures it; until then it is a PRIOR and
+# the header says so rather than letting it read as evidence.
+VOLT_STOCKLIKE_ATR_MULT = float(os.environ.get("OT_VOLT_STOCKLIKE_ATR_MULT", "1.0"))
 VOLT_WINDOW_OPEN_ET     = (9, 35)
 VOLT_WINDOW_CLOSE_ET    = (11, 30)
 # 🔴 VOLT SIZES OFF RISK_PER_TRADE_USD, **NOT** ORB_BUDGET_USD, AND THE

@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_volt_plan.py  v1.2
+tests/check_volt_plan.py  v1.3
 
+v1.3  2026-09-21  OTV4TEST r79 — V19/V19b/V19c/V19d: PAR DELTA IS AN EXIT.
+      Born red 2 of 31 at cd8d775 on V19 and V19c. V19b and V19d are the
+      CONTROLS and are green on BOTH sides by design — a rung that exited
+      everything would pass V19 alone and silently delete the strategy.
 v1.2  2026-09-21  OTV4TEST r75 — V18/V18b: the exit bar must POSTDATE the
       entry. Found LIVE, not in review.
 v1.1  2026-09-21  OTV4TEST r74 — V17/V17b/V17c: it must be able to fire from
@@ -380,6 +384,63 @@ finally:
 check("V18b CONTROL: a bar AFTER the entry still stops it — the fix is not a mute",
       _fs.should_exit and "structure_stop" in _fs.exit_reason,
       f"exit={_fs.should_exit} reason={_fs.exit_reason!r}")
+
+# ── V19 — PAR DELTA IS AN EXIT (r79, EXT.1) ───────────────────────────────
+# 🔴 THE OPERATOR'S RULING, LIVE, 2026-09-21: *"When Delta reaches PAR, we
+# need to get the fuck out."* At par delta the position is stock carrying an
+# expiry — no convexity left — so a run-fraction trail costs FULL DOLLARS
+# exactly when the trade has already won. Measured on 81b1afae: $4,630 held,
+# $2,880 of leash, $45 of theta risk.
+# ⚠️ EVERY CASE DRIVES THE REAL `evaluate()`, never the source text (§21), and
+# every fixture is deliberately HEALTHY on every other rung — the structure
+# stop is far below, the premium floor far under, the trail un-breached — so a
+# PASS can only come from rung 2b and not from something else firing.
+_par_rec = {"trade_id": "VOLT0079", "strategy": "VOLT", "direction": "long",
+            "entry_premium": 1.00, "contracts": 10, "underlying_entry": 733.67,
+            "underlying_stop": 733.67, "underlying_target": 733.86,
+            "stop_premium": 0.75, "strike": 734.0, "option_side": "call",
+            "entry_time": "2026-09-21T14:19:35+00:00"}
+_par_df = pd.DataFrame(
+    [{"open": 738.9, "high": 739.8, "low": 738.8, "close": 739.60, "volume": 1.0},
+     {"open": 739.6, "high": 739.9, "low": 739.4, "close": 739.70, "volume": 1.0},
+     {"open": 739.7, "high": 739.8, "low": 739.5, "close": 739.59, "volume": 1.0}],
+    index=pd.DatetimeIndex([dt.datetime(2026, 9, 21, 17, 40),
+                            dt.datetime(2026, 9, 21, 17, 45),
+                            dt.datetime(2026, 9, 21, 17, 50)]))
+def _drive(rec, prem):
+    EE.is_hard_close_time = lambda: False
+    try:
+        return EE.ExitEngine().evaluate(dict(rec), prem, df_1m=_par_df, df_5m=_par_df)
+    finally:
+        EE.is_hard_close_time = _orig_hct
+
+_d1 = _drive({**_par_rec, "current_delta": 0.983}, 5.63)
+check("V19 delta AT PAR exits — the operator's ruling, driven through evaluate()",
+      _d1.should_exit and "volt_delta_par" in (_d1.exit_reason or ""),
+      f"exit={_d1.should_exit} reason={_d1.exit_reason!r}")
+
+# 🔑 THE CONTROL, AND IT IS THE HALF THAT KEEPS THE RULE HONEST: a healthy
+# position BELOW par must be UNTOUCHED. A rung that exited everything would
+# look identical on V19 alone and would silently delete the strategy.
+_d2 = _drive({**_par_rec, "current_delta": 0.55}, 2.10)
+check("V19b CONTROL: below par the trade is HELD — the rung is not a guillotine",
+      not _d2.should_exit,
+      f"exit={_d2.should_exit} reason={_d2.exit_reason!r}")
+
+# 🔑 AND A MISSING FIELD MUST NOT SILENTLY DISABLE A RULING (§0.5: absent is
+# not false). delta->1 and extrinsic->0 are ONE condition in two instruments;
+# with no delta from the feed the SAME fact is read off price. mark 5.63 vs
+# intrinsic 5.59 = 0.7% extrinsic, under the 2% bar.
+_d3 = _drive(_par_rec, 5.63)                     # no current_delta at all
+check("V19c no delta from the feed -> the extrinsic fallback still exits",
+      _d3.should_exit and "volt_delta_par" in (_d3.exit_reason or ""),
+      f"exit={_d3.should_exit} reason={_d3.exit_reason!r}")
+
+# and the fallback must not fire on a position with real optionality left
+_d4 = _drive(_par_rec, 7.00)                     # 5.59 intrinsic -> 20% extrinsic
+check("V19d CONTROL: fat extrinsic and no delta -> HELD, not exited",
+      not _d4.should_exit,
+      f"exit={_d4.should_exit} reason={_d4.exit_reason!r}")
 
 print(f"\n{'PASS' if not FAIL else 'FAIL'}: {len(FAIL)} problem(s) {FAIL}")
 sys.exit(1 if FAIL else 0)
