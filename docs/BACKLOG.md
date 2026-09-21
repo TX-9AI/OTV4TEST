@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.77
+# BACKLOG.md — OTV4TEST — v0.78
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -220,11 +220,41 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 | id | item | closed |
 |---|---|---|
 | **ORB.3** | The runaway carried velocity stall through the shared evaluator. Closed OTV4TEST r3: the runaway's exit list is its own (§30.4) and the stall is off it. | r3 |
+| **LOG.1** | r41 made the INACTIVE plan row edge-triggered — the operator's ruling, *"I don't need 10k rows explaining why. I just need 1"* — and the rule NEVER FAILED; it was DEFEATED. `risk/session_guard.py` stamped `fmt_et_short()` into two refusal reasons, so every tick was a DIFFERENT reason and the latch re-announced on every pass. Measured: 327 distinct INACTIVE reasons all-time, **306 of them (94%) clock-variants of ONE message**; strip the clock and 327 collapse to 22. Closed OTV4TEST r73 by removing the clock — the row already carries `ts_epoch`. | r73 |
 | **LATE.1** | The credit entry windows closed at 15:00 and every trade flattened at 15:45, so the late-session institutional moves the operator has watched repeatedly were unreachable by construction — not declined, never even asked for. Closed OTV4TEST r71 by his ruling: credit entries to 15:40, credit flatten to 15:50. Debit windows and the 15:45 hard close are UNCHANGED. | r71 |
 
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.78 — 2026-09-21 — OTV4TEST r73 — THE RULE NEVER FAILED; IT WAS DEFEATED
+BY A CLOCK.** LOG.1 ✅ — the operator, this morning: *"I don't need 20,000 rows
+of inactive… is there any way we can have them not start logging until RTH?"*
+🔑 **THE ANSWER WAS THAT HIS OWN r41 RULING ALREADY SAID SO AND WAS BEING
+SILENTLY OVERRIDDEN.** r41 latches the INACTIVE row on
+(trading-day, verdict, reason, gate); `session_guard` ended two refusal reasons
+with `fmt_et_short()`, so every tick produced a new reason and the latch fired
+every pass without ever erroring. MEASURED before the fix: **327 distinct
+INACTIVE reasons all-time, 306 of them (94%) clock-variants of a single
+message** — strip the clock and 327 become 22. On 2026-09-21 that was 65 rows
+per strategy before 09:35, times nine strategies, every session; ~194/day
+outside RTH, which over the 90-day retention is the ~17,500 rows he remembered
+as 20,000. ⚠️ **THE CLOCK WAS NEVER INFORMATION** — the row already carries
+`ts_epoch`, so it duplicated the column the reader sorts by and cost the rule
+it broke. 🔑 **AND THE RTH GATE HE ASKED FOR WAS NOT BUILT, DELIBERATELY**: it
+would also delete the ONE pre-market row r41 exists to preserve (*"so I'm aware
+it at least KNOWS"*), and fixing the latch gets the row count without losing
+the aliveness signal. GATE: `check_inactive_once.py` I0-I6, born RED 2 of 7,
+testing the CLASS (§20) — I1 refuses ANY session-guard refusal reason that
+reads the clock, so the next author cannot reintroduce this with a different
+sentence. **I5 is the control that keeps the fix honest**: a genuinely
+different reason must STILL announce, because r41 kept that on purpose and
+silencing it would trade one defect for a worse one. ⚠️ **AND THE CANARY WAS
+WRONG FIRST** — its first cut flagged `_BUTTERFLY_CUTOFF.strftime('%H:%M')`,
+which is a CONSTANT rendering one string (0 distinct variants in the live
+store). A canary that refuses a correct line teaches the operator to ignore
+reds (§36), so the PATTERN was tightened to "reads the current clock" rather
+than the line exempted.
 
 **v0.77 — 2026-09-21 — OTV4TEST r72 — THE NULL HYPOTHESIS, MADE TRADEABLE,
 AND THE REPLAY REWROTE IT FOUR TIMES.** CTRL.1 ◐ — **VOLT**, the control arm.

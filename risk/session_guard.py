@@ -1,5 +1,13 @@
 """
-risk/session_guard.py  v4.2
+risk/session_guard.py  v4.3
+v4.3  2026-09-21  OTV4TEST r73 — NO CLOCK IN A REFUSAL REASON. Two strings
+      here ended with `fmt_et_short()`, which made every tick a DIFFERENT
+      reason and silently defeated r41's edge-triggered INACTIVE row. Measured:
+      327 distinct INACTIVE reasons all-time, 306 of them (94%) clock-variants
+      of ONE message; strip the clock and 327 collapse to 22. The row already
+      carries `ts_epoch` — the clock was a duplicate of the column the reader
+      sorts by, bought at the cost of the rule it broke.
+      ⚠️ THE LOG lines below keep their clock; only the REASONS lost it.
 v4.2  2026-08-24  r102: can_enter(rehearsal=True) evaluates every gate instead
       of short-circuiting at RTH, so the outside-RTH dispatch pass reaches the
       strategies. The verdict stays honest — outside RTH a pass is reported as
@@ -115,10 +123,30 @@ class SessionGuard:
         # gate below stays terminal — the 09:35 floor, the butterfly cutoff and
         # the VIX crisis gate refuse a rehearsal exactly as they refuse a
         # trading pass, because those are the answers we want tested.
+        # 🔴 r73 — NO CLOCK IN A REFUSAL REASON. These two strings used to end
+        # with `fmt_et_short()`, and that ONE REDUNDANT DETAIL produced the
+        # operator's "20,000 rows of inactive".
+        # r41 made the INACTIVE row EDGE-TRIGGERED, latched on
+        # (trading-day, verdict, reason, gate) — his ruling 2026-09-18:
+        # *"Because we know a plan is inactive outside its window, I don't need
+        # 10k rows explaining why. I just need 1, so I'm aware it at least
+        # KNOWS."* A clock inside the reason makes every tick a DIFFERENT
+        # reason, so the latch re-announces on every pass and the rule is
+        # defeated without ever failing.
+        # MEASURED on the live store: 327 distinct INACTIVE reasons all-time,
+        # 306 of them (94%) clock-variants of THIS ONE MESSAGE; strip the clock
+        # and 327 collapse to 22. On 2026-09-21 that was 65 rows per strategy
+        # before 09:35, x9 strategies, every session.
+        # ⚠️ THE ROW ALREADY CARRIES `ts_epoch`. The clock in the text was never
+        # information — it was a duplicate of the column the reader sorts by,
+        # bought at the cost of the rule it silently broke.
+        # ⚠️ AND THE FIX IS THE PATTERN, NOT THE STRING (§20): check_inactive_once
+        # refuses ANY refusal reason carrying a clock, so the next one cannot
+        # reintroduce this by writing a different message.
         _noted: list = []
         if not is_rth():
             if not rehearsal:
-                return False, f"outside RTH ({fmt_et_short()})"
+                return False, "outside RTH"
             _noted.append("outside RTH")
 
         # ── ORB-formation lockout ─────────────────────────────────────────────
@@ -130,7 +158,7 @@ class SessionGuard:
         # True at >= 9:35:00, so this OPENS the gate the instant the opening
         # candle closes and never delays a break registered on/after that close.
         if not is_orb_complete():
-            return False, f"opening range still forming (<9:35 ET) — no entries ({fmt_et_short()})"
+            return False, "opening range still forming (<9:35 ET) — no entries"
 
         # ── Hard close ────────────────────────────────────────────────────────
         if is_hard_close_time():
