@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-"""tests/check_atp_butterfly.py  v1.1
+"""tests/check_atp_butterfly.py  v1.2
 THE ATP (AT-THE-PIN) BUTTERFLY — ITS PLAN, ITS STRATEGY, ITS EXITS AND ITS SESSION CAP.
 
+v1.2  2026-09-21  OTV4TEST r85 — S3/S4 RE-POINTED (r33/r43/r64),
+      S4b added as the control: with BOTH traded, neither may be asked, so a
+      fix that merely deleted the cap cannot pass.
 v1.1  2026-09-18  OTV4TEST r43 — S6 reads `_attempt_butterfly`, not
       `attempt_new_entry`: r43 collapsed two butterfly paths into one, so the
       ordering rule (cap on both names, pin fly, then ATP fly) lives in the
@@ -255,11 +258,44 @@ def main():
                 c.close()
 
         M._gex_bfly_strategy = _Spy("GEX")
-        for label, strat in (("S3", "ATPButterfly"), ("S4", "GEXPinButterfly")):
-            _book(strat)
+        # ⚠️ RE-POINTED AT r85, NOT DELETED (r33/r43/r64). S3 and S4 asserted
+        # that ONE butterfly trade refused BOTH kinds for the session. THAT
+        # BELIEF IS SUPERSEDED BY RULING. Operator, 2026-09-21, reading the
+        # board after a single GEX pin had fired: *"I think we only hit one
+        # butterfly the other one should still be allowed ... Two different
+        # scenarios for those to fire under. And on certain days, we might
+        # actually hit both."* The admission table ALWAYS agreed with him —
+        # GEXFLY and ATPFLY each carry max_tries_per_session=1, one EACH — and
+        # `_attempt_butterfly` read them with an `or`, blocking both, AHEAD of
+        # admission so the table was never consulted (r71's shape).
+        for label, traded, still in (("S3", "ATPButterfly", "GEX"),
+                                     ("S4", "GEXPinButterfly", "ATP")):
+            _book(traded)
             asked.clear()
             M._attempt_butterfly(ctx, None, None, additive=True)
-            check(f"{label} a {strat} trade today -> NEITHER butterfly is asked", asked == [], str(asked))
+            check(f"{label} a {traded} trade today -> IT is refused and the other "
+                  f"kind is STILL asked", asked == [still],
+                  f"asked={asked} — each butterfly carries its OWN session quota")
+        # 🔑 S4b IS THE CONTROL AND IT IS THE HALF THAT KEEPS THE CAP HONEST.
+        # Loosening a per-session limit is only verified by proving the limit
+        # still EXISTS: with BOTH already traded, neither may be asked. A fix
+        # that simply deleted the cap would pass S3 and S4 and silently
+        # reintroduce r178's 2026-08-28 stack of five in ninety seconds.
+        TL._trade_logger = TL.TradeLogger(os.path.join(tempfile.mkdtemp(), "book.db"))
+        c = TL.get_trade_logger()._connect()
+        try:
+            for _st in ("ATPButterfly", "GEXPinButterfly"):
+                c.execute("INSERT INTO trades (trade_id, symbol, strategy, status, entry_time)"
+                          " VALUES (?,?,?,?,?)",
+                          (f"{_st}-1", "QQQ", _st, "open",
+                           datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")))
+            c.commit()
+        finally:
+            c.close()
+        asked.clear()
+        M._attempt_butterfly(ctx, None, None, additive=True)
+        check("S4b CONTROL: BOTH traded today -> neither is asked (the cap still exists)",
+              asked == [], f"asked={asked}")
     finally:
         M._gex_bfly_strategy, M._atp_bfly_strategy, M._execute_entry_signal = real_gex, real_atp, real_exec
     check("S5 _STRUCTURE_BY_NAME maps ATPButterfly to 'butterfly'",

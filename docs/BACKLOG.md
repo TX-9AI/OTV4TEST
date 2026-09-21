@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.89
+# BACKLOG.md — OTV4TEST — v0.90
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -229,6 +229,22 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.90 — 2026-09-21 — OTV4TEST r85 — ONE BUTTERFLY PER SESSION *EACH*.**
+BFLY.1. Operator, reading the r84 board after a single GEX pin had fired at
+12:01: *"I think we only hit one butterfly the other one should still be
+allowed... Two different scenarios for those to fire under. And on certain
+days, we might actually hit both."* 🔑 **THE `or` GENERALISED A RULING PAST ITS
+OWN WORDS.** r179 is quoted in `main.py` as *"Only one **GEX Pin** butterfly
+allowed per session on a box"* — it names ONE strategy. **The admission table
+always agreed with the operator:** `GEXFLY` and `ATPFLY` each carry
+`max_tries_per_session=1`, one EACH. `_attempt_butterfly` read them with an
+`or` and blocked both, **ahead of admission, so the table was never
+consulted** — r71's shape a fourth time. Measured: ATPButterfly refused all
+afternoon having never traded. ⚠️ **r178's guard is untouched** — the
+2026-08-28 stack was five butterflies on ONE PIN, and the per-strategy cap
+plus `mark_pin_played` are its halves; the same-TICK block also stays. Born
+red 2, with S4b the control proving the cap still exists.
 
 **v0.89 — 2026-09-21 — OTV4TEST r84 — BREAKOUT WAS NOT BROKEN, IT WAS
 INVISIBLE — AND 15 OF 16 REFUSALS REACHED THE BOARD UNLABELLED.** BRD.2.

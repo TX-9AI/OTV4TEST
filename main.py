@@ -1,5 +1,12 @@
 """
-main.py  v4.62
+main.py  v4.63
+v4.63  2026-09-21  OTV4TEST r85 — ONE BUTTERFLY PER SESSION *EACH*, NOT ONE
+      BETWEEN THEM. Operator: *"Two different scenarios for those to fire
+      under. And on certain days, we might actually hit both."* The `or` in
+      `_attempt_butterfly` generalised r179's ruling past its own words —
+      *"Only one GEX Pin butterfly"* names ONE strategy — and blocked both the
+      moment either fired, AHEAD of admission, whose table has always said one
+      EACH. r178's pin guard is untouched; the same-TICK block stays.
 v4.62  2026-09-21  OTV4TEST r84 — EVERY `_plan_skip` SITE PASSES ITS GATE.
       MEASURED: 15 of 16 passed none, so every refusal that was not the clock
       reached the board unlabelled and rendered as a bare HELD — including the
@@ -4601,10 +4608,35 @@ def _attempt_butterfly(ctx, ms, state, *, additive: bool) -> None:
     # butterfly allowed per session on a box"). Checked BEFORE the strategy
     # is asked, at the one entry point every butterfly attempt routes
     # through. DB-backed, survives restarts, fails closed.
-    if _one_per_session_used("GEXPinButterfly") or _one_per_session_used("ATPButterfly"):
-        for _bn in ("GEXPinButterfly", "ATPButterfly"):
-            _plan_skip(_bn, "one per session on this box — already traded today "
-                       "(one butterfly of either kind)", gate="tries_per_session")
+    # 🔴 r85 — ONE PER SESSION *EACH*, NOT ONE BETWEEN THEM. Operator,
+    # 2026-09-21, reading the board after a single GEX pin had fired: *"I
+    # think we only hit one butterfly the other one should still be allowed
+    # ... Two different scenarios for those to fire under. And on certain
+    # days, we might actually hit both."*
+    # ⚠️ THE `or` GENERALISED A RULING PAST ITS OWN WORDS. r179 is quoted in
+    # the comment above as *"Only one GEX Pin butterfly allowed per session on
+    # a box"* — it names ONE strategy. The admission table has always agreed
+    # with the operator: GEXFLY and ATPFLY each carry
+    # max_tries_per_session=1, one EACH. This site read them with an `or` and
+    # blocked BOTH the moment either fired — and because it is checked BEFORE
+    # the strategy is asked, the admission table was never consulted. That is
+    # r71's shape exactly: a plan-level check running ahead of admission and
+    # disagreeing with it. MEASURED 2026-09-21: GEXPinButterfly fired at
+    # 12:01 ET and ATPButterfly was refused for the rest of the session having
+    # never traded.
+    # ⚠️ r178's GUARD IS UNTOUCHED AND STILL DOES ITS JOB. The 2026-08-28
+    # 15:00 stack was FIVE BUTTERFLIES ON ONE PIN in ninety seconds; the
+    # per-strategy cap plus `mark_pin_played` are its two halves, and neither
+    # needs the other kind blocked to work.
+    _gex_used = _one_per_session_used("GEXPinButterfly")
+    _atp_used = _one_per_session_used("ATPButterfly")
+    if _gex_used:
+        _plan_skip("GEXPinButterfly", "one per session on this box — already "
+                   "traded today", gate="tries_per_session")
+    if _atp_used:
+        _plan_skip("ATPButterfly", "one per session on this box — already "
+                   "traded today", gate="tries_per_session")
+    if _gex_used and _atp_used:
         return
     """r161 — ask the butterfly's plan (dormant outside its slot) and, on a
     fire, execute it.
@@ -4633,11 +4665,13 @@ def _attempt_butterfly(ctx, ms, state, *, additive: bool) -> None:
         # Recomputing here would let the dispatch and the snapshot disagree
         # about the same tick, which is the bug nobody would ever find.
         _atm_iv = ctx.get("atm_iv")
-        bf_sig = _safe_strategy("GEXPinButterfly",
-                                lambda: _gex_bfly_strategy.generate_signal(
-                                    gex=ctx.get("gex"), price_now=ctx["price"],
-                                    now_et=now_et().strftime("%H:%M"),
-                                    atm_iv=_atm_iv, chain=chain), ctx)
+        bf_sig = None
+        if not _gex_used:
+            bf_sig = _safe_strategy("GEXPinButterfly",
+                                    lambda: _gex_bfly_strategy.generate_signal(
+                                        gex=ctx.get("gex"), price_now=ctx["price"],
+                                        now_et=now_et().strftime("%H:%M"),
+                                        atm_iv=_atm_iv, chain=chain), ctx)
         if bf_sig is not None:
             _execute_entry_signal(bf_sig, ctx, ms, state, None, additive=additive)
             # r178 — the fired pin is PLAYED for the session (one butterfly
@@ -4650,15 +4684,24 @@ def _attempt_butterfly(ctx, ms, state, *, additive: bool) -> None:
                                     or getattr(bf_sig, "strike", None))
             except Exception as _pp_err:                        # noqa: BLE001
                 logger.warning("pin-played mark failed: %s", _pp_err)
-            _plan_skip("ATPButterfly", "the pin butterfly fired this tick — one butterfly "
-                       "per session", gate="tries_per_session")
+            # ⚠️ r85 — THIS TICK, NOT THIS SESSION. Two butterflies must not
+            # open on the SAME tick (r178's five-in-ninety-seconds is the
+            # scar), but the ATP keeps its own session quota and may still
+            # fire on a later tick under its own scenario.
+            _plan_skip("ATPButterfly", "the pin butterfly fired this tick — one "
+                       "butterfly per tick; the ATP keeps its own session quota",
+                       gate="fired_this_tick")
             return
-        # OTV4TEST r26 — asked only when the pin butterfly did not fire.
-        atp_sig = _safe_strategy("ATPButterfly",
-                                 lambda: _atp_bfly_strategy.generate_signal(
-                                     gex=ctx.get("gex"), price_now=ctx["price"],
-                                     now_et=now_et().strftime("%H:%M"),
-                                     atm_iv=_atm_iv, chain=chain, df_1m=ctx.get("df_1m")), ctx)
+        # OTV4TEST r26 — asked only when the pin butterfly did not fire THIS
+        # TICK. r85: no longer "did not fire this session" — the two read
+        # different scenarios and both may fire on the same day.
+        atp_sig = None
+        if not _atp_used:
+            atp_sig = _safe_strategy("ATPButterfly",
+                                     lambda: _atp_bfly_strategy.generate_signal(
+                                         gex=ctx.get("gex"), price_now=ctx["price"],
+                                         now_et=now_et().strftime("%H:%M"),
+                                         atm_iv=_atm_iv, chain=chain, df_1m=ctx.get("df_1m")), ctx)
         if atp_sig is not None:
             _execute_entry_signal(atp_sig, ctx, ms, state, None, additive=additive)
     except Exception as exc:                                    # noqa: BLE001
