@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.90
+# BACKLOG.md — OTV4TEST — v0.91
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -229,6 +229,27 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.91 — 2026-09-21 — OTV4TEST r86 — THE FULL SWEEP MOVES TO THE 08:00 BOOT,
+AND THE BOOT SESSION BECOMES A HANDOFF.** SWEEP.1 / BOOT.1. Operator: *"that
+is entirely ludicrous... The 30-minute per commit cycle is choking our commit
+rate"*, and his own better fix: *"You have an AWS auto boot daily at 0800. Why
+not run the full set then & do the abbreviated when we're actively trying to
+land."* Landing a ONE-LINE change was costing **297 checker invocations**.
+`tools/boot_sweep.py` runs all 150 once at boot, **ordered after the bot and
+the feed** so it can never be load-bearing (§29), niced, skipping itself below
+a memory floor — measured with sweep+bot+feed concurrent, available floored at
+**298MB of 908** and swap rose 176→482MB. 🔑 **THE SIGNAL IS THE DIFF, NOT THE
+COUNT** — this tree carries 11 standing reds, so "134 of 145" says nothing and
+a TWELFTH is the finding. ⚠️ **AND THE BOOT AGENT BECOMES A HANDOFF:**
+~~r68's "--continue, with fallback"~~ superseded — `docs/HANDOFF.md` already
+opens by telling the agent to run `tools/last_session.py`, so the handoff path
+always read the prior thread; it was simply second in line. 🔴 **TWO DEFECTS
+THE SMOKE TEST FOUND, BOTH RECORDED:** a `NameError` made the tool **exit 1**
+while B1 read green, because B1 walked the AST for returns and never DROVE it
+(§21) — B1b now drives it; and the checker's own driven runs **overwrote
+`data/SWEEP_RESULT`**, so the 08:00 agent would have read a test fixture
+(r13's finding, one artifact over).
 
 **v0.90 — 2026-09-21 — OTV4TEST r85 — ONE BUTTERFLY PER SESSION *EACH*.**
 BFLY.1. Operator, reading the r84 board after a single GEX pin had fired at

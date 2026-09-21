@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+"""tools/boot_sweep.py — v1.0
+
+v1.0 (2026-09-21) — OTV4TEST r74 / SWEEP.1. THE FULL CHECK SET RUNS AT BOOT,
+SO A DELIVERY DOES NOT HAVE TO PAY FOR IT.
+
+🔴 THE PROBLEM THIS SOLVES, MEASURED. Landing a ONE-LINE change was costing
+**297 checker invocations** — 7 the lander genuinely forces, and 290 a full
+sweep of 145 checkers across two trees, about 11 minutes. The operator,
+2026-09-21: *"that is entirely ludicrous… The 30-minute per commit cycle is
+choking our commit rate for needed changes."* His fix, and it is better than
+the one proposed to him: *"You have an AWS auto boot daily at 0800. Why not run
+the full set then & do the abbreviated when we're actively trying to land."*
+
+🔑 THE SIGNAL IS THE DIFF, NOT THE COUNT. This tree carries 11 STANDING REDS.
+A run that reports "134 of 145" tells nobody anything — what matters is that a
+TWELFTH appeared. So the previous run is kept and every result is reported as
+NEW / FIXED / unchanged against it. A sweep with no baseline is a number, and
+§18's whole subject is numbers that look like answers.
+
+⚠️ IT NEVER ABORTS EARLY. The operator's ruling on what to do with a failure:
+*"Flag it, finish the sweep, brief it with the proposed fix and rationale why
+the fix works."* Stopping at the first red would hide every red behind it, and
+the brief he wants is impossible without the whole picture.
+
+⚠️ THE BRIEF IS NOT WRITTEN HERE, AND THAT IS DELIBERATE. This script DETECTS
+and RECORDS. The boot agent — raised by `tools/claude_boot.py` at the same boot
+— DIAGNOSES and briefs, because a proposed fix with a rationale is not
+something a sweep runner can produce. Same division as r67's shutdown cause and
+r68's agent status: the thing that KNOWS writes a stamp, the thing that can
+SPEAK reads it.
+
+⚠️ NOTHING HERE IS LOAD-BEARING FOR TRADING (§29). It runs AFTER the bot and
+the feed are up, never before: a sweep that delayed the 08:00 start would make
+itself load-bearing, and 5.5 minutes is not 45 seconds (r68 bounded its raiser
+at that for the same reason). It is niced to 19, it exits 0 on every path, and
+it SKIPS ITSELF if memory is tight rather than competing with the live bot.
+MEASURED on this box before it was written: with the sweep, the bot and the
+feed all running, available memory floored at **298 MB of 908 MB** and swap
+rose 176 -> 482 MB. Safe, but not by so much that the guard is decoration.
+
+⚠️ AND IT NEVER TOUCHES THE LIVE STORES. Every checker runs with
+OT_TRADES_DB / OT_DERIVED_DB pointed at a fresh scratch pair — r13's finding
+(a fixture landed as a live open position) and the operator's own standing
+rule that a check once purged live data.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# ⚠️ THE RESULT ARTIFACT GETS THE SAME SCRATCH DISCIPLINE AS THE STORES, AND
+# IT WAS ADDED BECAUSE THIS TOOL'S OWN CHECKER CONTAMINATED IT. r86's B1b
+# drives the real binary three times to prove it exits 0 on every path (§21),
+# and each of those runs OVERWROTE data/SWEEP_RESULT — so the first thing the
+# 08:00 agent would have read was a test fixture reporting "no checkers found".
+# Exactly r13's finding and r72's replay, one artifact over: a check that
+# writes where production reads is a check that breaks production.
+_OUT = os.environ.get("OT_SWEEP_RESULT_DIR") or os.path.join(_root, "data")
+RESULT = os.path.join(_OUT, "SWEEP_RESULT")
+PREV = os.path.join(_OUT, "SWEEP_PREV")
+TESTS = os.path.join(_root, "tests")
+PY = os.path.join(_root, "venv", "bin", "python")
+
+# ⚠️ THE INTERPRETER IS PINNED, NOT INHERITED. ENV.1: system python3 on this box
+# is 3.14 with NO pandas, so a sweep run under it turns every pandas-dependent
+# checker red for a reason unrelated to its content — §36's named failure, a
+# verification going red on ENVIRONMENT rather than CONTENT. A unit reads no
+# profile, so PATH cannot be relied on here at all.
+MIN_FREE_MB = int(os.environ.get("OT_SWEEP_MIN_FREE_MB", "180"))
+PER_CHECK_TIMEOUT_S = int(os.environ.get("OT_SWEEP_TIMEOUT_S", "300"))
+
+
+def _free_mb() -> int:
+    """MemAvailable in MB, or -1 if it cannot be read."""
+    try:
+        with open("/proc/meminfo") as fh:
+            for line in fh:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) // 1024
+    except OSError:
+        pass
+    return -1
+
+
+def _checkers() -> list:
+    try:
+        return sorted(f for f in os.listdir(TESTS)
+                      if f.startswith("check_") and f.endswith(".py"))
+    except OSError:
+        return []
+
+
+def run_one(name: str) -> bool:
+    """True if the checker exits 0. Scratch stores, pinned interpreter, niced."""
+    d = tempfile.mkdtemp(prefix="bootsweep-")
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)
+    env["OT_TRADES_DB"] = os.path.join(d, "trades.db")
+    env["OT_DERIVED_DB"] = os.path.join(d, "derived_store.db")
+    try:
+        p = subprocess.run([PY, os.path.join(TESTS, name)],
+                           cwd=_root, env=env, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, timeout=PER_CHECK_TIMEOUT_S)
+        return p.returncode == 0
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def _load(path: str) -> dict:
+    try:
+        with open(path) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
+def sweep(dry: bool = False, only: str = "") -> dict:
+    """Run every checker. Returns the result dict; never raises."""
+    started = time.time()
+    names = _checkers()
+    if only:
+        # SELECTION ONLY — the checkers still run from tests/ with the same
+        # interpreter, scratch stores and nice level, so a smoke run exercises
+        # the real path and not a simplified one (§21).
+        _want = {n if n.endswith(".py") else f"{n}.py"
+                 for n in (x.strip() for x in only.split(",")) if n}
+        names = [n for n in names if n in _want]
+        _missing = sorted(_want - set(names))
+        if _missing:
+            print(f"boot_sweep: --only named {len(_missing)} unknown checker(s): "
+                  f"{', '.join(_missing)}", file=sys.stderr)
+    if not names:
+        return {"state": "ERROR", "why": "no checkers found", "at": started}
+
+    free = _free_mb()
+    if free != -1 and free < MIN_FREE_MB:
+        # ⚠️ SKIPPED IS A RESULT, NOT A SILENCE (§0.5). "could not run" and
+        # "ran and found nothing" must never look alike.
+        return {"state": "SKIPPED", "why": f"only {free}MB available, "
+                f"below the {MIN_FREE_MB}MB floor — refusing to compete with "
+                f"the live bot for memory", "at": started, "free_mb": free}
+    if dry:
+        return {"state": "DRY", "why": f"{len(names)} checkers would run",
+                "at": started, "free_mb": free}
+
+    failed = []
+    for n in names:
+        if not run_one(n):
+            failed.append(n)
+    return {"state": "RAN", "at": started, "secs": round(time.time() - started, 1),
+            "total": len(names), "failed": sorted(failed), "free_mb": free}
+
+
+def diff(now: dict, prev: dict) -> dict:
+    """NEW / FIXED against the previous run. The whole point of keeping one."""
+    if now.get("state") != "RAN" or prev.get("state") != "RAN":
+        return {"new": [], "fixed": [], "baseline": False}
+    a, b = set(prev.get("failed") or []), set(now.get("failed") or [])
+    return {"new": sorted(b - a), "fixed": sorted(a - b), "baseline": True}
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--dry-run", action="store_true")
+    # ⚠️ --only EXISTS SO THIS TOOL CAN BE SMOKE-TESTED IN PLACE. RPL.3's
+    # finding is that the instruments are the least-tested code in the repo —
+    # `edge_scan` crashed on the real book while its own selftest printed ALL
+    # PASS. A sweep runner with no way to exercise a SUBSET can only be tested
+    # by running all 150, which nobody does during a session, so it never gets
+    # tested at all. The checkers still run FROM tests/ so their sys.path
+    # bootstrap resolves to the repo root; only the SELECTION narrows.
+    ap.add_argument("--only", default="", help="comma-separated checker names "
+                                               "(smoke-testing; selection only)")
+    ap.add_argument("--show", action="store_true", help="print the last result")
+    a = ap.parse_args(argv)
+
+    if a.show:
+        r = _load(RESULT)
+        print(json.dumps(r, indent=2) if r else "no sweep result recorded")
+        return 0
+
+    prev = _load(RESULT)
+    now = sweep(dry=a.dry_run, only=a.only)
+    now["diff"] = diff(now, prev)
+    try:
+        os.makedirs(os.path.dirname(RESULT), exist_ok=True)
+        if prev:
+            with open(PREV, "w") as fh:
+                json.dump(prev, fh)
+        with open(RESULT, "w") as fh:
+            json.dump(now, fh, indent=1)
+    except OSError as exc:
+        print(f"boot_sweep: could not record result: {exc}", file=sys.stderr)
+
+    d = now.get("diff") or {}
+    if now.get("state") == "RAN":
+        print(f"boot_sweep: {now['total'] - len(now['failed'])}/{now['total']} pass "
+              f"in {now['secs']}s; {len(now['failed'])} red")
+        if d.get("new"):
+            print(f"boot_sweep: NEW FAILURES ({len(d['new'])}): {', '.join(d['new'])}")
+        if d.get("fixed"):
+            print(f"boot_sweep: fixed since last run: {', '.join(d['fixed'])}")
+        if not d.get("baseline"):
+            print("boot_sweep: no previous run — this one becomes the baseline")
+    else:
+        print(f"boot_sweep: {now.get('state')} — {now.get('why')}")
+    # ⚠️ ALWAYS 0. A non-zero exit would mark the unit failed and put a red in
+    # `systemctl status` for a finding that is not an infrastructure fault.
+    return 0
+
+
+if __name__ == "__main__":
+    # 🔴 r86 — NOTHING ESCAPES. `main()` returning 0 on every path is not the
+    # same as this process exiting 0: an uncaught exception bypasses every
+    # return and marks the systemd unit FAILED. Found by the smoke test — a
+    # NameError in the --only wiring exited 1 while B1 still read green,
+    # because B1 walked the AST for `return` statements and never DROVE the
+    # tool. §21 exactly: a test reading source text proves nothing about
+    # runtime. The tool now cannot put a red in `systemctl status` for
+    # anything short of the interpreter failing to start.
+    try:
+        raise SystemExit(main())
+    except SystemExit:
+        raise
+    except BaseException as _exc:                               # noqa: BLE001
+        print(f"boot_sweep: CRASHED — {type(_exc).__name__}: {_exc}", file=sys.stderr)
+        raise SystemExit(0)

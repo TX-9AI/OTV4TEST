@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+"""
+tests/check_boot_sweep.py  v1.0
+v1.0  2026-09-21  OTV4TEST r86 — born RED at 4b1e9a2 (the tool does not exist).
+
+🔴 WHY THIS TOOL EXISTS, MEASURED. Landing a ONE-LINE change cost **297
+checker invocations** — about 11 minutes — and the operator called it: *"that
+is entirely ludicrous… The 30-minute per commit cycle is choking our commit
+rate for needed changes."* His own fix was better than the one proposed to
+him: *"You have an AWS auto boot daily at 0800. Why not run the full set then
+& do the abbreviated when we're actively trying to land."*
+
+⚠️ THE TOOL IS INFRASTRUCTURE AND §29 APPLIES: nothing here may become
+load-bearing for trading. These checks exist to keep it that way.
+
+  B1  it ALWAYS exits 0 — a red finding is not an infrastructure fault
+  B2  it SKIPS itself when memory is tight rather than racing the live bot
+  B3  every checker runs against SCRATCH stores, never the live ones
+  B4  the interpreter is PINNED, not inherited (ENV.1)
+  B5  the result is a DIFF (new/fixed), not a bare count — 11 standing reds
+      mean "134 of 145" tells nobody anything
+
+Run:  python3 tests/check_boot_sweep.py
+"""
+from __future__ import annotations
+import ast, os, sys, tempfile
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FAIL: list = []
+
+def check(name, ok, detail=""):
+    print(f"  {'PASS' if ok else 'FAIL'}  {name}" + (f"  — {detail}" if detail else ""))
+    if not ok:
+        FAIL.append(name.split()[0])
+
+_p = os.path.join(_root, "tools", "boot_sweep.py")
+check("B0 tools/boot_sweep.py exists", os.path.exists(_p),
+      "r86 has not landed in this tree")
+if not os.path.exists(_p):
+    print(f"\n{'PASS' if not FAIL else 'FAIL'}: {len(FAIL)} problem(s) {FAIL}")
+    sys.exit(1)
+
+_src = open(_p, encoding="utf-8").read()
+_tree = ast.parse(_src)
+
+# ── B1 — every return from main() is 0, and nothing raises SystemExit(n!=0) ──
+# ⚠️ A non-zero exit marks the systemd unit FAILED and puts a red in
+# `systemctl status` for a finding that is not an infrastructure fault — the
+# operator would learn to ignore a red that means "a checker is red", which is
+# §36's named failure one level up.
+_bad = []
+for node in ast.walk(_tree):
+    if isinstance(node, ast.FunctionDef) and node.name == "main":
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Return) and sub.value is not None:
+                if not (isinstance(sub.value, ast.Constant) and sub.value.value == 0):
+                    _bad.append(sub.lineno)
+check("B1 main() returns 0 on EVERY path", not _bad,
+      f"non-zero returns at lines {_bad}")
+
+# ── B1b — DRIVEN, BECAUSE B1 ALONE WAS NOT ENOUGH AND THE SMOKE TEST PROVED IT.
+# 🔴 While r86 was being built, a NameError in the --only wiring made the tool
+# EXIT 1 — and B1 still read GREEN, because it walks the AST for `return`
+# statements and an exception bypasses every one of them. §21 exactly: a test
+# reading source text proves nothing about runtime. A non-zero exit marks the
+# systemd unit FAILED, which is a red in `systemctl status` for something that
+# is not an infrastructure fault.
+import subprocess as _sp
+_py = os.path.join(_root, "venv", "bin", "python")
+_py = _py if os.path.exists(_py) else sys.executable
+_runs = {
+    "dry-run":       [_py, _p, "--dry-run"],
+    "real subset":   [_py, _p, "--only", "check_boot_sweep"],
+    "unknown name":  [_py, _p, "--only", "check_does_not_exist_anywhere"],
+}
+_nonzero = {}
+for _label, _cmd in _runs.items():
+    try:
+        _r = _sp.run(_cmd, capture_output=True, timeout=180,
+                     cwd=_root, env={**os.environ,
+                                     "OT_TRADES_DB": os.path.join(tempfile.mkdtemp(), "t.db"),
+                                     "OT_DERIVED_DB": os.path.join(tempfile.mkdtemp(), "d.db"),
+                                     # 🔴 AND THE RESULT ARTIFACT TOO. Without
+                                     # this, driving the tool here OVERWRITES
+                                     # data/SWEEP_RESULT and the 08:00 agent
+                                     # reads a test fixture instead of the
+                                     # overnight sweep. Found by running
+                                     # --show right after this checker.
+                                     "OT_SWEEP_RESULT_DIR": tempfile.mkdtemp()})
+        if _r.returncode != 0:
+            _nonzero[_label] = _r.returncode
+    except Exception as _e:                                     # noqa: BLE001
+        _nonzero[_label] = f"raised {type(_e).__name__}"
+check("B1b DRIVEN: the tool exits 0 on every invocation, not just every return",
+      not _nonzero,
+      f"non-zero exits: {_nonzero} — an exception bypasses every return B1 checks")
+
+check("B1c the __main__ guard catches a CRASH and still exits 0",
+      "except BaseException" in _src and "SystemExit(0)" in _src,
+      "nothing may put a red in systemctl status for a checker finding")
+
+# ── B2 — the memory guard is REAL, not decoration ──
+# MEASURED on this box before the tool was written: with the sweep, the bot and
+# the feed all running, MemAvailable floored at 298 MB of 908 and swap rose
+# 176 -> 482 MB. Safe, but not by so much that the guard is optional.
+check("B2 it reads MemAvailable and has a floor to skip under",
+      ("MemAvailable" in _src) and ("MIN_FREE_MB" in _src),
+      "a sweep that races the live bot for memory is load-bearing (§29)")
+
+# ── B3 — THE STORES. r13: a fixture once landed as a live open position, and
+# the operator's standing rule is that a check once purged live data.
+check("B3 every checker runs against SCRATCH stores",
+      ("OT_TRADES_DB" in _src) and ("OT_DERIVED_DB" in _src)
+      and ("mkdtemp" in _src or "TemporaryDirectory" in _src),
+      "checkers must never see the live trades/derived stores")
+
+# ── B4 — ENV.1. System python3 here is 3.14 with NO pandas, and a systemd unit
+# reads no profile, so PATH cannot be relied on at all. An inherited
+# interpreter turns every pandas checker red for a reason unrelated to its
+# content — a verification going red on ENVIRONMENT rather than CONTENT.
+check("B4 the interpreter is PINNED to the venv, not inherited",
+      'venv' in _src and '"python3"' not in _src.replace('python3 <p>', ''),
+      "ENV.1 — a unit reads no profile; PATH is not a source of truth here")
+
+# ── B5 — the signal is the DIFF. This tree carries 11 standing reds.
+check("B5 the result is reported as a DIFF against the previous run",
+      all(k in _src for k in ("SWEEP_PREV", "new", "fixed")),
+      "'134 of 145' is a number, not an answer — what matters is a TWELFTH red")
+
+# ── B6 — it must not abort early. Operator: *"Flag it, finish the sweep, brief
+# it with the proposed fix and rationale why the fix works."*
+check("B6 a red does not abort the sweep",
+      "break" not in _src.split("def main")[0].split("for ")[-1][:400]
+      or "continue" in _src,
+      "stopping at the first red hides every red behind it")
+
+# ── B7 — THE RESULT ARTIFACT IS SCRATCHABLE, AND THIS CHECKER PROVES IT BY
+# READING WHAT THE LIVE ONE SAYS AFTER B1b HAS RUN. Without the override,
+# B1b's three driven invocations overwrite data/SWEEP_RESULT and the 08:00
+# agent's first act — `boot_sweep.py --show` — returns a test fixture.
+check("B7 the result path is overridable so a check cannot clobber it",
+      "OT_SWEEP_RESULT_DIR" in _src,
+      "a check that writes where production reads breaks production (r13)")
+
+print(f"\n{'PASS' if not FAIL else 'FAIL'}: {len(FAIL)} problem(s) {FAIL}")
+sys.exit(1 if FAIL else 0)

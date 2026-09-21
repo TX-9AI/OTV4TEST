@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-322 Python modules across 13 local packages.
+324 Python modules across 13 local packages.
 
-**Reached by:** 121 imported · 12 declared entry points · 107 referenced from a script, unit or doc but never imported · **82 by nothing here**.
+**Reached by:** 121 imported · 12 declared entry points · 108 referenced from a script, unit or doc but never imported · **83 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -589,6 +589,10 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tests/check_bfly_vwap_band.py`
 - **calls:** `data/derived_store.py`, `derived/__init__.py`, `derived/anchors.py`, `strategy/__init__.py`, `strategy/gex_pin_butterfly.py`, `strategy/plan.py`, `utils/time_utils.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
+### `tests/check_boot_sweep.py`
+- **calls:** (none)
+- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
 ### `tests/check_breakout.py`
 - **calls:** `execution/position_manager.py`, `strategy/breakout.py`, `strategy/breakout_plan.py`, `strategy/management.py`
@@ -1254,6 +1258,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** (none)
 - **called by:** `tests/check_warehouse_stream.py`
 
+### `tools/boot_sweep.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/HANDOFF.md`
+
 ### `tools/check_land_discipline.py`
 - **calls:** (none)
 - **called by:** (entry point)
@@ -1272,7 +1280,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tools/last_session.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `devtools.sh`, `docs/HANDOFF.md`
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/BACKLOG.md`, `docs/HANDOFF.md`
 
 ### `tools/manifold_health.py`
 - **calls:** `config.py`, `utils/time_utils.py`

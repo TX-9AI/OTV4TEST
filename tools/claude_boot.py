@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
-"""tools/claude_boot.py — v1.1
+"""tools/claude_boot.py — v1.2
 RAISE AN AGENT SESSION AT BOOT, AND PROVE IT IS ACTUALLY RUNNING.
 
+v1.2 (2026-09-21) — OTV4TEST r86. THE BOOT SESSION IS A HANDOFF, NOT A
+      CONTINUE. Operator: *"instead of having a continued agent session on
+      boot, it should be a handoff agent session that reads the previous
+      session thread."* ~~r68's "--continue, with fallback"~~ is SUPERSEDED and
+      struck, not deleted — it is why the fallback still exists. A --continue
+      resumes wherever yesterday happened to stop; a handoff starts from a
+      written brief and then reads the prior session deliberately.
 v1.1  2026-09-20 — OTV4TEST r70 (BOX.12). PURGES STALE tmpfs SCRATCHPADS
       before raising, and appends free-tmpfs to the status so it reaches the
       boot alert. /tmp is RAM (455 MB of 908 MB here) and scratch dirs are
@@ -279,11 +286,30 @@ def _sweep_archive(arch: str, days: int = ARCHIVE_DAYS) -> int:
 
 
 def bring_up(dry: bool = False) -> tuple[bool, str]:
-    """-> (ok, status text). Tries --continue, then falls back to a FRESH
-    thread bootstrapped from the brief, and reports WHICH ONE came up.
+    """-> (ok, status text). Raises a HANDOFF thread from the brief, falls back
+    to --continue, and reports WHICH ONE came up.
 
-    The operator's ruling, 2026-09-20: *"--continue, with fallback"*, and the
-    reason the mode is named in the status is that "Claude up" must never be a
+    ~~r68, 2026-09-20: *"--continue, with fallback"*.~~ SUPERSEDED at r86 by
+    the operator, 2026-09-21: *"instead of having a continued agent session on
+    boot, it should be a handoff agent session that reads the previous session
+    thread. Which I believe is already standard in the turnover."*
+    ⚠️ STRUCK, NOT DELETED (r33/r43/r64) — r68's ruling is the reason the
+    fallback still exists, and reading only the new one would make the second
+    branch look arbitrary.
+    🔑 HE IS RIGHT THAT IT IS ALREADY STANDARD: `docs/HANDOFF.md` opens by
+    telling the agent to run `tools/last_session.py` — the prior thread's
+    operator messages, the revisions that landed in that window and how it
+    ended, in 2-7k tokens rather than a 50MB transcript. So the handoff path
+    ALREADY reads the previous session; it was simply second in line.
+    ⚠️ WHY THE ORDER MATTERS RATHER THAN BEING A PREFERENCE. `--continue`
+    resumes a thread whose context is whatever it happened to end on —
+    mid-task, mid-diagnosis, possibly compacted. A handoff STARTS from a
+    written brief and then goes and reads the prior session deliberately. The
+    first is an accident of where yesterday stopped; the second is a briefing.
+    ⚠️ `--continue` IS KEPT AS THE FALLBACK and that is deliberate: a missing
+    or unreadable brief must not leave the box with no agent at 08:00, and
+    resuming yesterday's thread is strictly better than silence (§0.5).
+    The mode is still named in the status, because "Claude up" must never be a
     guess about which thread he is attaching to.
     """
     if dry:
@@ -299,28 +325,28 @@ def bring_up(dry: bool = False) -> tuple[bool, str]:
     if not binp:
         return False, "NOT AVAILABLE (claude binary not found)"
 
-    # 1 — the operator's first choice: continue the last thread.
+    # 1 — r86, THE OPERATOR'S CURRENT RULING: a HANDOFF session, briefed.
+    # ⚠️ The brief is passed as ONE argument. r32 measured the hazard: the file
+    # contains double quotes, and expanding it through another shell layer ends
+    # the argument at the first one and hands Claude a truncated brief.
+    if os.path.exists(BRIEF):
+        _kill()
+        _raise("%s %s --remote-control %s \"$(cat %s)\"; exec bash"
+               % (ENV_STRIP, binp, RC_NAME, _sh_quote(BRIEF)))
+        if _settle():
+            return True, "up (handoff)"
+
+    # 2 — the fallback, which is r68's ruling kept for exactly this case: a
+    # MISSING or UNREADABLE brief, or a handoff that refuses to settle, must
+    # not leave the box with no agent at 08:00. Resuming yesterday's thread is
+    # strictly better than silence (§0.5).
     _kill()
     _raise("%s %s --remote-control %s --continue; exec bash"
            % (ENV_STRIP, binp, RC_NAME))
     if _settle():
-        return True, "up (continue)"
-
-    # 2 — the fallback. A --continue with no prior thread, or one that refuses
-    # to resume, must not leave the box with no agent at 08:00.
-    # ⚠️ The brief is passed as ONE argument. r32 measured the hazard: the file
-    # contains double quotes, and expanding it through another shell layer ends
-    # the argument at the first one and hands Claude a truncated brief.
-    _kill()
-    if os.path.exists(BRIEF):
-        _raise("%s %s --remote-control %s \"$(cat %s)\"; exec bash"
-               % (ENV_STRIP, binp, RC_NAME, _sh_quote(BRIEF)))
-    else:
-        _raise("%s %s --remote-control %s; exec bash"
-               % (ENV_STRIP, binp, RC_NAME))
-    if _settle():
-        return True, ("up (fresh brief)" if os.path.exists(BRIEF)
-                      else "up (fresh, NO BRIEF FOUND)")
+        return True, ("up (continue — FALLBACK, brief missing)"
+                      if not os.path.exists(BRIEF) else
+                      "up (continue — FALLBACK, handoff did not settle)")
 
     # 3 — named absence, never silence (§0.5).
     why = "session exists but no claude process" if has_session() else "tmux session did not start"
