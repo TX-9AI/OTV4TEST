@@ -1,3 +1,42 @@
+# ⛔ RETRACTED 2026-09-21 (same evening) — OTV4TEST r90. DO NOT ACT ON THIS.
+
+**The central premise below is WRONG and the recommendation is withdrawn.
+Keep the 16:45 ET halt.**
+
+I claimed a 16:45 halt "permanently discards" the post-market tape and
+justified extending on gap-formation study. **The warehouse already holds the
+post-market AND overnight price path in full** — `BACKFILL_DAYS` refills
+1m/5m/15m/1h/1d from the API on the next 08:00 boot, so the price was never
+lost. Measured by reading `raw/candles/dt=2026-09-18/sym=QQQ_EXT/` directly,
+QQQ_EXT 1m bars by ET hour:
+
+```
+00:30 01:28 02:24 03:38 04:51 05:46 06:50 07:55 08:59 09:60 10:60 11:60
+12:60 13:60 14:60 15:60 16:95 17:100 18:87 19:94 20:16 21:27 22:19 23:43
+```
+
+**Full 24-hour coverage from a fleet that halts at 16:45.**
+
+What a 16:45 halt actually costs is only the STREAMING tick data — `prints`
+and `quote_series`, which have no historical replay. Far narrower than
+represented, and it is the category already pre-registered, measured and
+reported DEAD in regular hours (ignition, accumulation, absorption —
+absorption went 72.9% in-sample to 58.2% out, under its declared 65% bar).
+
+⚠️ **ONE CLAIM BELOW STANDS:** after-hours is NOT a rounding error by
+information content. The "0.4% of prints" figure measured activity, not
+information — on the one session decomposable here, **36% of the
+close-to-next-open move formed between 16:00 and 20:00**. But since the
+candles already capture that move, it argues for USING the data you have
+rather than collecting more.
+
+🔑 **THE LESSON, WHICH IS WHY THIS IS STRUCK RATHER THAN DELETED:** a
+fleet-wide recommendation went out before anyone checked whether the data it
+was justified on already existed. The check took one S3 listing and it should
+have come first.
+
+---
+
 # ADVISORY TO MAINLINE (OTV4) — from OTV4TEST, 2026-09-21
 
 ## Recommendation: move the nightly shutdown from 16:45 ET to ~20:05 ET
