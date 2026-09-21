@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.86
+# BACKLOG.md — OTV4TEST — v0.87
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -229,6 +229,23 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.87 — 2026-09-21 — OTV4TEST r82 — DELTA ONLY, AND THE BREAKOUT GETS IT.**
+Two operator rulings. **(1) DELTA ONLY.** r79 read extrinsic as a proxy for par
+and r80 promoted it to a peer; measured over 81b1afae's whole life,
+**extrinsic-from-mid reaches zero at DELTA 0.82** (11:39 ET, mark 3.11) because
+an ITM 0DTE bid sits at parity. r80 would have exited at 3.11 instead of 5.83,
+**costing $2,500**. The limb is removed; no delta now means HOLD. ⚠️ **And r79
+never needed widening** — delta crossed 0.98 at 13:44, fell back, and crossed
+again at 14:11; I sampled one tick in the trough and concluded it was broken.
+**(2) BREAKOUT TRADES PAR DELTA, NOT THE +100% TARGET.** Operator: *"the
+breakout needs the delta stop not the 100% stop."* Its target was never written
+for it — `management.py` documents the rule as *"a debit exit for the RUNAWAY
+only"* and implemented it as `strategy not in BUTTERFLIES`. Measured: 8
+`target_hit` exits, every one at **delta 0.619-0.650**. That cap is also why no
+Breakout ever reached par — 1 of 45 book-wide, and that one was VOLT. **SCOPED,
+NOT DELETED:** the runaway keeps the target (B3 pins it from the other side).
+Born red 3 of 4 and 2 of 33.
 
 **v0.86 — 2026-09-21 — OTV4TEST r81 — r71'S CREDIT WINDOW NEVER REACHED THE
 CODE.** LATE.2. The operator, reading his own board at 14:11 ET: *"I could've

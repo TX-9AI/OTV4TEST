@@ -1,5 +1,10 @@
 """
-execution/exit_engine.py  v4.23
+execution/exit_engine.py  v4.24
+v4.24  2026-09-21  OTV4TEST r82 — DELTA ONLY. The extrinsic limb is REMOVED:
+      measured over the whole trade, extrinsic-from-mid reaches zero at DELTA
+      0.82, so it is not a proxy for par and r80's peer-promotion would have
+      cost $2,500 on 81b1afae. r79 never needed widening either — delta
+      crossed 0.98 at 13:44 and I sampled it in a trough at 14:08.
 v4.23  2026-09-21  OTV4TEST r80 — r79's PAR RUNG DID NOT FIRE AND THE DEFECT
       WAS MINE. Extrinsic was gated behind "only if delta is absent", so
       81b1afae sailed past it live: feed delta 0.9675 under the 0.98 bar while
@@ -699,7 +704,7 @@ from config import (
     THETA_LOOKAHEAD_MIN, RTH_MINUTES, FVG_TRAIL_ARM_PCT, FVG_TRAIL_LOCK_PCT,
     THESIS_BAND_WICKS, THESIS_BAND_LOOKBACK, TRAIL_GAIN_LOCK,
     VOLT_TRAIL_ARM_R, VOLT_TRAIL_LOCK_FRAC, HARD_CLOSE_ET,
-    VOLT_DELTA_PAR, VOLT_EXT_STOCKLIKE,                      # r79 EXT.1
+    VOLT_DELTA_PAR,                                         # r79/r82 EXT.1
     CONT_INSURANCE_STOP,
     MAX_LOSS_PCT, POST_TARGET_TRAIL_LOCK_PCT, FVG_FLOOR_MAX_LOCK_PCT,
     USE_5M_FVG_TRAIL, SWEEP_POST_TARGET_TRAIL,
@@ -1165,57 +1170,34 @@ class ExitEngine:
             logger.info("VOLT FLOOR: %s %s", trade_id[:8], decision.exit_reason)
             return decision
 
-        # 2b ── PAR DELTA (r79, EXT.1) — THE OPERATOR'S RULING, 2026-09-21:
-        #    *"When Delta reaches PAR, we need to get the fuck out."*
+        # 2b ── PAR DELTA (r79/r80/r82, EXT.1) — THE OPERATOR'S RULING,
+        #    2026-09-21: *"When Delta reaches PAR, we need to get the fuck out."*
         # 🔑 AT PAR DELTA THIS IS NO LONGER AN OPTION. It is stock carrying an
-        # expiry: every reason to have BOUGHT an option — convexity, the cheap
-        # tail, defined risk — has already been spent, and what remains is a
-        # 1.0-delta directional bet whose give-back is dollar-for-dollar with
-        # the underlying. MEASURED LIVE on 81b1afae: mark 5.63 against 5.59
-        # intrinsic, delta 0.983, $45 of theta risk left against $2,880 of
-        # leash. The trail cannot fix this because a run-fraction leash costs
-        # FULL DOLLARS precisely when convexity has stopped paying for it.
-        # ⚠️ THE FALLBACK IS THE SAME FACT READ OFF PRICE, NOT A SECOND RULE.
-        # delta -> 1 and extrinsic -> 0 are one condition in two instruments,
-        # so a feed that hands us no delta must NOT silently disable the exit
-        # (§0.5: absent is not false). `current_delta` is stashed by
-        # position_manager only for single-leg longs; VOLT is always one.
+        # expiry: convexity, the cheap tail and defined risk have all been
+        # spent, and what remains is a 1.0-delta directional bet whose
+        # give-back is dollar-for-dollar with the underlying. MEASURED LIVE on
+        # 81b1afae: $45 of theta risk left against $2,880 of trail leash.
+        # 🔴 r82 — DELTA ONLY. THE EXTRINSIC LIMB IS REMOVED AND THE REASON IS
+        # A MEASUREMENT, NOT A PREFERENCE. r79 read extrinsic as a proxy for
+        # delta and r80 promoted it to a peer; measured over the whole trade,
+        # EXTRINSIC-FROM-MID REACHES ZERO AT DELTA 0.82 — 11:39 ET, mark 3.11 —
+        # because an ITM 0DTE bid sits at parity and the mid carries no
+        # extrinsic long before the option is actually stock. Had r80 been
+        # live from entry it would have exited at 3.11 instead of 5.83,
+        # costing $2,500 on this trade. Using the ask does not repair it: the
+        # extrinsic is genuinely small while real optionality remains.
+        # ⚠️ AND r79 NEVER NEEDED THE WIDENING. Delta crossed 0.98 at 13:44,
+        # fell back to 0.9675, and crossed again at 14:11. I sampled it once in
+        # the trough and concluded the rule was broken; it was about to fire.
+        # ⚠️ NO DELTA MEANS HOLD, NOT GUESS (§0.5 cuts both ways). The
+        # catastrophic floor and the structure stop still cover the trade, and
+        # a silent proxy that fires two hours early is worse than a rung that
+        # waits for its instrument.
         _delta = abs(float(record.get("current_delta", 0.0) or 0.0))
-        _par_why = None
         if _delta >= VOLT_DELTA_PAR:
-            _par_why = f"delta {_delta:.3f} >= par {VOLT_DELTA_PAR:.2f}"
-        # 🔴 r80 — THE TWO INSTRUMENTS ARE COMPLEMENTARY, NOT A FALLBACK, AND
-        # r79 GOT THAT WRONG. Shipped live at 14:08 ET, the rung did NOT fire
-        # on 81b1afae: the feed read delta 0.9675, under the 0.98 bar, while
-        # the SAME contract was priced at 99.3% intrinsic (mark 5.97 vs 5.93).
-        # A 0DTE deep-ITM delta print lags what the PRICE already says, so
-        # gating extrinsic behind "only if delta is absent" let a position
-        # that was unambiguously stock walk straight past a ruling written to
-        # catch it. EITHER instrument reaching par is par.
-        if _par_why is None and current_premium > 0:
-            _k = float(record.get("strike", 0.0) or 0.0)
-            _spot = None
-            for _fr in (df_1m, df_5m):
-                if _fr is not None and len(_fr) > 0:
-                    _spot = float(_fr["close"].iloc[-1]); break
-            if _k > 0 and _spot is not None:
-                _intr = max(0.0, _spot - _k) if direction == "long" else max(0.0, _k - _spot)
-                # ⚠️ A MARK BELOW INTRINSIC IS BAD DATA, NOT ZERO EXTRINSIC.
-                # A crossed or stale quote would otherwise compute 0% and fire
-                # this rung on a position that may be nowhere near par. FAIL
-                # CLOSED: hold, and let the catastrophic floor do its job.
-                if current_premium + 1e-9 < _intr:
-                    _intr = None
-                _ext_frac = (max(0.0, current_premium - _intr) / current_premium
-                             if _intr is not None else None)
-                if _ext_frac is not None and _ext_frac <= VOLT_EXT_STOCKLIKE:
-                    _par_why = (f"extrinsic "
-                                f"{_ext_frac:.1%} <= {VOLT_EXT_STOCKLIKE:.0%} "
-                                f"(mark {current_premium:.2f} vs intrinsic {_intr:.2f}; "
-                                f"delta {_delta:.3f})")
-        if _par_why:
             decision.should_exit = True
-            decision.exit_reason = f"volt_delta_par: {_par_why}"
+            decision.exit_reason = (f"volt_delta_par: delta {_delta:.3f} "
+                                    f">= par {VOLT_DELTA_PAR:.2f}")
             logger.info("VOLT PAR DELTA: %s %s", trade_id[:8], decision.exit_reason)
             return decision
 

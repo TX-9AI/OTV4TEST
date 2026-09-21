@@ -1,5 +1,12 @@
 """
-strategy/management.py  v2.6
+strategy/management.py  v2.7
+v2.7  2026-09-21  OTV4TEST r82 — PAR DELTA REPLACES THE TARGET FOR THE
+      BREAKOUT. Operator: *"the breakout needs the delta stop not the 100%
+      stop."* Its target was never written for it — this file documents that
+      rule as "a debit exit for the RUNAWAY only" and implemented it as
+      `strategy not in BUTTERFLIES`, so every debit strategy inherited a
+      guillotine. Measured: 8 target exits, all at delta 0.619-0.650.
+      SCOPED, NOT DELETED — the runaway keeps the target (B3 pins it).
 v2.6  2026-09-19  OTV4TEST r55 — THE DECLARED EXIT DESCRIBED AN EXIT THAT
       DOES NOT EXIST. `structure_stop` read "a 1m close back inside the opening
       range — the break failed", but BOTH evaluation paths read
@@ -185,6 +192,10 @@ EXIT_CONDITIONS: Dict[str, Dict[str, str]] = {
 }
 # OTV4TEST r26 — the ATP butterfly's exits are the pin butterfly's, by construction. — the ATP butterfly's exits are the pin butterfly's, by construction.
 BUTTERFLIES = ("GEXPinButterfly", "ATPButterfly")
+# r82 — strategies whose winner is ended by PAR DELTA rather than a premium
+# target. VOLT is NOT here: it owns `_evaluate_volt` and carries its own rung.
+DELTA_PAR_STRATEGIES = ("Breakout",)
+from config import DELTA_PAR                                      # r82
 EXIT_CONDITIONS["ATPButterfly"] = dict(EXIT_CONDITIONS["GEXPinButterfly"])
 
 MGMT_CHECKS = ("premium", "entry_premium", "pnl_pct", "stop_premium", "trail_stop",
@@ -323,10 +334,37 @@ class ManagementPlan:
                             ("breach" if strategy == "TrendCreditSpread" else "acceptance"))
                     intent = Intent("CLOSE", f"{name}: 1m close {last_close:.2f} through "
                                              f"{ustop:.2f} pnl={pnl:.1%}", name, pnl_pct=pnl)
+            # ── r82 — PAR DELTA REPLACES THE TARGET FOR THE BREAKOUT ─────
+            # Operator, 2026-09-21: *"the breakout needs the delta stop not the
+            # 100% stop."* 🔑 AT PAR DELTA THE POSITION IS STOCK CARRYING AN
+            # EXPIRY — convexity, the cheap tail and defined risk are all spent
+            # — so the give-back is dollar-for-dollar with the underlying.
+            # MEASURED on 2026-09-21: the 8 `target_hit` exits fired at delta
+            # 0.619-0.650, capping every winner while real optionality
+            # remained, and the +100% guillotine is WHY no Breakout has ever
+            # reached par — 1 of 45 book-wide, and that one was VOLT.
+            # ⚠️ NO DELTA MEANS HOLD, NOT GUESS. `current_delta` is stashed by
+            # position_manager for single-leg longs; without it the structure
+            # stop and the premium floor still cover the trade. r82 measured
+            # extrinsic-from-mid as a proxy and killed it — it reaches zero at
+            # delta 0.82, two hours early.
+            if intent is None and strategy in DELTA_PAR_STRATEGIES and not credit:
+                _dl = abs(float(record.get("current_delta", 0.0) or 0.0))
+                if _dl >= DELTA_PAR:
+                    intent = Intent("CLOSE", f"delta_par: delta {_dl:.3f} >= "
+                                             f"par {DELTA_PAR:.2f} pnl={pnl:.1%}",
+                                    "delta_par", pnl_pct=pnl)
             # the target: a debit exit for the RUNAWAY only — the butterfly rides
             # to the close (r169)
+            # 🔴 r82 — AND THE COMMENT ABOVE WAS ALREADY TRUE OF THE INTENT AND
+            # FALSE OF THE CODE. It says "the RUNAWAY only"; the predicate said
+            # `not in BUTTERFLIES`, which is every debit strategy in the tree.
+            # Breakout inherited a +100% guillotine nobody wrote for it. The
+            # predicate now matches the sentence for the strategies that have
+            # been ruled on, rather than the sentence being quietly wrong.
             if (intent is None and prem is not None and target and not credit
-                    and strategy not in BUTTERFLIES and prem >= target):
+                    and strategy not in BUTTERFLIES
+                    and strategy not in DELTA_PAR_STRATEGIES and prem >= target):
                 intent = Intent("CLOSE", f"target_hit pnl={pnl:.1%}", "target", pnl_pct=pnl)
             if intent is None and credit and prem is not None and prem <= NICKEL:
                 intent = Intent("CLOSE", f"nickel_close pnl={pnl:.1%}", "nickel", pnl_pct=pnl)

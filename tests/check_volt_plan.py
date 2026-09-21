@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_volt_plan.py  v1.4
+tests/check_volt_plan.py  v1.5
 
+v1.5  2026-09-21  OTV4TEST r82 — V19c and V19e RE-POINTED, not deleted
+      (r33/r43/r64). Both asserted the extrinsic proxy; measurement killed it
+      (zero at delta 0.82), so they now pin the opposite with the evidence.
 v1.4  2026-09-21  OTV4TEST r80 — V19e/V19f: the two instruments are
       COMPLEMENTARY. Born red 1 of 33 at 8f0e2c1 on V19e, driving the EXACT
       live state r79 failed to exit.
@@ -439,35 +442,38 @@ check("V19b CONTROL: below par the trade is HELD — the rung is not a guillotin
       not _d2.should_exit,
       f"exit={_d2.should_exit} reason={_d2.exit_reason!r}")
 
-# 🔑 AND A MISSING FIELD MUST NOT SILENTLY DISABLE A RULING (§0.5: absent is
-# not false). delta->1 and extrinsic->0 are ONE condition in two instruments;
-# with no delta from the feed the SAME fact is read off price. mark 5.63 vs
-# intrinsic 5.59 = 0.7% extrinsic, under the 2% bar.
+# ⚠️ RE-POINTED AT r82, NOT DELETED (r33/r43/r64). r79 asserted that a missing
+# delta must fall back to extrinsic, on the belief that delta->1 and
+# extrinsic->0 are one condition. THAT BELIEF IS SUPERSEDED BY MEASUREMENT:
+# over 81b1afae's whole life, extrinsic-from-mid reached ZERO AT DELTA 0.82
+# (11:39 ET, mark 3.11), because an ITM 0DTE bid sits at parity. The proxy
+# fires two hours early and would have cost $2,500 on that trade. With no
+# delta the rung now HOLDS — the catastrophic floor and structure stop still
+# cover it, and §0.5 cuts both ways: a silent proxy is not better than waiting
+# for the instrument.
 _d3 = _drive(_par_rec, 5.63)                     # no current_delta at all
-check("V19c no delta from the feed -> the extrinsic fallback still exits",
-      _d3.should_exit and "volt_delta_par" in (_d3.exit_reason or ""),
+check("V19c no delta from the feed -> HOLD, not guess (r82 supersedes r79)",
+      not _d3.should_exit,
       f"exit={_d3.should_exit} reason={_d3.exit_reason!r}")
 
-# and the fallback must not fire on a position with real optionality left
 _d4 = _drive(_par_rec, 7.00)                     # 5.59 intrinsic -> 20% extrinsic
 check("V19d CONTROL: fat extrinsic and no delta -> HELD, not exited",
       not _d4.should_exit,
       f"exit={_d4.should_exit} reason={_d4.exit_reason!r}")
 
-# ── V19e — THE TWO INSTRUMENTS ARE COMPLEMENTARY (r80) ────────────────────
-# 🔴 r79 SHIPPED WITH EXTRINSIC AS A FALLBACK AND THE RUNG DID NOT FIRE LIVE.
-# 81b1afae, 2026-09-21 14:08 ET: feed delta 0.9675 — UNDER the 0.98 bar — on a
-# contract priced at 99.3% intrinsic (mark 5.97 vs 5.93). A 0DTE deep-ITM
-# delta print LAGS WHAT THE PRICE ALREADY SAYS, so gating extrinsic behind
-# "only if delta is absent" let a position that was unambiguously stock walk
-# past the ruling written to catch it. THIS IS THE EXACT LIVE STATE.
+# ── V19e — EXTRINSIC IS NOT A PROXY FOR PAR (r80 -> r82) ──────────────────
+# ⚠️ RE-POINTED, NOT LOOSENED. r80 asserted the OPPOSITE of this check: that a
+# position with extrinsic at par must exit even below par delta. It shipped,
+# and the measurement that followed killed it — this exact state (delta 0.9675,
+# mark 5.97, spot 739.93) reads 0.7% extrinsic while the trade still had
+# $2,500 of run left in it. The rung waits for DELTA.
 _live_df = _par_df.copy()
 _live_df["close"] = [739.80, 739.90, 739.93]       # the ACTUAL 14:08 ET tape
 _d5 = _drive_on(_live_df, {**_par_rec, "current_delta": 0.9675}, 5.97)
-check("V19e delta BELOW par but extrinsic AT par still exits — either counts",
-      _d5.should_exit and "volt_delta_par" in (_d5.exit_reason or ""),
-      f"exit={_d5.should_exit} reason={_d5.exit_reason!r} — this is 81b1afae's "
-      f"live state at 14:08 ET, which r79 held")
+check("V19e delta BELOW par HOLDS even at zero extrinsic — the proxy is dead",
+      not _d5.should_exit,
+      f"exit={_d5.should_exit} reason={_d5.exit_reason!r} — extrinsic-from-mid "
+      f"hits zero at delta 0.82; exiting here costs $2,500")
 
 # CONTROL: a mid-delta position with real extrinsic is still untouched, so the
 # widening did not turn the rung into a guillotine.

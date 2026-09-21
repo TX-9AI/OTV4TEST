@@ -1,5 +1,8 @@
 """
-config.py  v4.29
+config.py  v4.30
+v4.30  2026-09-21  OTV4TEST r82 — ONE `DELTA_PAR`; VOLT and BREAKOUT both
+      derive from it, an hour after r81 landed on four literals for one credit
+      window. BREAKOUT_DELTA_PAR added: par delta replaces its +100% target.
 v4.29  2026-09-21  OTV4TEST r81 (LATE.2) — r71'S 15:40 CREDIT WINDOW NEVER
       REACHED THE CODE. The admission table moved and FOUR literals stayed at
       14:00, and THE PLAN RUNS BEFORE ADMISSION, so the credit plans went
@@ -1646,7 +1649,20 @@ VOLT_TRAIL_LOCK_FRAC    = float(os.environ.get("OT_VOLT_TRAIL_LOCK_FRAC", "0.50"
 # position at par delta is no longer a trade thesis expressed as an option —
 # it is stock carrying an expiry, and every argument for holding an option
 # (convexity, defined risk, the cheap tail) has already been spent.
-VOLT_DELTA_PAR          = float(os.environ.get("OT_VOLT_DELTA_PAR", "0.98"))
+# 🔑 r82 — ONE PAR NUMBER FOR EVERY STRATEGY THAT USES IT. r81 landed an hour
+# ago on exactly this defect: four literals for one credit window, three of
+# which never moved. A second strategy is adopting par delta in the same
+# session, so it DERIVES rather than repeating the number.
+DELTA_PAR               = float(os.environ.get("OT_DELTA_PAR", "0.98"))
+VOLT_DELTA_PAR          = DELTA_PAR
+# 🔴 r82 — BREAKOUT TRADES PAR DELTA INSTEAD OF THE +100% TARGET, by the
+# operator's ruling: *"the breakout needs the delta stop not the 100% stop."*
+# Its target was never written for it — `management.py` documents that rule as
+# *"a debit exit for the RUNAWAY only"* and implements it as
+# `strategy not in BUTTERFLIES`, so Breakout inherited a guillotine by
+# predicate breadth. MEASURED: its 8 target exits fired at delta 0.619-0.650,
+# capping every winner long before convexity was spent.
+BREAKOUT_DELTA_PAR      = DELTA_PAR
 # The FALLBACK when the feed hands us no delta — the SAME fact read off price
 # instead of off the greeks, so the rule cannot be silently disabled by a
 # missing field (§0.5: absent is not the same as false).
