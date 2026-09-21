@@ -1296,7 +1296,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tools/probe_aux_streams.py`
 - **calls:** `config.py`, `data/tasty_client.py`
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/HANDOFF.md`
 
 ### `tools/segregate_nonrth_bars.py`
 - **calls:** (none)

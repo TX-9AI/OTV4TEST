@@ -8,6 +8,25 @@ FIRST, CATCH UP ON WHERE WE LEFT OFF — run `python3 tools/last_session.py`. It
 
 THEN READ THE OVERNIGHT SWEEP — `python3 tools/boot_sweep.py --show`. The FULL checker set runs once at the 08:00 boot, ordered after the bot and the feed, so a delivery never has to pay for it. It reports NEW and FIXED against the previous run, not a bare count — this tree carries 11 standing reds, so "134 of 145" says nothing and a TWELFTH is the signal. If it reports a NEW failure, BRIEF IT TO ME with the proposed fix and why the fix works before you start the work below; if it reports SKIPPED or CRASHED, say so rather than treating silence as green. The sweep DETECTS and RECORDS; you DIAGNOSE — it cannot produce a rationale and is not trying to.
 
+🔴 **THEN, ONCE THE MARKET IS OPEN (this one needs a live streamer and must run
+during RTH): RUN `venv/bin/python tools/probe_aux_streams.py` AND TELL ME THE ANSWER.**
+I need to know whether the dxFeed `Underlying` event is CARRIED ON OUR PLAN for QQQ.
+`underlying_series` has **0 rows** and it is the one stream that publishes
+`front_volatility`, `back_volatility` and `put_call_ratio` — term structure and flow
+skew straight from the vendor, which is what an expected-move model for strike
+selection should be built on. r113 already narrowed it to two candidates and the probe
+decides between them: **(a)** wrong symbol space — the aux events subscribe to the
+plain ticker while Greeks/Quote subscribe to the CHAIN's streamer symbols, and a
+subscription to a symbol with no publisher is accepted and then silent forever; **(b)**
+not carried — Trade/TimeAndSale/Summary are exchange prints and populate, while
+Underlying/TheoPrice are dxFeed-COMPUTED analytics a plan may not include. ⚠️ **THEY
+MAY HAVE DIFFERENT ANSWERS AND r113 LUMPED THEM:** (a) is a strong explanation for
+TheoPrice, which is a PER-CONTRACT analytic pointed at a ticker — but it cannot explain
+`Underlying`, whose correct symbol space IS the plain ticker. Report them separately.
+⚠️ The probe writes no tables, touches no service and holds no locks — but r118 reverted
+a subscription change that cost SPX its per-contract feed, so **PROBE ONLY; change no
+subscription without telling me first.** This is blocking STRK.1 and the late-day work.
+
 Then start with the WORKING AGREEMENT, then review the past week's changes to GENESIS, then VERIFY if the WRITE MAP is current/accurate. Next VERIFY if the FILE MAP is current/accurate. Our task is to make radical changes to the OTV4 that are not possible to do on an active fleet of 15 trading servers to optimize our strategies and P&L by identifying and employing edge, and using data analysis to propose novel predictive adaptations to capture market moves.
 
 Remember, the working agreement is mandatory—but if it contains obsolete references or requirements, we should correct it. But that is not the purpose of THIS thread. Although we may discuss your findings afterwards, I want you to shelve those for a minute to discuss the task at hand. Conclude by telling me specifically what you understand you are supposed to do and what you are ALLOWED to do without asking me — name the permissions, don't just say you read them. Then let me know when you're caught up!
