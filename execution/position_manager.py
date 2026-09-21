@@ -1,5 +1,13 @@
 """
-execution/position_manager.py  v5.4
+execution/position_manager.py  v5.5
+v5.5  2026-09-21  OTV4TEST r76 — NO MAXIMUM NUMBER OF POSITIONS, WITH TWO
+      EXCEPTIONS. `max_open_of_type` becomes Optional and None means UNLIMITED,
+      matching `max_tries_per_session` in the same dataclass. Six strategies
+      carried a silent cap of 1 that no ruling authorised and that was REFUSING
+      TRADES LIVE. The operator: *"With rare exception, there are no blocking
+      TRADES and no maximum number of positions."* The two exceptions are
+      VERTICAL SPREADS (a condor IS two verticals) and the BUTTERFLIES (one per
+      session, r178's 2026-08-28 stack of five in ninety seconds).
 v5.4  2026-09-21  OTV4TEST r72 (CTRL.1) — VOLT joins the table: 09:35-11:30,
       cap 1, blocking NOTHING and blocked by NOTHING. ⚠️ ITS WINDOW MUST EQUAL
       THE ORB'S OR IT IS NOT A CONTROL — a yardstick measured over a different
@@ -259,7 +267,12 @@ class AdmissionRule:
     the operator toggles them as the data arrives. None of them is foundational;
     the FEASIBILITY gate is the catastrophic cap, which is universal."""
     window: tuple                       # ((sh, sm), (eh, em)), half-open [start, end)
-    max_open_of_type: int               # concurrent positions OF THIS TYPE
+    # 🔑 r76 — `None` MEANS UNLIMITED, matching `max_tries_per_session` in this
+    # same dataclass rather than inventing a sentinel. The operator, 2026-09-21:
+    # *"With rare exception, there are no blocking TRADES and no maximum number
+    # of positions."* Six strategies carried a silent cap of 1 that no ruling
+    # ever authorised, and it was refusing trades live.
+    max_open_of_type: Optional[int]     # concurrent positions OF THIS TYPE; None = unlimited
     max_tries_per_session: Optional[int] = None      # None = unlimited
     # 🔑 NAMED SETS, NOT BOOLEANS. The operator asked for the blocking gates to
     # be toggleable "to name which strategies will fill those gates", so a future
@@ -275,9 +288,16 @@ class AdmissionRule:
 # TCS is IN — no overlap, no gap, and no tick that belongs to both or neither.
 # ⚠️ EVERY `blocks` / `blocked_by` IS EMPTY BY RULING. Nothing blocks anything.
 _DEFAULT_RULES = {
-    ORB:     AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
-    RUNAWAY: AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
-    HUNT:    AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
+    # ══ r76 — UNCAPPED BY RULING ═══════════════════════════════════════════
+    # The operator, 2026-09-21: *"With rare exception, there are no blocking
+    # TRADES and no maximum number of positions."* These six carried
+    # max_open_of_type=1 with no ruling behind it, and it was REFUSING TRADES
+    # LIVE — measured today: "max_open_of_type: 1 RunawayContinuation already
+    # open" and "a hunt is already open on this box". r42 removed strategies
+    # blocking EACH OTHER and left each one blocking ITSELF; this removes that.
+    ORB:     AdmissionRule(((9, 35), (11, 30)), max_open_of_type=None),
+    RUNAWAY: AdmissionRule(((9, 35), (11, 30)), max_open_of_type=None),
+    HUNT:    AdmissionRule(((9, 35), (11, 30)), max_open_of_type=None),
     # r51 (BRK.1) — the 5-minute opening-range break taken WITHOUT a retest.
     # Same window as the ORB it is born from and the hunt it competes with,
     # because all three read the same opening range. ⚠️ NOTHING BLOCKS IT AND IT
@@ -287,7 +307,7 @@ _DEFAULT_RULES = {
     # opposite of an existing open trade."* The head-to-head against ORB and the
     # hunt is the POINT, and hierarchy would destroy the counterfactual that
     # makes it readable.
-    BREAKOUT: AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
+    BREAKOUT: AdmissionRule(((9, 35), (11, 30)), max_open_of_type=None),
     # the credit window was widened to 15:00 by the operator on 2026-09-17
     # 🔴 r71 — AND TO 15:40 ON 2026-09-20, FOR THE LATE-DAY MOVE. Operator:
     # *"I've seen multiple end of day moves now that I'm convinced smart money
@@ -314,10 +334,18 @@ _DEFAULT_RULES = {
     # yardstick measured over a different period measures the period.
     # blocks/blocked_by are EMPTY by construction (r51's ruling: under a
     # cascade the losing arm's outcome is unobservable).
-    VOLT:    AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
+    VOLT:    AdmissionRule(((9, 35), (11, 30)), max_open_of_type=None),
     SWEEP:   AdmissionRule(((9, 35), (15, 40)), max_open_of_type=2),  # 2: it forms a condor
-    TCS:     AdmissionRule(((11, 30), (15, 40)), max_open_of_type=1), # 1: TCS+TCS is in conflict
+    # ══ EXCEPTION 1 of 2 — VERTICAL SPREADS ════════════════════════════════
+    # A condor IS two credit verticals, so the number is the STRUCTURE and not
+    # a risk limit. The pairs are sweep-sweep or TCS-sweep, never TCS-TCS, which
+    # is why the sweep may hold two of its own and the TCS may not.
+    TCS:     AdmissionRule(((11, 30), (15, 40)), max_open_of_type=1), # 1: TCS+TCS is in conflict; pairs only with a sweep
     # the GEX fly's cutoff was raised from 14:00 to 15:00 by the operator
+    # ══ EXCEPTION 2 of 2 — THE BUTTERFLIES, ONE PER SESSION ════════════════
+    # r178: on 2026-08-28 at 15:00 a stack of FIVE BUTTERFLIES fired in NINETY
+    # SECONDS on the same pin. `max_tries_per_session=1` is the admission half
+    # of that guard; `mark_pin_played` is the other.
     GEXFLY:  AdmissionRule(((12, 0), (15, 0)), max_open_of_type=1, max_tries_per_session=1),
     ATPFLY:  AdmissionRule(((11, 30), (15, 0)), max_open_of_type=1, max_tries_per_session=1),
 }
@@ -339,7 +367,9 @@ def rules() -> dict:
             continue
         out[name] = AdmissionRule(
             window=tuple(patch.get("window", base.window)),
-            max_open_of_type=int(patch.get("max_open_of_type", base.max_open_of_type)),
+            max_open_of_type=(None if patch.get("max_open_of_type", base.max_open_of_type) is None
+                              else int(patch["max_open_of_type"])
+                              if "max_open_of_type" in patch else base.max_open_of_type),
             max_tries_per_session=patch.get("max_tries_per_session", base.max_tries_per_session),
             blocks=frozenset(patch.get("blocks", base.blocks)),
             blocked_by=frozenset(patch.get("blocked_by", base.blocked_by)),
@@ -420,7 +450,9 @@ def decide(f: Facts, table: Optional[dict] = None) -> Verdict:
         return Verdict(False, "tries_per_session",
                        f"{f.strategy} has used its {rule.max_tries_per_session} attempt(s)")
 
-    if int(f.open_by_strategy.get(f.strategy, 0)) >= rule.max_open_of_type:
+    # r76 — None is UNLIMITED. Only the two exceptions carry a number.
+    if (rule.max_open_of_type is not None
+            and int(f.open_by_strategy.get(f.strategy, 0)) >= rule.max_open_of_type):
         return Verdict(False, "max_open_of_type",
                        f"{rule.max_open_of_type} {f.strategy} already open")
 

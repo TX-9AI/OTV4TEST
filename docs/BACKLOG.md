@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.80
+# BACKLOG.md — OTV4TEST — v0.81
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -226,6 +226,22 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.81 — 2026-09-21 — OTV4TEST r76 — SIX STRATEGIES CARRIED A POSITION CAP
+NO RULING EVER AUTHORISED, AND IT WAS REFUSING TRADES LIVE.** The operator:
+*"With rare exception, there are no blocking TRADES and no maximum number of
+positions."* 🔴 Measured on today's tape: *"max_open_of_type: 1
+RunawayContinuation already open"* and *"a hunt is already open on this box"*.
+**r42 removed strategies blocking EACH OTHER and left every strategy blocking
+ITSELF** — the half nobody looked at. `max_open_of_type` is now Optional with
+None = unlimited, matching `max_tries_per_session` in the same dataclass.
+🔑 **THE TWO EXCEPTIONS:** VERTICAL SPREADS (a condor IS two verticals — sweep
+2 because it pairs with itself, TCS 1 because pairs are sweep–sweep or
+TCS–sweep, never TCS–TCS) and the BUTTERFLIES (one per SESSION, r178's
+2026-08-28 stack of **five in ninety seconds**). ⚠️ B8 **re-pointed, not
+loosened**, and **uncapped is TESTED** — B drives admission with 1, 3 and **25**
+already open, because a ruling that removes a limit is only verified by proving
+the limit is gone.
 
 **v0.80 — 2026-09-21 — OTV4TEST r75 — THE EXIT WAS READING A BAR THAT HAD
 ALREADY HAPPENED, AND IT CHURNED SEVEN TRADES IN NINETY SECONDS.** CTRL.1 ◐ —
