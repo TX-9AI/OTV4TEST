@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.87
+# BACKLOG.md — OTV4TEST — v0.88
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -229,6 +229,25 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.88 — 2026-09-21 — OTV4TEST r83 — THE PLANS PANEL WAS MEASURING
+PUNCTUATION.** BRD.1. Operator, looking at his own board: *"Tell me why I see
+a fuck load of stale warnings on there"*, then *"That whole section should be
+replaced with code that's accurate. That's the purpose of that section."*
+**MEASURED 2026-09-21 14:44: 16 of 18 rows flagged ⚠️ STALE and all 16 were
+behaving correctly.** The panel inferred liveness by comparing the newest
+`plan_tick` row against a 300-second cut — but **r41 made those rows
+EDGE-TRIGGERED by the operator's own ruling**, so a plan behaving perfectly
+writes nothing and turns "stale" five minutes later. 🔑 The only two rows that
+read "fresh" were `SweepCreditSpread` and `TrendCreditSpread`, and **only
+because their reason text embeds live prices** — every tick a new string. The
+marker was testing whether a sentence changed. Replaced with `plan_heartbeat`
+(one row per plan, UPSERTED, cannot grow) and six honest states. ⚠️ **STALE and
+WINDOW CLOSED are now different answers** by ruling. ⚠️ Every clock renders in
+**ET**, not the box's UTC. 🔴 **AND IT IMMEDIATELY SURFACED A REAL DEFECT THE
+OLD PANEL HID: `Breakout` NOT RUNNING** — in the admission table, never
+heartbeat, last row frozen at 11:30:08 — the same blindness that let r77's 127
+crashes hide behind a stale label.
 
 **v0.87 — 2026-09-21 — OTV4TEST r82 — DELTA ONLY, AND THE BREAKOUT GETS IT.**
 Two operator rulings. **(1) DELTA ONLY.** r79 read extrinsic as a proxy for par

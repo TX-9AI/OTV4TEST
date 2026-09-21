@@ -1,5 +1,14 @@
 """
-query.py  v4.13
+query.py  v4.14
+v4.14  2026-09-21  OTV4TEST r83 — THE PLANS PANEL IS REBUILT ON A
+      HEARTBEAT. Operator: *"I wanna see on that page if my strategies are
+      actively evaluating the feed. If they're not then say that, and if they
+      are tell me what they're looking at"*, and *"I don't think stale needs to
+      be the same thing as window closed."* The old panel inferred liveness
+      from plan_tick row AGE against a 300s cut, but r41 made those rows
+      EDGE-TRIGGERED: measured 14:44, 16 of 18 flagged STALE and ALL 16 WERE
+      CORRECT. It now reads `plan_heartbeat` — EVALUATING / WINDOW CLOSED /
+      HELD / NO PLAN / STALE / NOT RUNNING — and every clock renders in ET.
 v4.13 2026-09-17  OTV4TEST r34 — MOVED BACK TO THE REPO ROOT with status.py and
       configure.sh (operator's ruling). r14 bucketed by file type, not by role.
       No behaviour change.
@@ -779,96 +788,124 @@ def show_gates(dc):
 
 
 def show_decisions(dc):
-    """THE SNAPSHOT — what every plan would do on the next tick, right now.
+    """Is each PLAN actively evaluating the feed — and if so, what is it reading?
 
-    ENTER ON: for each strategy, the newest plan_tick row. HOLD carries the
-    PREPARED trade and the conditions it is waiting on; DECLINE the structural
-    fault; NO PLAN the missing input; DORMANT the slot. EXIT ON: for each
-    open position, the newest <Strategy>/manage row — "if this or this, out."
-    r170, operator: "query.py snapshot active trade decisions 'enter on' and
-    'exit on' for active plans."
+    🔴 REPLACED WHOLESALE AT r83 BY RULING. Operator, 2026-09-21, after 16 of
+    18 rows on this panel carried ⚠️ STALE while all 16 were behaving
+    correctly: *"I wanna see on that page if my strategies are actively
+    evaluating the feed. If they're not then say that, and if they are tell me
+    what they're looking at."* And then the distinction that shapes it: *"I
+    don't think stale needs to be the same thing as window closed. Report
+    stale if it really is stale and report window closed if that's the
+    reason."*
+
+    🔑 WHY THE OLD PANEL COULD NOT ANSWER THAT. It read the newest `plan_tick`
+    row per strategy and flagged anything older than 300 seconds. But r41 made
+    those rows EDGE-TRIGGERED by the operator's own ruling — a plan writes one
+    row when its verdict changes, then goes quiet — so a plan behaving
+    perfectly stops writing and turns "stale" five minutes later. MEASURED
+    2026-09-21 14:44: 16 of 18 flagged, every one correct, and the only two
+    that read "fresh" were `SweepCreditSpread` and `TrendCreditSpread` —
+    fresh solely because their reason text embeds live prices, so every tick
+    produced a new string. THE MARKER WAS MEASURING PUNCTUATION.
+
+    Now it reads `plan_heartbeat`, which every plan UPSERTS every tick, so
+    liveness is a FACT rather than an inference from row age:
+      EVALUATING    — ran this tick; the line shows what it is reading
+      WINDOW CLOSED — outside its window, which is WORKING, not a fault
+      HELD          — ran and is quiet for a stated reason (already traded,
+                      nothing to manage, waiting on a setup)
+      ⚠️ NO PLAN    — ASKED and wrote nothing: a real defect
+      ⚠️ STALE      — its heartbeat STOPPED. Only this is stale.
+      ⚠️ NOT RUNNING— expected by the admission table and never heartbeat at
+                      all. On 2026-09-21 `Breakout` sat in exactly this state,
+                      absent from the board, its last row frozen at 11:30:08
+                      — the same blindness that hid r77's 127 crashes.
     """
-    sep("═")
-    print("  DECISIONS  (the next tick, as the plans see it now)")
-    sep("═")
-    # ── 🔴 TODAY ONLY, AND BLANK BEFORE 09:30 (r172) ─────────────────────
-    # Operator, 2026-08-28: *"Make the decision section only display today's
-    # decision, blank before 0930."*
-    # ⚠️ WHAT IT SHOWED BEFORE: the newest row per strategy, WHATEVER ITS AGE.
-    # At 09:16 that meant twelve rows from YESTERDAY EVENING, every one flagged
-    # STALE — a panel titled "the next tick, as the plans see it now" showing
-    # last night's ticks. Truthful and useless: the ⚠️ made noise the reader
-    # has to filter rather than information they can act on.
-    # ⚠️ 09:30 IS THE OPEN, NOT AN ARBITRARY HOUR. Before the bell no plan has
-    # evaluated anything today, so the honest answer is EMPTY — not stale rows
-    # dressed up with a warning.
-    # ⚠️ ET, NOT THE BOX CLOCK. The boxes run UTC; "today" and "09:30" are
-    # EXCHANGE facts and must be asked in Eastern. `now_et()` and
-    # `_session_start_epoch()` below both do; a bare `date.today()` here would
-    # roll the day at 20:00 ET, which is the operator's own long-standing
-    # symptom ("any time I run a report for today after the session ends it
-    # fails").
     _now = now_et()
     _open = _now.replace(hour=9, minute=30, second=0, microsecond=0)
+    sep("=")
+    print("  PLANS  (are they reading the feed right now?)")
+    sep("=")
     if _now < _open:
-        print("  ── ENTER ON ──")
         print(f"    nothing yet — the session opens at 09:30 ET "
               f"(now {_now.strftime('%H:%M')})")
-        print("  ── EXIT ON ──")
-        print("    no open positions under management")
         print()
         return
-    # ⚠️ THE CUT IS THE OPEN, NOT MIDNIGHT (operator, 2026-08-28: *"If the box
-    # was up for maintenance the night before or even before the session open,
-    # don't display those decisions"*). A 06:00 ET maintenance wake writes real
-    # plan rows against a market that is not trading; showing them in a panel
-    # about "the next tick" is the same lie as showing last night's, just
-    # harder to spot because the date matches.
-    _today0 = session_start_epoch()   # r210 — one definition, shared
-    rows = _q(dc, "SELECT strategy, verdict, reason, ts_epoch FROM plan_tick p"
-                  " WHERE strategy NOT LIKE '%/manage'"
-                  " AND ts_epoch >= ?"
-                  " AND ts_epoch = (SELECT MAX(ts_epoch) FROM plan_tick"
-                  "                 WHERE strategy = p.strategy"
-                  "                   AND ts_epoch >= ?)"
-                  " ORDER BY strategy", (_today0, _today0))
-    if rows is None:
-        print("  (plan_tick not present on this box)")
+
+    hb = _q(dc, "SELECT plan, ts_epoch, tick_id, state, gate, verdict, watching"
+                " FROM plan_heartbeat ORDER BY plan")
+    if hb is None:
+        print("  (plan_heartbeat not present — bake r83 or older store)")
         print(); return
-    print("  ── ENTER ON ──")
-    if not rows:
-        print("    no plan rows yet today")
-    stale_cut = now_et().timestamp() - 300
-    hushed = []          # r7: dormant / nothing-to-manage — recorded, not shown
-    for strat, verdict, reason, ts in rows:
-        if verdict in ("DORMANT", "NOT ASKED") or "nothing to manage" in str(reason or ""):
-            hushed.append(strat)
-            continue
-        t = datetime.fromtimestamp(ts, ET).strftime("%H:%M:%S")
-        stale = "  ⚠️ STALE" if ts < stale_cut else ""
-        print(f"    {strat:<22s} {verdict:<8s} {t}{stale}")
-        for line in _wrap(reason or "", 88):
-            print(f"      {line}")
-    if hushed:
-        print(f"    hushed (dormant / not asked): {', '.join(hushed)}")
-    # ⚠️ THE SAME CUT ON THE MANAGE SIDE. A watcher row from yesterday is not
-    # "an open position under management" today.
-    mrows = _q(dc, "SELECT strategy, verdict, reason, ts_epoch FROM plan_tick p"
-                   " WHERE strategy LIKE '%/manage'"
-                   " AND ts_epoch >= ?"
-                   " AND ts_epoch = (SELECT MAX(ts_epoch) FROM plan_tick"
-                   "                 WHERE strategy = p.strategy"
-                   "                   AND ts_epoch >= ?)"
-                   " ORDER BY strategy", (_today0, _today0))
-    print("  ── EXIT ON ──")
-    if not mrows:
-        print("    no open positions under management")
-    for strat, verdict, reason, ts in (mrows or []):
-        t = datetime.fromtimestamp(ts, ET).strftime("%H:%M:%S")
-        stale = "  ⚠️ STALE" if ts < stale_cut else ""
-        print(f"    {strat:<28s} {verdict:<6s} {t}{stale}")
-        for line in _wrap(reason or "", 88):
-            print(f"      {line}")
+
+    now_ts = _now.timestamp()
+    # ⚠️ EIGHT MISSED TICKS, NOT ONE. POLL_INTERVAL_SECONDS is 15; a single
+    # slow tick is not a fault and a warning that fires on one is the noise
+    # this panel was just rebuilt to remove (§36).
+    STALE_S = 120.0
+    # ⚠️ THE BOX RUNS UTC AND EVERY TIME ON THIS PAGE IS AN EXCHANGE FACT.
+    # `ts_epoch` is absolute, so it is rendered through ET here rather than
+    # with a bare `fromtimestamp`, which would print the box's clock and be
+    # four hours wrong all session.
+    _et = lambda t: datetime.fromtimestamp(t, ET).strftime("%H:%M:%S") if t else "--:--:--"
+    seen, live, quiet, broken = {}, [], [], []
+    for plan, ts, tick, state, gate, verdict, watching in hb:
+        seen[plan] = True
+        age = now_ts - (ts or 0)
+        w = (watching or "").strip()
+        if age > STALE_S:
+            broken.append((plan, f"STALE — last heartbeat {_et(ts)} ET "
+                                 f"({age/60:.0f}m ago, tick #{tick})", w))
+        elif state == "NO PLAN":
+            broken.append((plan, f"NO PLAN — asked at {_et(ts)} ET and wrote nothing", w))
+        elif state == "EVALUATING":
+            live.append((plan, verdict or "", w, _et(ts)))
+        elif gate in ("entry_window", "window"):
+            # ⚠️ TWO SPELLINGS, ONE FACT. `sweep_plan`/`tcs_plan` stamp
+            # "entry_window"; the shared dormancy path stamps "window" (r73's
+            # QUIET_GATES holds exactly that name). Both mean the clock, and
+            # the operator ruled the clock must not read as STALE.
+            quiet.append((plan, "WINDOW CLOSED", w, _et(ts)))
+        else:
+            quiet.append((plan, "HELD", w, _et(ts)))
+
+    if live:
+        print("  ── READING THE FEED ──")
+        for plan, verdict, w, t in live:
+            print(f"    {plan:<24s} {(verdict or 'EVALUATING'):<8s} {t} ET")
+            for line in _wrap(w, 84):
+                print(f"        {line}")
+    else:
+        print("  ── READING THE FEED ──")
+        print("    none this tick")
+
+    if quiet:
+        print("  ── NOT EVALUATING (by design) ──")
+        for plan, why, w, t in quiet:
+            first = (w.split(":", 1)[1].strip() if ":" in w else w)[:64]
+            print(f"    {plan:<24s} {why:<14s} {t} ET  {first}")
+
+    # ⚠️ THE ROSTER IS THE ADMISSION TABLE, NOT THE HEARTBEAT. A plan that was
+    # never CONSTRUCTED cannot heartbeat, so asking the heartbeat who exists
+    # would hide exactly the failure this section is here to surface.
+    try:
+        from execution.position_manager import rules as _rules
+        expected = set(_rules().keys())
+    except Exception:                                           # noqa: BLE001
+        expected = set()
+    missing = sorted(e for e in expected if e not in seen)
+    for m in missing:
+        broken.append((m, "NOT RUNNING — in the admission table, never "
+                          "heartbeat today", ""))
+
+    if broken:
+        print("  ── PROBLEMS ──")
+        for plan, why, w in broken:
+            print(f"    !! {plan:<22s} {why}")
+            if w:
+                for line in _wrap(w, 84)[:2]:
+                    print(f"        last said: {line}")
     print()
 
 

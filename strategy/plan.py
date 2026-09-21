@@ -1,5 +1,10 @@
 """
-strategy/plan.py  v2.1
+strategy/plan.py  v2.2
+v2.2  2026-09-21  OTV4TEST r83 — `plan_heartbeat`: one row per
+      plan, UPSERTED every tick, so liveness is a FACT rather than an
+      inference from row age. ⚠️ r41's ruling governs the LEDGER; this is
+      CURRENT STATE and cannot grow. The gate is CARRIED from both mechanisms
+      (`_report_block` and `_SKIP_GATE`) so the board never parses prose.
 v2.1  2026-09-18  OTV4TEST r42 — THE OPERATOR'S ASYMMETRY. 2026-09-18: *"if
       something other than the window made it inactive it should declare that,
       but if it's the window, I just need to see that once not repeatedly."*
@@ -353,6 +358,31 @@ def ensure_tables(store) -> bool:
                 tick_id   INTEGER DEFAULT 0,     -- r177: the join key
                 direction TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY (ts_epoch, symbol, strategy, direction, check_name)
+            );""")
+        # 🔴 r83 — LIVENESS IS A FACT, NOT AN INFERENCE FROM ROW AGE.
+        # The board asked "is this plan stale?" by comparing the newest
+        # plan_tick row against a 300-second cut — which measures WHETHER THE
+        # REASON TEXT CHANGED, not whether the plan ran. r41 made plan rows
+        # EDGE-TRIGGERED by ruling, so a correctly-quiet plan writes nothing
+        # and turns "stale" five minutes later. MEASURED 2026-09-21 14:44:
+        # 16 of 18 rows flagged ⚠️ STALE and ALL 16 WERE BEHAVING CORRECTLY;
+        # the only two that read "fresh" were the two whose reason embeds live
+        # prices, so every tick is a new string. The marker was measuring
+        # punctuation.
+        # ⚠️ ONE ROW PER PLAN, UPSERTED — NOT AN APPEND. r41's ruling was about
+        # the LEDGER (history); this is CURRENT STATE and it cannot grow. The
+        # table is bounded by the number of plans, forever.
+        store.conn.execute("""
+            CREATE TABLE IF NOT EXISTS plan_heartbeat (
+                symbol    TEXT NOT NULL,
+                plan      TEXT NOT NULL,
+                ts_epoch  REAL NOT NULL,
+                tick_id   INTEGER DEFAULT 0,
+                state     TEXT NOT NULL DEFAULT '',   -- EVALUATING / IDLE / NO PLAN
+                gate      TEXT NOT NULL DEFAULT '',   -- the gate holding it, if IDLE
+                verdict   TEXT NOT NULL DEFAULT '',
+                watching  TEXT,                       -- what it is reading, verbatim
+                PRIMARY KEY (symbol, plan)
             );""")
         store.conn.execute(
             "CREATE INDEX IF NOT EXISTS ix_plan_tick "
@@ -765,6 +795,18 @@ class Plan:
 
     # ── gate_report bridge — edge-triggered log, unchanged ─────────────
     def _report_block(self, gate: str, reason: str) -> None:
+        # 🔑 r83 — THE GATE IS RECORDED, NOT RE-DERIVED FROM THE SENTENCE.
+        # The board must distinguish WINDOW CLOSED from STALE (operator's
+        # ruling: *"I don't think stale needs to be the same thing as window
+        # closed"*), and the first cut of the heartbeat parsed the gate back
+        # out of `_last`'s text — which failed immediately, because the window
+        # rows read "inactive — window: ..." and the head token is a sentence
+        # fragment, not a gate name. Every block passes through here with the
+        # gate in hand; stashing it is free and cannot drift from the prose.
+        try:
+            self._last_gate = str(gate or "")
+        except Exception:                                       # noqa: BLE001
+            pass
         try:
             from analysis.gate_report import get_gate_reporter
             r = get_gate_reporter(self.symbol)
@@ -1042,11 +1084,86 @@ def close_tick(store=None, symbol: str = "") -> int:
             if write_row(store, symbol, ts, name, verdict, why):
                 written += 1
             plan._last = (n, verdict, why)
+        _write_heartbeats(store, symbol, n, ts)
     finally:
         _SKIPPED.clear()
         _SKIP_GATE.clear()
         _ASKED.clear()
     return written
+
+
+def _write_heartbeats(store, symbol: str, n: int, ts: float) -> None:
+    """r83 — CURRENT STATE FOR EVERY PLAN, EVERY TICK, UPSERTED.
+
+    🔑 WHAT THE BOARD COULD NOT ANSWER BEFORE: *"is this plan actively
+    evaluating the feed?"* It guessed, by comparing the newest `plan_tick`
+    row against a 300-second cut — but r41 made those rows EDGE-TRIGGERED, so
+    a plan behaving perfectly writes nothing and looks dead. Measured
+    2026-09-21: 16 of 18 flagged STALE, all 16 correct, and the two that
+    looked alive were alive only because their reason text carries live
+    prices. THE MARKER WAS MEASURING WHETHER A STRING CHANGED.
+
+    Three states, and they are DIFFERENT QUESTIONS the old panel conflated:
+      EVALUATING — the plan ran this tick and produced a verdict
+      IDLE       — the plan ran and is deliberately quiet (out of window,
+                   already traded, nothing to manage). Not a fault.
+      NO PLAN    — it was ASKED and wrote nothing. This one is a defect and
+                   is the only state that deserves a warning.
+    A plan that is never INSTANTIATED cannot appear here at all — REGISTRY is
+    populated on construction — so the reader compares this table against the
+    expected roster and reports the difference. That gap is not theoretical:
+    on 2026-09-21 `Breakout` was absent from the board entirely, its last row
+    frozen at 11:30:08, and NOTHING SAID SO — the same blindness that let
+    r77's 127 crashes hide behind a stale label for a whole session.
+
+    ⚠️ UPSERT, NEVER APPEND. r41's ruling governs the LEDGER; this is current
+    state and is bounded by the number of plans forever. Never raises.
+    """
+    if store is None:
+        return
+    try:
+        rows = []
+        for name, plan in list(REGISTRY.items()):
+            _, verdict, why = plan.last()
+            if plan.wrote_this_tick():
+                state = "EVALUATING"
+            elif name in _ASKED:
+                state = "NO PLAN"
+            else:
+                state = "IDLE"
+            # 🔑 THE GATE IS CARRIED, NOT PARSED BY THE READER. `dormant()`
+            # and `refuse()` both stamp `_last` as "<gate>: <why>", so the
+            # gate is extracted ONCE, here, and the board never string-matches
+            # prose. WINDOW CLOSED and STALE are DIFFERENT ANSWERS to
+            # different questions and the operator ruled they must read
+            # differently: a plan outside its window is WORKING, and only a
+            # plan whose heartbeat has STOPPED is stale.
+            _why = why or ""
+            # 🔑 TWO MECHANISMS CARRY A GATE AND THE BOARD NEEDS BOTH.
+            # `_report_block` stamps `_last_gate` for a plan that RAN and
+            # refused itself ("entry_window: past 15:40 ET"). A plan that was
+            # never ASKED carries its gate in `_SKIP_GATE`, set by main.py's
+            # dispatch, and its row reads "inactive — window: ...". The first
+            # cut of this read only the former and every window-closed plan
+            # came out as a bare HELD — which is precisely the conflation the
+            # operator ruled against: *"report window closed if that's the
+            # reason."*
+            _gate = (str(getattr(plan, "_last_gate", "") or "")
+                     or str(_SKIP_GATE.get(name, "") or ""))
+            rows.append((symbol, name, ts, n, state, _gate,
+                         verdict or "", _why[:400]))
+        if not rows:
+            return
+        store.conn.executemany(
+            "INSERT INTO plan_heartbeat (symbol, plan, ts_epoch, tick_id, state,"
+            " gate, verdict, watching) VALUES (?,?,?,?,?,?,?,?)"
+            " ON CONFLICT(symbol, plan) DO UPDATE SET"
+            "   ts_epoch=excluded.ts_epoch, tick_id=excluded.tick_id,"
+            "   state=excluded.state, gate=excluded.gate,"
+            "   verdict=excluded.verdict, watching=excluded.watching", rows)
+        store.commit()
+    except Exception:                                           # noqa: BLE001
+        pass
 
 
 def board_line() -> str:
