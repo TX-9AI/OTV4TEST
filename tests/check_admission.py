@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
 """
-tests/check_admission.py  v1.4
+tests/check_admission.py  v1.5
 THE ADMISSION TABLE, DRIVEN EXHAUSTIVELY (OTV4TEST r35).
 
+v1.5  2026-09-21  OTV4TEST r78 — the caps come BACK: the restated SPEC returns
+      ORB/RUNAWAY/HUNT/BREAKOUT/VOLT to 1 and B8 is RE-POINTED A SECOND TIME,
+      never loosened, to the operator's own sentence — every strategy capped,
+      SWEEP alone at 2. 🔴 BREAKOUT JOINS `ALL`: it sat in SPEC but not in the
+      list the B-section iterates, so the one strategy that actually stacked —
+      19 positions off one opening range — was the one this checker never
+      asked about, silently, since r51. B8b is NEW and keeps r76's None
+      sentinel exercised on a SYNTHETIC rule through the real `decide()`,
+      because restoring the values is not a reason to let the type rot.
 v1.4  2026-09-21  OTV4TEST r76 — the restated SPEC uncaps six strategies and
       B8 is RE-POINTED: it asserted "sweep 2, every other type 1", which r76
       supersedes. UNCAPPED IS TESTED, NOT SKIPPED — B drives real admission
@@ -61,7 +70,12 @@ def main():
     from execution.position_manager import ORB, RUNAWAY, HUNT, BREAKOUT, SWEEP, TCS, GEXFLY, ATPFLY, VOLT
 
     T = rules()
-    ALL = [ORB, RUNAWAY, HUNT, SWEEP, TCS, GEXFLY, ATPFLY, VOLT]
+    # ⚠️ r78 — BREAKOUT WAS IN SPEC BUT NOT IN `ALL`, so every B-section cap
+    #    check and B8 itself SKIPPED IT. The one strategy that actually
+    #    stacked — 19 positions off one opening range — was the one this
+    #    checker never asked about. Added; it is not a new belief, it is the
+    #    belief SPEC already held going unexercised since r51.
+    ALL = [ORB, RUNAWAY, HUNT, BREAKOUT, SWEEP, TCS, GEXFLY, ATPFLY, VOLT]
 
     def ok(strategy, hhmm, **kw):
         return decide(Facts(strategy=strategy, now_et=hhmm, orb_established=True, **kw))
@@ -70,13 +84,13 @@ def main():
     #    same dict the code reads. §0.4: a fixture built from the belief under
     #    test cannot fail. These numbers come from his message, not from rules().
     SPEC = {
-        ORB:     (((9, 35), (11, 30)), None, None),
-        RUNAWAY: (((9, 35), (11, 30)), None, None),
-        HUNT:    (((9, 35), (11, 30)), None, None),
+        ORB:     (((9, 35), (11, 30)), 1, None),
+        RUNAWAY: (((9, 35), (11, 30)), 1, None),
+        HUNT:    (((9, 35), (11, 30)), 1, None),
         # r51 (BRK.1) — the operator's 2026-09-18 ruling, restated from his own
         # words: *"I want the orb, hunt, breakout & sweep all able to fire &
         # non-competing"*, same opening range, nothing blocking anything.
-        BREAKOUT: (((9, 35), (11, 30)), None, None),
+        BREAKOUT: (((9, 35), (11, 30)), 1, None),
         # r71 (LATE.1) — the operator's 2026-09-20 ruling, restated from his own
         # words: *"let's just widen the credit trade window to 1540 for entries
         # & make the credit window flatten at 1550"*, because the late
@@ -91,7 +105,7 @@ def main():
         # ⚠️ ITS WINDOW MUST EQUAL THE ORB'S — a control measured over a
         # different period measures the period. check_volt_plan V1b pins that
         # equality from the other side.
-        VOLT:    (((9, 35), (11, 30)), None, None),
+        VOLT:    (((9, 35), (11, 30)), 1, None),
         SWEEP:   (((9, 35), (15, 40)), 2, None),
         TCS:     (((11, 30), (15, 40)), 1, None),
         GEXFLY:  (((12, 0), (15, 0)), 1, 1),
@@ -155,15 +169,32 @@ def main():
               and at.gate == "max_open_of_type" == over.gate,
               f"{cap-1}->{bool(below)} {cap}->{at.gate} {cap+3}->{over.gate}")
 
-    # ⚠️ RE-POINTED at r76, not loosened. B8 used to assert "sweep 2, every
-    # other type 1". That belief is superseded: the only numbered caps left are
-    # the TWO EXCEPTIONS — vertical spreads (a condor IS two verticals) and the
-    # butterflies (one per SESSION, r178's five-in-ninety-seconds).
-    _capped = {s for s in ALL if SPEC[s][1] is not None}
-    check("B8 EXACTLY TWO KINDS carry a position cap: the verticals and the butterflies",
-          _capped == {SWEEP, TCS, GEXFLY, ATPFLY}
-          and SPEC[SWEEP][1] == 2 and SPEC[TCS][1] == 1,
-          f"capped={sorted(_capped)}; everything else must be None (unlimited)")
+    # ⚠️ RE-POINTED TWICE, NEVER LOOSENED (r33/r43/r64). B8 asserted "sweep 2,
+    # every other type 1"; r76 superseded that with "only two kinds carry a
+    # number"; r78 supersedes THAT, because r76 misread the ruling and 19
+    # Breakouts / $78,954 landed off ONE opening range in five minutes. The
+    # contract is now the operator's sentence: ONE OF EACH, SWEEP ALONE AT TWO.
+    _uncapped = {s for s in ALL if SPEC[s][1] is None}
+    check("B8 EVERY strategy is capped, and SWEEP ALONE carries 2",
+          not _uncapped
+          and SPEC[SWEEP][1] == 2
+          and {SPEC[s][1] for s in ALL if s != SWEEP} == {1},
+          f"uncapped={sorted(_uncapped)}; "
+          f"caps={ {s: SPEC[s][1] for s in ALL} }")
+
+    # 🔑 r76's Optional[int]/None MACHINERY IS KEPT AND STILL TESTED even though
+    # no live strategy uses it. r78 restored the VALUES, not the type — deleting
+    # the sentinel's only test would let it rot until the next ruling needs it,
+    # and `max_tries_per_session` in the same dataclass means None the same way.
+    # Driven through REAL admission on a SYNTHETIC rule, per §21: text proves
+    # nothing about runtime.
+    _unl = dict(T); _unl[ORB] = AdmissionRule(((9, 35), (11, 30)), None)
+    _deep = [decide(Facts(strategy=ORB, now_et=(9, 36), orb_established=True,
+                          open_by_strategy={ORB: n}), table=_unl)
+             for n in (1, 3, 25)]
+    check("B8b the None sentinel STILL means unlimited: 1, 3 and 25 all admit",
+          all(bool(d) for d in _deep),
+          f"1->{bool(_deep[0])} 3->{bool(_deep[1])} 25->{bool(_deep[2])}")
 
     check("B9 TCS+TCS is impossible, which is the condor rule with no special case",
           ok(TCS, (13, 0), open_by_strategy={TCS: 1}).gate == "max_open_of_type"

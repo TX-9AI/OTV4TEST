@@ -1,5 +1,15 @@
 """
-execution/position_manager.py  v5.5
+execution/position_manager.py  v5.6
+v5.6  2026-09-21  OTV4TEST r78 — ONE OF EACH AT A TIME. r76 read the ruling as
+      removing the per-type cap; it was about BLOCKING (strategy vs strategy,
+      out by r42/r50) and not CAPPING (a strategy stacking on itself). Live
+      cost: 19 Breakout positions / $78,954 in five minutes off ONE opening
+      range. ORB, RUNAWAY, HUNT, BREAKOUT and VOLT return to 1; SWEEP keeps 2
+      (it pairs into a condor). The operator: *"only one breakout at a time..
+      only one orb a time. Only one of each at a time. Sweep is the only one
+      that's allowed to have two."* ⚠️ THE Optional[int]/None MACHINERY FROM
+      r76 IS KEPT AND UNUSED — the sentinel is correct and check_admission
+      drives it; only the TABLE VALUES are restored.
 v5.5  2026-09-21  OTV4TEST r76 — NO MAXIMUM NUMBER OF POSITIONS, WITH TWO
       EXCEPTIONS. `max_open_of_type` becomes Optional and None means UNLIMITED,
       matching `max_tries_per_session` in the same dataclass. Six strategies
@@ -288,16 +298,25 @@ class AdmissionRule:
 # TCS is IN — no overlap, no gap, and no tick that belongs to both or neither.
 # ⚠️ EVERY `blocks` / `blocked_by` IS EMPTY BY RULING. Nothing blocks anything.
 _DEFAULT_RULES = {
-    # ══ r76 — UNCAPPED BY RULING ═══════════════════════════════════════════
-    # The operator, 2026-09-21: *"With rare exception, there are no blocking
-    # TRADES and no maximum number of positions."* These six carried
-    # max_open_of_type=1 with no ruling behind it, and it was REFUSING TRADES
-    # LIVE — measured today: "max_open_of_type: 1 RunawayContinuation already
-    # open" and "a hunt is already open on this box". r42 removed strategies
-    # blocking EACH OTHER and left each one blocking ITSELF; this removes that.
-    ORB:     AdmissionRule(((9, 35), (11, 30)), max_open_of_type=None),
-    RUNAWAY: AdmissionRule(((9, 35), (11, 30)), max_open_of_type=None),
-    HUNT:    AdmissionRule(((9, 35), (11, 30)), max_open_of_type=None),
+    # ══ r78 — ONE OF EACH AT A TIME. BLOCKING AND CAPPING ARE NOT THE SAME ══
+    # r76 READ THE RULING WRONG AND IT COST 19 BREAKOUT POSITIONS / $78,954 IN
+    # FIVE MINUTES. The operator's words were *"there are no blocking TRADES
+    # and no maximum number of positions"*, and r76 took that to mean the
+    # per-type cap. It does not. ⚠️ TWO DIFFERENT MECHANISMS LIVE IN THIS
+    # DATACLASS AND r76 CONFLATED THEM:
+    #   `blocks`/`blocked_by`  — strategy A refusing strategy B's trade.
+    #                            OUT by r42/r50, empty everywhere, STAYS empty.
+    #   `max_open_of_type`     — a strategy stacking on ITSELF. Never ruled out,
+    #                            and the ruling below puts it back at ONE.
+    # The operator, 2026-09-21, watching the stack land: *"I'm OK with the size
+    # but it opened 15 positions — only one breakout at a time.. only one orb a
+    # time. Only one of each at a time. Sweep is the only one that's allowed to
+    # have two."* A second simultaneous copy of the same strategy is not a
+    # second observation, it is the SAME observation charged twice: all 20
+    # spawned Breakouts read one opening range, one break, one signal.
+    ORB:     AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
+    RUNAWAY: AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
+    HUNT:    AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
     # r51 (BRK.1) — the 5-minute opening-range break taken WITHOUT a retest.
     # Same window as the ORB it is born from and the hunt it competes with,
     # because all three read the same opening range. ⚠️ NOTHING BLOCKS IT AND IT
@@ -307,7 +326,7 @@ _DEFAULT_RULES = {
     # opposite of an existing open trade."* The head-to-head against ORB and the
     # hunt is the POINT, and hierarchy would destroy the counterfactual that
     # makes it readable.
-    BREAKOUT: AdmissionRule(((9, 35), (11, 30)), max_open_of_type=None),
+    BREAKOUT: AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
     # the credit window was widened to 15:00 by the operator on 2026-09-17
     # 🔴 r71 — AND TO 15:40 ON 2026-09-20, FOR THE LATE-DAY MOVE. Operator:
     # *"I've seen multiple end of day moves now that I'm convinced smart money
@@ -334,7 +353,7 @@ _DEFAULT_RULES = {
     # yardstick measured over a different period measures the period.
     # blocks/blocked_by are EMPTY by construction (r51's ruling: under a
     # cascade the losing arm's outcome is unobservable).
-    VOLT:    AdmissionRule(((9, 35), (11, 30)), max_open_of_type=None),
+    VOLT:    AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
     SWEEP:   AdmissionRule(((9, 35), (15, 40)), max_open_of_type=2),  # 2: it forms a condor
     # ══ EXCEPTION 1 of 2 — VERTICAL SPREADS ════════════════════════════════
     # A condor IS two credit verticals, so the number is the STRUCTURE and not
