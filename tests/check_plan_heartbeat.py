@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_heartbeat.py  v1.0
+tests/check_plan_heartbeat.py  v1.1
+v1.1  2026-09-21  OTV4TEST r84 — H6/H7/H8. Born red 3 of 9 at
+      674c8d5, H6 naming all 13 ungated call sites.
 v1.0  2026-09-21  OTV4TEST r83 — born RED at 0e4c8f1.
 
 🔴 THE PLANS PANEL WAS MEASURING PUNCTUATION. It asked "is this plan stale?"
@@ -118,6 +120,63 @@ check("H5 a plan in the admission table that never heartbeat is SURFACED",
       "NOT RUNNING" in out,
       "a plan that is never constructed cannot heartbeat; asking the heartbeat "
       "who exists would hide exactly the failure this panel is for")
+
+# ── H6 — THE CLASS: EVERY SKIP SITE PASSES A GATE (r84) ───────────────────
+# 🔴 MEASURED 2026-09-21: 15 of 16 `_plan_skip`/`_plan_skip_all` calls in
+# main.py passed NO gate, so every refusal that was not the clock reached the
+# board unlabelled and rendered as a bare "HELD" — including the butterflies'
+# one-per-session quota, which the operator asked to see named: *"shouldn't
+# the plan say something about that? Something like quota hit."*
+# ⚠️ `_plan_skip`'s OWN DOCSTRING ALREADY WARNED ABOUT THIS — "recovering a
+# gate by parsing the reason sentence is how that rule would quietly stop
+# working the first time someone reworded a message" — and 15 call sites
+# ignored it anyway. A rule stated in prose and unenforced decays; this is the
+# enforcement.
+import ast as _ast
+_src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         "main.py"), encoding="utf-8").read()
+_ungated = []
+for node in _ast.walk(_ast.parse(_src)):
+    if (isinstance(node, _ast.Call) and isinstance(node.func, _ast.Name)
+            and node.func.id in ("_plan_skip", "_plan_skip_all")):
+        if not any(k.arg == "gate" for k in node.keywords):
+            _ungated.append(node.lineno)
+check("H6 CLASS: every _plan_skip call site passes a gate",
+      not _ungated,
+      f"ungated at main.py lines {_ungated} — an unlabelled refusal renders "
+      f"as a bare HELD and the board cannot name why")
+
+# ── H7 — THE PLAN IS BUILT ON CONSTRUCTION, NOT ON FIRST USE (r84) ────────
+# 🔴 Breakout built its plan lazily in `_plan_()`, so outside 09:35-11:30
+# nothing called `prepare()`, `BreakoutPlan()` was never constructed, and it
+# entered NO registry at all: no heartbeat, absent from the board, and nothing
+# could tell "not yet constructed" from "crashed". THIS IS r77 IN A DIFFERENT
+# COSTUME — there a lazy IMPORT let check_imports pass green on a strategy
+# raising every tick; here a lazy CONSTRUCTION hides the plan from every
+# registry-based check.
+_cases = [("Breakout", "strategy.breakout", "Breakout"),
+          ("VOLT", "strategy.volt_strategy", "VoltStrategy")]
+_lazy = []
+for want, mod, cls in _cases:
+    P.REGISTRY.clear()
+    try:
+        m = __import__(mod, fromlist=[cls])
+        getattr(m, cls)()
+        if want not in P.REGISTRY:
+            _lazy.append(f"{cls} -> {sorted(P.REGISTRY)}")
+    except Exception as e:                                      # noqa: BLE001
+        _lazy.append(f"{cls} raised {type(e).__name__}: {e}")
+check("H7 CLASS: constructing a strategy registers its plan immediately",
+      not _lazy,
+      f"lazy={_lazy} — a plan that registers only on first use is invisible "
+      f"to every board and every checker until its window opens")
+
+# ── H8 — the gate vocabulary reaches the reader ──────────────────────────
+import inspect as _insp
+_qsrc = _insp.getsource(query.show_decisions)
+check("H8 the board names the session quota rather than a bare HELD",
+      '"tries_per_session": "QUOTA HIT"' in _qsrc,
+      "expected a tries_per_session -> QUOTA HIT mapping in the panel")
 
 print(f"\n{'PASS' if not FAIL else 'FAIL'}: {len(FAIL)} problem(s) {FAIL}")
 sys.exit(1 if FAIL else 0)

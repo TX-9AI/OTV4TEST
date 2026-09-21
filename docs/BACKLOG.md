@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.88
+# BACKLOG.md — OTV4TEST — v0.89
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -229,6 +229,28 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.89 — 2026-09-21 — OTV4TEST r84 — BREAKOUT WAS NOT BROKEN, IT WAS
+INVISIBLE — AND 15 OF 16 REFUSALS REACHED THE BOARD UNLABELLED.** BRD.2.
+r83's new panel immediately reported `Breakout NOT RUNNING`. **The cause:
+`strategy/breakout.py` built its plan LAZILY** — `self._plan = None` plus a
+build-on-demand accessor — and `prepare()` is only called inside 09:35-11:30,
+so after any restart past 11:30 `BreakoutPlan()` was never constructed. A plan
+registers in `REGISTRY` **on construction**, so Breakout was in no registry at
+all: no heartbeat, absent from every board, and **nothing could distinguish
+"not yet constructed" from "crashed."** 🔑 **THIS IS r77 IN A DIFFERENT
+COSTUME** — there a lazy IMPORT let `check_imports` pass green on a strategy
+raising 127 times in a session; here a lazy CONSTRUCTION hides the plan from
+every registry-based check. Same class: deferring work past the point where
+anything inspects it. The import stays deferred (`breakout_plan` imports
+`breakout` back); only the construction moves. 🔴 **AND THE SECOND HALF:
+MEASURED, 15 of 16 `_plan_skip` sites passed NO gate**, so every refusal that
+was not the clock rendered as a bare HELD. Operator: *"we fired one type of
+butterfly today. So shouldn't the plan say something about that? Something
+like quota hit."* ⚠️ `_plan_skip`'s **own docstring already warned** that
+recovering a gate by parsing the reason sentence is how the rule quietly stops
+working — and 15 call sites ignored it. A rule stated in prose and unenforced
+decays; H6 is the enforcement. Born red 3 of 9.
 
 **v0.88 — 2026-09-21 — OTV4TEST r83 — THE PLANS PANEL WAS MEASURING
 PUNCTUATION.** BRD.1. Operator, looking at his own board: *"Tell me why I see

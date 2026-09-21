@@ -1,5 +1,11 @@
 """
-main.py  v4.61
+main.py  v4.62
+v4.62  2026-09-21  OTV4TEST r84 — EVERY `_plan_skip` SITE PASSES ITS GATE.
+      MEASURED: 15 of 16 passed none, so every refusal that was not the clock
+      reached the board unlabelled and rendered as a bare HELD — including the
+      butterflies' one-per-session quota. `_plan_skip`'s own docstring warned
+      that recovering a gate by parsing the reason is how the rule stops
+      working; 15 sites ignored it. `_plan_skip_all` gains the field too.
 v4.61 2026-09-21  OTV4TEST r72 (CTRL.1) — VOLT dispatched ADDITIVELY beside the
       Breakout, so all five morning arms see the same setups and no arm's
       outcome is hidden by another's fill (r51's ruling, applied to the GATES
@@ -3067,10 +3073,10 @@ def _plan_skip(name: str, reason: str, gate: str = "") -> None:
         pass
 
 
-def _plan_skip_all(reason: str) -> None:
+def _plan_skip_all(reason: str, gate: str = "") -> None:
     try:
         from strategy import plan as _plan_board
-        _plan_board.skipped_all(reason)
+        _plan_board.skipped_all(reason, gate)
     except Exception:                                          # noqa: BLE001
         pass
 
@@ -3795,7 +3801,7 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     # trades (open positions keep being managed to exit). Override via configure.sh.
     if risk_mgr.is_halted():
         logger.info("Entry blocked: DAILY LOSS LIMIT reached — halted. Override via configure.sh.")
-        _plan_skip_all("DAILY LOSS LIMIT reached — halted")
+        _plan_skip_all("DAILY LOSS LIMIT reached — halted", gate="catastrophic_cap")
         return
 
     # r102 — OUTSIDE RTH THIS IS A REHEARSAL, NOT A TRADING PASS. can_enter
@@ -3810,7 +3816,7 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
         # proved nothing looked identical to a pass that proved everything.
         (logger.info if _rehearsing else logger.debug)(
             "%sEntry blocked: %s", "[rehearsal] " if _rehearsing else "", reason)
-        _plan_skip_all(f"entry blocked: {reason}")
+        _plan_skip_all(f"entry blocked: {reason}", gate="entry_blocked")
         return
     if _rehearsing:
         logger.info("[rehearsal] gates PASS (%s) — running the full dispatch; "
@@ -3925,7 +3931,7 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     chain = ctx.get("chain") or get_chain_fetcher().fetch_chain()
     if chain is None:
         logger.warning("Could not fetch options chain — skipping entry attempt")
-        _plan_skip_all("no options chain this tick")
+        _plan_skip_all("no options chain this tick", gate="no_chain")
         return
 
     macro = ctx["macro"]
@@ -4488,7 +4494,7 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     # fork-anchored premise is retired as a strategy. Hushed by the readers.
     _plan_skip("IronCondorStrategy", "not an entry — a condor forms from two credit "
                                      "spreads (sweep–sweep or TCS–sweep); retired as a "
-                                     "strategy, OTV4TEST r10")
+                                     "strategy, OTV4TEST r10", gate="retired")
 
     # ── TC.6 TREND CREDIT SPREAD ─────────────────────────────────────────────
     # v4.3: no longer deferred by condor_active. It fires when _can_open_credit_spread
@@ -4555,7 +4561,8 @@ def _attempt_hunt(ctx, ms, state, *, orb, chain, now_hhmm, atr_pct) -> None:
         _handoff.tick()
         _pm = get_position_manager(state.paper_trading)
         if any(str(r.get("strategy") or "") == "LiquidityHunt" for r in _pm.get_open_records()):
-            _plan_skip("LiquidityHunt", "a hunt is already open on this box")
+            _plan_skip("LiquidityHunt", "a hunt is already open on this box",
+                       gate="max_open_of_type")
             return
         sig = _safe_strategy("LiquidityHunt", lambda: _liquidity_hunt.generate_signal(
             orb=orb, price_now=ctx["price"], now_et=now_hhmm, atr_pct=atr_pct,
@@ -4596,7 +4603,8 @@ def _attempt_butterfly(ctx, ms, state, *, additive: bool) -> None:
     # through. DB-backed, survives restarts, fails closed.
     if _one_per_session_used("GEXPinButterfly") or _one_per_session_used("ATPButterfly"):
         for _bn in ("GEXPinButterfly", "ATPButterfly"):
-            _plan_skip(_bn, "one per session on this box — already traded today (one butterfly of either kind)")
+            _plan_skip(_bn, "one per session on this box — already traded today "
+                       "(one butterfly of either kind)", gate="tries_per_session")
         return
     """r161 — ask the butterfly's plan (dormant outside its slot) and, on a
     fire, execute it.
@@ -4618,8 +4626,8 @@ def _attempt_butterfly(ctx, ms, state, *, additive: bool) -> None:
     try:
         chain = ctx.get("chain")
         if chain is None:
-            _plan_skip("GEXPinButterfly", "no options chain this tick")
-            _plan_skip("ATPButterfly", "no options chain this tick")
+            _plan_skip("GEXPinButterfly", "no options chain this tick", gate="no_chain")
+            _plan_skip("ATPButterfly", "no options chain this tick", gate="no_chain")
             return
         # r205 — ONE SOURCE. Computed once in run_analysis and stored on ctx.
         # Recomputing here would let the dispatch and the snapshot disagree
@@ -4642,7 +4650,8 @@ def _attempt_butterfly(ctx, ms, state, *, additive: bool) -> None:
                                     or getattr(bf_sig, "strike", None))
             except Exception as _pp_err:                        # noqa: BLE001
                 logger.warning("pin-played mark failed: %s", _pp_err)
-            _plan_skip("ATPButterfly", "the pin butterfly fired this tick — one butterfly per session")
+            _plan_skip("ATPButterfly", "the pin butterfly fired this tick — one butterfly "
+                       "per session", gate="tries_per_session")
             return
         # OTV4TEST r26 — asked only when the pin butterfly did not fire.
         atp_sig = _safe_strategy("ATPButterfly",
@@ -5534,8 +5543,16 @@ def main_loop(state: BotState):
                 # will detect the pair on subsequent ticks and offer the
                 # broken-wing adjustment.
                 _open_sides = _open_credit_sides()
+                # 🔴 r84 — THE LABEL IS STALE AND IT IS NOW GATED SO THE BOARD
+                # CAN SAY SO. r42/r43 made `attempt_new_entry` run in BOTH
+                # branches of has_open_position(), so "only the second-leg
+                # window asks the credit strategies" has been FALSE since;
+                # r77 recorded it after the board reported a MARKET CONDITION
+                # where there was a crash. Gated here rather than reworded,
+                # because the wording is a separate ruling and an unlabelled
+                # refusal is the defect in front of us.
                 _plan_skip_all("position open — managing; only the second-leg "
-                               "window asks the credit strategies")
+                               "window asks the credit strategies", gate="position_open")
                 # ── 🔴 r160 — ONE VERTICAL OPEN: ONLY ITS COMPLEMENT, ONLY A SWEEP
                 # Operator, 2026-08-27: *"If there is already an active
                 # vertical spread of type (call/put) then only a complementary
@@ -5547,8 +5564,8 @@ def main_loop(state: BotState):
                 # + geometry); Rule 4 reads sweep everywhere now.
                 _auth_side, _auth_why = _iron_condor_strategy.authorize(_open_sides)
                 if _auth_side:
-                    _plan_skip("RunawayContinuation", _auth_why)
-                    _plan_skip("TrendCreditSpread", _auth_why)
+                    _plan_skip("RunawayContinuation", _auth_why, gate="condor_auth")
+                    _plan_skip("TrendCreditSpread", _auth_why, gate="condor_auth")
                     _sl_chain = ctx.get("chain")
                     # OTV4TEST r11 — "the second leg is rich or we don't take it":
                     # the complement must be at least as rich (credit / width) as
@@ -5579,7 +5596,7 @@ def main_loop(state: BotState):
                                                         _sl2, ctx["price"], ctx=ctx)):
                         _execute_condor_leg(_sl2, state, ctx)
                 elif _auth_why:
-                    _plan_skip_all(_auth_why)
+                    _plan_skip_all(_auth_why, gate="condor_auth")
                 # ══ r43 — ADM.1 CLOSED: ENTRY RUNS WITH A POSITION OPEN ═══
                 # Operator, 2026-09-18: *"I want the orb, hunt, breakout &
                 # sweep all able to fire & non-competing. We only have one

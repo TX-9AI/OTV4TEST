@@ -1,7 +1,14 @@
 """
-strategy/breakout.py  v1.3
+strategy/breakout.py  v1.4
 THE SPECIFICATION. The plan searches; this declares what it must find.
 
+v1.4  2026-09-21  OTV4TEST r84 — THE PLAN IS BUILT IN `__init__`, NOT ON
+      FIRST USE. Lazily constructing it meant `BreakoutPlan()` only ever
+      existed inside 09:35-11:30, so outside its window Breakout was in NO
+      registry: no heartbeat, absent from the board, and nothing could tell
+      "not yet constructed" from "crashed". r77 in a different costume — a
+      lazy IMPORT there, a lazy CONSTRUCTION here. The import stays deferred
+      (breakout_plan imports this module back); only the construction moves.
 v1.3  2026-09-19  OTV4TEST r59 — `accepts_fitted()`. ROUTING IS NOT ADMISSION:
       while acceptance reads "any" nothing is ever unmet, so a fade route keyed
       on the live verdict is DEAD for the whole window. Routing reads the dial.
@@ -343,11 +350,36 @@ class Breakout:
     CONTEXT_ONLY = ("vol_multiple",)
 
     def __init__(self):
-        self._plan = None
+        # 🔴 r84 — THE PLAN IS BUILT HERE, NOT ON FIRST USE, AND THE DEFECT WAS
+        # INVISIBILITY RATHER THAN BREAKAGE. `self._plan = None` plus a
+        # build-on-demand `_plan_()` meant `BreakoutPlan()` was only ever
+        # constructed inside the 09:35-11:30 window, because that is the only
+        # time anything calls `prepare()`. A plan registers itself in
+        # `strategy.plan.REGISTRY` ON CONSTRUCTION, so outside its window
+        # Breakout was in NO registry at all: it wrote no heartbeat, appeared
+        # on no board, and NOTHING COULD TELL "not yet constructed" FROM
+        # "crashed". Measured 2026-09-21: six restarts after 11:30 and the
+        # r83 board read "Breakout NOT RUNNING — never heartbeat today" while
+        # the strategy was perfectly healthy and would have worked at 09:35.
+        # ⚠️ THIS IS r77 IN A DIFFERENT COSTUME. There the lazy IMPORT inside
+        # emit() let check_imports pass green on a strategy that raised on
+        # every tick for a whole session; here the lazy CONSTRUCTION hides the
+        # plan from every registry-based check. Same class: deferring work
+        # past the point where anything inspects it.
+        # ⚠️ THE IMPORT STAYS DEFERRED AND THAT IS LOAD-BEARING — `breakout_plan`
+        # imports THIS module back (its own `__init__` does
+        # `from strategy.breakout import Breakout as _Spec`), so a module-scope
+        # import here would cycle. Inside `__init__` this module is already
+        # fully loaded, so the cycle cannot form. Verified by construction, not
+        # assumed.
+        from strategy.breakout_plan import BreakoutPlan
+        self._plan = BreakoutPlan()
 
     def _plan_(self):
-        if self._plan is None:
-            from strategy.breakout_plan import BreakoutPlan     # lazy: it imports this
+        # kept as the accessor every call site already uses; it no longer
+        # decides WHEN the plan exists, only hands it back.
+        if self._plan is None:                                   # defensive only
+            from strategy.breakout_plan import BreakoutPlan
             self._plan = BreakoutPlan()
         return self._plan
 

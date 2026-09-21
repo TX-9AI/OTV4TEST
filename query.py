@@ -1,5 +1,10 @@
 """
-query.py  v4.14
+query.py  v4.15
+v4.15  2026-09-21  OTV4TEST r84 — ONE WORD PER GATE: QUOTA HIT, AT CAP, HALTED,
+      NO CHAIN, RETIRED, POSITION OPEN, AWAITING AUTH, WINDOW CLOSED. Operator
+      on the butterflies reading a bare HELD: *"shouldn't the plan say
+      something about that? Something like quota hit."* An unknown gate
+      degrades to HELD, never to a blank.
 v4.14  2026-09-21  OTV4TEST r83 — THE PLANS PANEL IS REBUILT ON A
       HEARTBEAT. Operator: *"I wanna see on that page if my strategies are
       actively evaluating the feed. If they're not then say that, and if they
@@ -844,6 +849,30 @@ def show_decisions(dc):
     # slow tick is not a fault and a warning that fires on one is the noise
     # this panel was just rebuilt to remove (§36).
     STALE_S = 120.0
+    # 🔑 r84 — ONE WORD PER GATE, FROM THE ENGINE'S OWN VOCABULARY. Operator,
+    # on the butterflies reading a bare HELD after one had already fired:
+    # *"shouldn't the plan say something about that? Something like quota hit."*
+    # He is right, and the cause was upstream: MEASURED, 15 of 16 `_plan_skip`
+    # sites in main.py passed NO GATE, so every refusal that was not the clock
+    # arrived here unlabelled. r84 gates them; this maps them.
+    # ⚠️ TWO SPELLINGS OF THE CLOCK, ONE FACT — `sweep_plan`/`tcs_plan` stamp
+    # "entry_window", the shared dormancy path stamps "window" (r73's
+    # QUIET_GATES holds exactly that name). Both mean the clock, and the
+    # operator ruled the clock must never read as STALE.
+    # ⚠️ AN UNKNOWN GATE FALLS BACK TO "HELD" RATHER THAN BEING DROPPED: a new
+    # gate name must degrade to a vaguer word, never to an empty line.
+    _LABEL = {
+        "entry_window":      "WINDOW CLOSED",
+        "window":            "WINDOW CLOSED",
+        "tries_per_session": "QUOTA HIT",
+        "max_open_of_type":  "AT CAP",
+        "catastrophic_cap":  "HALTED",
+        "entry_blocked":     "ENTRY BLOCKED",
+        "no_chain":          "NO CHAIN",
+        "retired":           "RETIRED",
+        "position_open":     "POSITION OPEN",
+        "condor_auth":       "AWAITING AUTH",
+    }
     # ⚠️ THE BOX RUNS UTC AND EVERY TIME ON THIS PAGE IS AN EXCHANGE FACT.
     # `ts_epoch` is absolute, so it is rendered through ET here rather than
     # with a bare `fromtimestamp`, which would print the box's clock and be
@@ -861,14 +890,8 @@ def show_decisions(dc):
             broken.append((plan, f"NO PLAN — asked at {_et(ts)} ET and wrote nothing", w))
         elif state == "EVALUATING":
             live.append((plan, verdict or "", w, _et(ts)))
-        elif gate in ("entry_window", "window"):
-            # ⚠️ TWO SPELLINGS, ONE FACT. `sweep_plan`/`tcs_plan` stamp
-            # "entry_window"; the shared dormancy path stamps "window" (r73's
-            # QUIET_GATES holds exactly that name). Both mean the clock, and
-            # the operator ruled the clock must not read as STALE.
-            quiet.append((plan, "WINDOW CLOSED", w, _et(ts)))
         else:
-            quiet.append((plan, "HELD", w, _et(ts)))
+            quiet.append((plan, _LABEL.get(gate, "HELD"), w, _et(ts)))
 
     if live:
         print("  ── READING THE FEED ──")

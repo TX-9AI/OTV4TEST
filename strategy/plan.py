@@ -1,5 +1,8 @@
 """
-strategy/plan.py  v2.2
+strategy/plan.py  v2.3
+v2.3  2026-09-21  OTV4TEST r84 — `skipped_all` carries a gate, forwarded to
+      `_SKIP_GATE` exactly as `skipped()` has since r42. Without it the board
+      could name only the clock.
 v2.2  2026-09-21  OTV4TEST r83 — `plan_heartbeat`: one row per
       plan, UPSERTED every tick, so liveness is a FACT rather than an
       inference from row age. ⚠️ r41's ruling governs the LEDGER; this is
@@ -999,12 +1002,23 @@ def skipped_management(reason: str) -> None:
         pass
 
 
-def skipped_all(reason: str) -> None:
+def skipped_all(reason: str, gate: str = "") -> None:
     """main.py: NO strategy is being asked this tick (halted, outside the
-    session, no chain, a position is open). Never raises."""
+    session, no chain, a position is open). Never raises.
+
+    🔑 r84 — `gate` IS THE SAME FIELD `skipped()` HAS CARRIED SINCE r42, and
+    its absence here is why the board could only ever say a bare "HELD".
+    MEASURED 2026-09-21: 15 of 16 skip sites in main.py passed no gate, so
+    every refusal that was not the clock arrived at the panel unlabelled —
+    including the butterflies' one-per-session quota, which the operator asked
+    to see named. `_plan_skip`'s own docstring already warned that recovering
+    a gate by parsing the reason sentence is how the rule quietly stops
+    working; the fix is to pass it, not to parse it."""
     try:
         for name in list(REGISTRY):
             _SKIPPED.setdefault(name, reason)
+            if gate:
+                _SKIP_GATE.setdefault(name, gate)
     except Exception:                                           # noqa: BLE001
         pass
 
