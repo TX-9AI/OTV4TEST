@@ -1,5 +1,8 @@
 """
-strategy/orb_plan.py  v1.1
+strategy/orb_plan.py  v1.2
+v1.2  2026-09-22  OTV4TEST r103 - records the rail projection beside
+      `tine_to_target`, which has banked None on every row because
+      `nearest_tine` read the ledger r19 empties.
 v1.1  2026-09-09  OTV4TEST r12 — anchors stamped on the prepared row (record only):
       VWAP distance, aggressor share at the boundary, nearest tine to the target, 15m fork.
 v1.0  2026-09-08  OTV4TEST r2 — THE ORB PLAN. Agreed with the operator on
@@ -352,6 +355,9 @@ class ORBPlan:
         _A.stamp(t, vwap_minus_price=(lambda v: None if v is None else v - price_now)(_A.vwap()),
                  aggressor_at_boundary=_A.aggressor_share(prep.boundary),
                  tine_to_target=_A.nearest_tine(prep.target_100),
+                 # r103 — same repair: `nearest_tine` read a table r19
+                 # guarantees is empty, so this banked None on every row.
+                 **_A.rail_context(prep.target_100),
                  fork15=_A.fork_dir("15m"))
 
         if armed:

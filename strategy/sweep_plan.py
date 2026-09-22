@@ -1,5 +1,11 @@
 """
-strategy/sweep_plan.py  v1.7
+strategy/sweep_plan.py  v1.8
+v1.8  2026-09-22  OTV4TEST r103 - THE HELD EXTREMES CLAIM THEIR SLOTS AND
+      THE RAILS JOIN AFTER. `levels_in_play()` extracted so a checker drives the
+      real composition. r33 wrote `levels = levels + tines` one line above the
+      cap, in the revision titled "THE FORK BESIDE IT AS AN OR LEVEL", so a
+      nearer rail evicted the furthest-out held extreme. Also records the rail
+      projection, which was computed every tick and discarded here.
 v1.7  2026-09-22  OTV4TEST r102 - THE RECORD-ONLY TELEMETRY THIS FILE'S OWN
       HEADER HAS PROMISED SINCE r5, RESTORED. mainline r233 added pierce_pts,
       level_dist_pts and level_dist_pct record-only; r5 rewrote the sweep into
@@ -156,6 +162,68 @@ class Candidate:
                 f"(R {_n(self.r)}, {self.richness:.0%} of width)")
 
 
+
+def levels_in_play(levels, tines, price_now, limit: int = None):
+    """r103 — THE HELD EXTREMES CLAIM THEIR SLOTS FIRST; THE RAILS JOIN AFTER.
+
+    Returns (above, below, held_above, held_below).
+
+    🔴 THE DEFECT THIS EXISTS TO STOP, AND r33 WROTE IT ITSELF. r33's own title
+    is "THE FORK BESIDE IT AS AN OR LEVEL" and its docstring says the rails sit
+    "BESIDE the levels, never hidden in them" — and the same revision added
+    `levels = levels + tines` one line before the `[:limit]` slice. So a rail
+    nearer to spot took one of the three slots and the furthest-out held extreme
+    fell off the board. `board()` forbids exactly this: "THE FORK IS A SECOND
+    PRODUCT, NOT A LEVEL IN THIS LIST ... NEVER merged into above/below (r19:
+    co-inform, do not conjoin)".
+
+    🔑 r15, r19 AND r33 ALL SETTLED THIS AT THE PRODUCER AND GATED THE PRODUCER.
+    `board()` has been correct since r19. Nothing checked what a CONSUMER did
+    with its output, so the conjunction was rebuilt one layer up, at read time,
+    and every gate stayed green (§23 — fix every reader, not just the writer).
+    EXTRACTED so the checker drives THIS function rather than a paraphrase of it.
+
+    🔑 WHY THEY ARE DIFFERENT KINDS OF THING, operator 2026-09-22: "The
+    pitchfork is a co-informer and does not live in the liquidity level levels
+    ... since it's a slope over time, it's a moving target it has to be a
+    separate artifact", and "It's not a LIQUIDITY level. It's just a respected
+    level." A held extreme is a fixed price that printed on a bar, with resting
+    stops beyond it — that pool is what a sweep RAIDS. A rail is a diagonal that
+    moves every bar and holds no pool. Ranking them together by distance
+    compares two different quantities.
+
+    ⚠️ THE RAILS REMAIN SELLABLE, BY RULING. r5 ("3 named up, 3 named down,
+    PLUS the 1h pitchfork's tines"), r33 ("an OR level not an AND — one of the
+    mapped levels or a fork rail"), and the operator on 2026-09-22 asked
+    directly whether they should be dropped from this plan entirely: "The sweep
+    still works with the pitchfork, because the channel is respected." A
+    rejection off a respected rail is a real event even though no stops were
+    taken there. PLUS, not competing — that is the whole of the change.
+
+    ⚠️ `limit` CAPS THE HELD EXTREMES ONLY, and is a PREFERENCE rather than a
+    bound — operator: "Three would be ideal ... if there's more I would like to
+    have more, if there's less we can accept that too." Fewer than `limit` is an
+    answer, never padded.
+    """
+    if limit is None:
+        limit = LEVELS_EACH_SIDE
+    px = float(price_now)
+    above = sorted([l for l in levels
+                    if l["kind"] == "resistance" and float(l["price"]) > px],
+                   key=lambda l: float(l["price"]))[:limit]
+    below = sorted([l for l in levels
+                    if l["kind"] == "support" and float(l["price"]) < px],
+                   key=lambda l: -float(l["price"]))[:limit]
+    held_up, held_dn = len(above), len(below)
+    above = above + sorted([t for t in tines
+                            if t["kind"] == "resistance" and float(t["price"]) > px],
+                           key=lambda t: float(t["price"]))
+    below = below + sorted([t for t in tines
+                            if t["kind"] == "support" and float(t["price"]) < px],
+                           key=lambda t: -float(t["price"]))
+    return above, below, held_up, held_dn
+
+
 class SweepPreparation:
     __slots__ = ("tick", "above", "below", "nearest_above", "nearest_below", "rejected",
                  "chosen", "side", "boundary", "pool", "name", "rej_pct", "depth",
@@ -194,6 +262,7 @@ class SweepPlan:
     PLAN_CHECKS = ("entry_window", "price", "atr_pct", "levels_above", "levels_below",
                    "nearest_above", "nearest_above_credit", "nearest_above_r",
                    "nearest_below", "nearest_below_credit", "nearest_below_r",
+                   "held_above", "held_below", "rails_in_play",   # r103
                    "rejected", "rejection_age_bars", "rejection", "pierce_depth",
                    "side_of_pool", "spent_level", "geometry", "short_anchor", "contract",
                    "credit", "width", "richness", "r", "r_stop", "stop_premium",
@@ -310,11 +379,28 @@ class SweepPlan:
         # changed is that they arrive LABELLED as the fork's, and a caller can
         # tell them apart; they are not silently indistinguishable from a held
         # session extreme. `fork == "absent"` is an answer, never a gap.
-        levels = levels + tines
-        above = sorted([l for l in levels if l["kind"] == "resistance" and float(l["price"]) > price_now],
-                       key=lambda l: float(l["price"]))[:LEVELS_EACH_SIDE]
-        below = sorted([l for l in levels if l["kind"] == "support" and float(l["price"]) < price_now],
-                       key=lambda l: -float(l["price"]))[:LEVELS_EACH_SIDE]
+        # 🔴 r103 — THE CAP IS APPLIED TO THE HELD EXTREMES ALONE, AND THE RAILS
+        # ARE ADDED AFTER IT. They used to be merged into `levels` BEFORE the
+        # slice, so a rail nearer to spot took one of the three slots and the
+        # furthest-out held extreme fell off the board. That is the exact thing
+        # `board()` forbids — "THE FORK IS A SECOND PRODUCT, NOT A LEVEL IN THIS
+        # LIST ... NEVER merged into above/below (r19: co-inform, do not
+        # conjoin)" — and r5's wording was always "3 named up, 3 named down,
+        # PLUS the 1h pitchfork's tines". Plus, not competing.
+        # 🔑 THE OPERATOR'S REASON, 2026-09-22: "The pitchfork is a co-informer
+        # and does not live in the liquidity level levels ... since it's a slope
+        # over time, it's a moving target it has to be a separate artifact."
+        # A rail's price is a function of TIME; a held extreme is a fixed price
+        # that printed on a bar. Ranking them in one list by distance compares
+        # two different kinds of thing.
+        # ⚠️ THE RAILS ARE STILL SELLABLE HERE (r5) — they are added back as
+        # their own entries once the held extremes have claimed their places, so
+        # nothing this plan could trade before is withdrawn.
+        above, below, _held_up, _held_dn = levels_in_play(levels, tines, price_now)
+        t.check("held_above", _held_up, None)
+        t.check("held_below", _held_dn, None)
+        t.check("rails_in_play",
+                (len(above) - _held_up) + (len(below) - _held_dn), None)
         t.check("levels_above", len(above), None)
         t.check("levels_below", len(below), None)
         if required_side:
@@ -434,7 +520,14 @@ class SweepPlan:
             from derived import anchors as _A
             _A.stamp(t, gex_at_level=_A.gex_at(chosen.price), oi_at_short=_A.oi_at(chosen.short.strike, chain),
                      aggressor_at_level=_A.aggressor_share(chosen.price), charm_at_short=_A.charm_at(chosen.short.strike),
-                     tine_to_level=_A.nearest_tine(chosen.price))
+                     tine_to_level=_A.nearest_tine(chosen.price),
+                     # r103 — THE RAIL PROJECTION, RECORDED AT LAST. Computed on
+                     # every 15s tick since the fork was built and discarded at
+                     # this boundary every time. The plan can now tell "0.3%
+                     # from a HARD held extreme with stops behind it" from "0.3%
+                     # from a SOFT respected rail", and knows when the rail
+                     # arrives (`bars_to_contact`) rather than only where it is.
+                     **_A.rail_context(price_now))
             # ══ r102 — THE TELEMETRY r5's REWRITE DROPPED, RESTORED ═════════
             # 🔴 THIS FILE'S OWN HEADER HAS PROMISED THESE THREE SINCE r5 AND
             # NOTHING IMPLEMENTED THEM. mainline r233 added them record-only to

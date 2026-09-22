@@ -1,6 +1,17 @@
 """
-derived/levels.py  v5.4
+derived/levels.py  v5.5
 Owns `level_ledger` and `level_event`. Tier 3 — stateful; the object has a biography.
+v5.5  2026-09-22  OTV4TEST r103 - THE PROJECTION MAP: THE RAILS OUTWARD IN
+      TIME. `rail_projection()` and `rail_projection_for()`. The operator has
+      ruled this repeatedly - "the rails belong in a projection map so that you
+      can go outward in time because you already know the slope of the channel
+      if a fork is present". r19 BUILT the primitive: `tines_now(price,
+      minutes_back)` walks a rail along its own slope so an interaction is
+      measured when it happened. A NEGATIVE minutes_back walks it FORWARD, and
+      nothing ever called it that way - so the slope, computed every 15s tick
+      since the fork was built, has never once answered where a rail is going.
+      Orientation is inherited from the tine rule, so a wrong-side rail is
+      never projected; a dead fork yields an explicit absence.
 v5.4  2026-09-18  OTV4TEST r44 — THE PIERCE IS THE EXCURSION, NOT THE RECLAIM
       BAR'S WICK. `_derive_events` skipped every bar that traded beyond a level
       without closing back, so depth was measured on the ONE bar that closed
@@ -829,6 +840,78 @@ class LevelEngine(DerivedEngine):
                         "tines": len(out["tines"])}
         return out
 
+    # ══ r103 — THE PROJECTION MAP: THE RAILS OUTWARD IN TIME ═══════════════
+    RAIL_HORIZONS_MIN = (0, 15, 30, 60)
+
+    def rail_projection(self, price: float, horizons=None):
+        """Where each correctly-oriented rail IS, and where it WILL BE.
+
+        🔑 THE OPERATOR'S RULING, given repeatedly and last on 2026-09-22: *"the
+        rails belong in a projection map so that you can go outward in time
+        because you already know the slope of the channel if a fork is
+        present"*, and r19's clause — *"the projection persists only as long as
+        the one hour fork persists and if a new fork is born a new projection
+        must be graphed"*.
+
+        🔑 THE PRIMITIVE ALREADY EXISTED AND WAS ONLY EVER WALKED BACKWARD.
+        r19 built `tines_now(price, minutes_back)` to walk a rail along its own
+        slope so an interaction is measured at the instant it happened. A
+        NEGATIVE `minutes_back` walks it FORWARD. Nothing ever called it that
+        way, so the slope — computed every tick since the fork was built — has
+        never once answered "where is this rail going to be".
+
+        ⚠️ ORIENTATION IS THE TINE RULE AND IT IS NOT NEGOTIABLE (r5): an upper
+        rail is resistance forever, a lower rail support forever, the median by
+        the side price is on. A rail on the wrong side of spot is DROPPED by
+        `side_ok`, never relabelled — price above the top rail does not acquire
+        a floor. The projection inherits that: it projects only rails that are
+        correctly oriented RIGHT NOW.
+
+        ⚠️ A DEAD FORK YIELDS `{}`. There is no stored row to go stale — the
+        projection dies with the fork that graphed it, by construction.
+
+        Returns {"fork": "built"|"absent", "fork_key": ..., "slope_per_bar": ...,
+                 "above": {...}|None, "below": {...}|None, "horizons": {...}}
+        where each side names the NEAREST correctly-oriented rail and carries
+        `dist_pts`/`dist_pct`/`bars_to_contact` plus its projected price at each
+        horizon.
+        """
+        hz = tuple(horizons if horizons is not None else self.RAIL_HORIZONS_MIN)
+        live = [t for t in self.tines_now(price) if t.get("side_ok", True)]
+        out = {"fork": "built" if live else "absent", "fork_key": None,
+               "slope_per_bar": None, "above": None, "below": None,
+               "horizons": {}}
+        if not live:
+            return out
+        out["fork_key"] = live[0].get("fork_key")
+        out["slope_per_bar"] = live[0].get("slope_per_bar")
+        px = float(price or 0.0)
+        ups = [t for t in live if t["kind"] == "resistance" and float(t["price"]) > px]
+        dns = [t for t in live if t["kind"] == "support" and float(t["price"]) < px]
+        near_up = min(ups, key=lambda t: float(t["price"]) - px) if ups else None
+        near_dn = min(dns, key=lambda t: px - float(t["price"])) if dns else None
+
+        def _side(t):
+            if t is None:
+                return None
+            return {"provenance": t["provenance"], "price": float(t["price"]),
+                    "kind": t["kind"],
+                    "dist_pts": round(abs(float(t["price"]) - px), 4),
+                    "dist_pct": t.get("dist_pct"),
+                    "bars_to_contact": t.get("bars_to_contact"),
+                    "slope_per_bar": t.get("slope_per_bar")}
+
+        out["above"], out["below"] = _side(near_up), _side(near_dn)
+        # ⚠️ PROJECTED AT A STANDING PRICE. This says where the RAIL goes, not
+        # where price goes — the rail's slope is known, price's is not, and
+        # conflating them would be inventing a forecast (§0).
+        for m in hz:
+            fwd = {t["provenance"]: round(float(t["price"]), 4)
+                   for t in self.tines_now(px, -float(m))
+                   if t["provenance"] in {x["provenance"] for x in live}}
+            out["horizons"][int(m)] = fwd
+        return out
+
     @staticmethod
     def _is_tine(prov: str) -> bool:
         return str(prov).startswith("fork1h/")
@@ -1181,3 +1264,25 @@ class LevelEngine(DerivedEngine):
         """
         b = self.board(price, limit=limit)
         return {"above": b.get("above", []), "below": b.get("below", [])}
+
+
+def rail_projection_for(store, symbol: str, price: float, horizons=None):
+    """THE ONE ACCESSOR for the rail projection, resolved exactly as `board_for`
+    resolves the board: prefer the LIVE engine, because it is the only thing
+    holding a fork, and fall back to an engine over the caller's own store.
+
+    🔴 IT DOES NOT READ `level_ledger`. r19 guarantees no rail is ever stored
+    there, which is precisely why `anchors.nearest_tine` — which queried that
+    table for `fork1h/%` — returned None on every row ever written."""
+    eng = None
+    try:
+        from derived.registry import level_engine
+        eng = level_engine()
+    except Exception:                                           # noqa: BLE001
+        eng = None
+    if eng is not None and getattr(eng, "_store", None) is not None:
+        return eng.rail_projection(price, horizons)
+    if store is None:
+        return {"fork": "absent", "fork_key": None, "slope_per_bar": None,
+                "above": None, "below": None, "horizons": {}}
+    return LevelEngine(store, symbol, forks=None).rail_projection(price, horizons)

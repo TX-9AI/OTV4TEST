@@ -1,5 +1,15 @@
 """
-derived/anchors.py  v1.2
+derived/anchors.py  v1.3
+v1.3  2026-09-22  OTV4TEST r103 - `nearest_tine` READ A TABLE THAT IS
+      GUARANTEED EMPTY AND RETURNED None ON EVERY ROW EVER WRITTEN. It queried
+      level_ledger for fork1h/%; r19's clause (1) makes _sources() skip every
+      pool flagged `moving` so that a rail NEVER becomes a ledger row. MEASURED:
+      0 fork1h rows in level_ledger, 83 in level_event, and
+      SweepCreditSpread.anchor_tine_to_level banked 639 rows, all None.
+      Repointed at the live projection. NEW `rail_context()` carries the rail
+      distance, slope and convergence onto the plan row - ALL NUMERIC, because
+      stamp() floats its values and plan_check has no text column, which is
+      r99's price_vs_vwap defect in a new costume.
 v1.2  2026-09-22  OTV4TEST r94 — BOTH READERS STOP QUERYING A ROW NOBODY WRITES.
       `vwap_now()` AND `vwap()` both pinned `interval='primary'` - the FALLBACK
       row in indicators.derive(), emitted only `if not rows`. r69 repaired the
@@ -188,14 +198,84 @@ def fork_dir(tf: str = "15m") -> Optional[str]:
 
 
 def nearest_tine(price) -> Optional[float]:
-    """Signed distance (points) from price to the nearest live 1h tine; None without a fork."""
+    """Signed distance (points) from price to the nearest correctly-oriented
+    live 1h rail; None without a fork. Positive = the rail is above price.
+
+    🔴 r103 — THIS READ A TABLE THAT IS GUARANTEED EMPTY, AND HAD RETURNED None
+    ON EVERY ROW EVER WRITTEN. It queried `level_ledger` for `fork1h/%`. r19's
+    clause (1) makes `_sources()` skip any pool flagged `moving`, EXACTLY so a
+    rail never becomes a ledger row — after 22 simultaneously-live "1h upper
+    tine" rows spanning 5.79 points were found in it. So the writer door was
+    closed by ruling and this reader was left pointed at the closed door.
+    MEASURED 2026-09-22: 0 `fork1h/` rows in `level_ledger`, 83 in
+    `level_event`, and `SweepCreditSpread.anchor_tine_to_level` banked **639
+    rows, every one of them None**. `ORBStrategy.anchor_tine_to_target` the
+    same. §23 — fix every reader, not just the writer.
+    ⚠️ AND A GATE SAT BESIDE IT AGREEING. check_level_rejection F1 asserts the
+    ledger holds ZERO rail rows — correctly — while this function queried that
+    same table expecting rows. Both passed.
+    🔑 IT NOW READS THE LIVE PROJECTION, which is where the rails actually are,
+    and inherits the tine rule from it: a rail on the wrong side of spot is not
+    a candidate, so price above the top rail can never measure to it as support.
+    """
     if price is None:
         return None
-    rows = _q("SELECT price FROM level_ledger WHERE symbol=? AND provenance LIKE 'fork1h/%' AND retired_ts IS NULL",
-              (_sym(),))
-    if not rows:
+    try:
+        from derived.levels import rail_projection_for
+        pr = rail_projection_for(None, _sym(), float(price))
+    except Exception:                                           # noqa: BLE001
         return None
-    return min((float(r[0]) - float(price) for r in rows), key=abs)
+    cands = [pr.get("above"), pr.get("below")]
+    dists = [float(c["price"]) - float(price) for c in cands if c]
+    return min(dists, key=abs) if dists else None
+
+
+def rail_context(price) -> dict:
+    """The rail projection as flat anchor fields, for a plan row (r103).
+
+    🔑 EVERY ONE OF THESE IS COMPUTED ON EVERY TICK ALREADY and has been
+    discarded at the plan boundary since the fork was built: `dist_pct`,
+    `bars_to_contact` and `slope_per_bar` come straight off `tines_now`, and the
+    horizons come from walking the rail forward along that same slope. Nothing
+    here is a new measurement; it is the existing one finally being recorded.
+    ⚠️ RECORDED, GATING NOTHING (§31). A threshold set before the measurement
+    exists is what PREREG_TRAIL.md exists to prevent.
+    """
+    if price is None:
+        return {}
+    try:
+        from derived.levels import rail_projection_for
+        pr = rail_projection_for(None, _sym(), float(price))
+    except Exception:                                           # noqa: BLE001
+        return {}
+    up, dn = pr.get("above"), pr.get("below")
+
+    # 🔴 EVERY FIELD HERE IS NUMERIC ON PURPOSE. `stamp()` does `float(v)` and
+    # swallows the failure, and `plan_check` has no text column — so returning
+    # "built" or "fork1h/upper" would store None on every row. That is r99's
+    # `price_vs_vwap` defect precisely: a CATEGORICAL floated into oblivion,
+    # computed every tick for weeks and thrown away at the record boundary.
+    # WHICH rail is therefore encoded as a documented CODE rather than a name.
+    def _code(c):
+        if not c:
+            return None
+        pv = str(c.get("provenance") or "")
+        return 1.0 if pv.endswith("upper") else (-1.0 if pv.endswith("lower")
+                                                 else 0.0)   # median
+
+    return {
+        "rail_fork_built": 1.0 if pr.get("fork") == "built" else 0.0,
+        "rail_slope_per_bar": pr.get("slope_per_bar"),
+        # upper=+1, median=0, lower=-1 — the rail's NATURE, not its side
+        "rail_above_which": _code(up),
+        "rail_above_price": (up or {}).get("price"),
+        "rail_above_dist_pts": (up or {}).get("dist_pts"),
+        "rail_above_bars_to_contact": (up or {}).get("bars_to_contact"),
+        "rail_below_which": _code(dn),
+        "rail_below_price": (dn or {}).get("price"),
+        "rail_below_dist_pts": (dn or {}).get("dist_pts"),
+        "rail_below_bars_to_contact": (dn or {}).get("bars_to_contact"),
+    }
 
 
 def aggressor_share(level, band: float = 0.05, secs: int = 300) -> Optional[float]:
