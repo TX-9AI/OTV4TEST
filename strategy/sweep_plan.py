@@ -1,5 +1,9 @@
 """
-strategy/sweep_plan.py  v1.8
+strategy/sweep_plan.py  v1.9
+v1.9  2026-09-22  OTV4TEST r104 - `levels_in_play` now ranks through the
+      SHARED `rails_after_held` rather than its own copy. Three copies of
+      "rails last" is three chances to drift, which is how three plans ended
+      up with three private compositions before r33.
 v1.8  2026-09-22  OTV4TEST r103 - THE HELD EXTREMES CLAIM THEIR SLOTS AND
       THE RAILS JOIN AFTER. `levels_in_play()` extracted so a checker drives the
       real composition. r33 wrote `levels = levels + tines` one line above the
@@ -215,12 +219,15 @@ def levels_in_play(levels, tines, price_now, limit: int = None):
                     if l["kind"] == "support" and float(l["price"]) < px],
                    key=lambda l: -float(l["price"]))[:limit]
     held_up, held_dn = len(above), len(below)
-    above = above + sorted([t for t in tines
-                            if t["kind"] == "resistance" and float(t["price"]) > px],
-                           key=lambda t: float(t["price"]))
-    below = below + sorted([t for t in tines
-                            if t["kind"] == "support" and float(t["price"]) < px],
-                           key=lambda t: -float(t["price"]))
+    # r104 — ONE DEFINITION OF THE INVARIANT, shared with tcs_plan and
+    # liquidity_hunt. Three copies of "rails last" is three chances to drift.
+    from derived.levels import rails_after_held as _raf
+    above = _raf(above, [t for t in tines
+                         if t["kind"] == "resistance" and float(t["price"]) > px],
+                 key=lambda l: float(l["price"]))
+    below = _raf(below, [t for t in tines
+                         if t["kind"] == "support" and float(t["price"]) < px],
+                 key=lambda l: -float(l["price"]))
     return above, below, held_up, held_dn
 
 

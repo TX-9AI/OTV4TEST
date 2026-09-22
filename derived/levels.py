@@ -1,6 +1,12 @@
 """
-derived/levels.py  v5.5
+derived/levels.py  v5.6
 Owns `level_ledger` and `level_event`. Tier 3 — stateful; the object has a biography.
+v5.6  2026-09-22  OTV4TEST r104 - `rails_after_held()` and `split_rails()`:
+      ONE definition of the invariant every level-trading plan must honour -
+      held extremes rank first, rails rank after. The KEY is the caller's,
+      because the three plans rank differently and each is right for its own
+      trade; a shared function that imposed one ordering would have broken two
+      of them.
 v5.5  2026-09-22  OTV4TEST r103 - THE PROJECTION MAP: THE RAILS OUTWARD IN
       TIME. `rail_projection()` and `rail_projection_for()`. The operator has
       ruled this repeatedly - "the rails belong in a projection map so that you
@@ -1286,3 +1292,43 @@ def rail_projection_for(store, symbol: str, price: float, horizons=None):
         return {"fork": "absent", "fork_key": None, "slope_per_bar": None,
                 "above": None, "below": None, "horizons": {}}
     return LevelEngine(store, symbol, forks=None).rail_projection(price, horizons)
+
+
+def rails_after_held(held, rails, key):
+    """r104 — HELD EXTREMES RANK FIRST; RAILS RANK AFTER. The one invariant
+    every level-trading plan must honour, expressed so each plan keeps its OWN
+    ordering key.
+
+    🔑 THE OPERATOR'S RULING, 2026-09-22: *"It's just SEPARATE from held levels
+    with testing orders. It's SOFTER than held levels."* A held session extreme
+    is a fixed price with resting stops beyond it; a fork rail is a sloped line
+    price tends to respect and where no pool sits. Ranking them in one list by
+    distance makes the softer thing beat the harder one whenever it happens to
+    be nearer.
+
+    ⚠️ THE KEY IS THE CALLER'S, DELIBERATELY. The three plans rank differently
+    and each is correct for its own trade: the sweep walks outward from spot,
+    the TCS ranks by ABSOLUTE distance and does NOT filter by side (after the
+    move the accepted high sits BELOW price and is exactly what it sells
+    against), and the hunt orders outward from the ORB edge. A shared function
+    that imposed one ordering would have broken two of them.
+
+    ⚠️ IT DOES NOT CAP. Capping is the sweep's rule, applied to the HELD list
+    before this is called. Operator: *"Three would be ideal ... if there's more
+    I would like to have more, if there's less we can accept that too."*
+    """
+    return sorted(held, key=key) + sorted(rails, key=key)
+
+
+def split_rails(rows):
+    """(held_extremes, rails) from a mixed list, by PROVENANCE not by position.
+
+    🔴 BY PROVENANCE, NEVER BY PRICE OR ORDER. A rail is identified by its
+    `fork1h/` provenance — the same test `_is_tine` uses — because a rail's
+    price moves every tick and its position in a list is exactly what the
+    caller is trying to decide."""
+    held, rails = [], []
+    for r in rows:
+        (rails if LevelEngine._is_tine(str((r or {}).get("provenance") or ""))
+         else held).append(r)
+    return held, rails

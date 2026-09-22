@@ -1,5 +1,12 @@
 """
-strategy/liquidity_hunt.py  v1.3
+strategy/liquidity_hunt.py  v1.4
+v1.4  2026-09-22  OTV4TEST r104 - THE RAILS NO LONGER OUTRANK A HELD
+      EXTREME. `sorted(b["above"] + tines_up)` was one merged list and
+      `na = above[0]` took whatever sat nearest, so a rail inside the nearest
+      held extreme became THE level this plan hunts - and the hunt's whole
+      thesis is the pool of resting stops beyond a held extreme, which a sloped
+      rail does not have. Ordering (outward from the ORB edge) and the hi/lo
+      rail filter are unchanged. Adds rails_in_play and the rail projection.
 v1.3  2026-09-19  OTV4TEST r61 (ENT.1) — declares `underlying_stop_is_thesis`.
       This file writes `prep.boundary` into `underlying_stop` and its own
       comment says what that is: *"thesis-dead: a close back through it"*. The
@@ -129,7 +136,9 @@ class HuntPreparation:
 
 class LiquidityHunt:
     name = "LiquidityHunt"
-    PLAN_CHECKS = ("entry_window", "price", "atr_pct", "orb_range", "board_state", "board_above",
+    PLAN_CHECKS = ("entry_window", "price", "atr_pct", "orb_range", "board_state",
+                   "rails_in_play",                                    # r104
+                   "board_above",
                    "board_below", "fork_built", "nearest_above", "nearest_below",
                    "above_em", "below_em", "bias", "break_state", "fake_seen", "fake_failed",
                    "entry", "break_finished", "runway", "considered", "spread_rejected",
@@ -196,11 +205,30 @@ class LiquidityHunt:
             prep.starved.append(f"level_board:{b.get('state')}"); t.starved("level_board"); return prep
         tines_up = [dict(x) for x in b["tines"] if x["price"] > hi]
         tines_dn = [dict(x) for x in b["tines"] if x["price"] < lo]
-        above = sorted(b["above"] + tines_up, key=lambda l: float(l["price"]))
-        below = sorted(b["below"] + tines_dn, key=lambda l: -float(l["price"]))
+        # 🔴 r104 — THE RAILS NO LONGER OUTRANK A HELD EXTREME. These were one
+        # merged list and `na = above[0]` took whatever sat nearest — so a rail
+        # inside the nearest held extreme became THE level this plan hunts.
+        # 🔑 Operator, 2026-09-22: *"It's just SEPARATE from held levels with
+        # testing orders. It's SOFTER than held levels."* The hunt's whole
+        # thesis is the pool of resting stops beyond a held extreme; a sloped
+        # rail has no pool to take.
+        # ⚠️ ORDERING UNCHANGED — still outward from the ORB edge, and the rails
+        # are still filtered against `hi`/`lo` rather than spot, which is this
+        # plan's own anchoring (r12). Only the rank between the two kinds moves,
+        # and nothing is withdrawn: an absent held extreme still leaves the rail
+        # selectable, which is r33's "OR level, not an AND".
+        from derived.levels import rails_after_held as _raf
+        above = _raf(b["above"], tines_up, key=lambda l: float(l["price"]))
+        below = _raf(b["below"], tines_dn, key=lambda l: -float(l["price"]))
         t.check("board_above", b["count"]["above"], None)
         t.check("board_below", b["count"]["below"], None)
         t.check("fork_built", 1.0 if b["fork"] == "built" else 0.0, None)
+        # ⚠️ r104 — the rail count is its OWN number. `board_above`/`board_below`
+        # already name the HELD set (they read b["count"]), so a combined total
+        # would have hidden the rails entirely.
+        t.check("rails_in_play", len(tines_up) + len(tines_dn), None)
+        from derived import anchors as _Ar
+        _Ar.stamp(t, **_Ar.rail_context(price_now))
         na = above[0] if above else None
         nb = below[0] if below else None
         prep.above, prep.below = na, nb

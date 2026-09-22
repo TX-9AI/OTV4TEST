@@ -1,5 +1,14 @@
 """
-strategy/tcs_plan.py  v1.3
+strategy/tcs_plan.py  v1.4
+v1.4  2026-09-22  OTV4TEST r104 - THE RAILS NO LONGER OUTRANK A HELD
+      EXTREME. `levels = levels + prep.tines` merged both into ONE distance
+      ranking, so a rail nearer than a held session extreme became
+      nearest_above/nearest_below and the spread sold against it. Operator:
+      "It's SOFTER than held levels." Ordering key and the deliberate
+      no-side-filter are UNCHANGED; only the rank between the two kinds moves,
+      and the rails stay selectable (r33's OR level). Records rails_in_play as
+      its own count and the rail projection as anchors - this plan previously
+      knew only that a fork was built or absent.
 v1.3  2026-09-17  OTV4TEST r33 — THE `ny` FILTER IS GONE, AND THIS PLAN HAS A FORK
       FOR THE FIRST TIME. From r9 to r32 the level read was
       `live_levels()` filtered to `provenance == "ny"`, which broke the r5 ruling
@@ -184,7 +193,8 @@ class TCSPreparation:
 class TCSPlan:
     name = "TrendCreditSpread"
     PLAN_CHECKS = ("entry_window", "price", "atm_iv", "em", "band_lo", "band_hi",
-                   "extremes_above", "extremes_below", "nearest_above", "nearest_above_credit",
+                   "extremes_above", "extremes_below", "rails_in_play",   # r104
+                   "nearest_above", "nearest_above_credit",
                    "nearest_below", "nearest_below_credit", "adx", "accepted",
                    "accepted_age_bars", "ref_band_lo", "ref_band_hi", "outside_by",
                    "outside_em", "contract", "wing", "width", "credit", "credit_pct_width",
@@ -329,13 +339,34 @@ class TCSPlan:
         # ("a common informer but not mandatory if it's not there").
         # They arrive LABELLED (provenance `fork1h/*`) so nothing is conjoined:
         # the two products stay distinguishable on the row and in the journal.
-        levels = levels + prep.tines
-        # NOT filtered by side of spot: after the move the accepted high is BELOW
-        # price and is exactly the level the spread sells against.
-        above = sorted([l for l in levels if l["kind"] == "resistance"], key=lambda l: abs(float(l["price"]) - price_now))
-        below = sorted([l for l in levels if l["kind"] == "support"], key=lambda l: abs(float(l["price"]) - price_now))
-        t.check("extremes_above", len(above), None)
-        t.check("extremes_below", len(below), None)
+        # 🔴 r104 — THE RAILS NO LONGER OUTRANK A HELD EXTREME. `levels = levels
+        # + prep.tines` merged the two into ONE distance ranking, so a rail that
+        # happened to sit nearer than a held session extreme became
+        # `nearest_above`/`nearest_below` and the spread sold against it.
+        # 🔑 THE OPERATOR'S RULING, 2026-09-22: *"It's just SEPARATE from held
+        # levels with testing orders. It's SOFTER than held levels."* A held
+        # extreme has resting stops beyond it; a sloped rail holds no pool.
+        # Softer must not beat harder merely by being closer.
+        # ⚠️ THE ORDERING KEY IS UNCHANGED AND SO IS THE SIDE BEHAVIOUR — still
+        # ABSOLUTE distance, still NOT filtered by side of spot, because after
+        # the move the accepted high is BELOW price and is exactly the level the
+        # spread sells against. Only the RANK ORDER between the two kinds moves.
+        # ⚠️ AND NOTHING IS WITHDRAWN: the rails remain candidates (r33 — "an OR
+        # level not an AND"), they simply queue behind the held extremes.
+        from derived.levels import rails_after_held as _raf
+        _key = lambda l: abs(float(l["price"]) - price_now)      # noqa: E731
+        _ha = [l for l in levels if l["kind"] == "resistance"]
+        _hb = [l for l in levels if l["kind"] == "support"]
+        _ra = [t for t in prep.tines if t["kind"] == "resistance"]
+        _rb = [t for t in prep.tines if t["kind"] == "support"]
+        above = _raf(_ha, _ra, _key)
+        below = _raf(_hb, _rb, _key)
+        # ⚠️ THE COUNTS NAME THE HELD SET, NOT THE TOTAL. One combined number
+        # makes a board of three rails read identically to three held extremes,
+        # which is the conflation r19 exists to prevent.
+        t.check("extremes_above", len(_ha), None)
+        t.check("extremes_below", len(_hb), None)
+        t.check("rails_in_play", len(_ra) + len(_rb), None)
         if chain is None:
             prep.starved.append("chain"); t.starved("chain"); return prep
         prep.above = [self._structure(Candidate(l), chain) for l in above]
@@ -436,7 +467,13 @@ class TCSPlan:
             # r12 — ANCHORS, record only: vanna at the accepted extreme, aggressor share through it
             from derived import anchors as _A
             _A.stamp(t, vanna_at_level=_A.vanna_at(cand.price), charm_at_short=_A.charm_at(cand.short.strike),
-                     aggressor_at_level=_A.aggressor_share(cand.price), fork15=_A.fork_dir("15m"))
+                     aggressor_at_level=_A.aggressor_share(cand.price), fork15=_A.fork_dir("15m"),
+                     # r104 — THE RAIL PROJECTION, RECORDED. This plan knew a
+                     # fork was "built" or "absent" and nothing more: not how
+                     # far the nearest correctly-oriented rail sat, not its
+                     # slope, not when it arrives. All three were computed on
+                     # every tick and discarded here.
+                     **_A.rail_context(price_now))
         if prep.starved:
             t.starved(*prep.starved); return prep
         if prep.structural:
