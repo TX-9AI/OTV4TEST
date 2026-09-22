@@ -1,5 +1,13 @@
 """
-strategy/sweep_credit_spread.py  v6.4
+strategy/sweep_credit_spread.py  v6.5
+v6.5  2026-09-22  OTV4TEST r105 - `sig.sweep_age_bars` REMOVED, not repaired.
+      A hardcoded 0 that nothing decided on: its ONLY consumer was
+      signal_journal's factor column, and that file's own note calls a constant
+      there "a misleading 0". Operator's ruling: age is necessary to ORDER the
+      levels by recency and "not relevant to anything else". The measurement is
+      NOT lost - the rejection's real age is banked on the PLAN row as
+      `rejection_age_bars`. r241's claim that the measurement rides the trade
+      row is STRUCK in place per SS35: there was never such a column.
 v6.4  2026-09-22  OTV4TEST r102 - NO BEHAVIOUR CHANGE. Records, in the one
       place a reader will look, that `sig.sweep_age_bars = 0` is r5's
       DELIBERATE decision (the trigger IS a fresh rejection, pinned by
@@ -65,9 +73,11 @@ v5.3  2026-09-04  r241 — 🔴 THE AGE GATE IS REMOVED, NOT RAISED.
       through the level. It fails 73%, a market fact rather than a defect.
       `age` was a second, worse proxy for a question that gate settles — two
       rules for one thing, §35's rot.
-      ⚠️ THE MEASUREMENT SURVIVES. `sig.sweep_age_bars` still carries it to the
-      row: knowing how old a level was is useful for FITTING, deciding with it
-      is what was ruled out.
+      ~~⚠️ THE MEASUREMENT SURVIVES. `sig.sweep_age_bars` still carries it to
+      the row.~~ STRUCK 2026-09-22 at r105 — it never reached the trade row (no
+      such column) and carried a hardcoded 0 to the journal. The measurement
+      that DOES survive is `rejection_age_bars`, on the plan row. Struck rather
+      than deleted, per §35 and the r240 precedent.
       ⚠️ AND UNMEASURABLE IS NOT OLD. `bars_ago` absent yields the 999 sentinel
       and refuses under its own name — a data fault, not a staleness judgement,
       and admitting it silently would be absent-is-not-zero again.
@@ -918,21 +928,20 @@ class SweepCreditSpreadStrategy:
         sig.pool_price = prep.pool
         sig.boundary = prep.boundary
         sig.swept_level_name = prep.name
-        # ⚠️ r102 — DELIBERATELY 0, AND THAT IS A FORK DECISION, NOT A BUG.
-        # r5 retired the age GATE and set this to 0 because the TRIGGER is a
-        # fresh REJECTED event, so a fired sweep is on a fresh rejection by
-        # construction. `check_sweep_liveness` L3 pins exactly that.
-        # 🔴 THE MAINLINE CHECKER DISAGREES AND BOTH ARE IN THIS TREE.
-        # `check_age_gate_gone` A3 is inherited from mainline r241, whose
-        # ruling was "the GATE goes, the MEASUREMENT stays". The fork
-        # superseded that and nothing reconciled the two gates.
-        # ⚠️ THE OPEN QUESTION, FOR THE OPERATOR AND NOT FOR ME: a trade may
-        # fire on a rejection up to REJECTION_FRESH_BARS (3) old, so 0 is
-        # wrong by up to three bars — while the TRUE figure is already
-        # recorded as `rejection_age_bars` on the plan row. Whether the signal
-        # should carry the real age is a change to recorded trade semantics
-        # and is NOT made here.
-        sig.sweep_age_bars = 0
+        # 🔴 r105 — `sig.sweep_age_bars` IS REMOVED, NOT REPAIRED. It was a
+        # hardcoded 0 that nothing decided on: its ONLY consumer was
+        # `signal_journal`'s factor column, and that file's own comment calls a
+        # constant here "a misleading 0" rather than the honest absence it
+        # wanted. The operator's ruling, 2026-09-22: age is necessary to ORDER
+        # the levels by recency — `level_map.walk` sorts on `formed_ts` and a
+        # board without it is arbitrary — and *"not relevant to anything else"*.
+        # ⚠️ THE OTHER `sweep_age_bars` IS UNTOUCHED AND IS A DIFFERENT
+        # QUANTITY: `liquidity_mapper`'s, default 999, which gates
+        # `recent_sweep` at line 1036 and feeds `market_state`. One name, two
+        # meanings — the collision stays, and is why this removal was traced
+        # attribute-by-attribute rather than by grepping the name.
+        # 🔑 THE MEASUREMENT IS NOT LOST: the rejection's real age is computed
+        # every tick and banked on the PLAN row as `rejection_age_bars`.
         sig.rejection_pct = prep.rej_pct
         sig.rejection_depth = prep.depth
         sig.richness_at_entry = prep.richness

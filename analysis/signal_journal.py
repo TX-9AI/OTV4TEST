@@ -1,5 +1,10 @@
 """
-analysis/signal_journal.py  v4.2
+analysis/signal_journal.py  v4.3
+v4.3  2026-09-22  OTV4TEST r105 - the `sweep_age_bars` factor column is
+      REMOVED. It was None on every strategy but the sweep and a hardcoded 0 on
+      that one, so it was never a factor - which is exactly what the N.3 note
+      above warns a constant becomes. A column that can only ever be None is
+      worse than no column.
 v4.2  2026-08-25  r65 EXORCISM: every mention of the retired classification
       system removed - identifiers, comments, docstrings, schema. The word
       does not appear in this tree. Full accounting: REMOVAL_LOG (delivery).
@@ -187,7 +192,9 @@ def signal_ctx(signal) -> dict:
             # N.3 — sweep-only fields; absent (None) on every other strategy,
             # which is the honest encoding rather than a misleading 0.
             "closes_beyond":    getattr(signal, "closes_beyond", None),
-            "sweep_age_bars":   getattr(signal, "sweep_age_bars", None),
+            # r105 — `sweep_age_bars` REMOVED. It was None on every strategy
+            # but the sweep and a hardcoded 0 on that one, so it was never a
+            # factor — which is what the note above warns a constant becomes.
             "conviction":       _round(getattr(signal, "conviction", 0.0), 4),
             "confluence":       list(getattr(signal, "confluence_factors", []) or []),
             "notes":            getattr(signal, "notes", ""),

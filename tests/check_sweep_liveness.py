@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """
-tests/check_sweep_liveness.py  v1.3
+tests/check_sweep_liveness.py  v1.4
+v1.4  2026-09-22  OTV4TEST r105 - L3 INVERTS. It used to pin
+      `sig.sweep_age_bars = 0` as deliberate while the inherited mainline gate
+      check_age_gate_gone A3 demanded the real measurement - two gates in one
+      tree requiring contradictory things, invisible because A3 died on an
+      AttributeError for seventeen days. L3 is AST-based, because the comment
+      explaining the removal names the field (SS20). L3b pins the journal, L3c
+      pins where the measurement actually lives, and L3d pins that the MAPPER's
+      field of the same name is a DIFFERENT quantity and still gates.
 v1.3  2026-09-22  OTV4TEST r102 - runnable under the lander's system
       python3; it could not import the venv and so had never run as a CHECK.
       Declared as one now: L3 is the gate that caught r102 starting to change
@@ -100,12 +108,49 @@ def main():
     check("L2b and nothing calls prep.cond('age', ...)", not conds,
           f"lines {[n.lineno for n in conds]}")
 
-    # ── L3 — BUT THE AGE IS STILL RECORDED ───────────────────────────────
-    # ⚠️ r241 removes the GATE, not the MEASUREMENT. `sig.sweep_age_bars` still
-    # carries it onto the trade row: knowing how old a level was is useful for
-    # fitting, DECIDING with it is what was ruled out.
-    check("L3 the age field is still on the signal (now always 0 — the trigger IS the fresh rejection)",
-          "sig.sweep_age_bars = 0" in src)
+    # ── L3 — THE AGE FIELD IS GONE, AND STAYS GONE (r105) ────────────────
+    # 🔴 THIS CHECK USED TO ASSERT THE OPPOSITE. It pinned `sig.sweep_age_bars
+    # = 0` as r5's deliberate choice, while the inherited mainline gate
+    # `check_age_gate_gone` A3 demanded the real measurement — two gates in one
+    # tree requiring contradictory things, invisible because A3 died on an
+    # AttributeError for seventeen days.
+    # 🔑 THE OPERATOR RULED IT OUT ENTIRELY, 2026-09-22: age is necessary to
+    # ORDER the levels by recency — `level_map.walk` sorts on `formed_ts`, and
+    # without it the board is arbitrary — and *"not relevant to anything else"*.
+    # The field decided nothing: its only consumer was `signal_journal`'s
+    # factor column, and a constant is not a factor.
+    # ⚠️ THE MEASUREMENT IS NOT LOST — L3c pins where it actually lives.
+    # ⚠️ AST, NOT A SUBSTRING — the comment that explains the removal names the
+    # field, so a text test fails on its own explanation. §20, for the third
+    # time in one session; assert the ASSIGNMENT is gone, not the spelling.
+    import ast as _a3
+    _assigns = [n.lineno for n in _a3.walk(_a3.parse(src))
+                if isinstance(n, _a3.Assign)
+                for tgt in n.targets
+                if isinstance(tgt, _a3.Attribute) and tgt.attr == "sweep_age_bars"]
+    check("L3 nothing assigns sweep_age_bars on the signal", not _assigns,
+          f"lines {_assigns}" if _assigns else "removed at r105; nothing decided on it")
+    _jsrc = open(os.path.join(_R, "analysis", "signal_journal.py"),
+                 encoding="utf-8").read()
+    # ⚠️ ASSERTED ON THE PAYLOAD LINE, NOT THE WHOLE FILE — the changelog above
+    # it necessarily names the field while explaining the removal (§20).
+    check("L3b and gone from the journal payload",
+          '"sweep_age_bars":' not in _jsrc,
+          "a column that can only ever be None is worse than no column")
+    # 🔑 L3c — WHAT SURVIVES. The rejection's real age is computed every tick
+    # and banked on the PLAN row. Removing the dead field must not be mistaken
+    # for removing the measurement.
+    from strategy.sweep_plan import SweepPlan as _SP3
+    check("L3c the real age still reaches the plan row",
+          "rejection_age_bars" in _SP3.PLAN_CHECKS,
+          "the measurement lives here, not on the signal")
+    # ⚠️ L3d — THE MAPPER'S FIELD OF THE SAME NAME IS A DIFFERENT QUANTITY AND
+    # IS STILL LIVE. It gates `recent_sweep`. If a future cleanup greps the
+    # name and removes this too, a real gate dies silently.
+    import analysis.liquidity_mapper as _LM3
+    check("L3d the mapper's sweep_age_bars is untouched and still gates",
+          "sweep_age_bars <= max_bars" in open(_LM3.__file__, encoding="utf-8").read(),
+          "same name, different quantity — do not grep-and-delete")
 
     # ── L4 — THE UNMEASURABLE CASE REFUSES ON ITS OWN TERMS ──────────────
     # 🔴 A 999 sentinel means `bars_ago` could not be read AT ALL. That is a

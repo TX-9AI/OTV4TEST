@@ -108,7 +108,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `analysis/liquidity_mapper.py`
 - **calls:** `config.py`, `utils/math_utils.py`
-- **called by:** `derived/level_map.py`, `main.py`, `shadow/observer.py`, `tests/check_level_tape.py`, `tests/check_plan_prepares.py`, `tests/check_pool_geometry.py`
+- **called by:** `derived/level_map.py`, `main.py`, `shadow/observer.py`, `tests/check_level_tape.py`, `tests/check_plan_prepares.py`, `tests/check_pool_geometry.py`, `tests/check_sweep_liveness.py`
 
 ### `analysis/market_state.py`
 - **calls:** (none)
@@ -508,7 +508,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `strategy/sweep_plan.py`
 - **calls:** `config.py`, `data/derived_store.py`, `derived/__init__.py`, `derived/anchors.py`, `derived/levels.py`, `strategy/__init__.py`, `strategy/credit_vertical.py`, `strategy/criteria.py`, `strategy/plan.py`, `strategy/relaxed.py`, `strategy/sweep_credit_spread.py`, `utils/math_utils.py`
-- **called by:** `main.py`, `strategy/iron_condor_strategy.py`, `strategy/sweep_credit_spread.py`, `tests/check_age_gate_gone.py`, `tests/check_condor_mgmt.py`, `tests/check_credit_window.py`, `tests/check_levels_in_play.py`, `tests/check_plan_prepares.py`, `tests/check_strike_beyond.py`
+- **called by:** `main.py`, `strategy/iron_condor_strategy.py`, `strategy/sweep_credit_spread.py`, `tests/check_age_gate_gone.py`, `tests/check_condor_mgmt.py`, `tests/check_credit_window.py`, `tests/check_levels_in_play.py`, `tests/check_plan_prepares.py`, `tests/check_strike_beyond.py`, `tests/check_sweep_liveness.py`
 
 ### `strategy/tcs_plan.py`
 - **calls:** `config.py`, `data/derived_store.py`, `derived/__init__.py`, `derived/anchors.py`, `derived/levels.py`, `strategy/__init__.py`, `strategy/credit_vertical.py`, `strategy/criteria.py`, `strategy/gex_pin_butterfly.py`, `strategy/plan.py`, `strategy/sweep_credit_spread.py`, `utils/math_utils.py`
@@ -1107,7 +1107,7 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_sweep_liveness.py`
-- **calls:** `config.py`, `strategy/__init__.py`, `strategy/sweep_credit_spread.py`
+- **calls:** `analysis/liquidity_mapper.py`, `config.py`, `strategy/__init__.py`, `strategy/sweep_credit_spread.py`, `strategy/sweep_plan.py`
 - **called by:** (not imported) — referenced in `docs/PORT_MANIFEST.md`
 
 ### `tests/check_sweep_plan.py`
