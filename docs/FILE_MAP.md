@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-326 Python modules across 13 local packages.
+327 Python modules across 13 local packages.
 
-**Reached by:** 121 imported · 12 declared entry points · 111 referenced from a script, unit or doc but never imported · **82 by nothing here**.
+**Reached by:** 121 imported · 12 declared entry points · 111 referenced from a script, unit or doc but never imported · **83 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -472,7 +472,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `strategy/management.py`
 - **calls:** `config.py`, `execution/exit_engine.py`, `strategy/plan.py`
-- **called by:** `execution/position_manager.py`, `main.py`, `tests/check_atp_butterfly.py`, `tests/check_breakout.py`, `tests/check_breakout_delta_par.py`, `tests/check_breakout_research.py`, `tests/check_management_plan.py`
+- **called by:** `execution/position_manager.py`, `main.py`, `tests/check_atp_butterfly.py`, `tests/check_breakout.py`, `tests/check_breakout_delta_par.py`, `tests/check_breakout_research.py`, `tests/check_management_plan.py`, `tests/check_nearer_stop.py`
 
 ### `strategy/orb_plan.py`
 - **calls:** `analysis/orb_engine.py`, `config.py`, `derived/__init__.py`, `derived/anchors.py`, `strategy/orb_strategy.py`, `strategy/plan.py`, `utils/math_utils.py`
@@ -857,6 +857,10 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tests/check_missed_inert.py`
 - **calls:** `derived/plan_ledger.py`
 - **called by:** (not imported) — referenced in `docs/WORKING_AGREEMENT.md`
+
+### `tests/check_nearer_stop.py`
+- **calls:** `strategy/management.py`
+- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
 ### `tests/check_no_env_dump.py`
 - **calls:** (none)

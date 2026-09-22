@@ -1,5 +1,19 @@
 """
-strategy/management.py  v2.7
+strategy/management.py  v2.8
+v2.8  2026-09-22  OTV4TEST r98 — THE NEARER OF THE TWO STOPS GOVERNS, EACH TICK.
+      Operator: "use the nearest one... each tick one of the two will be
+      closer. Default to the closer one", and what it is FOR: "kill losers
+      quickly, and preserve winners out of the gate, even if it's modest".
+      That intent IS max(structure, trail) - underwater the trail is unarmed
+      or low so the STRUCTURE kills it fast; in profit the trail climbs above
+      and PRESERVES the gain. The two live in DIFFERENT UNITS - a 1m close
+      through underlying_stop versus a PREMIUM level - so `nearer_stop_defers`
+      first asks whether r91's delta-linear bridge was actually built for the
+      record, by checking stop_premium against entry - dist x |delta|.
+      MEASURED: good to 0.003-0.013 on the Breakouts, 0.134 out on VOLT whose
+      underlying_stop is a THESIS LINE at zero distance. Derived from columns,
+      because underlying_stop_is_thesis is a SIGNAL field and not a trades
+      column - a guard keyed on it would silently never fire (section 22).
 v2.7  2026-09-21  OTV4TEST r82 — PAR DELTA REPLACES THE TARGET FOR THE
       BREAKOUT. Operator: *"the breakout needs the delta stop not the 100%
       stop."* Its target was never written for it — this file documents that
@@ -207,6 +221,61 @@ COVERED = ("RunawayContinuation", "GEXPinButterfly", "SweepCreditSpread",
 NICKEL = 0.05
 
 
+
+def nearer_stop_defers(record, prem, stop_p, entry) -> bool:
+    """True when the TRAIL is the nearer stop, so the structure must stand aside.
+
+    🔑 EXTRACTED SO THE CHECK DRIVES THE REAL DECISION. §21: a test that reads
+    source text proves nothing about runtime, and a checker that reimplements
+    the predicate is a closed loop that supplies its own answer (§0.4) — the
+    shape that let a dead VWAP reader survive two days.
+
+    🔑 THE RULE IS `max(structure, trail)`, and the operator's intent is what
+    that produces: *"kill losers quickly, and preserve winners out of the gate,
+    even if it's modest."* Underwater, the trail is unarmed or low and the
+    STRUCTURE kills it fast; in profit, the trail climbs above and PRESERVES
+    the gain.
+
+    🔴 WHO IT REACHES IS AN EXPERIMENT CONSTRAINT, NOT A SIZING ONE, AND THE
+    OPERATOR CORRECTED ME ON EXACTLY THIS. I first proposed scoping it by
+    `sizes_on_structure()` — a SIZING set — and he ruled: *"You're painting it
+    as a sizing rule... The breakout and the ORB should have comparable sizing
+    AND EXIT MECHANISMS. The purpose of the breakout was to test whether
+    chasing was better than waiting for a retest, all other things being the
+    same. The VOLT does not necessarily share that same lineage."*
+    So ORB and Breakout must move TOGETHER or the chase-versus-retest
+    comparison measures the exit rule instead of the entry. MEASURED on today's
+    book, the bridge test sorts precisely along that line without naming anyone:
+    ORB VALID (0.800 vs 0.805) · Breakout VALID (1.094 vs 1.089) · Hunt, VOLT
+    and Runaway all invalid.
+
+    ⚠️ THE TWO STOPS ARE IN DIFFERENT UNITS — a 1m close through
+    `underlying_stop` versus a PREMIUM level — and `stop_premium` bridges them
+    only as a DELTA-LINEAR ESTIMATE. So this first asks whether that bridge was
+    actually built for THIS record, by checking that `stop_premium` agrees with
+    `entry - distance x |delta|`. Measured 2026-09-22: agreement within
+    0.003-0.013 on the Breakouts, and 0.239 out on VOLT, whose
+    `underlying_stop` is a thesis line at zero distance.
+    ⚠️ DERIVED, NEVER READ: `underlying_stop_is_thesis` is a SIGNAL field and
+    NOT a `trades` column, so a rehydrated record returns None, None reads as
+    False, and a guard keyed on it would silently never fire (§22).
+    """
+    try:
+        tr = float(record.get("trail_stop", 0.0) or 0.0)
+        sp = float(stop_p or 0.0)
+        e = float(entry or 0.0)
+        dist = abs((_f(record.get("underlying_entry")) or 0.0)
+                   - (_f(record.get("underlying_stop")) or 0.0))
+        dl = abs(_f(record.get("entry_delta")) or 0.0)
+        if not (dist > 0 and dl > 0 and e > 0 and sp > 0):
+            return False                      # no usable bridge -> structure governs
+        if abs(sp - (e - dist * dl)) > max(0.02, e * 0.05):
+            return False                      # the bridge was not built for this record
+        return tr > sp and prem is not None and prem > tr
+    except Exception:                         # noqa: BLE001
+        return False                          # fail to the structure stop, never past it
+
+
 class Intent:
     """What the plan decided for the NEXT tick. Executed by position_manager."""
     __slots__ = ("action", "reason", "condition", "trail", "pnl_pct")
@@ -329,6 +398,43 @@ class ManagementPlan:
                     breached = last_close < ustop if record.get("direction") == "long" else last_close > ustop
                 else:
                     breached = last_close < ustop if side == "put" else last_close > ustop
+                # ── r98 — THE NEARER STOP GOVERNS, EACH TICK ──────────────
+                # 🔑 THE OPERATOR'S RULING, 2026-09-22: *"use the nearest one.
+                # Each tick one of the two will be closer. Default to the
+                # closer one."* And what it is FOR, in his words: *"what I'm
+                # attempting to do is kill losers quickly, and preserve winners
+                # out of the gate, even if it's modest."*
+                # 🔑 THAT INTENT IS EXACTLY `max(structure, trail)`:
+                #   · UNDERWATER — the trail is unarmed or below the structure,
+                #     so the STRUCTURE governs and the loser dies fast.
+                #   · IN PROFIT — the trail climbs above the structure, so the
+                #     TRAIL governs and a modest gain is not handed back.
+                # 🔴 THE TWO STOPS ARE IN DIFFERENT UNITS AND THE OPERATOR
+                # CAUGHT ME GLOSSING IT. The structure stop is a 1m CLOSE
+                # through `underlying_stop`; the trail is a PREMIUM level.
+                # `stop_premium` bridges them since r91 — but only as a
+                # DELTA-LINEAR ESTIMATE of the premium at that underlying
+                # level, not an identity.
+                # 📊 MEASURED on today's four structure exits: the bridge is
+                # good to 0.003-0.013 on the Breakouts, whose structure stops
+                # sit 0.01-0.23 points away, where delta-linear is essentially
+                # exact. On VOLT it was off by 0.134 — because VOLT's
+                # `underlying_stop` is a THESIS LINE, not a protective stop
+                # (`und_dist` 0.000), and the bridge was never applied to it.
+                # 🔑 SO THE GUARD ASKS WHETHER THE BRIDGE WAS ACTUALLY BUILT,
+                # rather than naming strategies: does `stop_premium` agree with
+                # `entry - distance x |delta|`? A name list rots and rots
+                # PERMISSIVELY (§23); this reads what the record says about
+                # itself. ⚠️ AND IT MUST BE DERIVED, NOT READ: the signal's
+                # `underlying_stop_is_thesis` IS NOT A `trades` COLUMN, so a
+                # rehydrated record returns None, None reads as False, and a
+                # guard keyed on it would silently never fire (§22).
+                # ⚠️ IT ONLY EVER DEFERS TO A NEARER STOP. `max()` is at or
+                # above the structure alone, so this cannot hold a position
+                # past both — it exits the moment price reaches the closer one.
+                if breached and not credit and nearer_stop_defers(
+                        record, prem, stop_p, entry):
+                    breached = False          # the trail is nearer; it governs
                 if breached:
                     name = ("structure_stop" if not credit else
                             ("breach" if strategy == "TrendCreditSpread" else "acceptance"))

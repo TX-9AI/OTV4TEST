@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.99
+# BACKLOG.md — OTV4TEST — v1.00
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -234,6 +234,26 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v1.00 — 2026-09-22 — OTV4TEST r98 — THE NEARER OF THE TWO STOPS GOVERNS.**
+Operator: *"use the nearest one... each tick one of the two will be closer.
+Default to the closer one"*, and the intent behind it: *"kill losers quickly,
+and preserve winners out of the gate, even if it's modest."* 🔑 That intent
+**is** `max(structure, trail)`. 🔴 **The two stops lived in different units and
+never met** — a 1m close through `underlying_stop` versus a PREMIUM level — so
+"whichever fires first" was not "whichever is nearer". 📊 **MEASURED 10:21 ET:**
+trail 0.455, structure 0.422, and it exited on the STRUCTURE at **0.435, below
+the nearer stop.** ⚠️ **THE OPERATOR CAUGHT THE UNIT PROBLEM BEFORE IT LANDED**
+— my first cut claimed they were "comparable since r91", which was too strong:
+`stop_premium` bridges them only as a **delta-linear estimate**, good to
+0.003–0.013 on the Breakouts and **0.134 out on VOLT**, whose `underlying_stop`
+is a thesis line at zero distance. The guard now asks whether that bridge was
+actually built for the record, **derived from columns** because
+`underlying_stop_is_thesis` is a signal field and not a `trades` column (§22).
+✅ Replayed on today's four structure exits: both losers still die on the
+structure, the one modest winner is preserved by the nearer trail, VOLT
+untouched. ✅ `max()` can only tighten — it cannot hold past both stops.
+
 
 **v0.99 — 2026-09-22 — OTV4TEST r97 — THE OPERATOR'S GATE, SHIPPED AS A
 PARTICIPANT RATHER THAN AN OBSERVER.**
