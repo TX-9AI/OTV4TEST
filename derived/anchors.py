@@ -1,5 +1,16 @@
 """
-derived/anchors.py  v1.1
+derived/anchors.py  v1.2
+v1.2  2026-09-22  OTV4TEST r94 — BOTH READERS STOP QUERYING A ROW NOBODY WRITES.
+      `vwap_now()` AND `vwap()` both pinned `interval='primary'` - the FALLBACK
+      row in indicators.derive(), emitted only `if not rows`. r69 repaired the
+      per-timeframe loop, the fallback stopped firing, and both readers spent
+      TWO DAYS on a dead row. MEASURED: 882 rows each for 5m/15m/1h/1d all
+      carrying a VWAP; `primary` last seen 09-20 13:29 ET, the minute r69
+      landed; the engine reporting 412 runs and ZERO failures throughout.
+      They now read the newest row carrying a VWAP on ANY interval, and
+      `vwap_now()` validates the anchor against the 09:30 open.
+      I FIXED `vwap_now()` FIRST AND MISSED `vwap()` - the bug moved one
+      function down the file - and A4 caught it on the next run.
 v1.1  2026-09-13  OTV4TEST r25 — THE VWAP READ WAS DEAD, AND ONE ANCHOR NOW DECIDES.
       🔴 `vwap()` queried interval '1m', which indicator_series has NEVER held —
       the engine writes 'primary' only — so it returned None on every call and
@@ -105,8 +116,19 @@ def gex_between(lo, hi) -> Optional[float]:
 
 
 def vwap() -> Optional[float]:
-    rows = _q("SELECT vwap FROM indicator_series WHERE symbol=? AND interval='primary' ORDER BY ts_epoch DESC LIMIT 1",
-              (_sym(),))
+    """The newest recorded VWAP, whatever interval carried it. No freshness test.
+
+    🔴 r94 — THE SIBLING READER, AND I FIXED `vwap_now()` FIRST AND MISSED THIS
+    ONE. Both queried `interval='primary'`, the FALLBACK row that r69's repair
+    stopped emitting; correcting one and not the other is §23 exactly — the
+    bug moved one function down the file. `check_bfly_vwap_band` A4 caught it
+    on the next run, which is the only reason it is a comment and not a third
+    silent reader.
+    ⚠️ THIS ONE DOES NOT VALIDATE THE ANCHOR OR THE BAR AGE — `vwap_now()` is
+    the decision input and fails closed; this is the plain accessor. Anything
+    making a TRADING decision uses `vwap_now()`."""
+    rows = _q("SELECT vwap FROM indicator_series WHERE symbol=? AND vwap IS NOT NULL "
+              "ORDER BY ts_epoch DESC LIMIT 1", (_sym(),))
     return float(rows[0][0]) if rows and rows[0][0] is not None else None
 
 
@@ -117,7 +139,7 @@ VWAP_MAX_BAR_AGE_S = 180.0
 
 def vwap_now(now: Optional[float] = None,
              max_bar_age_s: float = VWAP_MAX_BAR_AGE_S) -> Tuple[Optional[float], str]:
-    """(vwap, why) — the bot's midnight-ET-anchored VWAP for TODAY, or (None, reason).
+    """(vwap, why) — the bot's SESSION-OPEN-anchored VWAP for TODAY, or (None, reason).
 
     A decision input (the butterfly's VWAP band), so it FAILS CLOSED: a missing
     row, a null value, a prior session's anchor or a stale bar each return None
@@ -126,16 +148,34 @@ def vwap_now(now: Optional[float] = None,
     # pytz datetime keeps the AFTERNOON's offset, an hour wrong on a DST day.
     ET = ZoneInfo("America/New_York")
     now = time.time() if now is None else float(now)
+    # 🔴 r94 — ANY INTERVAL THAT CARRIES A VWAP, NOT THE HARDCODED 'primary'.
+    # THE BUG THIS FIXES RAN SILENTLY FOR TWO DAYS. `primary` was never a
+    # timeframe — it is the FALLBACK row in `indicators.derive()`, written only
+    # `if not rows`, i.e. only when the per-timeframe loop produced nothing.
+    # r69 repaired that loop (it *"had never once executed"*), so `rows` became
+    # non-empty, the fallback stopped firing, and this query began reading a
+    # row nobody writes. MEASURED 2026-09-22: 882 rows each for 5m/15m/1h/1d,
+    # ALL carrying a VWAP, while `interval='primary'` last appeared 09-20
+    # 13:29 ET — the minute r69 landed. The engine reported 412 runs and ZERO
+    # failures throughout. A green writer and a dead reader.
+    # 🔑 THE VALUE IS INTERVAL-INDEPENDENT BY CONSTRUCTION: `_accumulate_vwap`
+    # folds 1-MINUTE bars once per tick and stamps the same `vwap, pv, v,
+    # anchor` into every timeframe row, so the newest row carrying a VWAP is
+    # the right answer whichever frame it came from — and this cannot break
+    # again when the set of intervals next changes.
     rows = _q("SELECT vwap, bar_ts_ms, vwap_anchor_ms FROM indicator_series WHERE symbol=? "
-              "AND interval='primary' ORDER BY ts_epoch DESC LIMIT 1", (_sym(),))
+              "AND vwap IS NOT NULL ORDER BY ts_epoch DESC LIMIT 1", (_sym(),))
     if not rows:
         return None, "no VWAP row in indicator_series"
     v, bar_ms, anchor_ms = rows[0]
     if v is None:
         return None, "the latest VWAP row is null"
-    midnight = datetime.fromtimestamp(now, ET).replace(hour=0, minute=0, second=0, microsecond=0)
-    if anchor_ms is None or abs(float(anchor_ms) / 1000.0 - midnight.timestamp()) > 1.0:
-        return None, "the latest VWAP is anchored to a prior session, not today's midnight ET"
+    # 🔴 r94 — VALIDATED AGAINST THE SESSION OPEN, because the writer now
+    # anchors there. Operator: *"don't anchor VWAP to midnight."* Reader and
+    # writer move together or the gate simply stays shut in a new way (§23).
+    sess = datetime.fromtimestamp(now, ET).replace(hour=9, minute=30, second=0, microsecond=0)
+    if anchor_ms is None or abs(float(anchor_ms) / 1000.0 - sess.timestamp()) > 1.0:
+        return None, "the latest VWAP is anchored to a prior session, not today's 09:30 ET open"
     if bar_ms is None or now - float(bar_ms) / 1000.0 > max_bar_age_s:
         return None, f"the latest VWAP bar is older than {max_bar_age_s:.0f}s — stale"
     return float(v), ""

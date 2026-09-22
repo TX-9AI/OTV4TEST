@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.96
+# BACKLOG.md — OTV4TEST — v0.97
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -234,6 +234,30 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.97 — 2026-09-22 — OTV4TEST r94 — VWAP WAS COMPUTED CORRECTLY FOR TWO DAYS
+AND READ FROM A ROW NOBODY WRITES.**
+The ATP butterfly reported *"no VWAP: the latest VWAP is anchored to a prior
+session"*, killing the concentration waiver — its second admission path — while
+`pin_concentration` sat at 0.21 against a 0.25 floor. 📊 **MEASURED:** 882 rows
+each for `5m/15m/1h/1d`, **all carrying a VWAP**; `interval='primary'` last
+written **09-20 13:29 ET**, the minute r69 landed; `derived_engine_status`
+reporting **412 runs, 0 failures** throughout. 🔑 **`primary` WAS NEVER A
+TIMEFRAME** — it is the fallback row emitted only `if not rows`. r69 repaired
+the per-timeframe loop (*"had never once executed"*), `rows` became non-empty,
+the fallback stopped, and both readers queried a row that no longer exists. **A
+green writer and a dead decision input** — r69 fixed a writer without checking
+its readers (§23). ✅ Both readers now take the newest row carrying a VWAP on
+any interval. ✅ **AND THE ANCHOR MOVES TO THE SESSION OPEN** per the operator's
+standing ruling; proven against today's tape, the real accumulator returns
+**744.6582** vs an independent manual calc of **744.6594**. ⚠️ **THE OLD GATE
+COULD NOT HAVE CAUGHT THIS:** its fixture wrote `"primary"` itself and then
+asserted the reader reads `"primary"` — a closed loop (§0.4). ⚠️ **TWO OF MY
+OWN ERRORS ARE RECORDED:** a helper that guessed the interval from source
+literals returned `"primary"`, the very dead row; and an import placed above
+`from __future__ import annotations` — **a real SyntaxError that `ast.parse`
+reported as OK.** `compile()` catches it; `ast.parse` does not.
+
 
 **v0.96 — 2026-09-22 — OTV4TEST r93 — THE 1-R RAMP NORMALISED THE SIZE OF A
 LOSS AND WAS BLIND TO ITS FREQUENCY.**

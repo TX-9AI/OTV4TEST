@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""tests/check_bfly_vwap_band.py  v1.0
+"""tests/check_bfly_vwap_band.py  v1.1
+v1.1  2026-09-22  OTV4TEST r94 — A5/A6, AND THE OLD FIXTURE IS WHY THIS HID.
+      It wrote the literal "primary" and then A4 asserted the reader reads
+      "primary" - a closed loop supplying its own answer, section 0.4. A5 now
+      writes EVERY interval the engine really emits and demands the reader find
+      each, so a reader pinned to any single literal fails; A6 refuses a
+      midnight anchor by name. Neither passes against the pre-r94 reader.
 A PIN AT TODAY'S VWAP MEETS THE BUTTERFLY'S CONCENTRATION CONDITION (BFLY.5).
 
 v1.0  2026-09-13  OTV4TEST r25. Operator: "VWAP replaces the floor if the pin is
@@ -79,6 +85,31 @@ class _GEX:
         self.gex_environment, self.pin_strike, self.pin_concentration = "PINNING", 101.0, conc
 
 
+# 🔴 r94 — THE INTERVAL COMES FROM THE ENGINE, NEVER FROM THIS FILE.
+# THE OLD FIXTURE WROTE THE LITERAL "primary" AND THEN A4 ASSERTED THAT THE
+# READER READS "primary" — a closed loop that supplied its own answer (§0.4),
+# and it is the whole reason this went unnoticed for two days. `primary` was
+# never a timeframe: it is the FALLBACK row in `indicators.derive()`, emitted
+# only `if not rows`. r69 repaired the per-timeframe loop, the fallback stopped
+# firing, and `vwap_now()` spent two days querying a row nobody writes —
+# MEASURED 2026-09-22: 882 rows each for 5m/15m/1h/1d all carrying a VWAP,
+# `primary` last seen 09-20 13:29 ET, the minute r69 landed.
+# 🔑 SO THE FIXTURE ASKS THE ENGINE. If the writer's interval set changes
+# again, this file follows it instead of pinning a stale literal — and A4
+# becomes a real assertion rather than a restatement of its own setup.
+# ⚠️ A REAL PRODUCTION INTERVAL, AND MY FIRST CUT GUESSED IT FROM THE SOURCE.
+# That helper walked `indicators.py` for string literals and returned
+# "primary" — because the real frames arrive at runtime as `vote.timeframe`
+# and appear nowhere in the source. It would have kept the fixture writing the
+# very dead row this revision exists to stop reading. MEASURED on the live
+# store 2026-09-22: the engine writes 5m, 15m, 1h and 1d.
+# 🔑 THE FIXTURE'S INTERVAL BARELY MATTERS NOW — A5 below writes EVERY one of
+# them and demands the reader find each, which is the property that was
+# actually broken. This is just a sane default rather than a load-bearing
+# guess.
+_ENGINE_INTERVAL = "5m"
+
+
 def main():
     from strategy import plan as P
     import strategy.gex_pin_butterfly as bf
@@ -100,14 +131,17 @@ def main():
                   ((99, 2.55), (100, 1.70), (101, 1.00), (102, 0.70), (103, 0.45), (104, 0.30))]
     common = dict(price_now=99.0, now_et="12:30", atm_iv=0.90)
     now = time.time()
-    midnight = datetime.fromtimestamp(now, ET).replace(hour=0, minute=0, second=0, microsecond=0)
-    today_ms = int(midnight.timestamp() * 1000)
-    prior_ms = int((midnight - timedelta(days=1)).timestamp() * 1000)
+    # 🔴 r94 — THE FIXTURE ANCHORS AT THE SESSION OPEN, because the writer does.
+    # Operator: *"don't anchor VWAP to midnight."* A fixture still built on
+    # midnight would fail every case for the RIGHT reason and teach nothing.
+    sess = datetime.fromtimestamp(now, ET).replace(hour=9, minute=30, second=0, microsecond=0)
+    today_ms = int(sess.timestamp() * 1000)
+    prior_ms = int((sess - timedelta(days=1)).timestamp() * 1000)
 
     def _store_with(vwap=None, anchor_ms=today_ms, bar_age_s=30.0):
         ds = DerivedStore(path=os.path.join(tempfile.mkdtemp(), "derived.db"))
         if vwap is not None:
-            ds.append_indicators([("TST", "primary", now - 5, int((now - bar_age_s) * 1000),
+            ds.append_indicators([("TST", _ENGINE_INTERVAL, now - 5, int((now - bar_age_s) * 1000),
                                    None, None, None, None, None, None, None,
                                    float(vwap), None, None, anchor_ms)])
         A._store = lambda: ds
@@ -161,8 +195,44 @@ def main():
           sig is not None and row[0] == "TAKE" and "WAIVED" not in row[1], f"{row[0]}: {row[1][:120]}")
 
     _store_with(vwap=715.35)
-    check("A4 anchors.vwap() reads the 'primary' interval the engine writes", A.vwap() == 715.35,
-          f"vwap()={A.vwap()}")
+    check(f"A4 anchors.vwap() reads a real engine interval ('{_ENGINE_INTERVAL}')",
+          A.vwap() == 715.35, f"vwap()={A.vwap()}")
+
+    # ══ A5 — THE READER MUST NOT BE PINNED TO ONE INTERVAL (r94) ═══════════
+    # 🔴 THE CHECK THAT WOULD HAVE CAUGHT IT, AND NOTHING ABOVE WOULD HAVE.
+    # Every W-case and A4 pass just as happily against a reader hardcoded to a
+    # single interval, because the fixture supplies that same interval — the
+    # closed loop that let `vwap_now()` query a dead `primary` row for two days
+    # while the engine wrote 882 rows a day to four other frames.
+    # 🔑 SO THIS WRITES EACH INTERVAL THE ENGINE REALLY EMITS, ONE AT A TIME,
+    # AND DEMANDS THE READER FIND EVERY ONE. A reader pinned to any single
+    # literal fails on the other three. It is a RUNTIME assertion, not a grep
+    # over the query string (§21).
+    _bad = []
+    for _iv in ("5m", "15m", "1h", "1d"):
+        _ds = DerivedStore(path=os.path.join(tempfile.mkdtemp(), "derived.db"))
+        _ds.append_indicators([("TST", _iv, now - 5, int((now - 30.0) * 1000),
+                                None, None, None, None, None, None, None,
+                                711.11, None, None, today_ms)])
+        A._store = lambda _d=_ds: _d
+        A._sym = lambda: "TST"
+        _v, _why = A.vwap_now()
+        if _v != 711.11:
+            _bad.append(f"{_iv}:{_why or _v}")
+    check("A5 the reader finds a VWAP on EVERY interval the engine writes",
+          not _bad, f"unreadable: {_bad}")
+
+    # ══ A6 — THE ANCHOR IS THE SESSION OPEN, NOT MIDNIGHT (r94) ════════════
+    # Operator, twice: *"don't anchor VWAP to midnight"*, *"I want the VWAP
+    # anchored correctly."* Midnight folds overnight and pre-market prints —
+    # thin, away from the session's value area — into a number the butterfly
+    # reads as today's VWAP.
+    _mid = int(datetime.fromtimestamp(now, ET).replace(
+        hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
+    _store_with(vwap=712.22, anchor_ms=_mid)
+    _v_mid, _why_mid = A.vwap_now()
+    check("A6 a MIDNIGHT-anchored row is refused, and the reason says so",
+          _v_mid is None and "09:30" in (_why_mid or ""), f"{_v_mid} / {_why_mid}")
 
     print()
     if _fails:

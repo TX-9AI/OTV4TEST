@@ -1,5 +1,12 @@
 """
-derived/indicators.py  v4.1
+derived/indicators.py  v4.2
+v4.2  2026-09-22  OTV4TEST r94 — VWAP ANCHORS AT THE SESSION OPEN, NOT MIDNIGHT.
+      Operator, twice: "don't anchor VWAP to midnight" and "I want the VWAP
+      anchored correctly". `idx[-1].normalize()` returned MIDNIGHT of the bar's
+      day, folding overnight and pre-market prints - thin, away from the
+      session's value area - into a number the butterfly reads as today's VWAP.
+      Bars before the open are skipped by the existing `ms < anchor_ms` guard,
+      so `vwap` stays None until 09:30 ET, which is correct rather than a gap.
 Owns `indicator_series`. Tier 1 — path-dependent values.
 
 v4.1  2026-09-20  OTV4TEST r69 (IND.1) — THE PER-TIMEFRAME LOOP HAD NEVER RUN.
@@ -41,6 +48,8 @@ disease. It records THEIR values.
 """
 
 from __future__ import annotations
+
+import pandas as _pd
 
 import logging
 import time
@@ -91,7 +100,21 @@ class IndicatorEngine(DerivedEngine):
             return None, None, None, None
         try:
             idx = df_1m.index
-            day0 = idx[-1].normalize()
+            # 🔴 r94 — THE SESSION OPEN, NOT MIDNIGHT. Operator's ruling,
+            # 2026-09-20: *"don't anchor VWAP to midnight"*, and again
+            # 2026-09-22: *"I want the VWAP anchored correctly."*
+            # `normalize()` returns MIDNIGHT of the bar's day, so every
+            # overnight and pre-market print was folded into a number the
+            # butterfly reads as "today's VWAP". Those hours trade thin and
+            # away from the session's real value area, so the anchor dragged
+            # VWAP toward the overnight range and away from where the session
+            # actually traded — a plausible number computed over the wrong
+            # window, which is the exact failure this table exists to expose.
+            # ⚠️ BARS BEFORE THE OPEN ARE SKIPPED BY THE `ms < anchor_ms`
+            # GUARD BELOW, so pre-market accumulates nothing and `vwap` stays
+            # None until 09:30 ET. That is correct rather than a gap: there is
+            # no session VWAP before the session.
+            day0 = idx[-1].normalize() + _pd.Timedelta(hours=9, minutes=30)
             anchor_ms = int(day0.timestamp() * 1000)
             if self._anchor_ms != anchor_ms:      # new session -> new anchor
                 self._pv, self._v = 0.0, 0.0
