@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_prepares.py  v1.18
+tests/check_plan_prepares.py  v1.19
+v1.19  2026-09-22  OTV4TEST r106 - S8 INVERTS: a REJECTED 10 bars old IS
+      a trigger now. And T4's fixture had to change with the rule it depends
+      on - it made events inert by AGEING them, which no longer works; they
+      are DELETED, because "no rejection yet" is now expressed by there being
+      no rejection.
 v1.18  2026-09-22  OTV4TEST r92 — S5's probe time is DERIVED from the plan's own LATEST_ET.
       It passed a literal 14:30, which r81 moved INSIDE the sweep's window —
       and the docstring's "10:15" was stale too, from before the 13:00 floor
@@ -150,6 +155,17 @@ import sys
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
+# ⚠️ r106 — THE LANDER RUNS CHECKS UNDER SYSTEM `python3`, NOT THE VENV, and
+# the repo imports below reach `tastytrade`, which lives only in the venv — so
+# this file could never be DECLARED as a CHECK. It passed by hand and failed
+# under the lander, which reads as flaky rather than structural. Inserted at
+# index 1 so the venv beats /usr/lib/python3/dist-packages (whose older
+# `typing_extensions` otherwise shadows it) while the repo root still wins.
+import glob as _glob
+_RT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for _sp in _glob.glob(os.path.join(_RT, "venv", "lib", "python*", "site-packages")):
+    if _sp not in sys.path:
+        sys.path.insert(1, _sp)
 os.environ.setdefault("OT_PAPER_TRADING", "1")
 _fails = []
 
@@ -336,8 +352,17 @@ def main():
     _reject(lid_ny, 96.0, "support", "ny", age_s=600.0, bar="10:20")
     sig = S.generate_signal(chain=_Chain(good_puts), **common)
     r8 = _row(st, "SweepCreditSpread", 8.0)
-    check("S8 a REJECTED 10 bars old is not a trigger -> HOLD, the row says how stale (decide quickly, or not at all)",
-          sig is None and r8 and r8[0] == "HOLD" and "bars ago" in r8[1], str(r8))
+    # 🔴 r106 — THIS CHECK INVERTS. It pinned the freshness prior: a REJECTED
+    # older than REJECTION_FRESH_BARS left `chosen` unset and the trade never
+    # fired. Operator, 2026-09-22: *"I'm done with rejection fresh bars, get rid
+    # of it altogether."* A previously held extreme that was swept and rejected
+    # is the setup whether that happened two bars ago or twenty — PLAN_SPEC
+    # 31.1, *"Age does not matter. A previously held extreme is enough."*
+    # ⚠️ RE-FIRE IS STILL PREVENTED, and by the right mechanism: `_fired_events`
+    # keyed on (level_id, bar_ts). S6 already pins that; the clock never was
+    # what stopped a repeat.
+    check("S8 (r106) a REJECTED 10 bars old IS a trigger — age no longer gates",
+          sig is not None and r8 and r8[0] == "TAKE", str(r8))
     P.begin_tick(9.0)
     _reject(lid_ny, 96.0, "support", "ny", pierce=0.006, depth="deep", bar="10:36")
     sig = S.generate_signal(chain=_Chain(good_puts), **common)
@@ -635,7 +660,13 @@ def main():
     S2.plan._store = _ds
     calls_t = [_C(k, m - 0.02, m + 0.02) for k, m in
                ((100, 1.30), (101, 0.70), (102, 0.35), (103, 0.15), (104, 0.06), (105, 0.03))]
-    _ds.conn.execute("UPDATE level_event SET ts_epoch = ts_epoch - 3600"); _ds.conn.commit()   # the S events are history now
+    # 🔴 r106 — AGEING NO LONGER MAKES AN EVENT INERT, so this fixture had to
+    # change with the rule it depends on. It pushed the S-block events an hour
+    # back to mean "history"; with the freshness prior gone, an hour-old
+    # REJECTED is still a live trigger and the plan fired on `ny 96.00` instead
+    # of reporting the tine. DELETED rather than aged — "no rejection yet" is
+    # now expressed by there being no rejection.
+    _ds.conn.execute("DELETE FROM level_event"); _ds.conn.commit()
     tine_id = "TST:fork1h/upper:0.00"
     _ds.upsert_level((tine_id, "TST", 100.0, "resistance", "fork1h/upper", "1h", _now - 3600, 0, None, 0, None, None, 1))
     P.begin_tick(30.0)

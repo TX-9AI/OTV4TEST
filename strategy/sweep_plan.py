@@ -1,5 +1,16 @@
 """
-strategy/sweep_plan.py  v1.9
+strategy/sweep_plan.py  v1.10
+v1.10 2026-09-22  OTV4TEST r106 - THE REJECTION FRESHNESS GATE IS GONE.
+      Operator: "I'm done with rejection fresh bars, get rid of it altogether."
+      A REJECTED older than REJECTION_FRESH_BARS left `chosen` unset, so the
+      trade silently never fired - the LAST place any age decided anything,
+      contradicting the ruling that age exists to ORDER the levels by recency
+      and is "not relevant to anything else". PLAN_SPEC 31.1 has said it since
+      the fork began: "Age does not matter. A previously held extreme is
+      enough." The constant and its config key are removed; the age is still
+      RECORDED, verdict None, gating nothing. Re-fire is still prevented by
+      `_fired_events` on (level_id, bar_ts) - the clock never was what stopped
+      a repeat.
 v1.9  2026-09-22  OTV4TEST r104 - `levels_in_play` now ranks through the
       SHARED `rails_after_held` rather than its own copy. Three copies of
       "rails last" is three chances to drift, which is how three plans ended
@@ -68,10 +79,12 @@ v1.0  2026-09-08  OTV4TEST r5 — THE SWEEP CREDIT SPREAD PLAN (PLAN_SPEC §31),
       713/718C for 0.85 (R 1.10, 17% of width) — waiting on: REJECTED".
 
       THE TRIGGER IS THE FACT. `DerivedStore.latest_rejection()` — a REJECTED
-      event on a level in play, on the trade's side of spot, FRESH (within
-      REJECTION_FRESH_BARS of its bar — the operator: "it has to decide
-      quickly … wait too long and it was for nothing"; a declared prior,
-      recorded), pierce depth inside the band (MIN/MAX_REJECTION_PCT, the
+      event on a level in play, on the trade's side of spot, ~~FRESH (within
+      REJECTION_FRESH_BARS of its bar)~~ — STRUCK at r106, the operator: "I'm
+      done with rejection fresh bars, get rid of it altogether", superseding
+      "it has to decide quickly"; the age is recorded and gates nothing, and
+      a level does not stop being a swept held extreme because a clock ran.
+      Struck rather than deleted, per §35 — pierce depth inside the band (MIN/MAX_REJECTION_PCT, the
       relaxed x3 ceiling as before), each event fired at most once. On a
       shallow pierce that is the wicking bar's own close; on a deep one, the
       next. Nothing is computed at the fire that was not on the row the tick
@@ -108,13 +121,11 @@ GATES = {
     "MAX_REJECTION_PCT":    "SELECTION",     # the relaxed x3 ceiling (r321 shape)
     "EARLIEST_ET":          "SELECTION",
     "LATEST_ET":            "SELECTION",
-    "REJECTION_FRESH_BARS": "SELECTION",     # prior — recorded on every fire
     "LEVELS_EACH_SIDE":     "SELECTION",
 }
 
 EARLIEST_ET          = getattr(config, "SWEEP_CS_EARLIEST_ET_FORK", (9, 35))     # operator 2026-09-09
 LATEST_ET            = getattr(config, "SWEEP_CS_LATEST_ET_FORK", (14, 0))
-REJECTION_FRESH_BARS = int(getattr(config, "SWEEP_CS_REJECTION_FRESH_BARS", 3))  # prior
 LEVELS_EACH_SIDE     = int(getattr(config, "SWEEP_CS_LEVELS_EACH_SIDE", 3))
 
 
@@ -449,14 +460,27 @@ class SweepPlan:
             # a literal 0 to `sig.sweep_age_bars` because this never reached it.
             prep.age_bars = round(age_bars, 2)
             t.check("rejected", rej["price"], True)
-            t.check("rejection_age_bars", round(age_bars, 2), age_bars <= REJECTION_FRESH_BARS)
+            # 🔴 r106 — THE FRESHNESS GATE IS GONE. Operator, 2026-09-22: *"I'm
+            # done with rejection fresh bars, get rid of it altogether."* A
+            # rejection older than REJECTION_FRESH_BARS used to leave `chosen`
+            # unset, so the trade silently never fired. That was the LAST place
+            # any age decided anything, and it contradicted the ruling that age
+            # exists to ORDER the levels by recency and is *"not relevant to
+            # anything else"*.
+            # 🔑 THE LEVEL IS WHAT MATTERS, NOT THE CLOCK. A previously held
+            # extreme that was swept and rejected is the setup whether that
+            # happened two bars ago or twenty — PLAN_SPEC 31.1 has said so
+            # since the fork began: *"Age does not matter. A previously held
+            # extreme is enough."* The gate was the one survivor of the age
+            # rule r241 retired.
+            # ⚠️ EACH EVENT STILL FIRES ONCE — `_fired_events` is keyed on
+            # (level_id, bar_ts) and is what stops a re-fire, not the clock.
+            # ⚠️ THE AGE IS STILL RECORDED, verdict None, gating nothing (§31):
+            # removing the gate must not destroy the evidence that would show
+            # whether stale-rejection fires behave differently.
+            t.check("rejection_age_bars", round(age_bars, 2), None)
             if key in self._fired_events:
                 t.check("rejected", rej["price"], False)
-            elif age_bars > REJECTION_FRESH_BARS:
-                # a stale rejection is not a trigger — noted, not declined every tick
-                head += (f" (last REJECTED: {rej['provenance']} {rej['price']:.2f}, "
-                         f"{age_bars:.0f} bars ago — beyond the {REJECTION_FRESH_BARS}-bar "
-                         f"freshness prior)")
             else:
                 chosen = in_play[rej["level_id"]]
                 prep.rejected = rej
