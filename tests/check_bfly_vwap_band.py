@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""tests/check_bfly_vwap_band.py  v1.2
+"""tests/check_bfly_vwap_band.py  v1.3
+v1.3  2026-09-22  OTV4TEST r101 - A8/A9: the cold-start deep fetch
+      must use the CALLER's symbol, and an EMPTY fetch must WARN. Born red at
+      1104492 where `_accumulate_vwap` takes no symbol and says nothing.
 v1.2  2026-09-22  OTV4TEST r96 — A7 pins that a PARTIAL session reports its real start
       rather than the open. Born red against r94, which stamped a one-hour
       VWAP with a session anchor and passed every other check in this file.
@@ -38,7 +41,8 @@ spot 99, EM 4.12 at the pinned 12:30 clock, so the band is ±0.41.
 Born red at r24 (577ceb1) on W1-W5, W7 and A4: no waiver exists there, so W1 holds
 instead of taking and no row names a VWAP distance or why there is none, and
 vwap() queried '1m'. W6 is the control, green on both sides.
-Run:  python3 tests/check_bfly_vwap_band.py
+Run:  venv/bin/python tests/check_bfly_vwap_band.py   (or system python3;
+      r101 makes the venv resolvable either way)
 """
 import os
 import sqlite3
@@ -50,6 +54,22 @@ from zoneinfo import ZoneInfo
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
+# ⚠️ r101 — THE LANDER RUNS CHECKS UNDER SYSTEM `python3`, NOT THE VENV, and
+# every repo import below reaches `tastytrade`, which lives only in the venv.
+# This file was therefore UNRUNNABLE as a declared CHECK — it died on a
+# ModuleNotFoundError before evaluating anything. Resolved by glob so the
+# interpreter version is never hardcoded; if the SDK still will not import the
+# real ImportError is raised, because a gate that cannot run must SAY SO
+# rather than be skipped.
+import glob as _glob
+for _sp in _glob.glob(os.path.join(_root, "venv", "lib", "python*",
+                                   "site-packages")):
+    if _sp not in sys.path:
+        # 🔴 INSERTED AHEAD OF THE SYSTEM PATHS, NOT APPENDED. Appending left
+        # /usr/lib/python3/dist-packages first, so the system's older
+        # `typing_extensions` shadowed the venv's and anyio died on a missing
+        # `sentinel`. Index 1 keeps the repo root (index 0) winning.
+        sys.path.insert(1, _sp)
 os.environ.setdefault("OT_PAPER_TRADING", "1")
 _fails = []
 ET = ZoneInfo("America/New_York")
@@ -271,6 +291,60 @@ def main():
     check("A7 a PARTIAL session reports its real start, not the open",
           _v7 is not None and _a7 is not None and abs(_a7 - _open_ms) > 120_000,
           f"vwap={_v7} anchor_off_by={(_a7 - _open_ms)/1000.0 if _a7 else None:.0f}s")
+
+    # ══ A8 — THE DEEP FETCH GETS THE CALLER'S SYMBOL (r101) ═══════════════
+    # 🔴 r96's COLD-START REBUILD WAS CALLED WITH AN EMPTY SYMBOL. It read
+    # `self.symbol`, but `derive()` resolves `self.symbol or ctx["symbol"]`
+    # PRECISELY BECAUSE THE ATTRIBUTE CAN BE BLANK. So `fetch_candles("", ...)`
+    # returned nothing, the engine folded the sixty-bar tick frame anyway, and
+    # reported 745.4476 against a true 744.7949 — with the anchor still reading
+    # 09:30. The repair r96 shipped could not run on the path that needed it.
+    # 🔑 THE SPY RECORDS WHAT THE REAL FUNCTION ASKED FOR. Asserting the
+    # parameter exists would pass against a body that ignores it (§21).
+    _asked = []
+    _md.fetch_candles = lambda _s, *a, **k: (_asked.append(_s), None)[1]
+    try:
+        _e8 = _IE.__new__(_IE)
+        _e8.symbol = ""                       # the blank attribute, on purpose
+        _e8._pv = _e8._v = 0.0
+        _e8._anchor_ms = None; _e8._last_bar_ms = None; _e8._first_bar_ms = None
+        _e8._accumulate_vwap(_df, "QQQ")
+        _a8_ok, _a8_why = (_asked == ["QQQ"]), f"fetch_candles saw {_asked!r}"
+    except TypeError as _te:
+        _a8_ok, _a8_why = False, f"the caller's symbol cannot be passed: {_te}"
+    finally:
+        if _keep is not None:
+            _md.fetch_candles = _keep
+    check("A8 the cold-start deep fetch uses the CALLER's symbol", _a8_ok, _a8_why)
+
+    # ══ A9 — THE FALL-THROUGH IS LOUD (r101) ══════════════════════════════
+    # 🔴 THE FIX r96 SHIPPED FELL THROUGH IN SILENCE when the deep fetch came
+    # back empty: the partial frame was folded and nothing said so. §0.5 —
+    # silence is the worst failure mode, and this one hands the butterfly's
+    # concentration waiver a plausible wrong number. A7 catches the ANCHOR
+    # being honest; A9 catches the OPERATOR being told.
+    import logging as _lg
+    class _Cap(_lg.Handler):
+        def __init__(self): super().__init__(); self.msgs = []
+        def emit(self, rec): self.msgs.append(rec.getMessage())
+    _cap = _Cap(); _cap.setLevel(_lg.WARNING)
+    _ilog = _lg.getLogger("derived.indicators")
+    _ilog.addHandler(_cap)
+    _md.fetch_candles = lambda *a, **k: None          # empty, not an exception
+    try:
+        _e9 = _IE.__new__(_IE)
+        _e9.symbol = "TST"; _e9._pv = _e9._v = 0.0
+        _e9._anchor_ms = None; _e9._last_bar_ms = None; _e9._first_bar_ms = None
+        _e9._accumulate_vwap(_df, "TST")
+    except Exception:                                  # noqa: BLE001
+        pass
+    finally:
+        _ilog.removeHandler(_cap)
+        if _keep is not None:
+            _md.fetch_candles = _keep
+    check("A9 an EMPTY deep fetch warns rather than falling through silently",
+          any("deep 1m fetch" in m for m in _cap.msgs),
+          f"warnings seen: {_cap.msgs or 'NONE — it fell through in silence'}")
 
     print()
     if _fails:

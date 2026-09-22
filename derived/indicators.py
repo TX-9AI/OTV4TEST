@@ -1,5 +1,15 @@
 """
-derived/indicators.py  v4.3
+derived/indicators.py  v4.4
+v4.4  2026-09-22  OTV4TEST r101 — r96's COLD-START REBUILD WAS CALLED WITH AN
+      EMPTY SYMBOL, AND FELL THROUGH IN SILENCE WHEN IT CAME BACK EMPTY. It
+      read `self.symbol`, but `derive()` resolves `self.symbol or
+      ctx["symbol"]` precisely because the attribute can be BLANK - so
+      `fetch_candles("", "1m", 420)` returned nothing, the sixty-bar tick
+      frame was folded anyway, and the engine reported 745.4476 against a
+      true 744.7949 with the anchor still reading 09:30. The repair r96
+      shipped could not run on the path that needed it. TWO HALVES: the
+      symbol now comes from the CALLER, and an empty deep fetch WARNS rather
+      than passing a partial window on in silence (SS0.5). GATE: A8, A9.
 v4.3  2026-09-22  OTV4TEST r96 — A COLD START REBUILDS FROM THE TAPE, AND r94 WAS
       HALF A FIX. r94 anchored VWAP at the 09:30 open, but the live tick frame
       is SIXTY BARS - measured 2026-09-22 13:53 ET, 12:55->13:54 - so a cold
@@ -102,7 +112,7 @@ class IndicatorEngine(DerivedEngine):
         self._last_bar_ms: Optional[int] = None
 
     # ── VWAP: accumulate rather than recompute ──────────────────────────
-    def _accumulate_vwap(self, df_1m) -> tuple:
+    def _accumulate_vwap(self, df_1m, sym: str = "") -> tuple:
         """Fold new 1m bars into the running sums. Returns (vwap, pv, v, anchor).
 
         ⚠️ FOLDS ONLY BARS NEWER THAN THE LAST ONE SEEN. Re-folding the whole
@@ -152,12 +162,28 @@ class IndicatorEngine(DerivedEngine):
                 # 🔑 SAME IDIOM THE ORB ENGINE ALREADY USES on a cold start
                 # (`fetch_candles(sym, "1m", ORB_REBUILD_1M_BARS)` ->
                 # `rebuild_from_tape`), not a new mechanism.
+                # ⚠️ THE SYMBOL COMES FROM THE CALLER, NOT `self.symbol`.
+                # `derive()` resolves `self.symbol or ctx.get("symbol")`
+                # precisely because the attribute can be empty — and my first
+                # cut read the attribute, so the deep fetch was called with ""
+                # and returned nothing. The engine then folded the sixty-bar
+                # tick frame and reported 745.4476 against a true 744.7949,
+                # with the anchor still reading 09:30.
+                _dsym = sym or self.symbol or ""
                 try:
                     from data.market_data import fetch_candles as _deep
-                    _deep_df = _deep(self.symbol or "", "1m", 420)
+                    _deep_df = _deep(_dsym, "1m", 420) if _dsym else None
                     if _deep_df is not None and not _deep_df.empty:
                         df_1m = _deep_df
                         idx = df_1m.index
+                    else:
+                        # 🔴 AND IT SAYS SO. My first cut fell through here in
+                        # SILENCE, which is how a wrong VWAP reached the store
+                        # wearing a correct anchor (§0.5).
+                        logger.warning("VWAP cold start: deep 1m fetch returned "
+                                       "nothing for %r — folding the tick frame "
+                                       "only; coverage will be reported short",
+                                       _dsym)
                 except Exception as _de:                       # noqa: BLE001
                     logger.warning("VWAP cold start: deep 1m fetch failed (%s) "
                                    "— folding the tick frame only; the value "
@@ -213,7 +239,7 @@ class IndicatorEngine(DerivedEngine):
             return 0
         now = time.time()
 
-        vwap, pv, v, anchor = self._accumulate_vwap(ctx.get("df_1m"))
+        vwap, pv, v, anchor = self._accumulate_vwap(ctx.get("df_1m"), sym)
 
         rows = []
         # One row per timeframe the trend engine voted on, so ADX is recorded
