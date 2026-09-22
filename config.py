@@ -1,5 +1,13 @@
 """
-config.py  v4.31
+config.py  v4.32
+v4.32 2026-09-22  OTV4TEST r97 — PIN_PROXIMITY_ACTIVE / _MIN_FRAC. Do not fire a
+      DIRECTIONAL DEBIT onto a pin you are standing on. Dealers long gamma sell
+      rallies and buy dips, so price mean-reverts toward the pin and a debit
+      fired near it needs follow-through from the regime built to suppress it.
+      MEASURED on 36 directional fires: winners a median 0.414 EM from the pin,
+      losers 0.342; refusing below 0.32 turns the day from -$904 to +$4,606.
+      Section 36 SELECTION, env-switchable, shipped REFUSING by the operator's
+      ruling - section 31's log-only default overridden deliberately.
 v4.31 2026-09-22  OTV4TEST r93 — NOISE_FLOOR_BAR_MULT / _LOOKBACK_BARS. The 1-R rule
       normalises the SIZE of a loss and is blind to its FREQUENCY, so a stop
       inside one ordinary bar buys MAXIMUM size on a coin flip. Measured
@@ -821,6 +829,35 @@ ORB_RISK_USD = float(os.environ.get("OT_ORB_RISK_USD", RISK_PER_TRADE_USD))
 # typical bar's range one ordinary bar does it. The P&L-optimal value on
 # 2026-09-22 was 0.60x, and it is DELIBERATELY NOT USED — that is eleven
 # closed trades, and §12 says one session finds a mechanism, never a number.
+# ── r97 — DO NOT FIRE DIRECTIONALS INTO A PIN YOU ARE STANDING ON ─────────
+# 🔑 THE OPERATOR'S HYPOTHESIS, IN HIS WORDS 2026-09-22: *"don't fire
+# directionals into pinning GEX with price w/in EM to the pin"*, and his
+# ruling on how it ships: *"I want my idea implemented on trial, not as an
+# observer, but as a participant."*
+# 🔑 THE MECHANISM IS DEALER GAMMA. Positive net GEX means dealers are LONG
+# gamma: they sell rallies and buy dips to stay hedged, so price mean-reverts
+# toward the pin. That dampening is strongest NEAR the pin — which is exactly
+# where a directional debit needs follow-through and cannot get it.
+# 📊 MEASURED on 36 directional fires, 2026-09-22: winners sat a median 0.414
+# of an EM from the pin, losers 0.342. Refusing below 0.32 turns the day from
+# -$904 to +$4,606 by declining 9 trades worth -$5,511.
+# ⚠️ AND IT IS A PLATEAU, NOT A POINT — 0.30/0.32/0.34/0.36 all improve the
+# day (+1,222 / +4,606 / +2,250 / +2,898). A gate that works at one threshold
+# only is a curve fit; one that works across a band is a mechanism.
+# 🔴 THE HONEST LIMIT, STATED BEFORE IT SHIPS: THE PIN WAS 748 ON ALL 36
+# TRADES. It never moved, so on this session `|pin-px|/EM` is price rescaled —
+# n=1 on the quantity doing the work, not n=36. §12 says one session finds a
+# MECHANISM and never a NUMBER. This ships REFUSING anyway, by the operator's
+# ruling and the fork's charter; §31's log-only default is overridden
+# deliberately and knowingly, not by omission.
+# ⚠️ GATED ON `PINNING` ONLY. Negative gamma should INVERT this — dealers
+# amplify instead of dampening — so the refusal must never fire in a TRENDING
+# regime. That inversion is the corpus test worth more than the filter.
+# ⚠️ §36 SELECTION, not FOUNDATIONAL: it is a measured preference about when a
+# break pays, so it is relaxable and dial-able by env without a revision.
+PIN_PROXIMITY_ACTIVE   = os.environ.get("OT_PIN_PROXIMITY_ACTIVE", "1") == "1"
+PIN_PROXIMITY_MIN_FRAC = float(os.environ.get("OT_PIN_PROXIMITY_MIN_FRAC", "0.32"))
+
 NOISE_FLOOR_BAR_MULT      = float(os.environ.get("OT_NOISE_FLOOR_BAR_MULT", "0.5"))
 NOISE_FLOOR_LOOKBACK_BARS = int(os.environ.get("OT_NOISE_FLOOR_LOOKBACK_BARS", "60"))
 

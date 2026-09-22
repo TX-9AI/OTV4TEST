@@ -1,5 +1,11 @@
 """
-main.py  v4.64
+main.py  v4.65
+v4.65 2026-09-22  OTV4TEST r97 — the pin-proximity gate, extracted as
+      `pin_proximity_verdict(ctx)` so the checker drives the REAL decision
+      rather than grepping for it (section 21). Keyed on the DECLARED
+      structure `long_debit`, never a strategy-name list: the butterflies WANT
+      this condition and the credit spreads are not directional. PINNING only,
+      because negative gamma should INVERT the effect. Fails OPEN and warns.
 v4.64 2026-09-22  OTV4TEST r93 — the noise floor is MEASURED FROM THE TAPE at the sizing
       call and threaded into size_for — median 1m bar RANGE over the lookback,
       times the multiplier. Daily, not hardcoded: the floor is a property of
@@ -1203,6 +1209,7 @@ from config import (
     PAPER_TRADING, RISK_PER_TRADE_USD, DAILY_LOSS_LIMIT_USD,
     ORB_BUDGET_USD, ORB_BUDGET_IS_DEFAULT,
     NOISE_FLOOR_BAR_MULT, NOISE_FLOOR_LOOKBACK_BARS,
+    PIN_PROXIMITY_ACTIVE, PIN_PROXIMITY_MIN_FRAC,
     REASSESS_MINUTES, INSTRUMENT, SessionConfig, DIRECTIONAL_ONLY,
     DEBIT_BLOCKED_STRUCTURES,
     ORB_NO_ENTRY_AFTER_ET, BROKER_RECONCILE_ENABLED,
@@ -4741,6 +4748,43 @@ def _sig_num(signal, name: str) -> float:
         return 0.0
 
 
+
+def pin_proximity_verdict(ctx) -> tuple:
+    """(refuse, frac, env, pin, why) — r97's pin-proximity decision, extracted.
+
+    🔑 EXTRACTED SO THE CHECK CAN DRIVE THE REAL THING. §21: a test that reads
+    source text proves nothing about runtime, and the r201 gate asserted a
+    function existed and the file parsed — both true of the broken version.
+    `check_pin_proximity` calls THIS, with the same ctx shape production hands
+    it, and reads the verdict.
+
+    🔑 THE RULE. Positive net GEX means dealers are LONG gamma: they sell
+    rallies and buy dips to stay hedged, so price mean-reverts toward the pin.
+    A directional debit fired NEAR that pin needs follow-through from the one
+    regime built to suppress it. Operator, 2026-09-22: *"don't fire
+    directionals into pinning GEX with price w/in EM to the pin."*
+
+    ⚠️ PINNING ONLY. Negative gamma should INVERT the effect — dealers amplify
+    — so a refusal in a TRENDING regime would be this gate firing backwards.
+    ⚠️ FAILS OPEN, AND THE CALLER SAYS SO. `frac is None` means the tape could
+    not be measured, never that it passed (§0.5).
+    """
+    try:
+        gx = ctx.get("gex")
+        pin = float(getattr(gx, "pin_strike", 0) or 0) if gx else 0.0
+        env = str(getattr(gx, "gex_environment", "") or "") if gx else ""
+        px = float(ctx.get("price") or 0)
+        from strategy.gex_pin_butterfly import expected_move as _em_fn
+        em = _em_fn(px, float(ctx.get("atm_iv") or 0)) if px else None
+        if not (pin and em and em > 0):
+            return False, None, env, pin, f"pin={pin or None} em={em}"
+        frac = abs(pin - px) / em
+        refuse = (env.upper() == "PINNING" and frac < PIN_PROXIMITY_MIN_FRAC)
+        return refuse, frac, env, pin, ""
+    except Exception as exc:                                    # noqa: BLE001
+        return False, None, "", 0.0, f"{type(exc).__name__}: {exc}"
+
+
 def _execute_entry_signal(signal, ctx, ms, state, _sigj=None, *, additive: bool = False):
     """r161 — the execution tail of attempt_new_entry, factored so the
     butterfly can fire from main_loop while another position is open.
@@ -4885,6 +4929,43 @@ def _execute_entry_signal(signal, ctx, ms, state, _sigj=None, *, additive: bool 
         # places, which is how a repair becomes a second defect.
         _orb_d = abs(float(getattr(signal, "underlying_entry", 0) or 0)
                      - float(getattr(signal, "underlying_stop", 0) or 0))
+    # ── r97 — PIN PROXIMITY: DO NOT FIRE A DIRECTIONAL ONTO THE PIN ──────
+    # 🔑 The operator's hypothesis and his ruling that it ships as a
+    # PARTICIPANT rather than an observer. Positive net GEX = dealers long
+    # gamma = they sell rallies and buy dips, so price mean-reverts toward the
+    # pin; a directional debit fired NEAR the pin is asking for follow-through
+    # from the one regime that exists to suppress it.
+    # ⚠️ DIRECTIONAL DEBITS ONLY. The butterflies WANT this condition — it is
+    # the trade they are built for — and the credit spreads are not directional
+    # at all. Keyed on the structure the strategy DECLARES, the same key
+    # `size_for` dispatches on, never a strategy-name list (§23: a name list
+    # rots, and it rots PERMISSIVELY).
+    # ⚠️ PINNING ONLY. Negative gamma should INVERT the effect, so a refusal in
+    # a TRENDING regime would be the gate firing backwards.
+    # ⚠️ FAILS OPEN AND SAYS SO. No gex, no pin, no EM -> the gate stands down
+    # and logs it; "could not measure" must never look like "measured and
+    # passed" (§0.5).
+    if PIN_PROXIMITY_ACTIVE and _struct == "long_debit":
+        _refuse, _pin_frac, _pin_env, _pin, _pin_why = pin_proximity_verdict(ctx)
+        if _pin_frac is None:
+            logger.warning("[pin] proximity gate STOOD DOWN (%s) — this entry "
+                           "is unfiltered", _pin_why or "unmeasurable")
+        elif _refuse:
+            logger.info("[pin] REFUSED %s: price %.2f is %.3f EM from pin %g "
+                        "(floor %.2f) in a PINNING regime — dealers dampen the "
+                        "move this trade needs", signal.strategy_name,
+                        float(ctx.get("price") or 0), _pin_frac, _pin,
+                        PIN_PROXIMITY_MIN_FRAC)
+            if _sigj is not None:
+                try:
+                    _sigj.journal("disposition", outcome="pin_proximity",
+                                  reason=f"{_pin_frac:.3f} EM from pin {_pin:g} "
+                                         f"< {PIN_PROXIMITY_MIN_FRAC:.2f} (PINNING)",
+                                  signal=_sigj.signal_ctx(signal), score=None)
+                except Exception:
+                    pass
+            return
+
     # ── r93 — THE NOISE FLOOR, MEASURED FROM THE TAPE, NOT A CONSTANT ────
     # 🔑 MEASURED DAILY RATHER THAN HARDCODED, at the operator's instruction.
     # The floor is a property of TODAY'S volatility: 0.42 on 2026-09-22 and a

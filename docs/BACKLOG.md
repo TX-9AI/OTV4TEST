@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.98
+# BACKLOG.md — OTV4TEST — v0.99
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -234,6 +234,27 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.99 — 2026-09-22 — OTV4TEST r97 — THE OPERATOR'S GATE, SHIPPED AS A
+PARTICIPANT RATHER THAN AN OBSERVER.**
+His hypothesis: *"don't fire directionals into pinning GEX with price w/in EM
+to the pin."* 🔑 **The mechanism is dealer gamma** — positive net GEX means
+dealers sell rallies and buy dips to stay hedged, so price mean-reverts toward
+the pin, and a directional debit fired near it needs follow-through from the
+one regime built to suppress it. 📊 **MEASURED, 36 directional fires:** winners
+a median **0.414** EM from the pin, losers **0.342**. Replayed at 0.32 it
+refuses **9 trades, 8 of them losers**, turning the day from **−$904 to
++$4,606**. ⚠️ **A PLATEAU, NOT A POINT** — 0.30/0.32/0.34/0.36 all improve it,
+which is what separates a mechanism from a curve fit. 🔴 **BUT THE PIN WAS 748
+ON ALL 36 TRADES.** It never moved, so `|pin−px|/EM` is price rescaled on this
+session — **n=1 on the quantity doing the work.** §12 says one session finds a
+mechanism, never a number. ✅ **It ships REFUSING anyway**, by the operator's
+ruling and this fork's charter: *"I want my idea implemented on trial, not as
+an observer, but as a participant."* §31's log-only default is overridden
+**deliberately and knowingly**. ⚠️ **P3 IS THE CHECK THAT MATTERS** — negative
+gamma should INVERT the effect, so a refusal in a TRENDING regime is the gate
+firing backwards, and that would be invisible in P&L for weeks.
+
 
 **v0.98 — 2026-09-22 — OTV4TEST r96 — r94 TRADED A LOUD FAILURE FOR A SILENT
 ONE, AND I CAUGHT IT MINUTES AFTER BAKING IT.**
