@@ -1,5 +1,11 @@
 """
-strategy/sweep_credit_spread.py  v6.3
+strategy/sweep_credit_spread.py  v6.4
+v6.4  2026-09-22  OTV4TEST r102 - NO BEHAVIOUR CHANGE. Records, in the one
+      place a reader will look, that `sig.sweep_age_bars = 0` is r5's
+      DELIBERATE decision (the trigger IS a fresh rejection, pinned by
+      check_sweep_liveness L3) and that the inherited mainline gate
+      check_age_gate_gone A3 asserted the opposite. Both gates were in this
+      tree and the disagreement was invisible because A3 crashed first.
 v6.3  2026-09-13  OTV4TEST r25 — THE SPENT LOCK KNOWS BOTH LABELS A BREACH CLOSES UNDER.
       r24 matched only exit_engine's `sweep_breach_accepted` / `tcs_breach`. But
       strategy/management.py acts FIRST, and when the row carries an
@@ -912,6 +918,20 @@ class SweepCreditSpreadStrategy:
         sig.pool_price = prep.pool
         sig.boundary = prep.boundary
         sig.swept_level_name = prep.name
+        # ⚠️ r102 — DELIBERATELY 0, AND THAT IS A FORK DECISION, NOT A BUG.
+        # r5 retired the age GATE and set this to 0 because the TRIGGER is a
+        # fresh REJECTED event, so a fired sweep is on a fresh rejection by
+        # construction. `check_sweep_liveness` L3 pins exactly that.
+        # 🔴 THE MAINLINE CHECKER DISAGREES AND BOTH ARE IN THIS TREE.
+        # `check_age_gate_gone` A3 is inherited from mainline r241, whose
+        # ruling was "the GATE goes, the MEASUREMENT stays". The fork
+        # superseded that and nothing reconciled the two gates.
+        # ⚠️ THE OPEN QUESTION, FOR THE OPERATOR AND NOT FOR ME: a trade may
+        # fire on a rejection up to REJECTION_FRESH_BARS (3) old, so 0 is
+        # wrong by up to three bars — while the TRUE figure is already
+        # recorded as `rejection_age_bars` on the plan row. Whether the signal
+        # should carry the real age is a change to recorded trade semantics
+        # and is NOT made here.
         sig.sweep_age_bars = 0
         sig.rejection_pct = prep.rej_pct
         sig.rejection_depth = prep.depth

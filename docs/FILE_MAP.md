@@ -508,7 +508,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `strategy/sweep_plan.py`
 - **calls:** `config.py`, `data/derived_store.py`, `derived/__init__.py`, `derived/anchors.py`, `derived/levels.py`, `strategy/__init__.py`, `strategy/credit_vertical.py`, `strategy/criteria.py`, `strategy/plan.py`, `strategy/relaxed.py`, `strategy/sweep_credit_spread.py`, `utils/math_utils.py`
-- **called by:** `main.py`, `strategy/iron_condor_strategy.py`, `strategy/sweep_credit_spread.py`, `tests/check_condor_mgmt.py`, `tests/check_credit_window.py`, `tests/check_plan_prepares.py`
+- **called by:** `main.py`, `strategy/iron_condor_strategy.py`, `strategy/sweep_credit_spread.py`, `tests/check_age_gate_gone.py`, `tests/check_condor_mgmt.py`, `tests/check_credit_window.py`, `tests/check_plan_prepares.py`, `tests/check_strike_beyond.py`
 
 ### `strategy/tcs_plan.py`
 - **calls:** `config.py`, `data/derived_store.py`, `derived/__init__.py`, `derived/anchors.py`, `derived/levels.py`, `strategy/__init__.py`, `strategy/credit_vertical.py`, `strategy/criteria.py`, `strategy/gex_pin_butterfly.py`, `strategy/plan.py`, `strategy/sweep_credit_spread.py`, `utils/math_utils.py`
@@ -555,7 +555,7 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_age_gate_gone.py`
-- **calls:** `strategy/__init__.py`, `strategy/criteria.py`, `strategy/sweep_credit_spread.py`
+- **calls:** `strategy/__init__.py`, `strategy/criteria.py`, `strategy/sweep_credit_spread.py`, `strategy/sweep_plan.py`
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
 ### `tests/check_anchors.py`
@@ -660,7 +660,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_configure_relaxed.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `configure.sh`
+- **called by:** (not imported) — referenced in `configure.sh`, `tools/land.sh`
 
 ### `tests/check_conviction_removed.py`
 - **calls:** (none)
@@ -1087,7 +1087,7 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_strike_beyond.py`
-- **calls:** `strategy/sweep_credit_spread.py`
+- **calls:** `strategy/sweep_credit_spread.py`, `strategy/sweep_plan.py`
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
 ### `tests/check_structure_stop_ramp.py`

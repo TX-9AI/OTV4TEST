@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_strike_beyond.py  v1.0
+tests/check_strike_beyond.py  v1.1
+v1.1  2026-09-22  OTV4TEST r102 - S3 RE-POINTED AT THE PLAN, AND IT WAS
+      HIDING A REAL LOSS. The AttributeError killed the run before S3, and
+      behind it the three telemetry fields were GENUINELY ABSENT - dropped by
+      r5's rewrite while its header went on promising them. Born red at
+      1104492 on both faults.
 v1.0  2026-09-03  r233 — THE STRIKE MUST CLEAR THE TESTED RANGE, AND THE
       NEAREST LIVE LEVEL WINS. Operator, 2026-09-03: *"the strike cannot sit
       at any level that is part of the testing range... it has to be just
@@ -22,6 +27,18 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# ⚠️ r102 — THE LANDER RUNS CHECKS UNDER SYSTEM `python3`, NOT THE VENV, and
+# the repo imports below reach `tastytrade`, which lives only in the venv. A
+# checker that cannot import is a checker that never runs. Resolved by glob so
+# the interpreter version is never hardcoded, and INSERTED AHEAD OF THE SYSTEM
+# PATHS (index 1) — appending leaves /usr/lib/python3/dist-packages first and
+# its older `typing_extensions` shadows the venv's.
+import glob as _glob
+_R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for _sp in _glob.glob(os.path.join(_R, "venv", "lib", "python*", "site-packages")):
+    if _sp not in sys.path:
+        sys.path.insert(1, _sp)
+
 FAILED = []
 
 
@@ -126,9 +143,22 @@ def main():
           pick([SW(0.0), SW(99.4)], 100.0).pool_price == 99.4)
 
     # ══ S3 — the real module ranks the same way (not a copy of the test's)
-    check("S3 the strategy declares the record-only telemetry",
-          {"pierce_pts", "level_dist_pts", "level_dist_pct"}
-          <= set(S.SweepCreditSpreadStrategy.PLAN_CHECKS))
+    # 🔴 r102 — TWO FAULTS WERE STACKED HERE AND THE FIRST HID THE SECOND.
+    # (1) The declaration site moved: `SweepCreditSpreadStrategy.PLAN_CHECKS`
+    # is set on the INSTANCE in __init__, so CLASS access raised AttributeError
+    # and this file died before S3 ever ran. (2) Behind that crash, the three
+    # fields were GENUINELY ABSENT — mainline r233 added them record-only, r5
+    # rewrote the sweep into `sweep_plan.py` and carried the header paragraph
+    # promising them WITHOUT the code. r102 restores them at the new site.
+    try:
+        from strategy.sweep_plan import SweepPlan as _SP
+        _decl = set(getattr(_SP, "PLAN_CHECKS", ()) or ())
+    except Exception as _e:                                   # noqa: BLE001
+        _decl = set()
+        check("S3pre the sweep's declaration site is readable", False, repr(_e))
+    _want = {"pierce_pts", "level_dist_pts", "level_dist_pct"}
+    check("S3 the plan declares the record-only telemetry", _want <= _decl,
+          f"missing: {sorted(_want - _decl) or 'none'}")
 
     print()
     if FAILED:

@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# tools/land.sh — v1.13
+# tools/land.sh — v1.14
+# v1.14 (2026-09-22) — OTV4TEST r102. EXEC BIT. THE LANDER ITSELF was 100644
+#   in the git index, so a fresh clone or a repoint got `Permission denied`
+#   on the one script needed to land the fix. Now 100755; check_configure_relaxed
+#   C5 pins it. No content change.
 # v1.13 (2026-09-19) — OTV4TEST r65. DIRECTIVE PARSING IS WHITESPACE-NORMALISED
 #   AND A `NEG` NAMING A MISSING FILE IS REFUSED. Every directive stripped
 #   exactly one space while this file's own format block documents aligned

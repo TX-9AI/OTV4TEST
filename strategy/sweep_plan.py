@@ -1,5 +1,13 @@
 """
-strategy/sweep_plan.py  v1.6
+strategy/sweep_plan.py  v1.7
+v1.7  2026-09-22  OTV4TEST r102 - THE RECORD-ONLY TELEMETRY THIS FILE'S OWN
+      HEADER HAS PROMISED SINCE r5, RESTORED. mainline r233 added pierce_pts,
+      level_dist_pts and level_dist_pct record-only; r5 rewrote the sweep into
+      this file and carried the PARAGRAPH forward WITHOUT the CODE, so the
+      header documented telemetry that did not exist and SWEEP.10 was
+      unanswerable. Ported from r233 rather than reinvented. Also carries
+      `age_bars` on the preparation - computed every tick since r5 and thrown
+      away at the end of the function.
 v1.6  2026-09-17  OTV4TEST r33 — THE PRIVATE MAP IS GONE; THIS PLAN READS THE ONE
       BOARD. It called `live_levels()`, ran its OWN `level_map.walk()` over the
       result, and then APPENDED the fork's rails into the same list — so a moving
@@ -153,7 +161,8 @@ class SweepPreparation:
                  "chosen", "side", "boundary", "pool", "name", "rej_pct", "depth",
                  "short", "long", "credit", "width", "r", "stop_prem", "stop_dist",
                  "richness", "structural", "starved", "unmet", "ready",
-                 "tines")          # r33 — the fork, BESIDE the levels, never hidden in them
+                 "tines",          # r33 — the fork, BESIDE the levels, never hidden in them
+                 "age_bars")       # r102 — the MEASUREMENT r241 kept, carried again
 
     def __init__(self, tick):
         self.tick = tick
@@ -168,6 +177,9 @@ class SweepPreparation:
         self.credit = self.width = self.r = self.stop_prem = self.stop_dist = self.richness = None
         self.structural, self.starved, self.unmet = [], [], []
         self.tines = []                     # r33 — "absent" is an answer, not a gap
+        # 🔴 r102 — None, NOT 0. "How old is this rejection" and "it happened on
+        # this bar" are different answers, and 0 is a plausible reading of both.
+        self.age_bars = None
         self.ready = False
 
     def trade_line(self) -> str:
@@ -185,7 +197,9 @@ class SweepPlan:
                    "rejected", "rejection_age_bars", "rejection", "pierce_depth",
                    "side_of_pool", "spent_level", "geometry", "short_anchor", "contract",
                    "credit", "width", "richness", "r", "r_stop", "stop_premium",
-                   "complement_richness")
+                   "complement_richness",
+                   # r102 — record-only telemetry, restored; gates nothing
+                   "pierce_pts", "level_dist_pts", "level_dist_pct")
 
     def __init__(self, store=None):
         self.planner = Plan(self.name, self.PLAN_CHECKS,
@@ -338,6 +352,9 @@ class SweepPlan:
             key = (rej["level_id"], rej["bar_ts"])
             age_s = max(0.0, time.time() - float(rej["ts_epoch"] or 0.0))
             age_bars = age_s / 60.0
+            # r102 — COMPUTED HERE AND THROWN AWAY UNTIL NOW. The strategy wrote
+            # a literal 0 to `sig.sweep_age_bars` because this never reached it.
+            prep.age_bars = round(age_bars, 2)
             t.check("rejected", rej["price"], True)
             t.check("rejection_age_bars", round(age_bars, 2), age_bars <= REJECTION_FRESH_BARS)
             if key in self._fired_events:
@@ -418,6 +435,29 @@ class SweepPlan:
             _A.stamp(t, gex_at_level=_A.gex_at(chosen.price), oi_at_short=_A.oi_at(chosen.short.strike, chain),
                      aggressor_at_level=_A.aggressor_share(chosen.price), charm_at_short=_A.charm_at(chosen.short.strike),
                      tine_to_level=_A.nearest_tine(chosen.price))
+            # ══ r102 — THE TELEMETRY r5's REWRITE DROPPED, RESTORED ═════════
+            # 🔴 THIS FILE'S OWN HEADER HAS PROMISED THESE THREE SINCE r5 AND
+            # NOTHING IMPLEMENTED THEM. mainline r233 added them record-only to
+            # the OLD strategy; r5 rewrote the sweep into this file and carried
+            # the PARAGRAPH forward without the CODE, so the header documented
+            # telemetry that did not exist and SWEEP.10 was unanswerable.
+            # ⚠️ IT WAS MASKED BY A SECOND FAULT: check_strike_beyond S3 asserts
+            # exactly this, but died on an AttributeError before reaching it.
+            # 🔑 PORTED, NOT REINVENTED. r233 recorded abs(pool - sweep_price):
+            # the width of the TESTED RANGE the strike must clear. Here the pool
+            # IS `chosen.price` and the wick is `level x (1 + pierce_pct)`, since
+            # derived/levels computes `pierce = (hi - lvl) / lvl` — so that same
+            # distance is `rej_pct x level`. Points AND percent, because points
+            # alone are not comparable across a $83 NFLX and a $7,700 SPX.
+            # RECORDED, GATING NOTHING (§31).
+            _lvl = float(chosen.price or 0.0)
+            _rp = float(prep.rej_pct or 0.0)
+            if _lvl > 0:
+                t.check("pierce_pts", round(_rp * _lvl, 4), None)
+                _ld = abs(_lvl - price_now)
+                t.check("level_dist_pts", round(_ld, 4), None)
+                t.check("level_dist_pct",
+                        round(_ld / price_now, 6) if price_now else None, None)
         if prep.starved:
             t.starved(*prep.starved); return prep
         if prep.structural:

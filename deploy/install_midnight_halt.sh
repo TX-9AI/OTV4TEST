@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# deploy/install_midnight_halt.sh — v1.2
+# deploy/install_midnight_halt.sh — v1.3
+# v1.3  2026-09-22  OTV4TEST r102 — EXEC BIT. 100644 in the git INDEX, so a
+#       fresh clone or a repoint got Permission denied. Now 100755; C5 pins
+#       it. No content change.
 # v1.2  2026-09-13  OTV4TEST r21 — DIR IS THE REPO ROOT. r14's line below says
 #       "moved ... no behaviour change"; THE MOVE WAS THE BEHAVIOUR CHANGE. `DIR`
 #       came from this script's own directory, so from deploy/ the unit named

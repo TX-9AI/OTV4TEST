@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# deploy/install_claude_boot.sh  v1.0
+# deploy/install_claude_boot.sh  v1.1
 #
+# v1.1  2026-09-22  OTV4TEST r102 — EXEC BIT. 100644 in the git INDEX, so a
+#       fresh clone or a repoint got Permission denied. Now 100755; C5 pins
+#       it. No content change.
 # v1.0  2026-09-20  OTV4TEST r68 (BOX.11) — RAISE AN AGENT SESSION AT BOOT.
 #       Operator: "Can we have a tmux session Claude --continue added to the
 #       boot sequence on this box so that an agent is available from the moment

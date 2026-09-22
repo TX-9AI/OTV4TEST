@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_sweep_liveness.py  v1.2
+tests/check_sweep_liveness.py  v1.3
+v1.3  2026-09-22  OTV4TEST r102 - runnable under the lander's system
+      python3; it could not import the venv and so had never run as a CHECK.
+      Declared as one now: L3 is the gate that caught r102 starting to change
+      `sig.sweep_age_bars` away from the 0 r5 chose deliberately.
 v1.2  2026-09-09  OTV4TEST r5 — L2–L5 read the plan's PLAN_CHECKS; CONDITIONS is gone.
 v1.1  2026-09-04  r241 — RE-DERIVED. Every check pinned a CEILING —
       that MAX_AGE_BARS existed, resolved to 48, was FOUNDATIONAL and admitted
@@ -29,6 +33,17 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# ⚠️ r102 — THE LANDER RUNS CHECKS UNDER SYSTEM `python3`, NOT THE VENV, and
+# the repo imports below reach `tastytrade`, which lives only in the venv — so
+# this file could never run as a declared CHECK. Inserted at index 1 so the
+# venv beats /usr/lib/python3/dist-packages (whose older `typing_extensions`
+# otherwise shadows it) while the repo root at index 0 still wins.
+import glob as _glob
+_R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for _sp in _glob.glob(os.path.join(_R, "venv", "lib", "python*", "site-packages")):
+    if _sp not in sys.path:
+        sys.path.insert(1, _sp)
+
 
 FAILED = []
 
