@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_tcs_parked.py  v1.2
+tests/check_tcs_parked.py  v1.3
+v1.3  2026-09-22  OTV4TEST r92 — P0/P1/P5 retargeted to the SHARED credit window. P5's
+      PREMISE was superseded, not just its number: "the 14:00 bound is
+      TCS-only" was true while TCS owned a private end, and r81 unified every
+      credit path precisely because the sweep sitting dormant from 14:00 cost
+      the 2026-09-16 late-day move. It now pins the IDENTITY.
 v1.2  2026-09-09  OTV4TEST r9 — the window lives on the plan (tcs_plan.py may read it);
       P5b's reader set updated; main.py reads it from the plan (HYG.5).
 v1.1  2026-09-04  r238 — RE-DERIVED. It asserted (0,0); the window is now
@@ -46,9 +51,16 @@ def main():
     # a real window again and the park is held ONLY by `OT_TCS_ACTIVE=0` in the
     # systemd drop-in on the boxes. Asserting (0,0) here would fail on a
     # correct tree; asserting the SPEC is what survives.
-    check("P0 the window is the operator's spec, 11:31 -> 14:00",
-          C.TCS_START_ET == (11, 31) and C.TCS_ENTRY_END_ET == (14, 0),
-          f"{C.TCS_START_ET} -> {C.TCS_ENTRY_END_ET}")
+    # 🔴 r92 — THE END IS DERIVED, NOT WRITTEN. This asserted a literal
+    # `(14, 0)` and went red when r81 made `CREDIT_ENTRY_END_ET` the one END
+    # for every credit path, per the operator's 15:40 ruling. The SPEC worth
+    # pinning is no longer "14:00" — it is that TCS shares the credit window
+    # rather than keeping a private copy of it.
+    check("P0 TCS starts with the credit window and ends with it (r81)",
+          C.TCS_START_ET == C.CREDIT_ENTRY_START_ET
+          and C.TCS_ENTRY_END_ET == C.CREDIT_ENTRY_END_ET,
+          f"{C.TCS_START_ET} -> {C.TCS_ENTRY_END_ET} vs credit "
+          f"{C.CREDIT_ENTRY_START_ET} -> {C.CREDIT_ENTRY_END_ET}")
     # ⚠️ MANAGEMENT IS NOT GATED BY THE ENTRY CLOCK, and that is checked rather
     # than assumed: `condor_roll` and `management.py` reference no window
     # constant at all, so a roll runs to the 15:45 flatten.
@@ -72,7 +84,15 @@ def main():
     # this check would read the dedup as a failure to park. Each iteration is
     # therefore a fresh box arriving at that minute.
     verdicts = []
-    for h, m in ((9, 31), (14, 0), (15, 45)):        # r238: OUTSIDE the window
+    # ⚠️ r92 — THE PROBE TIMES ARE DERIVED. `(14, 0)` was OUTSIDE the window
+    # when this was written and is INSIDE it now, so the middle case was
+    # testing the opposite of what it claimed — it returned "NO PLAN: chain
+    # absent", not DORMANT, which is a refusal for an unrelated reason.
+    _s_h, _s_m = C.TCS_START_ET
+    _e_h, _e_m = C.TCS_ENTRY_END_ET
+    _before = (_s_h - 2, _s_m)                       # comfortably before the open
+    _after  = (_e_h, _e_m + 5) if _e_m < 55 else (_e_h + 1, (_e_m + 5) % 60)
+    for h, m in (_before, _after, (15, 45)):         # r238: OUTSIDE the window
         now = datetime(2026, 9, 4, h, m, tzinfo=ET)
         s = TrendCreditSpread()
         try:
@@ -86,7 +106,7 @@ def main():
             verdicts.append((f"{h:02d}:{m:02d}", f"RAISED {type(exc).__name__}",
                              str(exc)[:60]))
     dormant = [v for v in verdicts if str(v[1]).upper().startswith("DORMANT")]
-    check("P1 TCS is DORMANT outside 11:31-14:00, at BOTH ends",
+    check("P1 TCS is DORMANT outside its window, at BOTH ends",
           len(dormant) == len(verdicts), str(verdicts))
 
     # ══ P2 — AND THE REASON NAMES THE PARK, NOT A CLOCK ═══════════════════
@@ -109,9 +129,17 @@ def main():
           R_FLOOR == 1.00 and R_FLOOR_STOP == 1.00,
           f"{R_FLOOR}/{R_FLOOR_STOP}")
 
-    # ══ P5 — THE PARK IS THE WINDOW, AND ONLY TCS READS IT ════════════════
-    check("P5 the 14:00 bound is TCS-only (the sweep is untouched)",
-          C.TCS_ENTRY_END_ET == (14, 0), str(C.TCS_ENTRY_END_ET))
+    # ══ P5 — THE BOUND IS SHARED NOW, AND ONLY TCS READS THE TCS NAME ═════
+    # 🔴 r92 — THIS ASSERTION'S PREMISE WAS SUPERSEDED, NOT JUST ITS NUMBER.
+    # It read "the 14:00 bound is TCS-only (the sweep is untouched)", which was
+    # true while TCS owned a private end. r81 made `CREDIT_ENTRY_END_ET` the
+    # ONE end for every credit path *because* the sweep sitting dormant from
+    # 14:00 cost the 2026-09-16 late-day move. So "TCS-only" is now the WRONG
+    # invariant — the right one is the IDENTITY, plus the unchanged fact that
+    # only TCS and its plan read the TCS-named alias.
+    check("P5 TCS_ENTRY_END_ET IS CREDIT_ENTRY_END_ET, not a private copy",
+          tuple(C.TCS_ENTRY_END_ET) == tuple(C.CREDIT_ENTRY_END_ET),
+          f"tcs={C.TCS_ENTRY_END_ET} credit={C.CREDIT_ENTRY_END_ET}")
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     readers = []
     for dirpath, _dn, files in os.walk(root):

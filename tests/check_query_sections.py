@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_query_sections.py  v1.4
+tests/check_query_sections.py  v1.5
+v1.5  2026-09-22  OTV4TEST r92 — Q7 covers the two panels that still range-query; Q7b pins
+      what replaced the third. r83 replaced show_decisions WHOLESALE by
+      ruling and it reads plan_heartbeat — current state, one row per plan,
+      with no "today" to cut. Asserting a session cut demanded a design that
+      was deliberately removed.
 v1.4  2026-09-17  OTV4TEST r35 — reads query.py at the REPO ROOT.
       ⚠️ r34 MOVED IT AND MISSED THIS FILE. Thirteen callers were re-pointed by
       reading; this one and check_plan_signal spell the path differently and were
@@ -146,11 +151,31 @@ def main():
     for n in tree.body:
         if isinstance(n, ast.FunctionDef):
             fn_src[n.name] = ast.get_source_segment(src, n) or ""
-    users = [f for f in ("show_decisions", "show_gates", "show_plans")
+    # 🔴 r92 — `show_decisions` NO LONGER HAS A SESSION CUT, BY RULING, AND
+    # THAT IS NOT DRIFT. r83 REPLACED THAT PANEL WHOLESALE at the operator's
+    # instruction — *"That whole section should be replaced with code that's
+    # accurate"* — and it now reads `plan_heartbeat`, which is UPSERTED one row
+    # per plan. Current state has no "today" to cut: a row is either fresh or
+    # its heartbeat has stopped, and the panel says which. Asserting a session
+    # cut here would demand the design r83 deliberately removed.
+    # ⚠️ THE GUARANTEE SURVIVES FOR THE TWO PANELS THAT STILL READ TIME-RANGED
+    # TABLES, and that is what Q7 now pins.
+    users = [f for f in ("show_gates", "show_plans")
              if "session_start_epoch()" in fn_src.get(f, "")]
-    check("Q7 decisions, gates and plans share one session cut",
-          "session_start_epoch" in fns and len(users) == 3,
+    check("Q7 gates and plans share ONE session cut",
+          "session_start_epoch" in fns and len(users) == 2,
           f"callers: {users}")
+    # 🔑 Q7b — AND WHAT REPLACED IT IN THE DECISIONS PANEL IS PINNED, so this
+    # is a MOVED guarantee rather than a dropped one: the panel gates on the
+    # 09:30 open and judges liveness by HEARTBEAT AGE, never by row age — the
+    # inference r83 removed because r41's edge-triggered rows made a healthy
+    # plan look stale after five minutes.
+    _dec = fn_src.get("show_decisions", "")
+    check("Q7b the decisions panel gates on the open and reads heartbeat AGE",
+          ("hour=9, minute=30" in _dec) and ("STALE_S" in _dec)
+          and ("plan_heartbeat" in _dec),
+          f"open_guard={'hour=9, minute=30' in _dec} stale_s={'STALE_S' in _dec} "
+          f"heartbeat={'plan_heartbeat' in _dec}")
 
     # ── Q8 — the EDT hardcode is gone ────────────────────────────────────
     # 🔴 ANCHORED ON THE AST, NOT THE TEXT, AND THE FIRST DRAFT WAS NOT.

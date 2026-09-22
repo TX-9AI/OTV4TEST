@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_sweep_spread.py  v1.2
+tests/check_sweep_spread.py  v1.3
+v1.3  2026-09-22  OTV4TEST r92 — S8c asserted the OPPOSITE of the ruling. It read "the
+      14:00 ceiling holds DESPITE the 39% after-14:30 finding" — and that
+      finding is what the operator acted on at r71. It now pins that the
+      sweep's ceiling DERIVES from the shared credit END rather than drifting
+      back to a private number.
 v1.2  2026-09-09  OTV4TEST r5 — S7h reads strategy/sweep_plan.py; selection moved to the plan.
 v1.1  2026-09-03  r233 — S7c RE-DERIVED, NOT PATCHED. It asserted
       PARITY with the pre-r107 rule on every case that rule could answer,
@@ -180,8 +185,17 @@ check("S8b the 13:00 floor is gone", _scs.EARLIEST_ET != "13:00")
 # reader WILL find that number and want to widen. Survival is not the question:
 # a boundary that holds while you collected two cents is a win on paper and
 # nothing in the account. Pinned so the widening has to meet this first.
-check("S8c the 14:00 ceiling holds despite the 39% after-14:30 finding",
-      _scs.LATEST_ET == "14:00", _scs.LATEST_ET)
+# 🔴 r92 — THE LABEL ASSERTED THE OPPOSITE OF THE RULING. It read "the 14:00
+# ceiling holds DESPITE the 39% after-14:30 finding" — and that finding is
+# exactly what the operator acted on at r71: *"I wanna widen the entry window
+# for those last four trades to 1540."* r81 then made CREDIT_ENTRY_END_ET the
+# one END for every credit path. So the sweep's ceiling is no longer its own
+# number and no longer 14:00; what is worth pinning is that it still DERIVES
+# from the shared constant rather than drifting back to a private one.
+import config as _C
+_want_latest = f"{_C.CREDIT_ENTRY_END_ET[0]}:{_C.CREDIT_ENTRY_END_ET[1]:02d}"
+check("S8c the sweep's ceiling DERIVES from the shared credit END (r81)",
+      _scs.LATEST_ET == _want_latest, f"{_scs.LATEST_ET} vs {_want_latest}")
 
 print(f"\n{'PASS' if not FAILURES else 'FAIL'}: {len(FAILURES)} problem(s) {FAILURES}")
 sys.exit(1 if FAILURES else 0)

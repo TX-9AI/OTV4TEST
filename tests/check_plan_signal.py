@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""check_plan_signal.py — v1.5
+"""check_plan_signal.py — v1.6
+v1.6  2026-09-22  OTV4TEST r92 — PS8 pins the r84 gate-word mapping instead of the old
+      panel's "hushed" line. One row per plan makes one line per plan
+      structural rather than suppressed, and WINDOW CLOSED stays distinct
+      from STALE — the operator's later, stricter ruling.
 v1.5  2026-09-17  OTV4TEST r35 — reads query.py at the REPO ROOT (r34 moved it
       and missed this file; see check_query_sections v1.4).
 v1.4  2026-09-11  OTV4TEST r14 — reads query.py under tools/ (root cleanup).
@@ -137,8 +141,29 @@ def main():
     qsrc = open(os.path.join(_root, "query.py"), encoding="utf-8").read()
     psrc = open(os.path.join(_root, "strategy", "plan.py"), encoding="utf-8").read()
     dsrc = open(os.path.join(_root, "devtools.sh"), encoding="utf-8").read()
-    check("PS8 query.py DECISIONS lists dormant strategies as one hushed line, not a block each",
-          'if verdict in ("DORMANT", "NOT ASKED")' in qsrc and "hushed (dormant / not asked)" in qsrc)
+    # 🔴 r92 — THE HUSH WAS THE OLD PANEL'S ANSWER; r83 GAVE A BETTER ONE.
+    # This asserted the literal `if verdict in ("DORMANT", "NOT ASKED")` and a
+    # "hushed (dormant / not asked)" line. Both belonged to the `plan_tick`
+    # panel that r83 replaced WHOLESALE at the operator's instruction. The
+    # complaint the hush answered — *"I don't need a block each"* — is answered
+    # better now: `plan_heartbeat` is ONE ROW PER PLAN, so the panel renders
+    # exactly one line per plan by construction rather than by suppressing
+    # some, and a plan outside its window reads WINDOW CLOSED instead of
+    # vanishing into a summary count.
+    # ⚠️ AND THAT IS THE OPERATOR'S LATER, STRICTER RULING: *"I don't think
+    # stale needs to be the same thing as window closed. Report stale if it
+    # really is stale and report window closed if that's the reason."* A hush
+    # collapses those two back together, which is what r83 was written to end.
+    # 🔑 SO PS8 PINS THE MAPPING, NOT THE SUPPRESSION: every admission gate
+    # reaches the reader as ONE WORD. An unknown gate degrades to "HELD" —
+    # vaguer, never invisible — which is the property that makes a one-line
+    # render safe to rely on.
+    _WORDS = ("WINDOW CLOSED", "QUOTA HIT", "AT CAP", "HALTED",
+              "NO CHAIN", "RETIRED", "POSITION OPEN", "AWAITING AUTH")
+    _absent = [w for w in _WORDS if w not in qsrc]
+    check("PS8 query.py DECISIONS renders each gate as ONE WORD, one line per plan",
+          not _absent and '"entry_window":' in qsrc and "plan_heartbeat" in qsrc,
+          f"missing words={_absent}")
     check("PS8b the WRITER still records the dormant transition row (the bot sees everything)",
           'self._close("DORMANT", f"{gate}: {why}")' in psrc)
     check("PS8c the PLAN ROWS / PLAN BOARD sensors exclude DORMANT by default",

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""tests/check_credit_remainder.py  v1.0
+"""tests/check_credit_remainder.py  v1.1
+v1.1  2026-09-22  OTV4TEST r92 — C7d reads TCS_ENTRY_END_ET from config instead of the
+      literal (14,0). ⚠️ The config import is bound to `_cfg`, NOT `_C` —
+      this file already binds `_C` to its contract factory and shadowing it
+      made every earlier `_C(...)` an UnboundLocalError.
 THE CREDIT LADDER AS SPECIFIED: per-rung deadline, intent-keyed walk, and a
 partial that finishes filling.
 
@@ -287,9 +291,21 @@ def main():
           f"key={posted.get('key')} structure={posted.get('structure')}")
     check("C7c the remainder holds the SAME record object the position manager manages",
           rems and recs and rems[0].record is recs[0])
+    # 🔴 r92 — READ THE END FROM CONFIG, NEVER A LITERAL. This asserted
+    # `(14, 0)` and went red the moment r81 moved every credit END to 15:40 by
+    # the operator's ruling — the checker was pinning a window the box had
+    # stopped using. A literal here is a second copy of a constant that has
+    # already moved twice this month.
+    # ⚠️ NOT `_C` — this file already binds that name to its contract factory
+    # at the top of main(), and importing config over it made every later
+    # `_C(...)` call an UnboundLocalError. Python hoists the local binding to
+    # the whole function, so the collision broke lines ABOVE this one.
+    import config as _cfg
+    _end = tuple(_cfg.TCS_ENTRY_END_ET)
     check("C7d TCS remainder carries no premium stop and the TCS window end",
-          rems and rems[0].stop_pct == 0.0 and tuple(rems[0].window_end_et) == (14, 0),
-          f"stop_pct={rems[0].stop_pct if rems else None} end={rems[0].window_end_et if rems else None}")
+          rems and rems[0].stop_pct == 0.0 and tuple(rems[0].window_end_et) == _end,
+          f"stop_pct={rems[0].stop_pct if rems else None} "
+          f"end={rems[0].window_end_et if rems else None} want={_end}")
     check("C7e the row in trades.db is the filled size, not the requested size",
           _tlmod._trade_logger._get_field(recs[0]["trade_id"], "contracts") == 1 if recs else False)
 

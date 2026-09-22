@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_prepares.py  v1.17
+tests/check_plan_prepares.py  v1.18
+v1.18  2026-09-22  OTV4TEST r92 — S5's probe time is DERIVED from the plan's own LATEST_ET.
+      It passed a literal 14:30, which r81 moved INSIDE the sweep's window —
+      and the docstring's "10:15" was stale too, from before the 13:00 floor
+      was removed. Two stale numbers disagreeing about which was wrong.
 v1.17 2026-09-18  OTV4TEST r43 — B6 follows the call one level down
       (main_loop -> attempt_new_entry -> _attempt_butterfly), asserting the
       reachable path rather than one call's address.
@@ -119,7 +123,7 @@ THE SWEEP — the plan is anticipatory, the strategy is confirmatory
       wing_r_best (structural). STRATEGY: nothing, even though the trigger
       is true. Relaxed does NOT waive it.
   S4  reclaimed, but no chain this tick. -> PLAN: NO PLAN naming "chain".
-  S5  10:15 — outside the slot. -> PLAN: DORMANT, one row; no selection.
+  S5  past the plan's own LATEST_ET — outside the slot. -> DORMANT, one row.
   S6  a call vertical is open; the freshest sweep is a HIGH (call side).
       Authorized side is PUT. -> the plan prepares the freshest LOW sweep
       instead; a call sweep cannot fire under the authorization.
@@ -292,10 +296,24 @@ def main():
     check("S4 no chain -> NO PLAN naming chain", sig is None and r4 and r4[0] == "NO PLAN"
           and "chain" in r4[1], str(r4))
     P.begin_tick(5.0)
-    sig = S.generate_signal(chain=_Chain(good_puts), **dict(common, now_et="14:30"))
+    # 🔴 r92 — THE PROBE TIME IS DERIVED, NOT WRITTEN. It passed a literal
+    # "14:30", which r81 moved INSIDE the sweep's window when every credit END
+    # became 15:40 — so this asserted DORMANT at a time the plan is awake.
+    # ⚠️ AND THE DOCSTRING WAS STALE TOO, WHICH IS WHY A LITERAL IS THE WRONG
+    # FIX: line ~122 still describes this case as "10:15 — outside the slot",
+    # from an era when the sweep opened at 13:00 (see S8b, "the 13:00 floor is
+    # gone"). MEASURED: the sweep's window is 09:35 -> 15:40, so BOTH the code's
+    # 14:30 and the prose's 10:15 sit inside it. Two stale numbers disagreeing
+    # about which one was wrong.
+    # 🔑 SO THE TIME COMES FROM THE PLAN'S OWN BOUND, five minutes past its
+    # close. This case cannot rot again when the window next moves.
+    import strategy.sweep_plan as _sp
+    _lh, _lm = _sp.LATEST_ET
+    _outside = f"{_lh:02d}:{_lm + 5:02d}" if _lm < 55 else f"{_lh + 1:02d}:{(_lm + 5) % 60:02d}"
+    sig = S.generate_signal(chain=_Chain(good_puts), **dict(common, now_et=_outside))
     r5 = _row(st, "SweepCreditSpread", 5.0)
-    check("S5 outside 09:35-14:00 -> DORMANT, nothing selected",
-          sig is None and r5 and r5[0] == "DORMANT", str(r5))
+    check("S5 past the sweep's own close -> DORMANT, nothing selected",
+          sig is None and r5 and r5[0] == "DORMANT", f"{_outside}: {r5}")
     P.begin_tick(6.0)
     _reject(lid_ny, 96.0, "support", "ny", bar="10:34")
     sig = S.generate_signal(chain=_Chain(good_puts, calls=[_C(101, 1.0, 1.1), _C(103, 0.3, 0.35)]),

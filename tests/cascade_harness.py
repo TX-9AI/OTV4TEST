@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/cascade_harness.py  v1.2
+tests/cascade_harness.py  v1.3
+v1.3  2026-09-22  OTV4TEST r92 — TWO DRIFTED LITERALS. TCS_ENTRY_END_ET (14,0)->(15,40)
+      after r81 made CREDIT_ENTRY_END_ET the one END; CONDOR_ENTRY_START_ET
+      (11,11)->(11,31). The second had drifted INVISIBLY because
+      check_cascade_constants compared 4 of the 8 mirrored constants.
 v1.2  2026-09-04  r246 — TCS.9: the local constant copy is now
       COMPARED against config by `check_cascade_constants.py`. The copy
       is deliberate — this harness models the cascade without importing
@@ -50,7 +54,7 @@ from typing import Optional, List, Dict, Callable
 ORB_NO_ENTRY_AFTER_ET       = (11, 30)   # r193 — keep in step with config;
                                          # tests/check_orb_window.py pins every copy
 DEBIT_DIRECTIONAL_CUTOFF_ET = (11, 30)
-CONDOR_ENTRY_START_ET       = (11, 11)
+CONDOR_ENTRY_START_ET       = (11, 31)   # r92 — = CREDIT_ENTRY_START_ET
 # 🔴 r246 (TCS.9) — THESE ARE A DELIBERATE LOCAL COPY, AND THE COPY IS THE
 # POINT: this harness models the cascade WITHOUT importing config, so it can be
 # reasoned about standing still while the fleet's constants move. But a copy
@@ -61,7 +65,7 @@ CONDOR_ENTRY_START_ET       = (11, 11)
 # config and fails on a difference, so the copy stays intentional instead of
 # becoming stale. Same treatment ORB_NO_ENTRY_AFTER_ET already has.
 TCS_START_ET                = (11, 31)
-TCS_ENTRY_END_ET            = (14, 0)
+TCS_ENTRY_END_ET            = (15, 40)   # r92 — r81 unified every credit END
 BUTTERFLY_ENTRY_START_ET    = (12, 0)
 CONDOR_TRIGGER_APPROACH     = 0.65
 HARD_CLOSE_ET               = (15, 45)

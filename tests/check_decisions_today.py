@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""check_decisions_today.py — v1.3
+"""check_decisions_today.py — v1.4
+v1.4  2026-09-22  OTV4TEST r92 — D3 counted ts_epoch bounds in a panel that runs no ranged
+      SQL. It now pins liveness by HEARTBEAT AGE — a stronger guarantee than
+      a date bound, because it also catches a plan that died sixty seconds
+      ago, which no "today" cut ever would.
 v1.3  2026-09-17 — OTV4TEST r34. Reads query.py at the REPO ROOT again; v1.2 read
       it under tools/. This checker loads the file BY PATH, so the move breaks it
       outright rather than subtly — which is why it is a declared CHECK on r34.
@@ -96,10 +100,24 @@ def main():
           and _cut_dt.date() == _dt.now(_Z("US/Eastern")).date(),
           _cut_dt.strftime("%Y-%m-%d %H:%M:%S ET"))
 
-    # ── D3 — both halves of the panel use it ─────────────────────────────
-    # A watcher row from yesterday is not "an open position under management".
-    check("D3 the manage side is cut too",
-          body.count("ts_epoch >= ?") >= 4, f"{body.count('ts_epoch >= ?')} bounds")
+    # ── D3 — THE PANEL NO LONGER RANGE-QUERIES, AND THAT IS THE POINT ────
+    # 🔴 r92 — this counted `ts_epoch >= ?` bounds inside `show_decisions` and
+    # found FOUR. r83 replaced the panel wholesale by ruling: it reads
+    # `plan_heartbeat`, ONE UPSERTED ROW PER PLAN, so there is no date range to
+    # bound — the row is current state. Counting SQL bounds in a panel that
+    # runs no ranged SQL is asserting the absence of the thing that was
+    # removed on purpose.
+    # ⚠️ THE UNDERLYING WORRY IS STILL REAL AND STILL COVERED: a row from
+    # yesterday must not read as a live plan. It cannot — the panel returns
+    # early before 09:30 (D1/D4) and flags anything older than `STALE_S` as
+    # ⚠️ STALE, so a stale row announces itself rather than passing as fresh.
+    # That is a STRONGER guarantee than a date bound, because it also catches a
+    # plan that died SIXTY SECONDS ago, which no "today" cut ever would.
+    check("D3 the panel judges liveness by heartbeat AGE, not by row date",
+          ("STALE_S" in body) and ("plan_heartbeat" in body)
+          and (body.count("ts_epoch >= ?") == 0),
+          f"stale_s={'STALE_S' in body} heartbeat={'plan_heartbeat' in body} "
+          f"ranged_queries={body.count('ts_epoch >= ?')}")
 
     # ── D4 — the cases the operator named ────────────────────────────────
     cases = (

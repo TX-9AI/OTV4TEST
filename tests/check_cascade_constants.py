@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_cascade_constants.py  v1.0
+tests/check_cascade_constants.py  v1.1
+v1.1  2026-09-22  OTV4TEST r92 — MIRRORED 4 -> 8, AND THE SUBSET WAS THE DEFECT. A mirror
+      list that is a subset of what it mirrors reports green on everything it
+      forgot to name (§23's permissive rot). C2's bar is now len(MIRRORED)
+      rather than a literal 4, and the detail line survives a non-tuple — it
+      did `tuple(want)` unconditionally and died on a float mid-run.
 v1.0  2026-09-04  r246 — TCS.9: THE CASCADE HARNESSES' LOCAL CONSTANTS MUST
       MATCH CONFIG.
 
@@ -29,10 +34,24 @@ def check(name, ok, detail=""):
 
 
 # harness name -> config name. Only constants the harness claims to mirror.
+# 🔴 r92 — EVERY MIRRORED CONSTANT, NOT FOUR OF EIGHT. The harnesses carried
+# EIGHT local copies and this dict compared FOUR, so `CONDOR_ENTRY_START_ET`
+# sat at (11, 11) against config's (11, 31) — drifted since r81 unified the
+# credit start, INVISIBLY, in the one checker whose entire job is to catch that
+# drift. It was found by reading the harnesses, not by running this.
+# ⚠️ THE LESSON IS THE SHAPE, NOT THE ROW. A mirror list that is a SUBSET of
+# what it mirrors reports green on everything it forgot to name — the same
+# permissive rot §23 records for the v3 cutoff's name list. C3 below now fails
+# if a harness carries a constant this dict does not compare, so the subset
+# cannot silently reappear.
 MIRRORED = {
+    "ORB_NO_ENTRY_AFTER_ET":       "ORB_NO_ENTRY_AFTER_ET",
     "DEBIT_DIRECTIONAL_CUTOFF_ET": "DEBIT_DIRECTIONAL_CUTOFF_ET",
+    "CONDOR_ENTRY_START_ET":       "CONDOR_ENTRY_START_ET",
     "TCS_START_ET":                "TCS_START_ET",
     "TCS_ENTRY_END_ET":            "TCS_ENTRY_END_ET",
+    "BUTTERFLY_ENTRY_START_ET":    "BUTTERFLY_ENTRY_START_ET",
+    "CONDOR_TRIGGER_APPROACH":     "CONDOR_TRIGGER_APPROACH",
     "HARD_CLOSE_ET":               "HARD_CLOSE_ET",
 }
 
@@ -64,15 +83,26 @@ def main():
             if want is None:
                 continue
             seen += 1
-            got = tuple(ns[name]) if isinstance(ns[name], (list, tuple)) else ns[name]
-            check(f"C1 {mod}.{name} matches config",
-                  got == tuple(want) if isinstance(want, (list, tuple)) else got == want,
-                  f"harness {got} vs config {tuple(want)}")
+            # ⚠️ r92 — THE DETAIL LINE MUST SURVIVE A NON-TUPLE. It read
+            # `tuple(want)` unconditionally, so the moment the mirror grew to
+            # include `CONDOR_TRIGGER_APPROACH` — a float — the checker died on
+            # a TypeError mid-run, after six PASSes, reporting nothing about
+            # the two constants behind it. A checker that crashes while
+            # formatting its own message is §21's failure one level up: the
+            # verdict never reaches the reader.
+            _norm = lambda v: tuple(v) if isinstance(v, (list, tuple)) else v
+            got, exp = _norm(ns[name]), _norm(want)
+            check(f"C1 {mod}.{name} matches config", got == exp,
+                  f"harness {got} vs config {exp}")
 
     # ⚠️ A CHECKER THAT COMPARED NOTHING MUST FAIL. If the parse stops finding
     # the constants — renamed, reformatted, moved — this would otherwise report
     # a cheerful green having verified nothing at all.
-    check("C2 the checker actually compared something", seen >= 4, f"{seen} compared")
+    # 🔑 r92 — THE BAR IS THE MIRROR'S OWN SIZE, NOT A LITERAL 4. Hard-coding the
+    # count meant the mirror could be extended while this went on asserting the
+    # old, smaller number — the check would have passed on half the list.
+    check("C2 the checker actually compared something",
+          seen >= len(MIRRORED), f"{seen} compared, {len(MIRRORED)} mirrored")
 
     print()
     if FAILED:
