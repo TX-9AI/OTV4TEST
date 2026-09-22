@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v1.00
+# BACKLOG.md — OTV4TEST — v1.01
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -234,6 +234,25 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v1.01 — 2026-09-22 — OTV4TEST r99 — THE FIELD THAT WOULD HAVE DIAGNOSED THE
+RUNAWAY WAS NULL ON EVERY ROW EVER WRITTEN.**
+Operator, on why the runaway's fake-outs could not be explained: *"do we have
+any VWAP to reference? That's what I would wanna know."* 📊 **MEASURED:
+`price_vs_vwap` NULL on ALL 23 banked runaway snapshots, back to 09-09** —
+before the r69 VWAP breakage existed. 🔑 **THREE FAULTS, NONE OF WHICH
+ERRORED:** the value is a CATEGORICAL (`"ABOVE"`) and the payload ran `_f()` on
+it; even repaired it is a *direction*, not a *distance*; and `vol.vwap` is a
+**second VWAP** (a `df_5m` cumsum) rather than the session-anchored one r94/r96
+fixed — **measured 4.86 points apart.** ✅ The row now carries the VWAP number
+from `anchors.vwap_now()`, a signed `vwap_dist_pct`, the categorical as TEXT,
+and `vwap_source` naming which VWAP answered. ✅ **AND `vwap_slope_pct`**,
+because distance cannot separate a real extension from a fake one — operator:
+*"it's OK that it's extended as long as it's pulling everything up with it."* A
+real extension drags the mean; a fake pokes out against a flat VWAP.
+⚠️ **RECORDED, NOT GATED** (§31) — nothing reads it yet. ⚠️ **Nothing is
+retroactive:** two weeks of runaways stay unanswerable.
+
 
 **v1.00 — 2026-09-22 — OTV4TEST r98 — THE NEARER OF THE TWO STOPS GOVERNS.**
 Operator: *"use the nearest one... each tick one of the two will be closer.

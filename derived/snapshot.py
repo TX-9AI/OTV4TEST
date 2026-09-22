@@ -1,5 +1,20 @@
 """
-derived/snapshot.py  v4.5
+derived/snapshot.py  v4.6
+v4.6  2026-09-22  OTV4TEST r99 — THE VWAP CONTEXT REACHES THE SNAPSHOT AT LAST.
+      `price_vs_vwap` was NULL on EVERY ROW EVER WRITTEN, back to 09-09:
+      volatility_engine sets "ABOVE"/"BELOW"/"NONE", a CATEGORICAL, and the
+      payload ran _f() on it - float("ABOVE") raises, _f swallows it, the
+      column stores None. Computed every tick for weeks and discarded at
+      this boundary. Now records the VWAP NUMBER from anchors.vwap_now()
+      (session-anchored, fails closed), a SIGNED vwap_dist_pct, the
+      categorical AS TEXT, and vwap_source naming WHICH of the two VWAPs in
+      this tree answered - they differed by 4.86 points when measured.
+      AND vwap_slope_pct, because DISTANCE CANNOT SEPARATE a real extension
+      from a fake one. Operator: "We're OK with buying into the beginning of
+      an extension and riding it for as long as it holds. What I'm not OK
+      with is buying a fake extension... it's OK that it's extended as long
+      as it's pulling everything up with it." A real extension DRAGS THE
+      MEAN; a fake pokes out against a flat VWAP. RECORDED, NOT GATED.
 v4.5  2026-09-18  OTV4TEST r51 — the three fields now actually READ, because
       `_flow_conn` gained a producer in the same revision. Without it
       `flow_imbalance`, `flow_tagged_frac` and `book_depth` would have written
@@ -124,6 +139,75 @@ def _f(v) -> Optional[float]:
     return None if f != f else f
 
 
+
+def _vwap_fields(ctx, price, vol, _sym: str = "QQQ") -> dict:
+    """The VWAP context for a fire: the number, the signed distance, the label.
+
+    🔑 ONE SOURCE, NAMED. `anchors.vwap_now()` is the session-anchored VWAP
+    (r94: 09:30 open, not midnight; r96: deep-fetched on a cold start) and it
+    FAILS CLOSED with a reason rather than returning a partial-window value.
+    ⚠️ IT FALLS BACK TO THE VOLATILITY ENGINE'S OWN df_5m VWAP ONLY IF THE
+    SESSION ONE IS UNAVAILABLE, and `vwap_source` then says so — a study that
+    cannot tell the two apart is averaging two different quantities.
+    ⚠️ `vwap_dist_pct` IS SIGNED: positive means price ABOVE the VWAP. The
+    sign is the half that answers "were we buying an extension?".
+    """
+    vw, src = None, None
+    try:
+        from derived import anchors as _A
+        vw, _why = _A.vwap_now()
+        if vw is not None:
+            src = "session"
+    except Exception:                                           # noqa: BLE001
+        vw = None
+    if vw is None and vol is not None:
+        try:
+            _v = float(getattr(vol, "vwap", 0) or 0)
+            if _v > 0:
+                vw, src = _v, "frame_5m"
+        except (TypeError, ValueError):
+            vw = None
+    # 🔴 r99 — THE SLOPE IS WHAT SEPARATES A REAL EXTENSION FROM A FAKE ONE,
+    # AND DISTANCE ALONE CANNOT. Operator, 2026-09-22: *"We're OK with buying
+    # into the beginning of an extension and riding the extension for as long
+    # as it holds. What I'm not OK with is buying a FAKE extension."*
+    # 🔑 AT THE MOMENT OF ENTRY THOSE TWO LOOK IDENTICAL on distance — both
+    # are price away from VWAP. What differs is whether the move is DRAGGING
+    # THE MEAN WITH IT: a real extension pulls VWAP along behind it; a fake
+    # pokes out and snaps back through a VWAP that never moved.
+    # ⚠️ RECORDED, NOT GATED. Nothing reads this yet, by §31 — it is the
+    # measurement that would let the corpus answer the operator's question,
+    # and a threshold set before that measurement is the thing
+    # `PREREG_TRAIL.md` exists to prevent.
+    slope = None
+    try:
+        from data.derived_store import get_derived_store as _gds
+        _st = _gds()
+        _rows = list(_st.conn.execute(
+            "SELECT ts_epoch, vwap FROM indicator_series WHERE symbol=? "
+            "AND vwap IS NOT NULL ORDER BY ts_epoch DESC LIMIT 400", (_sym,)))
+        if vw and _rows:
+            _now_ts = _rows[0][0]
+            _past = [r for r in _rows if r[0] <= _now_ts - 600]      # ~10 min back
+            if _past and _past[0][1]:
+                slope = (float(vw) - float(_past[0][1])) / float(vw) * 100.0
+    except Exception:                                           # noqa: BLE001
+        slope = None
+    px = _f(price)
+    dist = ((px - vw) / vw * 100.0) if (vw and px) else None
+    lab = getattr(vol, "price_vs_vwap", None) if vol is not None else None
+    return {
+        "vwap": _f(vw),
+        "vwap_dist_pct": _f(dist),
+        "vwap_source": src,
+        # signed % change in VWAP over ~10 minutes: is the mean being dragged?
+        "vwap_slope_pct": _f(slope),
+        # TEXT, not `_f()`. This is the categorical that has been silently
+        # nulled on every row ever written.
+        "price_vs_vwap": str(lab) if lab else None,
+    }
+
+
 class SnapshotEngine(DerivedEngine):
     name = "snapshot"
     table = "fire_snapshot"
@@ -186,8 +270,33 @@ class SnapshotEngine(DerivedEngine):
             "atr": _f(getattr(vol, "atr_current", None)) if vol else None,
             "atr_normalized": _f(getattr(vol, "atr_normalized", None)) if vol else None,
             "bb_width_pct": _f(getattr(vol, "bb_width_pct", None)) if vol else None,
-            "vwap": _f(getattr(vol, "vwap", None)) if vol else None,
-            "price_vs_vwap": _f(getattr(vol, "price_vs_vwap", None)) if vol else None,
+            # 🔴 r99 — THE VWAP CONTEXT, AND IT WAS NULL ON EVERY ROW EVER
+            # WRITTEN. Operator, 2026-09-22, asking why the runaway's fake-outs
+            # could not be diagnosed: *"On the fake out question, do we have
+            # any VWAP to reference? That's what I would wanna know."*
+            # MEASURED: `price_vs_vwap` NULL on ALL 23 banked runaway
+            # snapshots, back to 09-09 — before the r69 breakage existed.
+            # 🔑 THREE FAULTS STACKED, AND NONE OF THEM ERRORED.
+            # (1) TYPE: `volatility_engine:226` sets "ABOVE"/"BELOW"/"NONE", a
+            #     CATEGORICAL, and this line ran `_f()` on it — `float("ABOVE")`
+            #     raises, `_f` swallows it, the column stores None. Computed
+            #     every tick for weeks and discarded at this boundary.
+            # (2) GRANULARITY: even repaired it is a DIRECTION, not a DISTANCE,
+            #     and cannot answer the question actually being asked — HOW
+            #     EXTENDED was the entry. A continuation trade is definitionally
+            #     a bet on extension, so distance is the whole point.
+            # (3) SOURCE: `vol.vwap` is a SECOND VWAP, a df_5m cumsum
+            #     (`volatility_engine:223`) anchored to whatever the frame
+            #     spans — not the session-anchored one r94/r96 repaired. Two
+            #     VWAPs, nothing forcing them to agree, and the snapshot was
+            #     reading the unfixed one. Same shape as WIN.1's window table.
+            # ✅ So the NUMBER comes from `anchors.vwap_now()` — session
+            # anchored, deep-fetched on a cold start, and FAILS CLOSED with a
+            # reason — and the categorical is stored AS TEXT.
+            # ⚠️ `vwap_source` RECORDS WHICH ONE ANSWERED, because a study that
+            # cannot tell a session VWAP from a frame VWAP is measuring two
+            # different quantities and calling them one (§0.5).
+            **_vwap_fields(ctx, price, vol, self.symbol),
             # ── tier 4: second-order + vol measures
             "charm": _f(ctx.get("charm")),
             "vanna": _f(ctx.get("vanna")),

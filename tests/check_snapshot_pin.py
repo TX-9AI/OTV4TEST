@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_snapshot_pin.py  v1.2
+tests/check_snapshot_pin.py  v1.3
+v1.3  2026-09-22  OTV4TEST r99 — S7a-e: the VWAP context on the fire
+      snapshot. `price_vs_vwap` was NULL on EVERY row ever written because a
+      categorical was run through `_f()`. Pins the number, the SIGNED
+      distance, the slope, the text label, and `vwap_source` — plus a forced
+      session-VWAP failure that must fall back to the frame AND SAY SO.
 v1.2  2026-09-22  OTV4TEST r91 — S2 PINS THE CLOCK. `expected_move` scales by
       sqrt(hours-to-16:00) off `datetime.now(ET)`, so build_payload's call and
       the checker's landed on different instants and disagreed by ~the
@@ -161,6 +166,44 @@ def main():
                "gex_environment"} & set(full)) == 4)
 
     print()
+    # ══ S7 — THE VWAP CONTEXT (r99) ═══════════════════════════════════════
+    # 🔴 NULL ON EVERY ROW EVER WRITTEN, back to 09-09, and it took the
+    # operator asking *"do we have any VWAP to reference?"* to surface it.
+    # `volatility_engine:226` sets "ABOVE"/"BELOW"/"NONE" — a CATEGORICAL —
+    # and the payload ran `_f()` on it, so `float("ABOVE")` raised, `_f`
+    # swallowed it, and the column stored None. Computed every tick for weeks
+    # and discarded at the snapshot boundary.
+    import types as _t
+    _vol = _t.SimpleNamespace(vwap=740.11, price_vs_vwap="ABOVE")
+    _p7 = e.build_payload({"price": 744.90, "atm_iv": 0.19, "vol": _vol})
+    check("S7 price_vs_vwap survives as TEXT, not float()-ed to None",
+          _p7.get("price_vs_vwap") == "ABOVE", repr(_p7.get("price_vs_vwap")))
+    check("S7b the VWAP NUMBER is recorded, not just a direction",
+          isinstance(_p7.get("vwap"), float) and _p7["vwap"] > 0,
+          repr(_p7.get("vwap")))
+    # 🔑 THE DISTANCE IS THE FIELD THAT ANSWERS THE QUESTION. A continuation
+    # trade is definitionally a bet on EXTENSION, so "how far from VWAP" is
+    # the measurement; a direction cannot answer it. Signed: + is above.
+    check("S7c a SIGNED distance in percent is recorded",
+          isinstance(_p7.get("vwap_dist_pct"), float), repr(_p7.get("vwap_dist_pct")))
+    # ⚠️ S7d — WHICH VWAP ANSWERED MUST BE ON THE ROW. There are TWO in this
+    # tree: the session-anchored one (r94/r96) and volatility_engine's own
+    # df_5m cumsum. MEASURED 2026-09-22 15:30 ET they differed by 4.86 points.
+    # A study that cannot tell them apart is averaging two quantities.
+    check("S7d vwap_source names which VWAP answered",
+          _p7.get("vwap_source") in ("session", "frame_5m"), repr(_p7.get("vwap_source")))
+    # ⚠️ S7e — THE FALLBACK IS LABELLED, NEVER SILENT (§0.5).
+    import derived.anchors as _A
+    _keep = _A.vwap_now
+    _A.vwap_now = lambda *a, **k: (None, "forced for the check")
+    try:
+        _p7b = e.build_payload({"price": 744.90, "atm_iv": 0.19, "vol": _vol})
+    finally:
+        _A.vwap_now = _keep
+    check("S7e no session VWAP -> falls back to the frame AND says so",
+          _p7b.get("vwap") == 740.11 and _p7b.get("vwap_source") == "frame_5m",
+          f"{_p7b.get('vwap')} / {_p7b.get('vwap_source')}")
+
     if FAILED:
         print(f"RED — {len(FAILED)} failed: {', '.join(FAILED)}")
         return 1
