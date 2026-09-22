@@ -1,5 +1,11 @@
 """
-risk/risk_manager.py  v4.5
+risk/risk_manager.py  v4.6
+v4.6 2026-09-22  OTV4TEST r93 — _size_geometry REFUSES a stop inside the noise floor,
+      before any sizing arithmetic, with the floor NAMED in the reason.
+      Operator's ruling 2026-09-22: refuse, not floor. Section 36 FEASIBILITY —
+      a setup whose stop the tape crosses within one bar cannot pay. A zero
+      floor disarms the gate (pre-r93 behaviour) and distance <= 0 stays the
+      DEGENERATE case, not a noise-floor refusal.
 v4.5  2026-09-22  OTV4TEST r91 — A STOP WIDER THAN THE RANGE IS NO LONGER
       DEGENERATE. That branch forced ONE CONTRACT whenever `distance > width`,
       bypassing the risk budget entirely — measured at distance 2.00 on a 1.02
@@ -263,7 +269,8 @@ class RiskManager:
                  credit: float = 0.0,
                  orb_width: float = 0.0,
                  orb_stop_distance: float = 0.0,
-                 budget_usd=None) -> SizingResult:
+                 budget_usd=None,
+                 noise_floor: float = 0.0) -> SizingResult:
         """THE single entry point for position size. Dispatches on STRUCTURE.
 
         🔑 EVERY RULE RETURNS A SizingResult, AND THE ORDER READS ONLY
@@ -292,13 +299,15 @@ class RiskManager:
         if st == "long_debit" and (orb_width or orb_stop_distance):
             return self._size_geometry(premium, orb_width, orb_stop_distance,
                                        grade, budget_usd=budget_usd,
-                                       stop_premium=stop_premium)
+                                       stop_premium=stop_premium,
+                                       noise_floor=noise_floor)
         return self._size_budget(premium=premium, grade=grade,
                                  stop_premium=stop_premium)
 
     def _size_geometry(self, premium: float, width: float, distance: float,
                        grade: str = "B", budget_usd=None,
-                       stop_premium: float = 0.0) -> SizingResult:
+                       stop_premium: float = 0.0,
+                       noise_floor: float = 0.0) -> SizingResult:
         """Risk-normalised size off the impulsive candle. NO BUDGET, NO CAP.
 
         contracts = max(1, floor(width / stop_distance)); the worst entry — a
@@ -316,6 +325,27 @@ class RiskManager:
         """
         result = SizingResult(grade=grade)
         result.rule = "orb_geometry"
+        # ── r93 — THE NOISE FLOOR, CHECKED BEFORE ANY ARITHMETIC ──────────
+        # 🔴 REFUSED, NOT FLOORED, BY THE OPERATOR'S RULING 2026-09-22.
+        # A structural stop the tape crosses inside one ordinary bar is not a
+        # stop, and sizing against it is the inversion described in config:
+        # maximum position on a coin flip. §36 FEASIBILITY — this cannot pay.
+        # ⚠️ FAILS TO TODAY'S BEHAVIOUR, LOUDLY, NEVER SILENTLY. A zero or
+        # absent floor means the caller could not measure the tape, and the
+        # gate stands down rather than refusing every entry on a feed hiccup —
+        # but it SAYS SO, because "could not measure" and "measured and passed"
+        # must never look alike (§0.5).
+        _nf = float(noise_floor or 0.0)
+        if _nf > 0 and 0 < float(distance or 0.0) < _nf:
+            result.allowed = False
+            result.reject_reason = (f"noise_floor: stop {float(distance):.3f} is "
+                                    f"inside the {_nf:.3f} floor "
+                                    f"({float(distance) / _nf:.2f}x) — the tape "
+                                    f"crosses it within one bar")
+            logger.warning("[size] orb_geometry REFUSED: stop %.3f < noise floor "
+                           "%.3f (%.2fx) — a stop inside one bar is not a stop",
+                           float(distance), _nf, float(distance) / _nf)
+            return result
         cost_per_contract = float(premium or 0.0) * CONTRACT_MULTIPLIER
         if cost_per_contract <= 0:
             result.allowed       = False

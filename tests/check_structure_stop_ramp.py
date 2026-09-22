@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_structure_stop_ramp.py  v1.0
+tests/check_structure_stop_ramp.py  v1.1
+v1.1 2026-09-22  OTV4TEST r93 — N1-N5 pin the noise floor: refusal inside, trade
+      outside, the boundary itself, unmeasurable-disarms, degenerate-unchanged,
+      and that the multiplier is the ARGUED 0.5x rather than the day's best
+      fit — a checker drifting to the fitted value is the curve-fit
+      PREREG_TRAIL.md exists to prevent.
 v1.0  2026-09-22  OTV4TEST r91 — born RED at a26da0c, R0 NAMING the
       missing machinery rather than dying on a traceback. Pins the
       operator's 1-R ramp end to end: the structural stop, the two
@@ -298,6 +303,71 @@ check("R10b ...and its stop is still the flat percentage",
 check("R10c ...and its trail still arms at +50%",
       abs(_v.trail_activation_premium() - 1.00 * (1 + _v.tp_pct * 0.5)) < 1e-9,
       f"arms at {_v.trail_activation_premium():.4f}")
+
+# ── N — THE NOISE FLOOR (r93) ─────────────────────────────────────────────
+# 🔴 THE INVERSION IT CLOSES. The 1-R rule normalises the SIZE of a loss and
+# is blind to its FREQUENCY: as the stop tightens, size rises AND so does the
+# chance of being hit. Stop -> 0 means size -> budget cap and P(hit) -> 1, so
+# expected loss converges on the whole risk budget with certainty.
+# 📊 MEASURED LIVE 2026-09-22 10:14-10:25 ET: five Breakouts whose structural
+# stop sat inside ONE 1-minute bar (0.075 / 0.050 / 0.190 / 0.225 / 0.010
+# against a measured median 1m range of 0.4188) at 55-235 contracts and about
+# $10,000 each, for -$3,089.
+# ⚠️ THE FIXTURE IS TODAY'S MEASURED TAPE, not a number chosen to pass.
+_BAR, _MULT = 0.4188, config.NOISE_FLOOR_BAR_MULT
+_NF = _BAR * _MULT
+
+_r_in = RM.size_for("long_debit", premium=0.56, stop_premium=0.42,
+                    grade="UNGRADED", orb_width=WIDTH, orb_stop_distance=0.050,
+                    noise_floor=_NF)
+check("N1 a stop INSIDE the floor is REFUSED",
+      (not _r_in.allowed) and _r_in.contracts == 0,
+      f"allowed={_r_in.allowed} n={_r_in.contracts}")
+check("N1b ...and the refusal NAMES the floor, never a bare no",
+      "noise_floor" in (_r_in.reject_reason or ""), repr(_r_in.reject_reason))
+
+_r_out = RM.size_for("long_debit", premium=1.21, stop_premium=1.094,
+                     grade="UNGRADED", orb_width=WIDTH, orb_stop_distance=0.340,
+                     noise_floor=_NF)
+check("N2 a stop OUTSIDE the floor still trades",
+      _r_out.allowed and _r_out.contracts > 1,
+      f"allowed={_r_out.allowed} n={_r_out.contracts}")
+
+# ⚠️ THE BOUNDARY IS HALF A BAR AND IT IS CHECKED, because "inside one bar"
+# and "inside half a bar" are different rules and only one was ruled.
+_edge = RM.size_for("long_debit", premium=1.00, stop_premium=0.90,
+                    grade="UNGRADED", orb_width=WIDTH,
+                    orb_stop_distance=_NF * 1.01, noise_floor=_NF)
+check("N2b a stop just ABOVE the floor is admitted (the boundary is real)",
+      _edge.allowed, f"allowed={_edge.allowed} at {_NF * 1.01:.4f} vs {_NF:.4f}")
+
+# 🔴 N3 — UNMEASURABLE MUST STAND DOWN, NOT REFUSE EVERYTHING. A feed hiccup
+# that blocked every entry would be a worse failure than the one being closed.
+_r_nf0 = RM.size_for("long_debit", premium=0.56, stop_premium=0.42,
+                     grade="UNGRADED", orb_width=WIDTH, orb_stop_distance=0.050,
+                     noise_floor=0.0)
+check("N3 floor 0.0 (unmeasurable) DISARMS the gate — pre-r93 behaviour",
+      _r_nf0.allowed, f"allowed={_r_nf0.allowed} n={_r_nf0.contracts}")
+
+# ⚠️ N4 — THE DEGENERATE CASE IS STILL THE DEGENERATE CASE. distance <= 0 is
+# an arithmetic fault, not a tight stop, and must not be swallowed by the new
+# gate's refusal path with a misleading reason.
+_r_zero = RM.size_for("long_debit", premium=0.56, stop_premium=0.42,
+                      grade="UNGRADED", orb_width=WIDTH, orb_stop_distance=0.0,
+                      noise_floor=_NF)
+check("N4 distance <= 0 is still degenerate, not a noise-floor refusal",
+      _r_zero.allowed and _r_zero.contracts == 1,
+      f"allowed={_r_zero.allowed} n={_r_zero.contracts} why={_r_zero.reject_reason!r}")
+
+# 🔑 N5 — THE MULTIPLIER IS ARGUED, NOT FITTED, AND THIS PINS THAT. The
+# P&L-optimal value on 2026-09-22 was 0.60x; 0.5x is the mechanism's own
+# number (price must travel back to the candle's extreme, and below half a
+# typical bar one ordinary bar does it). Eleven closed trades cannot choose a
+# threshold (§12), and a checker that drifted to the fitted value would be
+# exactly the curve-fit `PREREG_TRAIL.md` exists to prevent.
+check("N5 the floor multiplier is the ARGUED 0.5x, not the day's best fit",
+      abs(config.NOISE_FLOOR_BAR_MULT - 0.5) < 1e-9,
+      f"{config.NOISE_FLOOR_BAR_MULT} (2026-09-22 P&L peak was 0.60x)")
 
 if FAIL:
     print(f"\nRED — {len(FAIL)} failed: {', '.join(FAIL)}")

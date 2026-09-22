@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.95
+# BACKLOG.md — OTV4TEST — v0.96
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -234,6 +234,30 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.96 — 2026-09-22 — OTV4TEST r93 — THE 1-R RAMP NORMALISED THE SIZE OF A
+LOSS AND WAS BLIND TO ITS FREQUENCY.**
+r91 restored the operator's ramp and it worked — `BUDGET binds` on the first
+fire of the day, +$2,725 by 10:19. Then it found its blind spot. 📊 **MEASURED
+10:14-10:25 ET:** five Breakouts whose structural stop sat **inside a single
+1-minute bar** — 0.075 / 0.050 / 0.190 / 0.225 / **0.010** against a measured
+median 1m range of **0.4188** — at 55 to 235 contracts and ~$10,000 each, for
+**-$3,089**, taking the day from +$2,725 to +$553. 🔑 **THE ARITHMETIC IS THE
+FINDING:** risk per contract falls as the stop tightens so size rises, while
+the probability of being hit rises too — nothing in the rule sees it. Stop → 0
+gives size → budget cap and P(hit) → 1, so **expected loss converges on the
+whole risk budget with certainty.** The operator's model is right and this is
+its missing precondition: tight is only safe while the stop is *outside the
+noise*. ✅ **REFUSED, BY HIS RULING** — §36 FEASIBILITY, never relaxed.
+⚠️ **0.5× IS ARGUED, NOT FITTED.** The day's P&L-optimal threshold was 0.60×
+and is deliberately unused: eleven closed trades cannot choose a number (§12),
+and N5 pins the argued value so a future edit cannot quietly drift to the fit.
+⚠️ **AND IT IS NOT FREE — STATED PLAINLY:** on today's tape it refuses
+**$1,227 of winners** to avoid **$2,449 of losers**, net +$1,222.
+⚠️ **I FLAGGED THIS RISK WHILE BUILDING r91 AND SHIPPED WITHOUT THE GATE** —
+"a 0.07-point stop is smaller than the median 1m wick, it would stop out
+instantly" — then noted it and moved on. The four stops are the cost of that.
+
 
 **v0.95 — 2026-09-22 — OTV4TEST r92 — THE BAND-AID ON THE WINDOW DRIFT, AND
 THE DRIFT IS THE ARGUMENT FOR THE TABLE.**

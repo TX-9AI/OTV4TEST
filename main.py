@@ -1,5 +1,10 @@
 """
-main.py  v4.63
+main.py  v4.64
+v4.64 2026-09-22  OTV4TEST r93 — the noise floor is MEASURED FROM THE TAPE at the sizing
+      call and threaded into size_for — median 1m bar RANGE over the lookback,
+      times the multiplier. Daily, not hardcoded: the floor is a property of
+      today's volatility. Stands down LOUDLY when it cannot measure, because
+      refusing every entry on a feed hiccup is worse than the defect it closes.
 v4.63  2026-09-21  OTV4TEST r85 — ONE BUTTERFLY PER SESSION *EACH*, NOT ONE
       BETWEEN THEM. Operator: *"Two different scenarios for those to fire
       under. And on certain days, we might actually hit both."* The `or` in
@@ -1197,6 +1202,7 @@ from config import (
     POLL_INTERVAL_SECONDS, LOG_LEVEL, LOG_FILE, LOG_ROTATION_MB,
     PAPER_TRADING, RISK_PER_TRADE_USD, DAILY_LOSS_LIMIT_USD,
     ORB_BUDGET_USD, ORB_BUDGET_IS_DEFAULT,
+    NOISE_FLOOR_BAR_MULT, NOISE_FLOOR_LOOKBACK_BARS,
     REASSESS_MINUTES, INSTRUMENT, SessionConfig, DIRECTIONAL_ONLY,
     DEBIT_BLOCKED_STRUCTURES,
     ORB_NO_ENTRY_AFTER_ET, BROKER_RECONCILE_ENABLED,
@@ -4879,6 +4885,34 @@ def _execute_entry_signal(signal, ctx, ms, state, _sigj=None, *, additive: bool 
         # places, which is how a repair becomes a second defect.
         _orb_d = abs(float(getattr(signal, "underlying_entry", 0) or 0)
                      - float(getattr(signal, "underlying_stop", 0) or 0))
+    # ── r93 — THE NOISE FLOOR, MEASURED FROM THE TAPE, NOT A CONSTANT ────
+    # 🔑 MEASURED DAILY RATHER THAN HARDCODED, at the operator's instruction.
+    # The floor is a property of TODAY'S volatility: 0.42 on 2026-09-22 and a
+    # different number tomorrow. A frozen threshold would be wrong in both
+    # directions within a week — too loose in a quiet tape, too strict in a
+    # fast one — which is the version-pinned-canary rot §24 records.
+    # ⚠️ IT IS THE FULL BAR RANGE, NOT THE WICK. Price stops the trade out by
+    # TRAVELLING to the impulsive candle's extreme, so what matters is how far
+    # an ordinary bar moves, high to low.
+    # ⚠️ AND IT STANDS DOWN LOUDLY WHEN IT CANNOT MEASURE (§0.5): no frame, too
+    # few bars, or a degenerate median yields 0.0, the sizer's gate disarms,
+    # and this logs it — refusing every entry because the feed hiccuped would
+    # be a far worse failure than the one being closed.
+    _noise_floor = 0.0
+    try:
+        _nf_df = ctx.get("df_1m")
+        if _nf_df is not None and len(_nf_df) >= 10:
+            _rng = (_nf_df["high"] - _nf_df["low"]).tail(
+                NOISE_FLOOR_LOOKBACK_BARS).dropna()
+            if len(_rng) >= 10:
+                _noise_floor = float(_rng.median()) * NOISE_FLOOR_BAR_MULT
+    except Exception as _nf_exc:                                # noqa: BLE001
+        logger.warning("[size] noise floor UNMEASURABLE (%s) — the stop-distance "
+                       "gate stands down for this entry", _nf_exc)
+    if _orb_d and _noise_floor <= 0:
+        logger.warning("[size] noise floor UNMEASURABLE (no usable 1m frame) — "
+                       "the stop-distance gate stands down for this entry")
+
     sizing = risk_mgr.size_for(
         _struct,
         premium             = signal.entry_premium,
@@ -4888,6 +4922,7 @@ def _execute_entry_signal(signal, ctx, ms, state, _sigj=None, *, additive: bool 
         butterfly_half_size = macro.butterfly_half_size if signal.is_butterfly else False,
         orb_width           = _orb_w,
         orb_stop_distance   = _orb_d,
+        noise_floor         = _noise_floor,
     )
 
     if not sizing.allowed:

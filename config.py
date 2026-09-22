@@ -1,5 +1,12 @@
 """
-config.py  v4.30
+config.py  v4.31
+v4.31 2026-09-22  OTV4TEST r93 — NOISE_FLOOR_BAR_MULT / _LOOKBACK_BARS. The 1-R rule
+      normalises the SIZE of a loss and is blind to its FREQUENCY, so a stop
+      inside one ordinary bar buys MAXIMUM size on a coin flip. Measured
+      2026-09-22 10:14-10:25 ET: five Breakouts with stops of 0.075/0.050/
+      0.190/0.225/0.010 against a median 1m range of 0.4188, ~$10,000 each,
+      -$3,089. 0.5x is argued from the mechanism; the day's P&L peak was 0.60x
+      and is deliberately NOT used (n=11, section 12).
 v4.30  2026-09-21  OTV4TEST r82 — ONE `DELTA_PAR`; VOLT and BREAKOUT both
       derive from it, an hour after r81 landed on four literals for one credit
       window. BREAKOUT_DELTA_PAR added: par delta replaces its +100% target.
@@ -790,6 +797,32 @@ ORB_BUDGET_USD     = float(os.environ.get("OT_ORB_BUDGET_USD",
 # so this scales the losses too, and it is deliberately ONE ENV VAR so it can be
 # dialled to a fraction while it proves itself, without a revision.
 ORB_RISK_USD = float(os.environ.get("OT_ORB_RISK_USD", RISK_PER_TRADE_USD))
+
+# ── r93 — THE NOISE FLOOR: A STOP INSIDE ONE BAR IS NOT A STOP ────────────
+# 🔴 THE INVERSION THIS CLOSES, MEASURED LIVE 2026-09-22. The 1-R rule
+# normalises the SIZE of a loss and is blind to its FREQUENCY: risk per
+# contract falls as the stop tightens, so size rises — while the probability
+# of being hit rises too. In the limit stop -> 0, size -> the budget cap and
+# P(hit) -> 1, so EXPECTED LOSS CONVERGES ON THE WHOLE RISK BUDGET WITH
+# CERTAINTY. Between 10:14 and 10:25 ET the Breakout took five setups whose
+# structural stop sat INSIDE a single 1-minute bar (0.075, 0.050, 0.190,
+# 0.225, 0.010 against a MEASURED median 1m range of 0.4188) at 55-235
+# contracts and about $10,000 each, for -$3,089.
+# 🔑 THE OPERATOR'S MODEL IS RIGHT AND THIS IS ITS MISSING PRECONDITION:
+# *"the extreme of the impulsive candle is close to the boundary, it creates a
+# very small risk to the operator so we scale up"* — true ONLY while the stop
+# is outside the noise. Inside it, tighter is not safer; it is a coin flip at
+# maximum size.
+# ⚠️ §36 FEASIBILITY, NOT SELECTION. Same shape as the ATR floor: a setup
+# whose stop the tape crosses routinely within one bar cannot pay, however
+# good it looks. NEVER RELAXED.
+# ⚠️ 0.5x IS ARGUED FROM THE MECHANISM, NOT FITTED TO P&L. Price must travel
+# back to the impulsive candle's extreme to stop the trade out; below half a
+# typical bar's range one ordinary bar does it. The P&L-optimal value on
+# 2026-09-22 was 0.60x, and it is DELIBERATELY NOT USED — that is eleven
+# closed trades, and §12 says one session finds a mechanism, never a number.
+NOISE_FLOOR_BAR_MULT      = float(os.environ.get("OT_NOISE_FLOOR_BAR_MULT", "0.5"))
+NOISE_FLOOR_LOOKBACK_BARS = int(os.environ.get("OT_NOISE_FLOOR_LOOKBACK_BARS", "60"))
 
 # ── BREAKOUT RESEARCH POSTURE (OTV4TEST r55, operator 2026-09-19) ────────────
 # *"Have it trade every break that gets a 1-minute candle acceptance beyond the
