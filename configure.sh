@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# configure.sh  v4.6
+# configure.sh  v4.7
+# v4.7  2026-09-22  r91 — A DECLARATION SURFACE PRINTS DECLARATIONS. Operator:
+#       *"Configure.sh is where I enter env variables. The only thing it
+#       displays is the current variables that the operator has chosen... The
+#       per trade differences due to stop width should never be displayed
+#       there."* The r201 ORB "spot hint" READ orb_state.json and printed the
+#       live price into this script — machine state on a declaration screen —
+#       and is DELETED. `fmt_declared` prints what was set or "not set", never
+#       another key's value dressed as a default. ORB ramp TOP
+#       (OT_ORB_BUDGET_USD) and ORB ramp START (OT_ORB_RISK_USD) are now a
+#       settable pair: the START governed the whole ORB sizing ramp from r44
+#       and was never once declared or displayed.
 # v4.6  2026-09-17  OTV4TEST r34 — MOVED BACK TO THE REPO ROOT (operator's ruling).
 #   r14 moved it to deploy/ because it is a .sh, but it installs no unit, touches
 #   no systemd and runs on no timer — it is the sixth operator reader and belongs
@@ -19,7 +30,8 @@
 #   PER UNDERLYING. Shows SPOT as the reference — live from orb_state.json,
 #   or derived from the last trade's underlying_entry, labelled either way.
 #   ⚠️ The default fails closed at one trade's risk, so an unconfigured box
-#   trades SMALL; the menu labels it "(default)" so it does not read broken.
+#   trades SMALL; r91 — the menu now reads "not set" rather than borrowing
+#   another key's value, because a declaration surface prints declarations.
 #   ⚠️ Fixed in passing: the prompt said "between 1 and 7" on an 8-item menu.
 # Per-box configuration.
 #
@@ -111,6 +123,27 @@ get_env() {
     sudo grep -oP "(?<=Environment=${1}=).*" "$UNIT_FILE" 2>/dev/null | tail -1 || echo ""
 }
 
+# ── r91 — WHAT A DECLARATION SURFACE IS ALLOWED TO PRINT ─────
+# 🔴 THE OPERATOR'S RULING, 2026-09-22: *"Configure.sh is where I enter env
+# variables. The only thing it displays is the current variables that the
+# operator has chosen... The per trade differences due to stop width should
+# never be displayed there."* And: *"they are STATIC. They never change unless
+# I change them."*
+# So a value shows as the operator SET it, or it shows as unset. It never
+# borrows another key's value and dresses it as a default — that prints a
+# number he did not choose on the line where he chooses it, which is how
+# `OT_ORB_RISK_USD` governed the whole ORB sizing ramp for four days while
+# being invisible here (r91). This also cost a live-state reader: the r201 ORB
+# "spot hint" read `orb_state.json` and printed the running price INTO this
+# script, which is machine state, not a declaration.
+fmt_declared() {
+    if [[ -n "$1" ]]; then
+        printf '$%s' "$1"
+    else
+        printf 'not set'
+    fi
+}
+
 # ── Update or add an Environment= line in the unit file ──────
 set_env() {
     local key="$1" val="$2"
@@ -190,7 +223,7 @@ show_config() {
     echo -e "  Instrument:     ${BOLD}${instrument:-not set}${RESET}"
     echo -e "  Risk per trade: ${BOLD}\$${risk:-not set}${RESET}"
     local dll=$(get_env "OT_DAILY_LOSS_LIMIT")
-    echo -e "  Daily loss cap: ${BOLD}\$${dll:-${risk} (default)}${RESET}"
+    echo -e "  Daily loss cap: ${BOLD}$(fmt_declared "$dll")${RESET}"
     echo -e "  Trading mode:   $(echo -e $mode_label)"
     local rec_pin rec_label
     rec_pin=$(get_env "OT_BROKER_RECONCILE")
@@ -366,44 +399,28 @@ change_relaxed() {
 #   · the r203 land gate RUNS this body against a planted repo and REQUIRES a
 #     Spot line back, and refuses both a literal `data/` path and any
 #     re-suppression of stderr on this call.
-orb_spot_hint() {
-    local py="$HOME/options-trader/venv/bin/python"
-    [[ -x "$py" ]] || py="python3"
-    ( cd "$HOME/options-trader" 2>/dev/null || cd "$SCRIPT_DIR" 2>/dev/null || true
-      "$py" - <<'PYEOF'
-import json, os, sqlite3, sys
-try:
-    from config import DB_PATH, LOG_FILE
-except Exception as exc:
-    print("    Spot: unavailable (config import failed: %s)" % exc)
-    sys.exit(0)
-state = os.path.join(os.path.dirname(LOG_FILE), "orb_state.json")
-try:
-    with open(state) as f:
-        price = json.load(f).get("price")
-    if price:
-        print("    Spot: %.2f  (live)" % float(price))
-        sys.exit(0)
-    print("    Spot: state file has no price yet (%s)" % state)
-except FileNotFoundError:
-    print("    Spot: no state file yet (%s)" % state)
-except Exception as exc:
-    print("    Spot: state unreadable (%s)" % exc)
-# Fall back to the last trade's underlying_entry — spot when it fired.
-try:
-    c = sqlite3.connect(DB_PATH)
-    r = c.execute("SELECT underlying_entry, entry_time FROM trades "
-                  "WHERE underlying_entry > 0 ORDER BY entry_time DESC "
-                  "LIMIT 1").fetchone()
-    if r:
-        print("    Spot: %.2f  (derived from the last trade, %s)"
-              % (float(r[0]), str(r[1] or "")[:16]))
-    else:
-        print("    Spot: no trades on this box yet - read the chain")
-except Exception as exc:
-    print("    Spot: no trade history (%s)" % exc)
-PYEOF
-    )
+change_orb_risk() {
+    local current
+    current=$(get_env "OT_ORB_RISK_USD")
+    echo ""
+    echo -e "  ${BOLD}ORB ramp START${RESET}  (OT_ORB_RISK_USD)"
+    echo ""
+    echo -e "  Current: ${BOLD}$(fmt_declared "$current")${RESET}"
+    echo ""
+    while true; do
+        read -p "    New ORB ramp start in \$, ENTER to keep: " input
+        if [[ -z "$input" ]]; then
+            print_info "Unchanged."
+            return
+        fi
+        if [[ "$input" =~ ^[0-9]+(\.[0-9]+)?$ ]] && (( $(echo "$input > 0" | bc -l) )); then
+            set_env "OT_ORB_RISK_USD" "$input"
+            reload_daemon
+            print_ok "ORB ramp start updated to ${BOLD}\$$input${RESET}."
+            return
+        fi
+        print_warn "Enter a positive number, or ENTER to keep."
+    done
 }
 
 change_orb_budget() {
@@ -411,14 +428,9 @@ change_orb_budget() {
     current=$(get_env "OT_ORB_BUDGET_USD")
     risk=$(get_env "OT_RISK_USD")
     echo ""
-    echo -e "  ${BOLD}ORB budget${RESET} — the ceiling on what ONE ORB setup may"
-    echo -e "  deploy. ORB sizes on GEOMETRY, not risk, so without this it grows"
-    echo -e "  without bound as the impulsive stop tightens."
+    echo -e "  ${BOLD}ORB ramp TOP${RESET}  (OT_ORB_BUDGET_USD)"
     echo ""
-    echo -e "  contracts = min( floor(width / stop), floor(budget / cost) )"
-    echo ""
-    orb_spot_hint
-    echo -e "  Current: ${BOLD}\$${current:-${risk} (default)}${RESET}"
+    echo -e "  Current: ${BOLD}$(fmt_declared "$current")${RESET}"
     echo ""
     while true; do
         read -p "    New ORB budget in \$, 'r' to reset to default, ENTER to keep: " input
@@ -436,10 +448,6 @@ change_orb_budget() {
             set_env "OT_ORB_BUDGET_USD" "$input"
             reload_daemon
             print_ok "ORB budget updated to ${BOLD}\$$input${RESET}."
-            # ⚠️ NAME THE CONSEQUENCE. A budget below one contract's cost
-            # REFUSES the trade outright rather than flooring to a 1-lot.
-            echo -e "  ${DIM}A setup whose single contract costs more than this"
-            echo -e "  will be REFUSED, not reduced to 1 lot.${RESET}"
             return
         fi
         print_warn "Enter a positive number, 'r' to reset, or ENTER to keep."
@@ -453,8 +461,7 @@ change_daily_loss() {
     echo ""
     echo -e "  ${BOLD}Daily loss cap${RESET} — halts NEW entries once the day's NET"
     echo -e "  P&L is down by this amount. Open trades still exit normally."
-    echo -e "  Default is one trade's risk (\$${risk})."
-    echo -e "  Current: ${BOLD}\$${current:-${risk} (default)}${RESET}"
+    echo -e "  Current: ${BOLD}$(fmt_declared "$current")${RESET}"
     echo ""
     while true; do
         read -p "    New cap in \$, 'r' to reset to risk default, ENTER to keep: " input
@@ -633,10 +640,11 @@ while true; do
     echo -e "  ${BOLD}5.${RESET}  TastyTrade credentials"
     echo -e "  ${BOLD}6.${RESET}  Daily loss cap      (currently: \$$(dll=$(get_env OT_DAILY_LOSS_LIMIT); echo ${dll:-$(get_env OT_RISK_USD)}))"
     echo -e "  ${BOLD}7.${RESET}  Relaxed entry       (currently: $([ "$(get_env OT_RELAXED_ENTRY)" = "1" ] && echo "ON - paper only" || echo "off"))"
-    echo -e "  ${BOLD}8.${RESET}  ORB budget          (currently: \$$(ob=$(get_env OT_ORB_BUDGET_USD); echo "${ob:-$(get_env OT_RISK_USD) (default)}"))"
-    echo -e "  ${BOLD}9.${RESET}  Done"
+    echo -e "  ${BOLD}8.${RESET}  ORB ramp TOP        (currently: $(fmt_declared "$(get_env OT_ORB_BUDGET_USD)"))"
+    echo -e "  ${BOLD}9.${RESET}  ORB ramp START      (currently: $(fmt_declared "$(get_env OT_ORB_RISK_USD)"))"
+    echo -e "  ${BOLD}10.${RESET} Done"
     echo ""
-    read -p "    Select [1-9]: " menu_choice
+    read -p "    Select [1-10]: " menu_choice
 
     case "$menu_choice" in
         1) change_instrument; CHANGED=true ;;
@@ -647,7 +655,8 @@ while true; do
         6) change_daily_loss;     CHANGED=true ;;
         7) change_relaxed;        CHANGED=true ;;
         8) change_orb_budget;     CHANGED=true ;;
-        9) break ;;
+        9) change_orb_risk;       CHANGED=true ;;
+        10) break ;;
         *) print_warn "Please enter a number between 1 and 9." ;;
     esac
     echo ""

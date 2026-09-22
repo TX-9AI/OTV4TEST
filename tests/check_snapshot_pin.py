@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
-tests/check_snapshot_pin.py  v1.1
+tests/check_snapshot_pin.py  v1.2
+v1.2  2026-09-22  OTV4TEST r91 — S2 PINS THE CLOCK. `expected_move` scales by
+      sqrt(hours-to-16:00) off `datetime.now(ET)`, so build_payload's call and
+      the checker's landed on different instants and disagreed by ~the
+      tolerance. After 16:00 the 0.25h floor clamps it constant, so every
+      EVENING run was deterministic and every MORNING run a coin flip. The
+      1e-9 bar is NOT loosened — it is the whole meaning of the check.
 v1.1  2026-09-04  r244 — S6 extends to `pin_concentration` and
       `gex_environment` — recorded RAW, kept as distinct keys, and None rather
       than 0.0 or "" when the gex object carries neither.
@@ -46,6 +52,8 @@ class _Gex:
 def main():
     from derived.snapshot import SnapshotEngine
     from strategy.gex_pin_butterfly import expected_move, EM_MIN_FRAC, EM_MAX_FRAC
+    from datetime import datetime as _dt
+    from utils.time_utils import ET as _ET
 
     e = SnapshotEngine.__new__(SnapshotEngine)
     e.symbol = "TEST"
@@ -65,8 +73,34 @@ def main():
     # a second definition, the study would compare a number the gate never saw
     # against an outcome the gate decided — worse than no field at all.
     price, iv, pin = 100.0, 0.30, 103.0
-    got = e.build_payload({"price": price, "atm_iv": iv, "gex": _Gex(pin)})
-    want = abs(pin - price) / expected_move(price, iv)
+    # 🔴 r91 — THE CLOCK IS PINNED, AND THE TOLERANCE IS NOT TOUCHED.
+    # `expected_move` scales by sqrt(hours-to-16:00) read off `datetime.now(ET)`,
+    # so `build_payload`'s call and this one landed on DIFFERENT instants and the
+    # two fractions disagreed by roughly the tolerance itself. MEASURED on this
+    # box: two back-to-back calls differ by 6.75e-10 against a 1e-9 bar, and
+    # build_payload does far more work between them than that.
+    # ⚠️ IT PASSED FOR A YEAR BY ACCIDENT OF SCHEDULE. After 16:00 ET the
+    # `max(hours, 0.25)` floor clamps the value CONSTANT, so the two calls agree
+    # EXACTLY (measured: delta 0.0) — every evening run was deterministic and
+    # every morning run was a coin flip. r86 moved the sweep to the 08:00 boot
+    # and the coin started landing tails.
+    # 🔑 LOOSENING THE TOLERANCE WOULD BE THE WRONG FIX AND IS REFUSED. The tight
+    # bar is the ENTIRE meaning of this check — "the payload reproduces the
+    # gate's own arithmetic rather than inventing a second definition of it"
+    # (r243). A slack tolerance would pass a genuine second definition that
+    # merely rounds to something similar, which is the defect, not the fixture.
+    import strategy.gex_pin_butterfly as _gpb
+    _real_em = _gpb.expected_move
+    _fixed = _dt.now(_ET).replace(hour=12, minute=0, second=0, microsecond=0)
+    _gpb.expected_move = lambda u, atm, now=None, _f=_fixed: _real_em(u, atm, now=_f)
+    try:
+        # `derived/snapshot.py` imports the name INSIDE the function, so the
+        # payload picks up the pinned clock on this call — the real function,
+        # the real arithmetic, one instant.
+        got = e.build_payload({"price": price, "atm_iv": iv, "gex": _Gex(pin)})
+        want = abs(pin - price) / _gpb.expected_move(price, iv)
+    finally:
+        _gpb.expected_move = _real_em     # never leave the module patched
     check("S2 the fraction equals |pin - spot| / expected_move()",
           abs(got["pin_em_fraction"] - want) < 1e-9,
           f"{got['pin_em_fraction']:.6f} vs {want:.6f}")

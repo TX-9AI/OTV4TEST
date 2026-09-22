@@ -1,5 +1,15 @@
 """
-execution/exit_engine.py  v4.24
+execution/exit_engine.py  v4.25
+v4.25 2026-09-22  OTV4TEST r91 — THE STRUCTURE-ANCHORED TRAIL, for ORB and
+      Breakout only. Operator: *"I don't want the 25% premium stop anymore.
+      Put a 25% trailing stop on it that follows the move... I want it from
+      the start."* Armed at entry, seeded on the STRUCTURE stop rather than
+      `entry x 1.25`, ratcheting `current x 0.75` which with an upward-only
+      ratchet IS `peak x 0.75`. 🔴 THE STRUCTURE FLOOR IS LOAD-BEARING: r44
+      removed exactly this formula because a fraction of PREMIUM can sit BELOW
+      ENTRY — 10 of 210 trail-exited fleet trades finished NEGATIVE with the
+      trail armed. Seeding on the structure stop makes that impossible here.
+      ⚠️ EVERY OTHER STRATEGY KEEPS `_gain_floor` and the +50% arm.
 v4.24  2026-09-21  OTV4TEST r82 — DELTA ONLY. The extrinsic limb is REMOVED:
       measured over the whole trade, extrinsic-from-mid reaches zero at DELTA
       0.82, so it is not a proxy for par and r80's peer-promotion would have
@@ -969,6 +979,27 @@ class BOSTracker:
 # MFE the trade only reached later — so those rows are an UPPER BOUND, not a
 # promise. 0.50 beats the current median (17.0% vs 14.0%), matches its mean,
 # and takes the negatives to zero without leaning on the optimistic end.
+# 🔴 r91 — THE STRATEGIES WHOSE TRAIL IS STRUCTURE-ANCHORED, IN ONE PLACE.
+# These are exactly the geometry-sized debits: their `stop_premium` is the
+# impulsive candle's extreme rather than a flat percentage, so their trail can
+# be floored on it and armed from entry (see `_update_trail`).
+# ⚠️ A NAME LIST ROTS, AND IT ROTS PERMISSIVELY — §23's v3 cutoff held one, two
+# of its three entries were deleted, and a new long-debit strategy was silently
+# EXEMPT. It is keyed on `strategy`, which IS a trades column and therefore
+# survives the rehydrate that killed `is_trend_credit` (§22); and
+# `tests/check_structure_trail.py` pins this set against the strategies that
+# actually declare geometry sizing, so adding one cannot silently miss here.
+STRUCTURE_TRAIL_STRATEGIES = ("ORBStrategy", "Breakout")
+
+
+def _is_structure_trail(record) -> bool:
+    """True when this trade's stop_premium is structural, not a percentage."""
+    try:
+        return str(record.get("strategy") or "") in STRUCTURE_TRAIL_STRATEGIES
+    except AttributeError:
+        return False
+
+
 def _gain_floor(entry: float, peak: float, lock: float) -> float:
     """The trail floor: keep `lock` of the gain, never give back the entry."""
     e = float(entry or 0.0)
@@ -1498,7 +1529,8 @@ class ExitEngine:
                                    self._fvg_frame(df_1m, df_5m), direction)
         trail_stop = self._update_trail(
             trade_id, current_premium, entry_prem, trail_act,
-            record.get("stop_premium", 0.0) or entry_prem * (1 - MAX_LOSS_PCT)
+            record.get("stop_premium", 0.0) or entry_prem * (1 - MAX_LOSS_PCT),
+            structure_trail=_is_structure_trail(record)
         )
         trail_stop = self._trail_stops.get(trade_id, trail_stop)
         if trail_stop is not None:
@@ -2072,7 +2104,8 @@ class ExitEngine:
             self._update_fvg_trail(trade_id, current_premium, record,
                                    self._fvg_frame(df_1m, df_5m), direction)
         trail_stop = self._update_trail(
-            trade_id, current_premium, entry_prem, trail_act, stop_prem
+            trade_id, current_premium, entry_prem, trail_act, stop_prem,
+            structure_trail=_is_structure_trail(record)
         )
         trail_stop = self._trail_stops.get(trade_id, trail_stop)
         if trail_stop is not None:
@@ -2748,23 +2781,62 @@ class ExitEngine:
     def _update_trail(self, trade_id: str,
                        current: float, entry: float,
                        trail_activation: float,
-                       hard_stop: float) -> Optional[float]:
+                       hard_stop: float,
+                       structure_trail: bool = False) -> Optional[float]:
+        """The premium trail. `structure_trail` selects the r91 variant.
+
+        🔴 r91 — THE GEOMETRY-SIZED DEBITS TRAIL FROM ENTRY, NOT FROM +50%.
+        Operator, 2026-09-22: *"I don't want the 25% premium stop anymore. Put
+        a 25% trailing stop on it that follows the move. If it doesn't move the
+        structure stop will catch it and if it does move the 25% trailing stop
+        will lock it in."* And on the arm point: *"currently the trail
+        activation is at the 50. But I want it from the start."*
+
+        Two things change, and ONLY for ORB and Breakout:
+          · the initial trail is the STRUCTURE STOP, not `entry x 1.25`. Arming
+            from entry with the old initial would lock +25% before the trade
+            had made +25% and stop it out instantly.
+          · the ratchet is `current x (1 - TRAIL_LOCK_PCT)` — 25% behind the
+            move. Because it only ever moves UP, the effective value is
+            `peak x 0.75` without needing to store a peak.
+
+        🔴 WHY THE STRUCTURE FLOOR IS LOAD-BEARING AND NOT A DETAIL. r44
+        replaced exactly this `current * 0.75` formula because a fraction of
+        PREMIUM can sit BELOW ENTRY: measured on S3 over 210 trail-exited fleet
+        trades, TEN finished NEGATIVE with the trail armed — arming it could
+        guarantee a loss. Seeding `_trail_stops` with the structure stop and
+        only ever raising it makes that arithmetically impossible here, which
+        is the only reason this formula is safe to bring back.
+        ⚠️ EVERY OTHER STRATEGY IS UNTOUCHED — `_gain_floor` still governs them
+        and r44's finding still protects them. The flag is passed by the two
+        call sites from the RECORD, never inferred inside this method.
+        """
         if current < trail_activation:
             return None
 
         if not self._trail_active.get(trade_id, False):
             self._trail_active[trade_id] = True
-            initial_trail = max(entry * (1 + TRAIL_LOCK_PCT), entry)
+            if structure_trail:
+                # the entry-time structural floor; the move has to earn its way
+                # above this before the trail means anything
+                initial_trail = hard_stop
+            else:
+                initial_trail = max(entry * (1 + TRAIL_LOCK_PCT), entry)
             self._trail_stops[trade_id] = initial_trail
             logger.info(
                 f"TRAIL ACTIVATED: {trade_id[:8]} "
                 f"initial_trail=${initial_trail:.2f}"
+                f"{' (structure floor)' if structure_trail else ''}"
             )
 
         current_trail = self._trail_stops.get(trade_id, hard_stop)
-        # r44 — was `current * 0.75`: a fraction of PREMIUM, which can sit below
-        # entry. See `_gain_floor` for the S3 measurement behind this.
-        new_trail     = _gain_floor(entry, current, TRAIL_GAIN_LOCK)
+        if structure_trail:
+            # 25% behind the move; the ratchet below makes this `peak x 0.75`
+            new_trail = current * (1.0 - TRAIL_LOCK_PCT)
+        else:
+            # r44 — was `current * 0.75`: a fraction of PREMIUM, which can sit
+            # below entry. See `_gain_floor` for the S3 measurement behind this.
+            new_trail = _gain_floor(entry, current, TRAIL_GAIN_LOCK)
         if new_trail > current_trail:
             self._trail_stops[trade_id] = new_trail
 

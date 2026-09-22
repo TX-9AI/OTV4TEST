@@ -1,5 +1,9 @@
 """
-strategy/breakout_plan.py  v1.3
+strategy/breakout_plan.py  v1.4
+v1.4  2026-09-22  OTV4TEST r91 — carries `entry_delta`, same as the ORB.
+      ⚠️ PARITY IS THE POINT: Breakout exists to be the ORB without the
+      retest, so a sizing input one supplies and the other does not would make
+      the operator's A/B a comparison of two sizers instead of two entries.
 THE SEARCH. Every tick, for the setup that satisfies `strategy/breakout.py`.
 
 v1.3  2026-09-21  OTV4TEST r77 — emit() imported OptionsSignal from
@@ -182,6 +186,13 @@ class BreakoutPreparation:
             orb_range_low=float(getattr(self.orb, "orb_low", 0.0) or 0.0),
             strike=c.strike, expiry=getattr(c, "expiry", ""),
             entry_premium=c.mark, contract=c,
+            # 🔴 r91 — THE SIZING INPUT THE 1-R RULE NEEDS, same as the ORB's.
+            # `underlying_stop` is the break candle's extreme in POINTS; this
+            # converts it to PREMIUM so `stop_premium()` is the structure stop.
+            # ⚠️ PARITY IS THE POINT HERE: Breakout exists to be the ORB
+            # without the retest, so a sizing input the ORB supplies and this
+            # does not would make the A/B a comparison of two sizers.
+            entry_delta=getattr(c, "delta", None),
         )
         sig.is_breakout = True
         # 🔑 THE ORB'S SIZING, BY SUPPLYING THE GEOMETRY RATHER THAN BY BEING

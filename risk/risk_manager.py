@@ -1,5 +1,13 @@
 """
-risk/risk_manager.py  v4.4
+risk/risk_manager.py  v4.5
+v4.5  2026-09-22  OTV4TEST r91 — A STOP WIDER THAN THE RANGE IS NO LONGER
+      DEGENERATE. That branch forced ONE CONTRACT whenever `distance > width`,
+      bypassing the risk budget entirely — measured at distance 2.00 on a 1.02
+      range: 1 contract, $80 deployed against a $1,050 target. It made sense
+      while GEOMETRY set the size; it does not now that RISK does, and a deep
+      impulsive candle is a legitimate setup the operator's own rule already
+      handles (wide stop -> small position). Operator: *"I DO NOT want $30 ORB
+      TRADES."* ⚠️ `distance <= 0` is STILL degenerate and still sizes 1.
 v4.4  2026-09-18  OTV4TEST r44 — THE ORB GEOMETRY RULE GAINS A SCALE.
       🔑 THE OPERATOR'S MODEL WAS RIGHT AND IS KEPT — tight stop big, wide stop
       small. The algebra shows why it was never enough: contracts = width/dist
@@ -392,13 +400,48 @@ class RiskManager:
                 ORB_RISK_USD, _rpc, by_budget, budget, cost_per_contract,
                 count, count * cost_per_contract, count * max(_rpc, 0.0), _bound)
         else:
-            count = 1
-            result.geometry_wanted = 1
-            result.budget_allowed  = by_budget
-            logger.warning(
-                "[size] orb_geometry DEGENERATE width=%.4f distance=%.4f -> 1 "
-                "contract. The entry or the stop is not what the strategy "
-                "thinks it is.", width, distance)
+            # 🔴 r91 — A STOP WIDER THAN THE RANGE IS NOT DEGENERATE ANY MORE,
+            # AND FORCING 1 LOT HERE WAS THE "$30 ORB TRADE".
+            # Operator, 2026-09-22: *"I DO NOT want $30 ORB TRADES. I do
+            # actually want the 1050 locked in — that should be a minimum
+            # position size."* This branch fired whenever `distance > width`,
+            # i.e. whenever the impulsive candle ran deeper than the opening
+            # range, and it returned ONE CONTRACT regardless of the risk
+            # budget: measured at distance 2.00 on a 1.02 range, 1 contract and
+            # $80 deployed against a $1,050 target.
+            # 🔑 THE GUARD MADE SENSE WHILE GEOMETRY SET THE SIZE — `width //
+            # distance` is meaningless when distance exceeds width. It does NOT
+            # make sense now that RISK sets the size, because a deep impulsive
+            # candle is a legitimate setup that the operator's own rule already
+            # handles: wide stop -> high risk per contract -> small position.
+            # Small, not minimal.
+            # ⚠️ THE REAL DEGENERACY IS STILL REFUSED. `distance <= 0` means the
+            # entry and the stop are the same price or inverted, which is the
+            # arithmetic fault this branch was written for, and it still sizes
+            # 1 LOUDLY rather than dividing by something meaningless.
+            _sp_d = float(stop_premium or 0.0)
+            _rpc_d = (float(premium or 0.0) - _sp_d) * CONTRACT_MULTIPLIER
+            if distance > 0 and _sp_d > 0 and _rpc_d > 0:
+                by_risk_d = max(1, int(ORB_RISK_USD // _rpc_d))
+                count = min(by_risk_d, by_budget)
+                result.geometry_wanted = 0        # geometry abstains, it does not vote 1
+                result.budget_allowed  = by_budget
+                logger.info(
+                    "[size] orb_geometry WIDE STOP width %.2f < distance %.2f "
+                    "-> geometry abstains; risk %d ($%.0f target / $%.2f per "
+                    "contract), budget %d -> %d contract(s) = $%.0f deployed, "
+                    "$%.0f at risk", width, distance, by_risk_d, ORB_RISK_USD,
+                    _rpc_d, by_budget, count, count * cost_per_contract,
+                    count * _rpc_d)
+            else:
+                count = 1
+                result.geometry_wanted = 1
+                result.budget_allowed  = by_budget
+                logger.warning(
+                    "[size] orb_geometry DEGENERATE width=%.4f distance=%.4f "
+                    "stop_premium=%.4f -> 1 contract. The entry or the stop is "
+                    "not what the strategy thinks it is.",
+                    width, distance, _sp_d)
         result.contracts         = count
         result.cost_per_contract = cost_per_contract
         # ⚠️ FULL PREMIUM, matching the budget rule's doctrine: max_loss is what

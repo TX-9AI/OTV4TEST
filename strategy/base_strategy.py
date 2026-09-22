@@ -1,5 +1,19 @@
 """
-strategy/base_strategy.py  v4.5
+strategy/base_strategy.py  v4.6
+v4.6  2026-09-22  OTV4TEST r91 — THE OPERATOR'S 1-R, RESTORED. `stop_premium()`
+      returns the IMPULSIVE CANDLE'S EXTREME converted through delta for the
+      geometry-sized debits (ORB, Breakout) instead of a flat 25% of premium,
+      and `entry_delta` is the new field that makes the conversion possible.
+      🔑 THIS ALSO FIXES SIZING WITH NO NEW SIZER ARGUMENT: `_size_geometry`
+      computes `(premium - stop_premium) * 100`, which with a FLAT stop is
+      proportional to PREMIUM — the distance cancels and every fire lands on
+      the same deployed dollars. MEASURED on 21 consecutive Breakout fires
+      2026-09-21 10:13-10:18 ET: structural stop swung 0.07->0.70 (10x),
+      geometry_wanted 1->59, deployed never left $4,080-$4,209. r44 asserted
+      `premium - stop_premium` WAS the distance in premium terms; it was not,
+      and is now. `trail_activation_premium()` returns the entry premium for
+      those two strategies so the trail arms from the START (operator's
+      ruling), every other strategy untouched at +50%.
 v4.5  2026-09-19  OTV4TEST r61 (ENT.1) — `underlying_stop_is_thesis` added.
       The entry-underwater guard has to know whether a strategy's
       `underlying_stop` is a PRICE STOP or a THESIS LINE, because the column
@@ -144,6 +158,16 @@ class OptionsSignal:
     max_loss:       float = 0.0
     stop_loss_pct:  float = 0.25
     tp_pct:         float = 1.0
+    # 🔴 r91 — THE CONTRACT'S DELTA AT SELECTION, AND IT IS A SIZING INPUT.
+    # It converts the STRUCTURAL stop (|entry - impulsive candle extreme|, in
+    # underlying points) into PREMIUM terms, which is what `stop_premium()`
+    # needs to be the structure stop rather than a flat percentage. Without it
+    # the 1-R the operator specified cannot reach the sizer at all — see the
+    # note on `stop_premium`. Stamped by the geometry-sized strategies from
+    # `contract.delta`, the same attribute `main.py` already reads when it
+    # writes `entry_delta` to the row. None means UNAVAILABLE and the stop
+    # falls back to the percentage, never to a guess.
+    entry_delta:    Optional[float] = None
 
     # ── Quality ─────────────────────────────────────────────────────
     confluence_factors: List[str] = field(default_factory=list)
@@ -242,8 +266,106 @@ class OptionsSignal:
     def is_iron_condor(self, v: bool) -> None:
         self.is_credit_vertical = bool(v)
 
+    def sizes_on_structure(self) -> bool:
+        """True for the geometry-sized debits: ORB and Breakout.
+
+        ⚠️ THE SAME TEST `main.py` USES TO SUPPLY THE GEOMETRY INPUTS, and it
+        is deliberately the same shape rather than a second list that later
+        rots (§23). A strategy that opts into geometry sizing opts into the
+        structural stop with it — the two are one decision, not two.
+        """
+        return bool(getattr(self, "strategy_name", "") == "ORBStrategy"
+                    or getattr(self, "sizes_on_geometry", False))
+
+    def structural_stop_premium(self) -> Optional[float]:
+        """The impulsive candle's extreme, converted to PREMIUM. None if unusable.
+
+        🔴 r91 — THE OPERATOR'S 1-R, RESTORED. His specification, 2026-09-22:
+        *"position sizing was supposed to be based on the stop distance
+        represented by the entry point measured down to the extreme of the
+        impulsive candle. That distance is our 1-R."* Deep candle -> wide stop
+        -> small position; extreme hugging the boundary -> tight stop -> scale
+        up.
+
+        🔑 WHY THIS ONE METHOD ALSO FIXES SIZING, WHICH IS THE WHOLE POINT.
+        `_size_geometry` computes `_rpc = (premium - stop_premium) * 100`. When
+        `stop_premium` is a flat fraction of premium, that term is proportional
+        to PREMIUM and the distance CANCELS — every fire lands on the same
+        deployed dollars no matter what the structure says. MEASURED on 21
+        consecutive Breakout fires, 2026-09-21 10:13-10:18 ET: the structural
+        stop swung 0.07 -> 0.70 (10x), `geometry_wanted` swung 1 -> 59, and
+        deployed capital never left $4,080-$4,209. When `stop_premium` is THIS
+        value, `premium - stop_premium` IS `distance x delta`, and the sizer
+        needs no new argument to do what the operator asked.
+
+        🔴 r44 ASSERTED THIS WAS ALREADY TRUE AND IT WAS NOT. Its own comment
+        reads *"`by_risk` is also proportional to 1/distance, because
+        `premium - stop_premium` IS the distance in premium terms"* — true only
+        if the stop is structural, and it never was. r44 caught the identical
+        flattening for `stop_premium = 0` and fixed that case; `k x premium`
+        flattens the same way and was not considered. `check_orb_budget` could
+        not catch it because its helper passes NO stop premium, so every check
+        in that file exercises the fallback branch and never the live one.
+
+        ⚠️ FAILS CLOSED TO THE PERCENTAGE, NEVER TO A GUESS (§22). No delta, no
+        distance, or an arithmetic result that is not a usable stop (at or
+        below zero, or at or above the entry premium) returns None and the
+        caller keeps today's behaviour. Inventing a delta would size real money
+        on a number nobody measured.
+        """
+        if not self.sizes_on_structure():
+            return None
+        try:
+            entry = float(self.underlying_entry or 0.0)
+            stop  = float(self.underlying_stop or 0.0)
+            delta = abs(float(self.entry_delta or 0.0))
+            prem  = float(self.entry_premium or 0.0)
+        except (TypeError, ValueError):
+            return None
+        if not (entry and stop and delta > 0 and prem > 0):
+            return None
+        move = abs(entry - stop) * delta          # underlying points -> premium
+        if move <= 0:
+            return None
+        if move >= prem:
+            # 🔴 THE STOP IS FURTHER AWAY THAN THE OPTION IS WORTH, AND THE
+            # HONEST 1-R IS THEN THE WHOLE PREMIUM. Returning None here — my
+            # first cut — fell back to the flat 25% stop and UNDERSTATED RISK
+            # BY 4x: measured at distance 2.00, delta 0.40, premium 0.80, the
+            # fallback sized 52 contracts and called it $1,040 at risk when
+            # reaching that stop costs the full $4,160. Sizing small is the
+            # operator's rule for a deep candle; sizing LARGE on a stop that
+            # cannot be reached without total loss is its exact inversion.
+            # ⚠️ A CENT, NOT ZERO, AND THE REASON IS A FALSY TEST. `exit_engine`
+            # reads `record.get("stop_premium", 0.0) or entry * (1 - MAX_LOSS_PCT)`
+            # in two places, so a 0.0 stop is FALSY and silently restores the
+            # very percentage stop this removes (§23). One tick is the smallest
+            # truthy value that still means "worthless at the structure stop",
+            # and it makes risk-per-contract the full premium less one tick.
+            return 0.01
+        sp = prem - move
+        # A structural stop at or above the entry premium is not a stop.
+        if sp <= 0 or sp >= prem:
+            return None
+        return sp
+
     def stop_premium(self) -> float:
-        """Premium level at which we exit (25% loss)."""
+        """Premium level at which we exit.
+
+        🔴 r91 — STRUCTURAL FOR THE GEOMETRY-SIZED DEBITS, percentage for
+        everything else. Operator, 2026-09-22: *"I don't want the 25% premium
+        stop anymore... If it doesn't move the structure stop will catch it and
+        if it does move the 25% trailing stop will lock it in."* This is the
+        first half: the entry-time floor becomes the impulsive candle's
+        extreme. The trail is the second half and lives in `exit_engine`.
+
+        ⚠️ THE VALUE CHANGES; THE CONTRACT DOES NOT. Roughly a dozen sites in
+        `exit_engine` and `position_manager` read `stop_premium` as *"the
+        immutable entry-time floor"* and two of them fall back to
+        `entry_prem * (1 - MAX_LOSS_PCT)` when it is absent — so REMOVING the
+        percentage stop would have silently reinstated it and looked like the
+        change worked (§23). It is re-anchored, not deleted.
+        """
         if self.is_butterfly:
             return self.net_debit * (1 - self.stop_loss_pct)
         if self.is_credit_vertical:
@@ -251,6 +373,9 @@ class OptionsSignal:
             # (we sold it, so rising value = losing money). Stop level
             # is expressed here as the spread value at which we exit.
             return self.net_credit * (1 + self.stop_loss_pct)
+        _structural = self.structural_stop_premium()
+        if _structural is not None:
+            return _structural
         return self.entry_premium * (1 - self.stop_loss_pct)
 
     def trail_activation_premium(self) -> float:
@@ -261,6 +386,18 @@ class OptionsSignal:
             # Condor profits as the spread value DECAYS toward zero.
             # 50% TP = spread value has decayed to 50% of credit received.
             return self.net_credit * 0.5
+        if self.sizes_on_structure():
+            # 🔴 r91 — ARMED FROM ENTRY. Operator, 2026-09-22: *"currently the
+            # trail activation is at the 50. But I want it from the start."*
+            # This is the ARM POINT only; where the trail SITS is
+            # `exit_engine._update_trail`, which seeds it on the structure stop
+            # and ratchets `peak x 0.75` — the separation `limit_ladder`'s own
+            # header insists on, a trigger never anchoring a price.
+            # ⚠️ RETURNING THE ENTRY PREMIUM, NOT ZERO, IS THE POINT. The trail
+            # arms only once the trade is at or above entry, so a position that
+            # goes straight down never arms it and the STRUCTURE STOP catches
+            # it — which is exactly the behaviour the operator described.
+            return self.entry_premium
         return self.entry_premium * (1 + self.tp_pct * 0.5)
 
     def target_premium(self) -> float:

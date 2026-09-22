@@ -1,5 +1,9 @@
 """
-strategy/orb_strategy.py  v4.7
+strategy/orb_strategy.py  v4.8
+v4.8  2026-09-22  OTV4TEST r91 — the signal carries `entry_delta` from
+      `contract.delta`, the sizing input the structural stop needs to convert
+      |entry - impulsive candle extreme| into premium. Read from the contract,
+      never re-derived; the same attribute main.py already writes to the row.
 v4.7  2026-09-13  OTV4TEST r20 — THE ORB KNOWS NOTHING ABOUT LEVELS. Operator:
       "I want levels taken out of the orb trade entirely — that was to prevent
       fake-outs, but proved ineffective for the task." The same ruling he gave
@@ -291,6 +295,13 @@ class ORBStrategy(BaseOptionsStrategy):
             is_fed_day        = bool(getattr(macro, "is_fed_day", False)),
             stop_loss_pct     = MAX_LOSS_PCT,
             tp_pct            = 1.0,
+            # 🔴 r91 — THE SIZING INPUT THE 1-R RULE NEEDS. `underlying_stop`
+            # above is the impulsive candle's extreme in POINTS; this converts
+            # it to PREMIUM so `stop_premium()` can be the structure stop
+            # rather than a flat 25%. Same attribute `main.py` already reads
+            # when it writes `entry_delta` to the row — read here, not
+            # re-derived. Missing -> None -> the percentage stop, never a guess.
+            entry_delta       = getattr(contract, "delta", None),
             strike            = contract.strike,
             expiry            = getattr(contract, "expiry", ""),
             entry_premium     = prep.premium,

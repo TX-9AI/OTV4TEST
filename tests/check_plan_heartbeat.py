@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_heartbeat.py  v1.1
+tests/check_plan_heartbeat.py  v1.2
+v1.2  2026-09-22  OTV4TEST r91 — H4/H5 FREEZE THE CLOCK. They drive the real
+      panel, and `show_decisions` returns early before 09:30 ET, so from r86
+      (sweep moved to the 08:00 BOOT) they failed EVERY morning for a reason
+      unrelated to the panel. §40.1: the wall clock was supplying the answer.
 v1.1  2026-09-21  OTV4TEST r84 — H6/H7/H8. Born red 3 of 9 at
       674c8d5, H6 naming all 13 ungated call sites.
 v1.0  2026-09-21  OTV4TEST r83 — born RED at 0e4c8f1.
@@ -104,13 +108,35 @@ check("H3 CLASS: the gate is CARRIED from the not-asked path, not parsed",
       f"of 'inactive — window: ...' is what broke twice")
 
 # H4/H5 drive the REAL panel and read what the operator would read.
+# 🔴 r91 — THE CLOCK IS FROZEN, AND THAT IS THE WHOLE FIX. `show_decisions`
+# returns early before 09:30 ET — "nothing yet — the session opens at 09:30 ET"
+# — so both of these asserted against an EMPTY panel and went red for a reason
+# that had nothing to do with the panel. They passed at r83/r84 only because
+# every run until then happened during or after the session. r86 moved the full
+# sweep to the 08:00 BOOT, which is before the open BY CONSTRUCTION, so from
+# that revision on these two would have failed every single morning, forever.
+# ⚠️ §40.1 EXACTLY — "a probe run in a shell that exported the thing under
+# test destroyed the RUNTIME." Here the WALL CLOCK supplied the answer, and a
+# check whose verdict depends on when it ran is a check about nothing.
+# ⚠️ THE HEARTBEATS MOVE WITH THE CLOCK, AND THEY MUST. The panel's staleness
+# test is `now - ts_epoch > STALE_S`, so freezing the clock WITHOUT restamping
+# the rows would read every plan ⚠️ STALE and fail H4 from the other side —
+# swapping one clock artefact for its mirror image. ONE instant, used by the
+# writer and the reader alike.
 import query
+_frozen = query.now_et().replace(hour=12, minute=0, second=0, microsecond=0)
+P._write_heartbeats(store, "QQQ", 9, _frozen.timestamp())
+_real_now_et = query.now_et
+query.now_et = lambda: _frozen
 buf = _io.StringIO()
-with contextlib.redirect_stdout(buf):
-    try:
-        query.show_decisions(store.conn)
-    except Exception as e:                                      # noqa: BLE001
-        print(f"panel raised: {e}")
+try:
+    with contextlib.redirect_stdout(buf):
+        try:
+            query.show_decisions(store.conn)
+        except Exception as e:                                  # noqa: BLE001
+            print(f"panel raised: {e}")
+finally:
+    query.now_et = _real_now_et           # never leave the module patched
 out = buf.getvalue()
 check("H4 a window-closed plan reads WINDOW CLOSED and never STALE",
       ("WINDOW CLOSED" in out) and ("STALE" not in out),
