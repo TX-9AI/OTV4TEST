@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v0.97
+# BACKLOG.md — OTV4TEST — v0.98
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -234,6 +234,22 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v0.98 — 2026-09-22 — OTV4TEST r96 — r94 TRADED A LOUD FAILURE FOR A SILENT
+ONE, AND I CAUGHT IT MINUTES AFTER BAKING IT.**
+r94 anchored VWAP at the 09:30 open. 📊 **The live 1m tick frame is SIXTY
+BARS** (measured 13:53 ET: 12:55→13:54), so a cold start folded one hour and
+stamped it with a session anchor — **745.4264 against a true 744.7697.**
+🔴 **That is worse than the bug r94 fixed:** a mismatched anchor FAILS CLOSED
+and names the reason; a partial window PASSES validation and feeds the
+butterfly's waiver a confident wrong number (§0.5). ✅ On a fresh anchor the
+accumulator now deep-fetches **420** 1m bars — the idiom the ORB engine already
+uses for `rebuild_from_tape` — and **reports where the fold really began**, so
+a short session fails the reader's own test by construction rather than by a
+second rule that could drift. Proven both ways: deep fetch available →
+**744.7841 vs a true 744.7841, delta 0.0000**; deep fetch forced unavailable →
+**anchor reported as 12:57, reader refuses, and it warns.**
+
 
 **v0.97 — 2026-09-22 — OTV4TEST r94 — VWAP WAS COMPUTED CORRECTLY FOR TWO DAYS
 AND READ FROM A ROW NOBODY WRITES.**

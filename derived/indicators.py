@@ -1,5 +1,15 @@
 """
-derived/indicators.py  v4.2
+derived/indicators.py  v4.3
+v4.3  2026-09-22  OTV4TEST r96 — A COLD START REBUILDS FROM THE TAPE, AND r94 WAS
+      HALF A FIX. r94 anchored VWAP at the 09:30 open, but the live tick frame
+      is SIXTY BARS - measured 2026-09-22 13:53 ET, 12:55->13:54 - so a cold
+      start folded one hour and stamped it with a session anchor: 745.4264
+      against a true 744.7697. WORSE THAN THE BUG r94 FIXED: a mismatched
+      anchor FAILS CLOSED and says why, a partial window PASSES and feeds the
+      butterfly's waiver a plausible wrong number. On a fresh anchor it now
+      deep-fetches 420 1m bars - the same idiom the ORB engine already uses
+      via rebuild_from_tape - and REPORTS WHERE THE FOLD REALLY BEGAN, so a
+      short session fails the reader's own test by construction.
 v4.2  2026-09-22  OTV4TEST r94 — VWAP ANCHORS AT THE SESSION OPEN, NOT MIDNIGHT.
       Operator, twice: "don't anchor VWAP to midnight" and "I want the VWAP
       anchored correctly". `idx[-1].normalize()` returned MIDNIGHT of the bar's
@@ -51,6 +61,11 @@ from __future__ import annotations
 
 import pandas as _pd
 
+# ⚠️ r96 — HOW LATE THE FIRST FOLDED BAR MAY SIT AND STILL COUNT AS THE
+# SESSION. Two minutes absorbs a bar the store has not written yet; it
+# does not absorb the three-and-a-half-hour gap measured on 2026-09-22.
+_COVERAGE_SLACK_MS = 120_000
+
 import logging
 import time
 from typing import Optional
@@ -79,6 +94,7 @@ class IndicatorEngine(DerivedEngine):
     def __init__(self, store=None, symbol: str = ""):
         super().__init__(store)
         self.symbol = symbol
+        self._first_bar_ms = None
         # VWAP accumulators, per (symbol, session-anchor).
         self._pv: float = 0.0
         self._v: float = 0.0
@@ -120,6 +136,32 @@ class IndicatorEngine(DerivedEngine):
                 self._pv, self._v = 0.0, 0.0
                 self._anchor_ms = anchor_ms
                 self._last_bar_ms = None
+                self._first_bar_ms = None
+                # 🔴 r96 — A COLD START MID-SESSION MUST REBUILD FROM THE TAPE,
+                # NOT FROM WHATEVER THE TICK FRAME HAPPENS TO HOLD.
+                # MEASURED 2026-09-22 13:53 ET, minutes after r94 baked: the
+                # live 1m frame is SIXTY BARS (12:55->13:54), so anchoring at
+                # 09:30 and folding that frame produced a ONE-HOUR VWAP wearing
+                # a session-open anchor — 745.4264 against a true 744.7697.
+                # 🔴 AND THAT IS WORSE THAN THE BUG r94 FIXED. Before r94 a
+                # mismatched anchor made `vwap_now()` FAIL CLOSED and say why;
+                # a partial-window value PASSES validation and feeds the
+                # butterfly's waiver a plausible wrong number. §0.5 — silence
+                # is the worst failure, and a confident wrong number is worse
+                # than silence.
+                # 🔑 SAME IDIOM THE ORB ENGINE ALREADY USES on a cold start
+                # (`fetch_candles(sym, "1m", ORB_REBUILD_1M_BARS)` ->
+                # `rebuild_from_tape`), not a new mechanism.
+                try:
+                    from data.market_data import fetch_candles as _deep
+                    _deep_df = _deep(self.symbol or "", "1m", 420)
+                    if _deep_df is not None and not _deep_df.empty:
+                        df_1m = _deep_df
+                        idx = df_1m.index
+                except Exception as _de:                       # noqa: BLE001
+                    logger.warning("VWAP cold start: deep 1m fetch failed (%s) "
+                                   "— folding the tick frame only; the value "
+                                   "may cover a partial session", _de)
             for ts, row in df_1m.iterrows():
                 ms = int(ts.timestamp() * 1000)
                 if ms < anchor_ms:
@@ -131,12 +173,31 @@ class IndicatorEngine(DerivedEngine):
                 if None in (h, l, c) or v is None or v <= 0:
                     continue
                 typical = (h + l + c) / 3.0
+                if self._first_bar_ms is None:
+                    self._first_bar_ms = ms
                 self._pv += typical * v
                 self._v += v
                 self._last_bar_ms = ms
+            # ⚠️ r96 — RECORD WHERE THE FOLD ACTUALLY BEGAN. Even 420 bars
+            # can fall short (a late boot, a thin store), and the reader must
+            # be able to tell a full session from a partial one rather than
+            # trusting the anchor stamp. `vwap_now()` refuses when this sits
+            # materially after the anchor.
             if self._v <= 0:
                 return None, None, None, self._anchor_ms
-            return (self._pv / self._v, self._pv, self._v, self._anchor_ms)
+            # 🔑 THE ANCHOR WE REPORT IS WHERE THE FOLD REALLY STARTED, not
+            # where we wished it had. A partial session then fails the reader's
+            # "is this today's open?" test by construction, instead of wearing
+            # a session stamp it did not earn — the r94 defect this closes.
+            _eff = self._first_bar_ms if self._first_bar_ms is not None else self._anchor_ms
+            _covered = abs(float(_eff) - float(self._anchor_ms)) <= _COVERAGE_SLACK_MS
+            if not _covered:
+                logger.warning("VWAP covers a PARTIAL session — first folded bar "
+                               "%.0fs after the anchor; reporting the real start so "
+                               "the reader refuses it",
+                               (float(_eff) - float(self._anchor_ms)) / 1000.0)
+            return (self._pv / self._v, self._pv, self._v,
+                    self._anchor_ms if _covered else _eff)
         except Exception as exc:                                # noqa: BLE001
             logger.debug("vwap accumulate skipped: %s", exc)
             return None, None, None, self._anchor_ms

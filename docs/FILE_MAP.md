@@ -220,7 +220,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `data/market_data.py`
 - **calls:** `config.py`, `data/candle_feed.py`, `data/tasty_client.py`, `utils/time_utils.py`
-- **called by:** `analysis/get_orb_range.py`, `data/data_cache.py`, `data/macro_data.py`, `main.py`, `query.py`
+- **called by:** `analysis/get_orb_range.py`, `data/data_cache.py`, `data/macro_data.py`, `derived/indicators.py`, `main.py`, `query.py`, `tests/check_bfly_vwap_band.py`
 
 ### `data/open_interest.py`
 - **calls:** (none)
@@ -271,8 +271,8 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** `derived/snapshot.py`, `strategy/atp_butterfly_plan.py`, `strategy/breakout_plan.py`, `strategy/gex_pin_butterfly.py`, `tests/check_gamma_regime.py`
 
 ### `derived/indicators.py`
-- **calls:** `derived/base.py`
-- **called by:** `derived/registry.py`, `tests/check_indicator_votes.py`
+- **calls:** `data/market_data.py`, `derived/base.py`
+- **called by:** `derived/registry.py`, `tests/check_bfly_vwap_band.py`, `tests/check_indicator_votes.py`
 
 ### `derived/level_map.py`
 - **calls:** `analysis/liquidity_mapper.py`
@@ -587,7 +587,7 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_bfly_vwap_band.py`
-- **calls:** `data/derived_store.py`, `derived/__init__.py`, `derived/anchors.py`, `strategy/__init__.py`, `strategy/gex_pin_butterfly.py`, `strategy/plan.py`, `utils/time_utils.py`
+- **calls:** `data/derived_store.py`, `data/market_data.py`, `derived/__init__.py`, `derived/anchors.py`, `derived/indicators.py`, `strategy/__init__.py`, `strategy/gex_pin_butterfly.py`, `strategy/plan.py`, `utils/time_utils.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_boot_sweep.py`

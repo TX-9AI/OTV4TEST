@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""tests/check_bfly_vwap_band.py  v1.1
+"""tests/check_bfly_vwap_band.py  v1.2
+v1.2  2026-09-22  OTV4TEST r96 — A7 pins that a PARTIAL session reports its real start
+      rather than the open. Born red against r94, which stamped a one-hour
+      VWAP with a session anchor and passed every other check in this file.
 v1.1  2026-09-22  OTV4TEST r94 — A5/A6, AND THE OLD FIXTURE IS WHY THIS HID.
       It wrote the literal "primary" and then A4 asserted the reader reads
       "primary" - a closed loop supplying its own answer, section 0.4. A5 now
@@ -233,6 +236,41 @@ def main():
     _v_mid, _why_mid = A.vwap_now()
     check("A6 a MIDNIGHT-anchored row is refused, and the reason says so",
           _v_mid is None and "09:30" in (_why_mid or ""), f"{_v_mid} / {_why_mid}")
+
+    # ══ A7 — A PARTIAL SESSION MAY NOT WEAR A SESSION-OPEN STAMP (r96) ════
+    # 🔴 THE DEFECT r94 INTRODUCED AND r96 CLOSES. r94 moved the anchor to the
+    # 09:30 open, but the live tick frame is SIXTY BARS — measured 2026-09-22
+    # 13:53 ET, 12:55->13:54 — so a cold start folded one hour and stamped it
+    # with a session anchor: 745.4264 against a true 744.7697.
+    # ⚠️ THAT IS WORSE THAN THE BUG r94 FIXED. A mismatched anchor FAILS CLOSED
+    # and says why; a partial-window value PASSES and feeds the butterfly's
+    # waiver a plausible wrong number (§0.5).
+    # 🔑 SO THE ENGINE REPORTS WHERE THE FOLD REALLY BEGAN, and a short session
+    # then fails the reader's own "is this today's open?" test by construction
+    # rather than by a second rule that could drift out of step.
+    import pandas as _pdq
+    from derived.indicators import IndicatorEngine as _IE
+    _now_et = datetime.fromtimestamp(now, ET)
+    _open = _now_et.replace(hour=9, minute=30, second=0, microsecond=0)
+    # a frame that starts THREE HOURS after the open, deep fetch unavailable
+    _idx = _pdq.date_range(_open + timedelta(hours=3), periods=30, freq="1min", tz=ET)
+    _df = _pdq.DataFrame({"high": 100.5, "low": 99.5, "close": 100.0, "volume": 1000.0},
+                         index=_idx)
+    import data.market_data as _md
+    _keep = getattr(_md, "fetch_candles", None)
+    _md.fetch_candles = lambda *a, **k: None          # force the partial path
+    try:
+        _e = _IE.__new__(_IE)
+        _e.symbol = "TST"; _e._pv = _e._v = 0.0
+        _e._anchor_ms = None; _e._last_bar_ms = None; _e._first_bar_ms = None
+        _v7, _, _, _a7 = _e._accumulate_vwap(_df)
+    finally:
+        if _keep is not None:
+            _md.fetch_candles = _keep
+    _open_ms = int(_open.timestamp() * 1000)
+    check("A7 a PARTIAL session reports its real start, not the open",
+          _v7 is not None and _a7 is not None and abs(_a7 - _open_ms) > 120_000,
+          f"vwap={_v7} anchor_off_by={(_a7 - _open_ms)/1000.0 if _a7 else None:.0f}s")
 
     print()
     if _fails:
