@@ -964,7 +964,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_orb_plan.py`
 - **calls:** `analysis/orb_engine.py`, `config.py`, `data/options_chain.py`, `execution/exit_engine.py`, `risk/risk_manager.py`, `strategy/__init__.py`, `strategy/orb_plan.py`, `strategy/orb_strategy.py`, `strategy/plan.py`
-- **called by:** (not imported) — referenced in `devtools.sh`, `docs/PLAN_SPEC.md`, `docs/PORT_MANIFEST.md`
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/BACKLOG.md`, `docs/PLAN_SPEC.md`, `docs/PORT_MANIFEST.md`
 
 ### `tests/check_orb_rearm_zone.py`
 - **calls:** `analysis/__init__.py`, `analysis/orb_engine.py`

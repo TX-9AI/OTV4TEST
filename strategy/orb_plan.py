@@ -1,5 +1,14 @@
 """
-strategy/orb_plan.py  v1.2
+strategy/orb_plan.py  v1.3
+v1.3  2026-09-23  OTV4TEST r118 — THE PITCHFORK LEAVES THE ORB TRADE. The operator,
+      2026-09-23: "nothing about the pitchfork needs to be addressed inside the
+      ORB trade." The three fork stamps on the prepared row are removed:
+      `tine_to_target`, the r103 `rail_context` block and `fork15`. All were
+      record-only (verdict None), so no ORB decision changes. MEASURED on this
+      box's plan_check before removal: anchor_fork15 0 of 114 rows ever held a
+      value (the ForkEngine builds no 15m frame); anchor_tine_to_target 8 of
+      114; the ten anchor_rail_* fields 36 rows, only `rail_fork_built`
+      populated. VWAP distance and the boundary's aggressor share stay.
 v1.2  2026-09-22  OTV4TEST r103 - records the rail projection beside
       `tine_to_target`, which has banked None on every row because
       `nearest_tine` read the ledger r19 empties.
@@ -349,16 +358,11 @@ class ORBPlan:
         t.check("floor_premium", prep.floor_premium, None)
         t.check("size_provisional", prep.size_provisional, prep.size_provisional > 0)
         t.debit = prep.premium
-        # r12 — ANCHORS, record only (derived/anchors.py): does a target under a
-        # tine get reached; does the boundary's tape lean the break's way.
+        # r12 — ANCHORS, record only (derived/anchors.py): does the boundary's
+        # tape lean the break's way. r118 — no pitchfork field here, by ruling.
         from derived import anchors as _A
         _A.stamp(t, vwap_minus_price=(lambda v: None if v is None else v - price_now)(_A.vwap()),
-                 aggressor_at_boundary=_A.aggressor_share(prep.boundary),
-                 tine_to_target=_A.nearest_tine(prep.target_100),
-                 # r103 — same repair: `nearest_tine` read a table r19
-                 # guarantees is empty, so this banked None on every row.
-                 **_A.rail_context(prep.target_100),
-                 fork15=_A.fork_dir("15m"))
+                 aggressor_at_boundary=_A.aggressor_share(prep.boundary))
 
         if armed:
             prep.waiting_on = "retest"

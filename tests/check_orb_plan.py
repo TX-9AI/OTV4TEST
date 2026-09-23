@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
-tests/check_orb_plan.py  v1.2
+tests/check_orb_plan.py  v1.3
+v1.3  2026-09-23  OTV4TEST r118 — P17: the prepared ORB row carries NO pitchfork
+      anchor (operator: "nothing about the pitchfork needs to be addressed
+      inside the ORB trade") while VWAP distance and the boundary's aggressor
+      share are still stamped. Red on r117, which stamped tine_to_target,
+      fork15 and the rail_* block. And the r106 venv bootstrap: under the
+      lander's system python3 this died on pandas before printing a check.
 v1.2  2026-09-13  OTV4TEST r20 — the `liq_map=None` kwarg dropped from every
       `ORBStrategy.generate_signal` call; nothing else changed. The parameter is
       REMOVED rather than ignored, so a harness still passing it raises — which
@@ -35,6 +41,7 @@ acceptance test, docs/FORK_BRIEF.md §5).
   P15  🔴 NO ATR FLOOR: a 0.01% ATR vol_state still fires
   P16  outside 09:35–11:30 the plan OBSERVES and does not write: one DORMANT
        row on the transition, silence after (operator 2026-09-08)
+  P17  🔴 no pitchfork anchor on the prepared row (operator 2026-09-23, r118)
 
 Born red at 910ad0e (OTV4TEST r1): P12 on the engine re-arming at bar 13, P13
 on the stall exiting the ORB record, then P0 (`strategy.orb_plan` absent) —
@@ -49,6 +56,10 @@ import sys
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
+import glob as _glob                                             # r106 venv bootstrap
+for _sp in _glob.glob(os.path.join(_root, "venv", "lib", "python*", "site-packages")):
+    if _sp not in sys.path:
+        sys.path.insert(1, _sp)
 
 FAILED = []
 
@@ -251,6 +262,14 @@ def main():
           f"stop={p3.stop} strike={p3.target_strike} prem={p3.premium} floor={p3.floor_premium}")
     check("P3c provisional size = floor(width / boundary-to-stop) = floor(1.49/0.60) = 2",
           p3.size_provisional == 2, f"size={p3.size_provisional}")
+    # 🔴 P17 (r118) — no pitchfork anchor on the ORB's prepared row
+    _anch = {r[0] for r in st.conn.execute(
+        "SELECT DISTINCT check_name FROM plan_check WHERE strategy='ORBStrategy' "
+        "AND check_name LIKE 'anchor_%'")}
+    _fork = sorted(a for a in _anch if "tine" in a or "fork" in a or a.startswith("anchor_rail_"))
+    check("P17 🔴 the prepared ORB row stamps no pitchfork anchor; VWAP and aggressor stay",
+          not _fork and {"anchor_vwap_minus_price", "anchor_aggressor_at_boundary"} <= _anch,
+          f"fork anchors {_fork}; all anchors {sorted(_anch)}")
 
     # ── P4 confirmed long -> ready, parity with select_orb_strike ─────────
     e3 = _retest(_break(_engine_with_range(), "long"), "long")
