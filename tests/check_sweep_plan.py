@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """
-tests/check_sweep_plan.py  v1.2
+tests/check_sweep_plan.py  v1.3
+v1.3  2026-09-23  OTV4TEST r120 — E6-E8: THE EXIT'S BREACH IS THE OPERATOR'S BREACHED
+      (a 1m close beyond, then the next 1m open beyond), through the same
+      level_rules the book uses. E1/E2 hold under both rules and so could not
+      tell them apart; E6 (the forming bar opens beyond after ONE close — exit),
+      E7 (two closes beyond, each next bar opening back INSIDE — hold) and E8
+      (a breach since entry is not forgotten when price comes back) are red
+      on r119's two-close count for exactly that reason.
 v1.2  2026-09-23  OTV4TEST r113 — the r106 venv bootstrap (refused under the lander's system python3 on pandas).
 v1.1  2026-09-13  OTV4TEST r24 — X1 DRIVES THE RULE, NOT THE HOOK'S SOURCE. The spent lock is
       read from trades.db now; X1 writes a breach exit and a stop-out as REAL
@@ -18,6 +25,9 @@ v1.0  2026-09-09  OTV4TEST r5 — THE SWEEP VERTICAL'S EXITS, ON HYPOTHETICALS
        (operator: "2 minutes into a dead thesis could rack up some serious losses")
   E4   the nickel close at 0.05
   E5   a TCS vertical is untouched by the sweep's breach rule (setup_type routes it)
+  E6   🔴 r120: one close beyond, the FORMING bar opens beyond -> BREACHED, exit now
+  E7   🔴 r120: two closes beyond, each next bar opens back inside -> NOT breached, hold
+  E8   🔴 r120: breached since entry, price back inside now -> still exits (a breach is final)
   X1   trade_logger marks the level SPENT only on the breach exit, not on a stop-out
 
 Born red at r4: E1 (no breach exit), X1 (spent on any stop-out).
@@ -49,6 +59,15 @@ def _frame(closes, start="10:40"):
     import pandas as pd
     return pd.DataFrame([{"open": c, "high": c + 0.1, "low": c - 0.1, "close": c} for c in closes],
                         index=pd.date_range(f"2026-09-09 {start}", periods=len(closes), freq="1min"))
+
+
+def _ohlc(rows, start="10:40"):
+    """(open, close) pairs -> a 1m frame; high/low bracket both. The LAST row is
+    the forming bar, as in the live df_1m."""
+    import pandas as pd
+    return pd.DataFrame([{"open": o, "high": max(o, c) + 0.05, "low": min(o, c) - 0.05, "close": c}
+                         for o, c in rows],
+                        index=pd.date_range(f"2026-09-09 {start}", periods=len(rows), freq="1min"))
 
 
 def main():
@@ -97,6 +116,23 @@ def main():
         d = xe._evaluate_condor_leg(tcs, 1.40, df_1m=_frame([96.4, 95.9, 95.8, 95.85]))
         check("E5 a TCS vertical is not exited by the sweep's breach rule",
               not (d.should_exit and "sweep_breach" in str(d.exit_reason)), str(d.exit_reason))
+        # E6-E8 (r120) — the operator's BREACHED: a close beyond, then the next OPEN beyond
+        d = xe._evaluate_condor_leg(dict(base), 1.40, df_1m=_ohlc([(96.4, 96.4), (96.3, 95.9), (95.8, 95.8)]))
+        check("E6 🔴 one close beyond + the FORMING bar opens beyond -> BREACHED, exit (no second close needed)",
+              d.should_exit and "sweep_breach_accepted: BREACHED" in str(d.exit_reason), str(d.exit_reason))
+        d = xe._evaluate_condor_leg(dict(base), 1.40,
+                                    df_1m=_ohlc([(96.4, 96.4), (96.3, 95.9), (96.2, 95.8), (96.1, 96.1)]))
+        check("E7 🔴 two closes beyond, each next bar OPENS back inside -> not breached, HOLD",
+              not d.should_exit, str(d.exit_reason))
+        d = xe._evaluate_condor_leg(dict(base), 1.40,
+                                    df_1m=_ohlc([(96.4, 96.4), (96.3, 95.9), (95.8, 96.3), (96.4, 96.5), (96.5, 96.5)]))
+        check("E8 🔴 breached since entry (close 95.9, open 95.8), back inside now -> still exits",
+              d.should_exit and "sweep_breach_accepted" in str(d.exit_reason), str(d.exit_reason))
+        # and a bar BEFORE the entry minute is not judged: the same breach at 10:20 on an 10:32 entry
+        d = xe._evaluate_condor_leg(dict(base), 1.40,
+                                    df_1m=_ohlc([(96.4, 96.4), (96.3, 95.9), (95.8, 96.3), (96.4, 96.5)], start="10:20"))
+        check("E8b a breach BEFORE the entry minute is not the trade's -> HOLD",
+              not d.should_exit, str(d.exit_reason))
     finally:
         XE.datetime, XE.is_hard_close_time = _real_dt, _real_hc
 

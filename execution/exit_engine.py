@@ -1,5 +1,22 @@
 """
-execution/exit_engine.py  v4.25
+execution/exit_engine.py  v4.26
+v4.26 2026-09-23  OTV4TEST r120 — THE SWEEP'S BREACH EXIT RUNS ON THE OPERATOR'S
+      BREACHED (LVL.15 step 4). *"Price was accepted beyond the level ... as
+      evidenced by the closure of a 1-min candle beyond the level [and the]
+      start of a one minute candle formation on the pierced side."* The exit
+      counted TWO CLOSED BARS beyond the pool (`ACCEPT_CLOSES`) — the third
+      breach definition in the tree, beside the book's and `is_spent`'s. It now
+      judges the bars since entry with `derived/level_rules.judge`, the same
+      function the level book uses: a 1m close beyond the pool, then the next
+      1m OPEN beyond. Live, that next bar is the forming one, whose open is
+      known the moment it starts. REPLAYED on all 11 sweep trades on this box:
+      on the 8 that exited on the 2-close rule the replay reproduces every exit
+      minute, and BREACHED fires 1 minute earlier on 7 and the same minute on
+      1; on two that bled to the premium stop it fires EARLIER (09-14 PDL
+      10:20 vs the 11:06 -$306 stop, 09-22 asia 09:49 vs the 09:51 -$160
+      stop). Two closes whose next bars OPEN BACK INSIDE are no longer a breach
+      (the book agrees they are not). The exit label `sweep_breach_accepted`
+      is kept: `is_spent` and the reports read it.
 v4.25 2026-09-22  OTV4TEST r91 — THE STRUCTURE-ANCHORED TRAIL, for ORB and
       Breakout only. Operator: *"I don't want the 25% premium stop anymore.
       Put a 25% trailing stop on it that follows the move... I want it from
@@ -1811,21 +1828,53 @@ class ExitEngine:
         return ""
 
     def _sweep_breach_accepted(self, record, df_1m) -> str:
-        """SWEEP verticals only. ACCEPT_CLOSES consecutive closed 1m bars beyond
-        the pool the spread was sold against -> the exit reason, else ""."""
+        """SWEEP verticals only. The pool BREACHED since entry, on the operator's
+        definition -> the exit reason, else "".
+
+        r120 — `derived/level_rules.judge` over the 1m bars since the entry
+        minute, INCLUDING the forming bar: a close beyond the pool, then the next
+        bar's OPEN beyond it. The forming bar contributes only its open to that
+        verdict (judge() reads the open first and stops at the breach); its
+        partial high/low/close can at most open a pending that nothing yet
+        follows. Judging every bar since entry, not the last pair, means a
+        breach is not forgotten because one poll missed its minute — a breached
+        level is dead (the book retires it for good)."""
         try:
             if str(record.get("setup_type") or "") != "sweep_credit_spread":
                 return ""
             pool = float(record.get("pool_price") or 0.0)
-            if pool <= 0 or df_1m is None or len(df_1m) < 3:
+            if pool <= 0 or df_1m is None or len(df_1m) < 2:
                 return ""
-            from derived.levels import ACCEPT_CLOSES
-            side = str(record.get("option_side") or "")
-            closes = [float(x) for x in df_1m["close"].iloc[-(ACCEPT_CLOSES + 1):-1]]
-            beyond = [(c > pool) if side == "call" else (c < pool) for c in closes]
-            if len(beyond) >= ACCEPT_CLOSES and all(beyond):
-                return (f"sweep_breach_accepted: {ACCEPT_CLOSES} closes beyond the pool "
-                        f"{pool:.2f} ({', '.join(f'{c:.2f}' for c in closes)}) — the level is SPENT")
+            import pandas as pd
+            from derived import level_rules as LR
+            side = LR.RESISTANCE if str(record.get("option_side") or "") == "call" else LR.SUPPORT
+            idx = df_1m.index
+            since = None
+            try:
+                et = pd.Timestamp(str(record.get("entry_time") or ""))
+                tz = getattr(idx, "tz", None)
+                if tz is not None:
+                    et = (et.tz_localize("UTC") if et.tzinfo is None else et).tz_convert(tz)
+                elif et.tzinfo is not None:
+                    et = et.tz_convert("America/New_York").tz_localize(None)
+                since = et.floor("min")
+            except Exception:                                   # noqa: BLE001
+                since = None
+            if since is None:
+                return ""                                       # no entry minute, no judgement
+            frame = df_1m[idx >= since]
+            if len(frame) < 2:
+                return ""
+            bars = [(i, float(r.open), float(r.high), float(r.low), float(r.close))
+                    for i, r in enumerate(frame.itertuples())]
+            events = LR.judge(bars, (pool, pool), side)
+            at = LR.first(events, LR.BREACHED)
+            if at is None:
+                return ""
+            c_prev, o_now = bars[at - 1][4], bars[at][1]
+            when = frame.index[at]
+            return (f"sweep_breach_accepted: BREACHED — 1m close {c_prev:.2f} beyond the pool "
+                    f"{pool:.2f}, next open {o_now:.2f} beyond ({when:%H:%M}) — the level is SPENT")
         except Exception as exc:                                # noqa: BLE001
             logger.debug("sweep breach read failed: %s", exc)
         return ""
@@ -2619,8 +2668,8 @@ class ExitEngine:
         # commit, because a guard outliving the thing it guarded is this repo's
         # most-repeated bug shape.
 
-        # v4.13 (OTV4TEST r5) — the sweep's thesis is the level HOLDS; two
-        # closes beyond it is the negation. AFTER the 15%-of-risk stop by the
+        # v4.13 (OTV4TEST r5) — the sweep's thesis is the level HOLDS; its
+        # BREACH (r120: the operator's close-then-open, level_rules) is the negation. AFTER the 15%-of-risk stop by the
         # operator's ruling: "2 minutes into a dead thesis could rack up some
         # serious losses" — the floor answers first, the breach names the reason.
         _sb = self._sweep_breach_accepted(record, df_1m)

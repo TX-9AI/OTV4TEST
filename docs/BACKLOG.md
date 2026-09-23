@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v1.14
+# BACKLOG.md — OTV4TEST — v1.15
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -238,6 +238,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v1.15 — 2026-09-23 — OTV4TEST r120 — THE SWEEP'S BREACH EXIT RUNS ON THE OPERATOR'S BREACHED (LVL.15 step 4, part 1).** exit_engine's `_sweep_breach_accepted` counted two closed bars beyond the pool; it now judges the bars since entry with derived/level_rules.judge - a 1m close beyond, then the next 1m open beyond (live: the forming bar's open). Replayed on all 11 sweep trades: the old rule's replay reproduces every actual breach-exit minute; the new one fires 1 minute earlier on 7 of 8, and cuts two premium-stop losers earlier (09-14 PDL 10:20 vs the 11:06 -$306 stop; 09-22 asia 09:49 vs 09:51 -$160). is_spent is NOT touched: every level lock predates the book, and since r116 a breached rail survives, so for rails the lock is the only guard against re-entry - that is the operator's call (part 2). Gate: check_sweep_plan E6-E8b.
 
 **v1.14 — 2026-09-23 — OTV4TEST r119 — MAINLINE'S TRADE REPORTS REPLACE DEVTOOLS ITEM 35.** Operator: "let's get those reports borrowed, repurposed & added to our devtools menu. You can retire our current one option 35 - I hate it." tests/trade_report.py is day_trader_pro/trade_report.py v1.18 reading this box's trades.db read-only instead of S3 bundles (proven first: the unmodified file rendered our 138 rows). Item 35 is now TRADE BREAKDOWN (mainline 47) and 36 TRADES TAKEN (mainline 48); every later item moves down one. VOID rows are excluded and named (orb-T1, the 09-10 lander fixture, read as a real trade). Gate: check_trade_report T1-T7.
 
