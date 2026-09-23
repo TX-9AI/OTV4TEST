@@ -1,6 +1,23 @@
 #!/usr/bin/env python3
-"""tests/check_claude_purge.py — v1.0
+"""tests/check_claude_purge.py — v1.1
 tmpfs IS PURGED BEFORE A THREAD STARTS, AND CLAUDE LAUNCHES ON THE SUBSCRIPTION.
+
+v1.1  2026-09-23 — OTV4TEST r107. P9 RE-DERIVED TO THE STRONGER CONTRACT, NOT
+      LOOSENED. It matched the literal `if a.dry_run or agent_alive():`, and
+      r107 made the skip ALSO require that no `claude` process of this user is
+      alive (`live_claude_pids()`), because `agent_alive()` asks about one tmux
+      name and check_claude_boot B7 defeated it by overriding that name — ten
+      times the real scratch root was purged under a running agent. P9 now
+      requires BOTH terms in the gate and the pid scan feeding it, so dropping
+      either one goes red.
+      🔴 AND P1/P2 NOW ARCHIVE INTO A THROWAWAY HOME. They purged fixtures into
+      the REAL ~/claude_scratch_archive (60 litter entries by 2026-09-23), and
+      the archive name is stamped to the SECOND — so two purges inside one
+      second collided: `shutil.move` nested the second `sessOLD` INSIDE the
+      first (`20260923-011250-sessOLD/sessOLD` is on disk) or failed into the
+      bare `except`, and P1/P2 went red on correct code. Reproduced on the
+      unmodified r107 tool, 2 runs of 2 back to back. P8 already redirected
+      HOME; P1 and P2 did not.
 
 v1.0  2026-09-20 — OTV4TEST r70 (BOX.12 / AUTH.1).
 
@@ -111,13 +128,29 @@ guard("P0 the purge REFUSES a root outside /tmp/claude-<digits>",
       lambda: cb.purge_scratch("/etc")[0] == 0 and os.path.isdir("/etc"))
 
 
+def _own_home():
+    """A throwaway HOME, so a fixture's archive never lands in the real one."""
+    home = tempfile.mkdtemp(prefix="fakehome_")
+    old = os.environ.get("HOME")
+    os.environ["HOME"] = home
+    return home, old
+
+
+def _restore_home(home, old):
+    if old is not None:
+        os.environ["HOME"] = old
+    shutil.rmtree(home, ignore_errors=True)
+
+
 def _p1():
     d = _scratch()
+    home, old = _own_home()
     try:
         os.environ.pop("CLAUDE_SCRATCH", None)
         n, _ = cb.purge_scratch(d)
         return n == 2 and os.listdir(d) == []
     finally:
+        _restore_home(home, old)
         shutil.rmtree(d, ignore_errors=True)
 
 
@@ -126,12 +159,14 @@ guard("P1 it removes stale session directories", _p1)
 
 def _p2():
     d = _scratch()
+    home, old = _own_home()
     try:
         os.environ["CLAUDE_SCRATCH"] = os.path.join(d, "sessLIVE")
         n, _ = cb.purge_scratch(d)
         return n == 1 and os.listdir(d) == ["sessLIVE"]
     finally:
         os.environ.pop("CLAUDE_SCRATCH", None)
+        _restore_home(home, old)
         shutil.rmtree(d, ignore_errors=True)
 
 
@@ -218,9 +253,11 @@ guard("P8 it ARCHIVES rather than deletes — the bytes still exist after", _p8)
 def _p9():
     """A live session must make the purge a NO-OP, not a smaller purge."""
     src = _nocomments(_src("tools/claude_boot.py"))
-    # the decision must be gated on agent_alive(), in main(), before purging
-    m = re.search(r"if a\.dry_run or agent_alive\(\):", src)
-    return m is not None and "scratch purge SKIPPED" in src
+    # the decision must be gated on agent_alive() AND on no live claude
+    # process (r107), in main(), before purging
+    m = re.search(r"if a\.dry_run or agent_alive\(\) or _live:", src)
+    fed = re.search(r"_live = live_claude_pids\(\)", src)
+    return m is not None and fed is not None and "scratch purge SKIPPED" in src
 
 
 guard("P9 a LIVE session skips the purge entirely (the ordering hazard)", _p9)

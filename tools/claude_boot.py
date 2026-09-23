@@ -1,7 +1,27 @@
 #!/usr/bin/env python3
-"""tools/claude_boot.py — v1.2
+"""tools/claude_boot.py — v1.3
 RAISE AN AGENT SESSION AT BOOT, AND PROVE IT IS ACTUALLY RUNNING.
 
+v1.3 (2026-09-23) — OTV4TEST r107. THE PURGE WAS MOVING A LIVE AGENT'S FILES
+      OUT FROM UNDER IT, TEN TIMES IN TWO DAYS, AND ITS OWN CHECKER WAS THE
+      TRIGGER. `check_claude_boot` B7 runs this file for real with
+      `CLAUDE_TMUX` pointed at a session that does not exist, so
+      `agent_alive()` — which asks about ONE tmux name — said "nobody is
+      running", and `main()` purged the REAL /tmp/claude-<uid>, moving every
+      session directory (the live agent's scratchpad AND Claude Code's own
+      `bash-edit-diff`) into B7's throwaway HOME, which B7 never removed.
+      MEASURED from the orphans left in /tmp: session f3ef910f's files moved at
+      06:10 ET 2026-09-22 (the 08:00-boot sweep, two seconds after the agent
+      was raised) and at 16:27, 17:26, 17:39, 17:43, 17:47, 18:24, 18:48 and
+      19:25 ET — every full sweep that agent ran — and 06831d64's at 21:12 ET.
+      That agent reported files vanishing; the operator stopped it at 17:52.
+      🔑 TWO LAYERS NOW. (1) `live_claude_pids()` reads /proc: a `claude`
+      process owned by this uid is a live agent WHATEVER tmux calls it, and
+      both `main()` and `purge_scratch()` refuse the real root while one
+      exists. At a genuine cold boot there is none, so the boot purge is
+      unchanged. (2) `OT_CLAUDE_SCRATCH_ROOT` lets the gate aim the purge at a
+      fixture root; it is held to the same path regex, so it can only ever
+      name the real root or a `scratchtest` fixture.
 v1.2 (2026-09-21) — OTV4TEST r86. THE BOOT SESSION IS A HANDOFF, NOT A
       CONTINUE. Operator: *"instead of having a continued agent session on
       boot, it should be a handoff agent session that reads the previous
@@ -186,6 +206,36 @@ def _settle(budget: float = SETTLE_S) -> bool:
     return agent_alive()
 
 
+def live_claude_pids(uid: int | None = None) -> list[int]:
+    """PIDs of `claude` processes owned by `uid` (default: this user), from /proc.
+
+    🔴 r107 — THIS IS THE LIVENESS TEST THE PURGE NEEDED. `agent_alive()` asks
+    whether ONE named tmux session holds claude, which is the right question
+    for "is the boot session up" and the wrong one for "may I move scratch
+    directories": a claude in another session, outside tmux, or behind an
+    overridden `CLAUDE_TMUX` is invisible to it — and B7 overrides exactly that.
+    A process table has no name to override.
+    ⚠️ READ-ONLY and never raises: an unreadable /proc entry is skipped."""
+    want = os.getuid() if uid is None else int(uid)
+    out = []
+    try:
+        names = os.listdir("/proc")
+    except OSError:
+        return out
+    for n in names:
+        if not n.isdigit():
+            continue
+        try:
+            if os.stat("/proc/" + n).st_uid != want:
+                continue
+            with open("/proc/%s/comm" % n) as fh:
+                if fh.read().strip() == "claude":
+                    out.append(int(n))
+        except OSError:
+            continue
+    return out
+
+
 def tmpfs_free_mb(path: str = "/tmp") -> int | None:
     """Free megabytes on the filesystem holding `path`, or None."""
     try:
@@ -239,6 +289,13 @@ def purge_scratch(root: str | None = None) -> tuple[int, int | None]:
             or re.fullmatch(r"/tmp/[A-Za-z0-9_]*scratchtest[A-Za-z0-9_]*", root)):
         return 0, tmpfs_free_mb()
     if not os.path.isdir(root):
+        return 0, tmpfs_free_mb()
+    # 🔴 r107 — A REAL ROOT IS NEVER PURGED WHILE ITS OWNER HAS A LIVE AGENT.
+    # Checked HERE, at the destructive site, and not only by the caller: every
+    # future caller inherits it. The uid is read off the root itself, so the
+    # rule is "nobody's files move while that user's claude is running".
+    _real = re.fullmatch(r"/tmp/claude-(\d+)", root)
+    if _real and live_claude_pids(int(_real.group(1))):
         return 0, tmpfs_free_mb()
     keep = os.environ.get("CLAUDE_SCRATCH", "")
     arch = os.path.join(os.path.expanduser("~"), "claude_scratch_archive")
@@ -385,11 +442,18 @@ def main(argv=None) -> int:
     # 🔑 GATING ON `agent_alive()` MAKES THE PURGE AND THE RAISE ONE DECISION:
     # we only reclaim when we are replacing, which is the only moment it is safe.
     freed = tmpfs_free_mb()
-    if a.dry_run or agent_alive():
-        print("claude_boot: a session is live — scratch purge SKIPPED")
+    # 🔴 r107 — AND ANY LIVE claude PROCESS, NOT ONLY THE NAMED SESSION. The
+    # named-session test alone let B7 purge under a running agent ten times.
+    _live = live_claude_pids()
+    if a.dry_run or agent_alive() or _live:
+        print("claude_boot: a session is live — scratch purge SKIPPED"
+              + (" (claude pid(s) %s)" % ",".join(map(str, _live)) if _live else ""))
     else:
         try:
-            n, freed = purge_scratch()
+            # ⚠️ r107 — the gate aims this at a FIXTURE root; production sets
+            # nothing. `purge_scratch` refuses any root that is not the real
+            # one or a `scratchtest` path, so this cannot widen the target.
+            n, freed = purge_scratch(os.environ.get("OT_CLAUDE_SCRATCH_ROOT") or None)
             if n:
                 print("claude_boot: archived %d stale scratch dir(s)" % n)
         except Exception as exc:                                # noqa: BLE001

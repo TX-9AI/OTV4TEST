@@ -1,6 +1,20 @@
 #!/usr/bin/env python3
-"""tests/check_claude_boot.py — v1.0
+"""tests/check_claude_boot.py — v1.1
 AN AGENT SESSION IS RAISED AT BOOT, AND "UP" MEANS A LIVE CLAUDE PROCESS.
+
+v1.1  2026-09-23 — OTV4TEST r107. 🔴 THIS CHECKER WAS MOVING THE LIVE AGENT'S
+      FILES OUT FROM UNDER IT. B7 ran the REAL raiser with `CLAUDE_TMUX` aimed
+      at a session that does not exist, so `agent_alive()` said nobody was
+      running and `main()` purged the REAL /tmp/claude-<uid> into B7's temp
+      HOME, which B7 never removed. Ten orphans in /tmp prove it: session
+      f3ef910f's scratchpad at 06:10 ET 2026-09-22 (the boot sweep) and at
+      eight of that agent's full sweeps, and 06831d64's at 21:12 ET. B7 now
+      aims the purge at a `scratchtest` fixture (`OT_CLAUDE_SCRATCH_ROOT`) and
+      removes what it made; B7b pins the real root UNCHANGED across this whole
+      checker; B7c pins that the purge refuses a real root while its owner
+      has a live claude; B7d pins that `live_claude_pids()` really sees one.
+      ⚠️ B7b's born-red was demonstrated on a FIXTURE uid, not by running this
+      file at 60e0408: doing that would move the live agent's files again.
 
 v1.0  2026-09-20 — OTV4TEST r68 (BOX.11). The operator asked for a
       `claude --continue` session at boot and for the boot Telegram — the one
@@ -31,6 +45,10 @@ B1 and B1b are that pair, driven for real.
   B6  RemainAfterExit keeps the cgroup under the tmux server
   B7  the raiser exits 0 even when it can raise nothing (§29: ordering must
       never become a dependency that can hold up trading)
+  B7b CONTROL: the box's REAL scratch root is identical before and after
+  B7c the purge REFUSES a real root while its owner has a live claude, and
+      still purges one with none
+  B7d `live_claude_pids()` sees a real process named claude owned by this uid
   B8  the status round-trips, and a stale stamp reads as unknown
   B9  the REAL send_startup_alert carries the agent field, B9b says UNKNOWN
       when the stamp is absent — nothing here can reach Telegram (r22's idiom)
@@ -74,6 +92,10 @@ def guard(name, fn, detail=lambda: ""):
 
 TMP = tempfile.mkdtemp(prefix="cb_")
 os.environ["OT_AGENT_STATUS"] = os.path.join(TMP, "AGENT_STATUS")
+
+# 🔴 r107 — snapshot the REAL scratch root BEFORE anything runs; B7b compares.
+REAL_ROOT = "/tmp/claude-%d" % os.getuid()
+_real_before = sorted(os.listdir(REAL_ROOT)) if os.path.isdir(REAL_ROOT) else None
 
 try:
     import importlib.util
@@ -255,20 +277,89 @@ guard("B6b the unit bounds how long it can delay the bot",
 # ── B7 — the raiser never fails its unit ─────────────────────────────────────
 def _b7():
     d = tempfile.mkdtemp(prefix="nobin_")
-    # no claude anywhere on PATH and none at the likely paths
-    env = {"HOME": d, "PATH": d, "OT_AGENT_STATUS": os.path.join(d, "S"),
-           "CLAUDE_TMUX": "cb_nobin_%d" % os.getpid(),
-           "OT_CLAUDE_SETTLE_S": "1"}
-    r = subprocess.run([sys.executable,
-                        os.path.join(_root, "tools", "claude_boot.py")],
-                       capture_output=True, text=True, env=env)
-    txt = ""
-    if os.path.exists(env["OT_AGENT_STATUS"]):
-        txt = open(env["OT_AGENT_STATUS"]).read()
-    return r.returncode == 0 and "NOT AVAILABLE" in txt
+    # 🔴 r107 — THE PURGE IS AIMED AT A FIXTURE, AND BOTH DIRS ARE REMOVED.
+    # Without OT_CLAUDE_SCRATCH_ROOT this ran the real purge on the real root
+    # (the fake CLAUDE_TMUX makes agent_alive() say nobody is running) and
+    # parked every session's files in `d`, which was never cleaned up.
+    fx = tempfile.mkdtemp(prefix="scratchtest_")
+    os.makedirs(os.path.join(fx, "sessFIXTURE"), exist_ok=True)
+    try:
+        # no claude anywhere on PATH and none at the likely paths
+        env = {"HOME": d, "PATH": d, "OT_AGENT_STATUS": os.path.join(d, "S"),
+               "CLAUDE_TMUX": "cb_nobin_%d" % os.getpid(),
+               "OT_CLAUDE_SETTLE_S": "1", "OT_CLAUDE_SCRATCH_ROOT": fx}
+        r = subprocess.run([sys.executable,
+                            os.path.join(_root, "tools", "claude_boot.py")],
+                           capture_output=True, text=True, env=env)
+        txt = ""
+        if os.path.exists(env["OT_AGENT_STATUS"]):
+            txt = open(env["OT_AGENT_STATUS"]).read()
+        return r.returncode == 0 and "NOT AVAILABLE" in txt
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+        shutil.rmtree(fx, ignore_errors=True)
 
 
 guard("B7 it exits 0 and records NOT AVAILABLE when it can raise nothing", _b7)
+
+
+# ── B7c — the destructive site refuses while its owner's agent is alive ──────
+def _b7c():
+    """In-process, on a FIXTURE uid's root, with HOME redirected: never the box's."""
+    fake = 900000 + os.getpid() % 90000
+    assert fake != os.getuid()
+    root = "/tmp/claude-%d" % fake
+    home = tempfile.mkdtemp(prefix="b7chome_")
+    old_home = os.environ.get("HOME")
+    real = cb.live_claude_pids
+    try:
+        os.environ["HOME"] = home
+        shutil.rmtree(root, ignore_errors=True)
+        os.makedirs(os.path.join(root, "sessA")); os.makedirs(os.path.join(root, "sessB"))
+        cb.live_claude_pids = lambda uid=None: [4242] if uid == fake else real(uid)
+        n_live, _ = cb.purge_scratch(root)
+        kept = sorted(os.listdir(root))
+        cb.live_claude_pids = lambda uid=None: []
+        n_idle, _ = cb.purge_scratch(root)
+        return n_live == 0 and kept == ["sessA", "sessB"] and n_idle == 2 \
+            and os.listdir(root) == []
+    finally:
+        cb.live_claude_pids = real
+        if old_home is not None:
+            os.environ["HOME"] = old_home
+        shutil.rmtree(root, ignore_errors=True)
+        shutil.rmtree(home, ignore_errors=True)
+
+
+guard("B7c the purge REFUSES a real root while its owner has a live claude", _b7c)
+
+
+# ── B7d — the liveness test sees a real process, not a mock ─────────────────
+def _b7d():
+    """A copy of the Python interpreter named `claude` IS a claude process to
+    /proc. Makes this deterministic even when no agent is running (a plain SSH
+    land).
+    ⚠️ THE FIRST CUT COPIED `sleep` AND PASSED ON A ZOMBIE. On this box `sleep`
+    is a multi-call coreutils binary: renamed `claude` it printed "unknown
+    program 'claude'" and exited at once, and the un-reaped zombie still showed
+    comm=claude in /proc. §40.1 — a check whose shape destroys what it asserts.
+    So the process must be PROVEN RUNNING at the moment it is detected."""
+    src = os.path.realpath(sys.executable)
+    d = tempfile.mkdtemp(prefix="b7d_")
+    fake = os.path.join(d, "claude")
+    shutil.copy(src, fake)
+    p = subprocess.Popen([fake, "-c", "import time; time.sleep(30)"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        time.sleep(0.5)
+        running = p.poll() is None
+        return running and p.pid in cb.live_claude_pids()
+    finally:
+        p.kill(); p.wait()
+        shutil.rmtree(d, ignore_errors=True)
+
+
+guard("B7d live_claude_pids() sees a real process named claude", _b7d)
 
 
 # ── B8 — the stamp ───────────────────────────────────────────────────────────
@@ -316,6 +407,11 @@ guard("B0c no tmux session is left behind by this checker",
       lambda: subprocess.run(["tmux", "has-session", "-t", SESS],
                              capture_output=True).returncode != 0,
       lambda: "session %s absent" % SESS)
+
+guard("B7b CONTROL: the box's REAL scratch root is untouched by this checker",
+      lambda: (sorted(os.listdir(REAL_ROOT)) if os.path.isdir(REAL_ROOT) else None)
+      == _real_before,
+      lambda: REAL_ROOT)
 
 guard("B0b /etc/systemd/system is untouched",
       lambda: (sorted(os.listdir("/etc/systemd/system"))
