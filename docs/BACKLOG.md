@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v1.16
+# BACKLOG.md — OTV4TEST — v1.17
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -238,6 +238,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v1.17 — 2026-09-23 — OTV4TEST r122 — LVL.15 STEP 5: THE OLD LIQUIDITY LEDGER IS UNWIRED AND DELETED (analysis/liquidity_ledger.py, 399 lines).** main.py fed it every closed 1m bar from the old mapper's named pools and it wrote data/liquidity_ledger/<date>/QQQ.json each tick; nothing on this box read it back (the only file reader, warehouse/s3_push.py, is masked). The level book is the record. The 12 day-folders already written (100K) are left on disk. check_legacy_gone v1.1 adds it (G1 red on r121 at main.py). Next: liquidity_mapper.
 
 **v1.16 — 2026-09-23 — OTV4TEST r121 — LVL.15 STEP 5 BEGINS: analysis/pitchfork_lifecycle.py (502 lines) IS DELETED.** Operator: "Yes, for sure." Its own header said "Consumed by nothing, gating nothing"; an AST scan of every .py confirms no static, lazy or importlib import. New gate check_legacy_gone (G0 control, G1 nothing imports a deleted module) - each step-5 delivery appends its module. Remaining, in order: liquidity_ledger (fed every tick from main.py), liquidity_mapper (main.py, shadow/observer.py, level_map), level_map + the legacy path in derived/levels.py. 🔴 RULED 2026-09-23, recorded here as promised: after a breach exit on a RAIL, "no more tries today. Too much uncertainty" - so is_spent / tine_spent_key are NOT legacy; since r116 a breached rail survives and the lock is the only guard. Step 5 keeps them.
 

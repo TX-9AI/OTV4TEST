@@ -1,6 +1,9 @@
 #!/bin/bash
 # ==========================================================================
-# deploy/check_versions.sh  v4.4
+# deploy/check_versions.sh  v4.5
+# v4.5 2026-09-23 OTV4TEST r122 - the three A2.3/A2.4 pins on the old liquidity
+#      ledger are removed with it (analysis/liquidity_ledger.py deleted, main.py's
+#      feed unwired - LVL.15 step 5). A pin on a deleted file only adds a miss.
 # v4.4  2026-09-17  OTV4TEST r34 — the three operator scripts moved back to the repo root (configure.sh, status.py, query.py); this file's reference re-pointed. No behaviour change.
 # v4.3
 # v4.3  2026-09-11  OTV4TEST r14 — moved from the repo root to deploy/ (root cleanup); no behaviour change.
@@ -854,9 +857,6 @@ check "setup_ec2.sh"                     'GITHUB_REPO#https://'         "GitHub 
 check "analysis/liquidity_mapper.py"     "frame_start > start"          "A2.1 left-truncated section guard (wrong-price pools)"
 check "analysis/liquidity_mapper.py"     "_ny_utc_hours"                "A2.5 NY section hours derived from ET offset (2026-11-01)"
 check "main.py"                          "named_df=_named_level_frame()" "A2.1 deep 1h store frame feeds named levels"
-check "main.py"                          ".feed_frame(df_1m)"           "A2.4 gap-safe ledger feed (no closed bar skipped)"
-check "analysis/liquidity_ledger.py"     "_hydrate_same_date"           "A2.3 ledger survives the bake (restart hydrate)"
-check "analysis/liquidity_ledger.py"     '"last_bar_ts": self.last_bar_ts' "A2.3/A2.4 high-water mark persisted for gap recovery"
 check "execution/position_manager.py"    "def open_condor_leg_count"    "A2.2 leg count the announcement reads"
 check "tests/test_audit2_fixes.py"       "test_a22_why_the_old_site_was_dead" "A2 executing suite present (born-red verified vs 89cbaf6)"
 check "main.py"                          "ORB_WINDOW_MINUTES % 5"       "TCS.3 bound reads the 5m frame (1m-only lost 09:30 at ~10:35 ET)"

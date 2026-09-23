@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_legacy_gone.py  v1.0
+tests/check_legacy_gone.py  v1.1
 LVL.15 STEP 5 — THE OLD LEVEL CODE LEAVES, ONE MODULE AT A TIME, AND NOTHING
 STILL IMPORTS WHAT LEFT.
 
+v1.1  2026-09-23  OTV4TEST r122 — analysis/liquidity_ledger.py, fed every tick from
+      main.py and read back by nothing on this box.
 v1.0  2026-09-23  OTV4TEST r121 — analysis/pitchfork_lifecycle.py, the first.
 
 The operator approved step 5 on 2026-09-23 ("Yes, for sure"): delete the code
@@ -32,6 +34,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # module -> the revision that deleted it
 LEGACY = {
     "analysis.pitchfork_lifecycle": "r121",
+    "analysis.liquidity_ledger": "r122",
 }
 
 FAILED, RAN = [], []

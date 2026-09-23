@@ -1,5 +1,13 @@
 """
-main.py  v4.65
+main.py  v4.66
+v4.66 2026-09-23  OTV4TEST r122 — THE OLD LIQUIDITY LEDGER IS UNWIRED (LVL.15 step 5).
+      `_feed_liquidity_ledger` seeded analysis/liquidity_ledger from the old
+      mapper's named pools and fed it every closed 1m bar, writing
+      data/liquidity_ledger/<date>/QQQ.json each tick. NOTHING ON THIS BOX
+      READ IT BACK: no module imports get_ledger but this function, and the
+      only file reader is warehouse/s3_push.py, whose service is masked here.
+      The level book (derived/level_book, r110) is the record now. The module
+      is deleted in the same delivery; the _LEDGER globals go with it.
 v4.65 2026-09-22  OTV4TEST r97 — the pin-proximity gate, extracted as
       `pin_proximity_verdict(ctx)` so the checker drives the REAL decision
       rather than grepping for it (section 21). Keyed on the DECLARED
@@ -1486,8 +1494,6 @@ class BotState:
         self.blind_latch = BlindnessLatch()
 
 
-_LEDGER = None
-_LEDGER_DATE = None
 
 
 # ── A2.1 — a deep frame for NAMED levels only ────────────────────────────────
@@ -1580,61 +1586,6 @@ def _named_level_frame():
         return None
 
 
-def _feed_liquidity_ledger(liq_map, df_1m) -> None:
-    """LIQ.4 WIRING — seed the ledger at RTH open, feed it CLOSED 1m bars.
-
-    ⚠️ THE LEDGER HAS BEEN BUILT, TESTED AND COLLECTING NOTHING SINCE 08-13.
-    Every session it stays unwired is level history that CANNOT be recovered
-    later — the tape survives, but the running touch/hold/breach record does
-    not, and rebuilding it after the fact means re-deriving levels that the
-    mapper found live.
-
-    It implements the operator's retreat rule verbatim: a WICK reaching the
-    level is a touch, a CLOSE beyond is a breach, a CLOSE back on the origin
-    side is a hold, and a bar that never reaches does nothing.
-
-    ⚠️ CLOSED BARS ONLY, and exactly once each. `df_1m`'s last row is the
-    FORMING bar on most ticks — feeding it would count a wick that has not
-    finished printing and a close that is not a close, and would count the same
-    bar dozens of times as it forms. `_LEDGER_LAST_BAR` is the guard.
-
-    ⚠️ SEEDS COME FROM THE MAPPER, never re-derived here. LIQ.6 changed what a
-    named pool IS (sections, closed-only, a 3-deep ladder), so the ledger takes
-    whatever the mapper currently names — including the `(R1)`/`(R2)`/`(R3)`
-    rung suffixes — rather than holding a second opinion about levels.
-    """
-    global _LEDGER, _LEDGER_DATE
-    try:
-        if df_1m is None or getattr(df_1m, "empty", True) or len(df_1m) < 2:
-            return
-        from analysis.liquidity_ledger import get_ledger
-        today = str(df_1m.index[-1].date())
-        if _LEDGER is None or _LEDGER_DATE != today:
-            seeds = [(p.price, p.kind, p.name, True)
-                     for p in (getattr(liq_map, "pools", None) or [])
-                     if getattr(p, "is_named", False)]
-            # A2.9 — an EMPTY first-tick seed must not latch the date: a mapper
-            # warm-up hiccup used to lock a zero-level ledger for the whole
-            # session. Retry every tick until the mapper produces named pools.
-            if not seeds:
-                logger.debug("[ledger] no named pools yet — seeding deferred")
-                return
-            # ONE singleton (A2.9): route through get_ledger so any future
-            # consumer sees the same instance, not a second empty book.
-            _LEDGER = get_ledger(INSTRUMENT)
-            _LEDGER.reset_for_session(today, seeds=seeds)
-            _LEDGER_DATE = today
-            logger.info("[ledger] session %s seeded with %d named level(s)",
-                        today, len(seeds))
-        # A2.4 — bar selection lives in the ledger now: every closed session
-        # bar newer than the persisted last_bar_ts, forming row excluded. The
-        # old iloc[-2] + one-stamp guard dropped bars on any tick > ~75s.
-        _LEDGER.feed_frame(df_1m)
-        _LEDGER.write()
-    except Exception as exc:                                   # noqa: BLE001
-        logger.debug("[ledger] skipped: %s", exc)
-
-
 def atm_iv_from_chain(chain):
     """The ONE conversion from a chain to a stored ATM IV. None when absent.
 
@@ -1713,7 +1664,6 @@ def run_analysis(state: BotState, chain=None) -> dict:
     structure = get_structure_analyzer().analyze(df_5m, df_15m, df_1h, price)
     liq_map   = get_liquidity_mapper().analyze(df_5m, df_15m, price,
                                                named_df=_named_level_frame())
-    _feed_liquidity_ledger(liq_map, df_1m)      # LIQ.4 wiring
 
     # ── v6.18 — BIND ctx BEFORE ANYTHING WRITES INTO IT ─────────────────────
     # v6.16/v6.17 (Level.1, A2.6b) wrote ctx["gap"] / ctx["level_near"] into a
