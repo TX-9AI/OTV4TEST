@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# devtools.sh  v3.6  — OTV4TEST box menu
+# devtools.sh  v3.7  — OTV4TEST box menu
+# v3.7  2026-09-23  OTV4TEST r119 — MAINLINE'S TRADE REPORTS REPLACE ITEM 35.
+#       Operator: "let's get those reports borrowed, repurposed & added to our
+#       devtools menu. You can retire our current one option 35 — I hate it."
+#       The raw 30-row SQL dump (UTC stamps, wrapped columns) is GONE; its
+#       place in R SUITE is TRADE BREAKDOWN (mainline 47) followed by TRADES
+#       TAKEN (mainline 48), both tests/trade_report.py over THIS box's
+#       trades.db, read-only. Every item after it moves down one.
 # v3.6  2026-09-20  OTV4TEST r70 (BOX.12/AUTH.1) — PURGE, THEN KILL, THEN
 #       LAUNCH ON THE SUBSCRIPTION. HAND OFF and RESUME PURGE THE
 #       tmpfs SCRATCHPADS after killing tmux. /tmp is RAM here (455 MB tmpfs of
@@ -263,7 +270,22 @@ r_ledger()      { echo; echo "  R, expectancy, capture + giveback per strategy/s
 r_stop_sweep()  { echo; echo "  Bounds, not points: a cell matters only when its PESSIMISTIC net beats the book."; _r_tool stop_sweep.py; }
 r_exit_replay() { echo; echo "  Trail fit on real premium paths."; _r_tool exit_replay.py; }
 r_edge_scan()   { echo; echo "  Edge scan over the recorded book."; _r_tool edge_scan.py; }
-trades_taken()  { echo; _sql "$TRADES_DB" "SELECT substr(entry_time,1,16) AS entered_utc, strategy, direction, strike, contracts AS n, ROUND(entry_premium,2) AS in_prem, ROUND(exit_premium,2) AS out_prem, ROUND(pnl_usd,0) AS pnl, status, substr(exit_reason,1,44) AS exit_reason FROM trades ORDER BY rowid DESC LIMIT 30;"; pause; }
+# r119 — mainline's reports 47/48 (tests/trade_report.py), on this box's
+# trades.db. ENTER = the engine epoch onward; a date = from that date; all =
+# no floor. Display only (--no-json): nothing is written anywhere.
+_trade_report() {  # $@ = extra flags
+  local SD
+  echo "    ENTER = day one onward · a date = from that date · all = everything"
+  read -rp "  Since [ENTER / YYYY-MM-DD / all]: " SD
+  case "$SD" in
+    "")      "$PY" "$REPO/tests/trade_report.py" --db "$TRADES_DB" --no-json "$@" ;;
+    all|ALL) "$PY" "$REPO/tests/trade_report.py" --db "$TRADES_DB" --no-json --all-history "$@" ;;
+    *)       "$PY" "$REPO/tests/trade_report.py" --db "$TRADES_DB" --no-json --since "$SD" "$@" ;;
+  esac
+  pause
+}
+trade_breakdown() { echo; echo "  Cross-day breakdown: by strategy, symbol, setup, exit, hour, day."; _trade_report; }
+trades_taken()    { echo; echo "  One line per trade, ET, with R and capital at risk."; _trade_report --rows-only; }
 
 # ── GIT & LAND (this box) ──────────────────────────────────────────────────
 git_pull()  { echo "[pull] git pull --ff-only"; git pull --ff-only; pause; }
@@ -548,6 +570,7 @@ MENU=(
   "ITEM|start optionsbot|start_bot"
 
   "SECTION|R SUITE (this box's trades.db)"
+  "ITEM|TRADE BREAKDOWN      by strategy/symbol/exit|trade_breakdown"
   "ITEM|TRADES TAKEN         one line per trade|trades_taken"
   "ITEM|R LEDGER             R, expectancy, capture|r_ledger"
   "ITEM|Stop / TP sweep      R surface over excursions|r_stop_sweep"

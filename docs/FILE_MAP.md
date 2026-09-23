@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-340 Python modules across 13 local packages.
+342 Python modules across 13 local packages.
 
-**Reached by:** 124 imported · 12 declared entry points · 114 referenced from a script, unit or doc but never imported · **90 by nothing here**.
+**Reached by:** 124 imported · 12 declared entry points · 116 referenced from a script, unit or doc but never imported · **90 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -56,7 +56,7 @@ Change these with the most care; a break here reaches everything downstream.
 | `strategy/plan.py` | 45 | atp_butterfly_plan.py, breakout_plan.py, check_anchors.py, check_atp_butterfly.py |
 | `utils/time_utils.py` | 40 | alert_manager.py, broker_reconcile.py, check_bfly_vwap_band.py, check_butterfly_foundational.py |
 | `data/derived_store.py` | 31 | anchors.py, breakout_plan.py, check_bfly_vwap_band.py, check_derived_layer.py |
-| `database/trade_logger.py` | 25 | check_atp_butterfly.py, check_condor_mgmt.py, check_condor_pairing.py, check_condor_stop_suppression.py |
+| `database/trade_logger.py` | 26 | check_atp_butterfly.py, check_condor_mgmt.py, check_condor_pairing.py, check_condor_stop_suppression.py |
 | `derived/__init__.py` | 24 | atp_butterfly_plan.py, check_anchors.py, check_atp_butterfly.py, check_bfly_vwap_band.py |
 | `strategy/base_strategy.py` | 20 | atp_butterfly.py, breakout_plan.py, check_credit_remainder.py, check_entry_gate.py |
 | `strategy/sweep_credit_spread.py` | 20 | check_age_gate_gone.py, check_atr_units.py, check_chain_ordering.py, check_dispatch.py |
@@ -240,7 +240,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `database/trade_logger.py`
 - **calls:** `config.py`, `derived/registry.py`, `strategy/sweep_credit_spread.py`, `utils/time_utils.py`
-- **called by:** `derived/counterfactual.py`, `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `main.py`, `risk/risk_manager.py`, `strategy/condor_roll.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`, `tests/check_atp_butterfly.py`, `tests/check_condor_mgmt.py`, `tests/check_condor_pairing.py`, `tests/check_condor_stop_suppression.py`, `tests/check_credit_remainder.py`, `tests/check_management_plan.py`, `tests/check_one_per_session.py`, `tests/check_orb_resume.py`, `tests/check_plan_prepares.py`, `tests/check_runaway_break_key.py`, `tests/check_runaway_plan.py`, `tests/check_standing_offer.py`, `tests/check_structure_viable.py`, `tests/check_sweep_plan.py`, `tests/check_sweep_stop.py`
+- **called by:** `derived/counterfactual.py`, `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `main.py`, `risk/risk_manager.py`, `strategy/condor_roll.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`, `tests/check_atp_butterfly.py`, `tests/check_condor_mgmt.py`, `tests/check_condor_pairing.py`, `tests/check_condor_stop_suppression.py`, `tests/check_credit_remainder.py`, `tests/check_management_plan.py`, `tests/check_one_per_session.py`, `tests/check_orb_resume.py`, `tests/check_plan_prepares.py`, `tests/check_runaway_break_key.py`, `tests/check_runaway_plan.py`, `tests/check_standing_offer.py`, `tests/check_structure_viable.py`, `tests/check_sweep_plan.py`, `tests/check_sweep_stop.py`, `tests/check_trade_report.py`
 
 ### `derived/__init__.py`
 - **calls:** `derived/base.py`
@@ -1186,6 +1186,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** `data/options_chain.py`, `derived/notes.py`, `strategy/__init__.py`, `strategy/plan.py`
 - **called by:** (not imported) — referenced in `docs/PLAN_SPEC.md`
 
+### `tests/check_trade_report.py`
+- **calls:** `database/trade_logger.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
 ### `tests/check_trend_strength.py`
 - **calls:** `analysis/trend_strength.py`
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
@@ -1313,6 +1317,10 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tests/tine_order_study.py`
 - **calls:** (none)
 - **called by:** (not imported) — referenced in `docs/PORT_STATE.md`, `docs/TRADES.md`
+
+### `tests/trade_report.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/BACKLOG.md`
 
 ### `tests/warehouse_source.py`
 - **calls:** (none)
