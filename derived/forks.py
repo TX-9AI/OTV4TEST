@@ -1,5 +1,18 @@
 """
-derived/forks.py  v4.2
+derived/forks.py  v4.3
+v4.3  2026-09-23  OTV4TEST r115 — THE BUILDER DECIDES A FORK'S DEATH. Operator: "I wanna
+      make sure that the invalidation of the fork comes from the fork builder's
+      engine, not from a strategy-plan" / "it's gone when the engine says it's
+      gone, not when a strategy says it's gone". r114 put the breach judgement in
+      the LEVEL engine, which kept a private dead-set while this engine kept
+      serving the fork to every other reader. Now `_judge_rails` runs here on
+      every closed 1m bar: a rail BREACHED (level_rules: 1m close beyond, next
+      open beyond) adds the identity to `_dead`, clears `last_forks[tf]` so NO
+      consumer receives it, and writes an `INVALIDATED:` row to fork_series;
+      the builder's rebuild of that same identity is refused every run after
+      (reason INVALIDATED_IDENTITY), and a restart restores the dead set from
+      those rows (§22). `fork_identity()` is the ONE identity definition — the
+      anchor prices, never `idx`.
 v4.2  2026-09-12  OTV4TEST r15 — a failed build clears `last_forks[tf]`/`last_idx[tf]`
       (ported from mainline r364): the level map dies with the fork.
 v4.1  2026-09-08  OTV4TEST r5 — the engine KEEPS the last built fork per frame
@@ -62,6 +75,23 @@ def _f(v) -> Optional[float]:
     return None if f != f else f
 
 
+def fork_identity(fork) -> Optional[tuple]:
+    """THE ONE DEFINITION OF A FORK'S IDENTITY — its three anchor PRICES.
+    Never the anchors' `idx`: that is a position in the rolling frame and shifts
+    by one every bar (one fork, 09-09..09-14, wore 17 idx-keys). The level engine
+    and derived/fork_projection call this; nobody keeps a private copy."""
+    try:
+        return tuple(round(float(getattr(fork, a).price), 4) for a in ("p0", "p1", "p2"))
+    except Exception:                                           # noqa: BLE001
+        return None
+
+
+# minutes per frame bar — the rail's slope is per BAR, so a rail is walked back
+# along it by (minutes / TF_MINUTES) of a bar to find where it stood at a minute
+TF_MINUTES = {"15m": 15, "1h": 60, "1d": 390}
+INVALIDATION_RESTORE_S = 7 * 86400     # how far back a restart reads its own invalidations
+
+
 class ForkEngine(DerivedEngine):
     name = "forks"
     table = "fork_series"
@@ -74,6 +104,12 @@ class ForkEngine(DerivedEngine):
         self.symbol = symbol
         self.last_forks: dict = {}      # tf -> Pitchfork (v4.1)
         self.last_idx: dict = {}        # tf -> current bar index in that frame
+        # v4.3 — THE BUILDER DECIDES A FORK'S DEATH (operator, 2026-09-23: "it's
+        # gone when the engine says it's gone, not when a strategy says it's gone")
+        self._dead: dict = {}           # tf -> {identity} a rail BREACH invalidated
+        self._dead_loaded = False       # restored from this table's own INVALIDATED rows (§22)
+        self._judged_to: dict = {}      # tf -> last 1m bar (epoch ms) judged against the rails
+        self._eps: dict = {}            # (tf, identity, rail, role) -> level_rules.Episode
 
     def derive(self, ctx: dict) -> int:
         store = self._store
@@ -88,6 +124,7 @@ class ForkEngine(DerivedEngine):
 
         now = time.time()
         rows = []
+        self._restore_dead(store, sym, now)
         for tf in FRAMES:
             df = data.get(tf)
             if df is None or getattr(df, "empty", True):
@@ -112,18 +149,31 @@ class ForkEngine(DerivedEngine):
             # r15 (mainline r364's rule): a failed build CLEARS the held fork, so a
             # dead structure cannot be served one tick later — "if the fork stops
             # emitting, then the map has to go with it… out of sight, out of mind."
-            if fork is not None:
-                self.last_forks[tf] = fork
-                self.last_idx[tf] = len(df) - 1
-            else:
-                self.last_forks.pop(tf, None)
-                self.last_idx.pop(tf, None)
             reason = None
             try:
                 reason = pf.last_reject_reason()
                 depth = pf.last_scan_depth()
             except Exception:                                   # noqa: BLE001
                 depth = 0
+            # 🔴 v4.3 — AN INVALIDATED IDENTITY IS NEVER SERVED AGAIN. The builder
+            # rebuilds from the frame every run, so the fork a rail breach killed
+            # comes straight back next minute unless the engine refuses it here.
+            if fork is not None and fork_identity(fork) in self._dead.get(tf, set()):
+                fork, reason = None, "INVALIDATED_IDENTITY"
+            if fork is not None:
+                self.last_forks[tf] = fork
+                self.last_idx[tf] = len(df) - 1
+                # judge the rails on every CLOSED 1m bar since the last run; a
+                # BREACH kills the fork here, in its builder, and nowhere else
+                killed = self._judge_rails(tf, fork, len(df) - 1, ctx.get("df_1m"), now, sym)
+                if killed is not None:
+                    rows.append(killed)
+                    self.last_forks.pop(tf, None)
+                    self.last_idx.pop(tf, None)
+                    continue
+            else:
+                self.last_forks.pop(tf, None)
+                self.last_idx.pop(tf, None)
 
             if fork is None:
                 rows.append((sym, tf, now, 0, reason or "UNKNOWN", depth,
@@ -174,3 +224,93 @@ class ForkEngine(DerivedEngine):
                 None, None, None,
             ))
         return store.append_forks(rows)
+
+    # ══ v4.3 — THE FORK'S DEATH, DECIDED BY THE THING THAT BUILDS IT ══════
+    def _restore_dead(self, store, sym: str, now: float) -> None:
+        """§22 — in-memory state dies on every bake. The invalidations this
+        engine wrote to its own table are read back once, so a restart can
+        never resurrect a fork the market already broke."""
+        if self._dead_loaded:
+            return
+        self._dead_loaded = True
+        try:
+            for tf, a, b, c in store.conn.execute(
+                    "SELECT interval, p0_price, p1_price, p2_price FROM fork_series"
+                    " WHERE symbol=? AND reject_reason LIKE 'INVALIDATED:%' AND ts_epoch >= ?",
+                    (sym, now - INVALIDATION_RESTORE_S)):
+                if None not in (a, b, c):
+                    self._dead.setdefault(tf, set()).add(
+                        (round(float(a), 4), round(float(b), 4), round(float(c), 4)))
+        except Exception as exc:                                # noqa: BLE001
+            logger.warning("[forks] could not restore invalidated forks: %s", exc)
+        # 🔑 THE r114 -> r115 HANDOVER. r114 judged breaches in the LEVEL engine
+        # and recorded them in level_event (event INVALIDATED, identity repr in
+        # `depth` as ((price, kind), ...)). Without reading those once, the fork
+        # r114 killed would be served again until this engine re-judged it.
+        # r114's rows only ever named the 1h fork.
+        try:
+            import ast
+            for (k,) in store.conn.execute(
+                    "SELECT depth FROM level_event WHERE symbol=? AND event='INVALIDATED' AND ts_epoch >= ?",
+                    (sym, now - INVALIDATION_RESTORE_S)):
+                try:
+                    key = ast.literal_eval(k)
+                    self._dead.setdefault("1h", set()).add(
+                        tuple(round(float(x[0] if isinstance(x, (tuple, list)) else x), 4) for x in key))
+                except Exception:                               # noqa: BLE001
+                    continue
+        except Exception as exc:                                # noqa: BLE001
+            logger.debug("[forks] no r114 invalidations to carry: %s", exc)
+
+    def _judge_rails(self, tf: str, fork, idx_now: float, df_1m, now: float, sym: str):
+        """Every closed 1m bar since the last judgement, against each rail at
+        that minute, by derived/level_rules (the same BREACHED as a level: a
+        1m close beyond, then the next 1m open beyond). Operator, 2026-09-23:
+        "A breech is an event that invalidates the fork" — and "any
+        interaction that doesn't cause the fork object to destruct is a touch",
+        so a HELD changes nothing here. Returns the INVALIDATED row, or None."""
+        from derived import level_rules as R
+        from derived import fork_projection as FP
+        ident = fork_identity(fork)
+        if ident is None or df_1m is None or len(df_1m) < 2:
+            return None
+        try:
+            closed = df_1m.iloc[:-1]                           # the last row is still forming
+            stamps = [int(x.timestamp() * 1000) for x in closed.index]
+        except Exception:                                       # noqa: BLE001
+            return None
+        last = self._judged_to.get(tf)
+        todo = [i for i, t in enumerate(stamps) if last is None or t > last]
+        if last is None:
+            todo = todo[-1:]                                    # first sight: judge from now, not history
+        self._eps = {k: v for k, v in self._eps.items() if not (k[0] == tf and k[1] != ident)}
+        per = float(TF_MINUTES.get(tf, 60))
+        for i in todo:
+            ts = stamps[i]
+            row = closed.iloc[i]
+            bar = (ts, float(row["open"]), float(row["high"]), float(row["low"]), float(row["close"]))
+            self._judged_to[tf] = ts
+            mins_back = max(0.0, (now * 1000 - ts) / 60000.0 - 1.0)
+            for rail in FP.RAILS:
+                try:
+                    px = float(FP.rail_at(fork, rail, idx_now - mins_back / per))
+                except Exception:                               # noqa: BLE001
+                    continue
+                role = FP.role(rail, px, bar[4])
+                key = (tf, ident, rail, role)
+                ep = self._eps.get(key)
+                if ep is None:
+                    ep = self._eps[key] = R.Episode(role)
+                if R.BREACHED in ep.step(bar, (px, px)):
+                    self._dead.setdefault(tf, set()).add(ident)
+                    self._eps = {k: v for k, v in self._eps.items() if k[1] != ident}
+                    logger.warning("[forks] %s %s fork %s: the %s rail (%.2f) was BREACHED on the "
+                                   "%s bar — the fork is INVALIDATED by its builder (operator "
+                                   "2026-09-23); it is not served again", sym, tf, ident, rail, px,
+                                   time.strftime("%H:%M", time.localtime(ts / 1000)))
+                    return (sym, tf, now + 0.001, 0, f"INVALIDATED: {rail} rail breached at {ts}", 0,
+                            getattr(fork, "direction", None),
+                            None, ident[0], None, ident[1], None, ident[2],
+                            None, None, _f(getattr(fork, "slope", None)), None, None,
+                            None, None, None)
+        return None

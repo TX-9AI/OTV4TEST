@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """
-tests/check_rails_book.py  v1.0
+tests/check_rails_book.py  v1.1
+v1.1  2026-09-23  OTV4TEST r115 — THE FORK'S DEATH MOVED TO ITS BUILDER, SO ITS CHECKS
+      MOVED WITH IT (moved, not removed — §38.4). R3/R4/R5/R7 asserted that the
+      LEVEL engine invalidates a fork; the operator ruled "it's gone when the
+      engine says it's gone, not when a strategy says it's gone". They are now
+      check_fork_invalidation F1 (breach), F3 (restart), F4 (new identity), F6
+      (identity by price) and F7 (the level engine does NOT withdraw). This file
+      keeps what the level engine still owns: the TOUCHES (R1, R2, R6).
 THE FORK'S RAILS ON THE OPERATOR'S DEFINITIONS — driven through derive().
 
 v1.0  2026-09-23  OTV4TEST r114. Born RED at the r113 engine, whose rails still
@@ -107,31 +114,13 @@ def _r2():
     return (len(rj) == 1 and abs(rj[0][2] - want) < 1e-6), f"{rj} (want pierce {want})"
 
 
-def _r3():
-    eng, st = new_engine()
-    step(eng, 101.9, 102.10, 101.9, 102.05)                 # closes 0.05% beyond — inside the old 0.15% tol
-    step(eng, 102.06, 102.10, 102.00, 102.08)               # and opens beyond -> BREACHED
-    inv = rows(st, "INVALIDATED")
-    b = eng.board(101.0)
-    return (len(inv) == 1 and eng.tines_now(101.0) == [] and b.get("fork") == "absent"), \
-        f"INVALIDATED {len(inv)}; tines_now {len(eng.tines_now(101.0))}; board fork {b.get('fork')}"
 
 
-def _r4():
-    eng, st = new_engine()
-    step(eng, 101.9, 102.10, 101.9, 102.05)
-    step(eng, 102.06, 102.10, 102.00, 102.08)
-    eng2, _ = new_engine(store=st)                          # a restart: same store, same fork
-    step(eng2, 101.0, 101.1, 100.9, 101.0)                  # first sync restores the dead set
-    return (eng2.tines_now(101.0) == []), f"rails after restart: {len(eng2.tines_now(101.0))}"
 
 
-def _r5():
-    eng, st = new_engine()
-    step(eng, 101.9, 102.10, 101.9, 102.05)
-    step(eng, 102.06, 102.10, 102.00, 102.08)
-    eng._forks = fake_forks(anchor=100.5)                  # the builder produces a NEW identity
-    return (len(eng.tines_now(101.0)) >= 1), f"rails on the new fork: {len(eng.tines_now(101.0))}"
+
+
+
 
 
 def _r6():
@@ -144,26 +133,12 @@ def _r6():
 
 guard("R1 a wick that REACHES a rail and closes inside is a touch -> REJECTED", _r1)
 guard("R2 a wick past the rail that closes back inside is a touch, pierce recorded", _r2)
-guard("R3 close 0.05% beyond + next open beyond -> the fork is INVALIDATED (no old 0.15% tolerance)", _r3)
-guard("R4 §22: a restarted engine does not resurrect the invalidated fork", _r4)
-guard("R5 a fork with a NEW identity serves rails again", _r5)
 guard("R6 no WICKED rows for rails — the old tine branch does not run", _r6)
 
 
-def _r7():
-    """The SAME fork one bar later: the ForkEngine's frame rolled, so every
-    anchor's idx dropped by one while its price did not. Still invalidated."""
-    eng, st = new_engine()
-    step(eng, 101.9, 102.10, 101.9, 102.05)
-    step(eng, 102.06, 102.10, 102.00, 102.08)
-    f = eng._forks.last_forks["1h"]
-    for a in ("p0", "p1", "p2"):
-        piv = getattr(f, a)
-        setattr(f, a, types.SimpleNamespace(idx=piv.idx - 1, price=piv.price, kind=getattr(piv, "kind", "")))
-    return (eng.tines_now(101.0) == []), f"rails after the frame rolled one bar: {len(eng.tines_now(101.0))}"
 
 
-guard("R7 the same fork a bar later (idx shifted, prices unchanged) stays invalidated", _r7)
+
 
 import shutil
 shutil.rmtree(WORK, ignore_errors=True)

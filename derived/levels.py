@@ -1,5 +1,13 @@
 """
-derived/levels.py  v6.2
+derived/levels.py  v6.3
+v6.3  2026-09-23  OTV4TEST r115 - A FORK'S DEATH BELONGS TO ITS BUILDER. r114 judged
+      rail breaches HERE and kept a private dead-set, while the ForkEngine went on
+      serving the same fork to every other reader. Operator: "it's gone when the
+      engine says it's gone, not when a strategy says it's gone." The breach
+      judgement, the dead-set, the INVALIDATED record and the restart restore all
+      moved to derived/forks.py v4.3; this engine keeps only the TOUCHES (HELD ->
+      REJECTED for the sweep) and reads the fork's identity from
+      forks.fork_identity, the one definition.
 v6.2  2026-09-23  OTV4TEST r114 - THE RAILS ON THE OPERATOR'S DEFINITIONS. "Any
       interaction that doesn't cause the fork object to destruct is a touch. A
       breech is an event that invalidates the fork." The book path's rails no
@@ -507,9 +515,7 @@ class LevelEngine(DerivedEngine):
         self._book_bar = ""              # the closed 1m bar the book was last synced on
         self._book_live: set = set()     # level_ids the ledger holds live, per the book
         self._book_emitted: set = set()  # (level_ids, ts_ms, event) already published
-        # v6.2 — the rails on the operator's definitions (2026-09-23)
-        self._dead_forks: set = set()    # fork identities a rail BREACH invalidated
-        self._dead_loaded = False        # restored from INVALIDATED rows on first sync (§22)
+        # v6.2 — the rails' TOUCHES (a fork's death is the ForkEngine's alone, v6.3)
         self._rail_eps: dict = {}        # (fork_key, rail, role) -> {"ep": Episode, "ext": price}
         self._rail_bar = ""              # the closed 1m bar the rails were last judged on
         self.last_book_ms = None         # build time of the last sync, for the log
@@ -717,13 +723,10 @@ class LevelEngine(DerivedEngine):
         fork = (getattr(fe, "last_forks", {}) or {}).get("1h") if fe is not None else None
         if fork is None:
             return []
-        # 🔴 v6.2 — A BREACH INVALIDATES THE FORK (operator, 2026-09-23: "A breech
-        # is an event that invalidates the fork"). Its rails are no candidates for
-        # anyone — board, projection, anchors — until the builder produces a fork
-        # with a NEW identity (r19: identity is the three anchors).
-        _dead = getattr(self, "_dead_forks", None)      # engines built via __new__ have none
-        if _dead and self._fork_key() in _dead:
-            return []
+        # v6.3 — NO PRIVATE DEAD-SET HERE. A breached fork is withdrawn by the
+        # ForkEngine that builds it (last_forks cleared), so `fork is None` above
+        # already answers for every reader. Operator, 2026-09-23: "it's gone when
+        # the engine says it's gone, not when a strategy says it's gone."
         idx = _f((getattr(fe, "last_idx", {}) or {}).get("1h")) or 0.0
         slope = _f(getattr(fork, "slope", None)) or 0.0
         # r19 — THE RAIL WHERE IT STOOD, NOT WHERE IT IS. `minutes_back` walks
@@ -1009,6 +1012,8 @@ class LevelEngine(DerivedEngine):
         fork = (getattr(fe, "last_forks", {}) or {}).get("1h") if fe is not None else None
         if fork is None:
             return None
+        from derived.forks import fork_identity               # v6.3 — the ONE definition
+        return fork_identity(fork)
         # 🔴 v6.2 — IDENTITY IS THE ANCHORS' PRICES AND KINDS, NOT THEIR POSITIONS.
         # `idx` is the anchor's position inside the ForkEngine's rolling frame, so
         # once the frame is full EVERY new bar shifts it by one: measured on this
@@ -1223,18 +1228,6 @@ class LevelEngine(DerivedEngine):
         path's 0.15% close tolerance does not run here."""
         from derived import level_rules as R
         store = self._store
-        if not self._dead_loaded:
-            self._dead_loaded = True
-            try:
-                import ast
-                for (k,) in store.conn.execute(
-                        "SELECT depth FROM level_event WHERE symbol=? AND event='INVALIDATED'", (sym,)):
-                    try:
-                        self._dead_forks.add(ast.literal_eval(k))
-                    except Exception:                           # noqa: BLE001
-                        pass
-            except Exception as exc:                            # noqa: BLE001
-                logger.warning("[level] could not restore invalidated forks: %s", exc)
         d1 = ctx.get("df_1m")
         try:
             if d1 is None or len(d1) < 2:
@@ -1247,7 +1240,7 @@ class LevelEngine(DerivedEngine):
             return 0
         self._rail_bar = bar_ts
         fkey = self._fork_key()
-        if fkey is None or fkey in self._dead_forks:
+        if fkey is None:
             return 0
         self._rail_eps = {k: v for k, v in self._rail_eps.items() if k[0] == fkey}
         now, written = time.time(), 0
@@ -1264,14 +1257,10 @@ class LevelEngine(DerivedEngine):
                     max(st["ext"], reach) if kind == R.RESISTANCE else min(st["ext"], reach))
             lid = self._lid(sym, name, 0.0)
             if R.BREACHED in evs:
-                self._dead_forks.add(fkey)
-                logger.warning("[level] %s %s BREACHED at %s — the 1h fork is INVALIDATED "
-                               "(operator 2026-09-23); its rails are withdrawn until a new fork",
-                               sym, name, bar_ts)
-                written += self._emit(store, sym, lid, px, kind, name, bar_ts, now, "INVALIDATED",
-                                      {"pierce_pct": 0.0, "depth": repr(fkey), "closes_back": 0}, bar[4])
-                self._rail_eps = {}
-                break
+                # v6.3 — NOT THIS ENGINE'S CALL. The ForkEngine judges the same bar
+                # and withdraws the fork; here a breach is simply not a touch.
+                st["ext"] = None
+                continue
             if R.HELD in evs:
                 ext = st["ext"] if st["ext"] is not None else reach
                 pierce = max(0.0, (ext - px) if kind == R.RESISTANCE else (px - ext)) / px if px else 0.0

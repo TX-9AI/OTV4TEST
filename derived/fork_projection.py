@@ -1,5 +1,6 @@
 """
-derived/fork_projection.py  v1.1
+derived/fork_projection.py  v1.2
+v1.2  2026-09-23  OTV4TEST r115 — fork_key delegates to derived.forks.fork_identity (one definition).
 THE 1-HOUR PITCHFORK'S RAILS AS A PROJECTION — SEPARATE FROM THE LEVEL BOOK.
 
 v1.1  2026-09-23  OTV4TEST r114 — fork_key is the anchors' PRICES + KINDS, not `idx`,
@@ -48,9 +49,9 @@ def fork_key(fork) -> Optional[tuple]:
     if fork is None:
         return None
     try:
-        # anchor PRICES + KINDS, never `idx`: idx is a position in the rolling
-        # frame and shifts every bar (r114 — one fork wore 17 keys, 09-09..09-14)
-        return tuple((round(float(p.price), 4), str(getattr(p, "kind", ""))) for p in (fork.p0, fork.p1, fork.p2))
+        # r115 — the ONE identity definition lives in the fork's builder
+        from derived.forks import fork_identity
+        return fork_identity(fork)
     except Exception:                                           # noqa: BLE001
         return None
 
