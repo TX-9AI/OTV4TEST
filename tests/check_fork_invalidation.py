@@ -1,29 +1,28 @@
 #!/usr/bin/env python3
 """
-tests/check_fork_invalidation.py  v1.0
-A FORK'S DEATH IS DECIDED BY ITS BUILDER — driven through ForkEngine.derive().
+tests/check_fork_invalidation.py  v1.1
+A FORK LIVES WHILE ITS BUILDER CAN BUILD IT — driven through ForkEngine.run().
 
-v1.0  2026-09-23  OTV4TEST r115. Born RED at r114, where the breach was judged
-      in the LEVEL engine and the ForkEngine went on serving the dead fork.
+v1.1  2026-09-23  OTV4TEST r116 — THE RULE MOVED AND THIS FILE MOVED WITH IT. r115
+      killed a fork on a 1m rail breach and refused the builder's rebuild of it.
+      The operator, 2026-09-23: "I agree. If the channel gets disrespected briefly
+      but persists it still serving us somewhat of a guide." The builder's
+      containment test is now the ONLY judge, so F1/F2/F3/F8 INVERT (the same
+      scenarios, the opposite assertion), F4 now asserts the other half of the
+      rule (a fork the builder cannot build is gone), F6 is replaced (identity by
+      price no longer decides anything) by the rail-timing fix, and F5/F7 stand.
+v1.0  2026-09-23  OTV4TEST r115 (born red at r114).
 
-The operator, 2026-09-23: "I wanna make sure that the invalidation of the fork
-comes from the fork builder's engine, not from a strategy-plan", "it's gone when
-the engine says it's gone, not when a strategy says it's gone", and "the same
-engine that declares whether there's a fork or not should decide the persistence
-of the projection." And the definitions: "A breech is an event that invalidates
-the fork"; "any interaction that doesn't cause the fork object to destruct is a
-touch."
-
-  F1 a rail BREACHED (1m close beyond, next 1m open beyond) -> the ForkEngine
-     stops serving the fork (last_forks cleared) and writes an INVALIDATED row
-  F2 the builder hands back the SAME fork next run -> refused (not served)
-  F3 §22 — a restarted ForkEngine on the same store does not serve it either
-  F4 a fork with a NEW identity (new anchor prices) is served
-  F5 a TOUCH (wick reaches the rail, close back inside) changes nothing
-  F6 identity is the anchor PRICES: the same fork with every idx shifted by one
-     (the rolling frame) is still refused
-  F7 the LEVEL engine seeing a breach does NOT withdraw the rails — not its call
-  F8 the r114 -> r115 handover: a fork r114 invalidated (level_event) stays refused
+  F1 a 1m rail breach does NOT stop the ForkEngine serving the fork, and no
+     INVALIDATED row is written
+  F2 the builder's rebuild of the same fork is served
+  F3 a restart over r115's INVALIDATED rows serves the fork (they are ignored)
+  F4 when the BUILDER cannot build a fork, it is not served — the builder judges
+  F5 a touch changes nothing
+  F6 r116 — rails are read at the CURRENT minute: 30 minutes into the forming
+     hour a rail with slope $1/bar sits $0.50 past its value at the hour's start
+  F7 the LEVEL engine seeing a breach does not withdraw the rails
+  F8 r114's level_event INVALIDATED row is ignored — the fork is served
 """
 from __future__ import annotations
 
@@ -115,31 +114,35 @@ def _f1():
     served_before = "1h" in eng.last_forks
     breach(eng)
     rows = inv_rows(st)
-    return (served_before and "1h" not in eng.last_forks and any(r[0].startswith("INVALIDATED:") for r in rows)), \
-        f"served before {served_before}; after {'1h' in eng.last_forks}; rows {rows}"
+    return (served_before and "1h" in eng.last_forks and not rows), \
+        f"served before {served_before}; after {'1h' in eng.last_forks}; INVALIDATED rows {rows}"
 
 
 def _f2():
     CURRENT["fork"] = a_fork(); eng, st = new_engine()
     run(eng, 100.0, 100.2, 99.8, 100.0); breach(eng)
     run(eng, 97.9, 98.0, 97.8, 97.9)                            # the builder rebuilds the SAME fork
-    return ("1h" not in eng.last_forks), f"served again: {'1h' in eng.last_forks}"
+    return ("1h" in eng.last_forks), f"served: {'1h' in eng.last_forks}"
 
 
 def _f3():
     CURRENT["fork"] = a_fork(); eng, st = new_engine()
     run(eng, 100.0, 100.2, 99.8, 100.0); breach(eng)
-    eng2, _ = new_engine(store=st)                              # a restart
+    ident = tuple(round(p_.price, 4) for p_ in (CURRENT["fork"].p0, CURRENT["fork"].p1, CURRENT["fork"].p2))
+    st.append_forks([("QQQ", "1h", 1.0, 0, "INVALIDATED: lower rail breached at 0", 0, "up",
+                      None, ident[0], None, ident[1], None, ident[2], None, None, 0.0, None, None, None, None, None)])
+    eng2, _ = new_engine(store=st)                              # a restart over r115's rows
     run(eng2, 100.0, 100.2, 99.8, 100.0)
-    return ("1h" not in eng2.last_forks), f"served after restart: {'1h' in eng2.last_forks}"
+    return ("1h" in eng2.last_forks), f"served after restart: {'1h' in eng2.last_forks}"
 
 
 def _f4():
     CURRENT["fork"] = a_fork(); eng, st = new_engine()
     run(eng, 100.0, 100.2, 99.8, 100.0); breach(eng)
-    CURRENT["fork"] = a_fork(anchor=100.7)                      # a NEW identity
+    CURRENT["fork"] = None                                      # the BUILDER cannot build one
     run(eng, 100.0, 100.2, 99.8, 100.0)
-    return ("1h" in eng.last_forks), f"new fork served: {'1h' in eng.last_forks}"
+    CURRENT["fork"] = a_fork()
+    return ("1h" not in eng.last_forks), f"served with no build: {'1h' in eng.last_forks}"
 
 
 def _f5():
@@ -150,12 +153,21 @@ def _f5():
 
 
 def _f6():
-    CURRENT["fork"] = a_fork(); eng, st = new_engine()
-    run(eng, 100.0, 100.2, 99.8, 100.0); breach(eng)
-    CURRENT["fork"] = a_fork(shift=1.0)                         # same anchors, frame rolled one bar
-    run(eng, 97.9, 98.0, 97.8, 97.9)
-    return ("1h" not in eng.last_forks), f"served after the frame rolled: {'1h' in eng.last_forks}"
-
+    """30 minutes into the forming hour, a rail of slope $1/bar is read $0.50
+    past its value at the hour's start (r116). The fork stand-in carries a
+    real slope here; the level engine reads it through tines_now."""
+    import time as _t
+    import derived.levels as L
+    from data.derived_store import DerivedStore
+    f = a_fork()
+    f.slope = 1.0
+    f.upper_at = lambda i: 102.0 + 1.0 * (i - 20.0)
+    fe = types.SimpleNamespace(last_forks={"1h": f}, last_idx={"1h": 20.0},
+                               last_bar_start={"1h": _t.time() - 1800.0})
+    lv = L.LevelEngine(DerivedStore(tempfile.mktemp(dir=WORK, prefix="d6-", suffix=".db")), "QQQ", forks=fe)
+    up = [x for x in lv.tines_now(101.0) if x["provenance"] == "fork1h/upper"]
+    got = up[0]["price"] if up else None
+    return (got is not None and abs(got - 102.5) < 0.02), f"upper rail read at {got} (want ~102.50, hour start 102.00)"
 
 def _f7():
     """The level engine sees the same breach on a fork the ForkEngine still holds
@@ -188,18 +200,18 @@ def _f8():
     st.insert_level_event(("QQQ", "QQQ:fork1h/lower:0.00", "2026-09-23 14:42:00-04:00", _t.time(), "INVALIDATED",
                            98.0, "support", "fork1h/lower", 0.0, repr(key), 0, 97.9))
     run(eng, 100.0, 100.2, 99.8, 100.0)
-    return ("1h" not in eng.last_forks), f"r114-invalidated fork served: {'1h' in eng.last_forks}"
+    return ("1h" in eng.last_forks), f"served despite r114's row: {'1h' in eng.last_forks}"
 
 
 install_builder()
-guard("F1 a rail BREACHED -> the ForkEngine stops serving the fork and records INVALIDATED", _f1)
-guard("F2 the builder's rebuild of the SAME fork is refused", _f2)
-guard("F3 §22: a restarted ForkEngine does not serve it", _f3)
-guard("F4 a NEW identity is served", _f4)
+guard("F1 a 1m rail breach does NOT stop the ForkEngine serving the fork; no INVALIDATED row", _f1)
+guard("F2 the builder's rebuild of the same fork is served", _f2)
+guard("F3 a restart over r115's INVALIDATED rows serves the fork (ignored)", _f3)
+guard("F4 when the BUILDER cannot build, the fork is not served — the builder judges", _f4)
 guard("F5 a touch changes nothing (served, no INVALIDATED row)", _f5)
-guard("F6 identity is the anchor prices: the rolled frame's same fork stays refused", _f6)
+guard("F6 rails are read at the CURRENT minute, not the forming hour's start", _f6)
 guard("F7 the LEVEL engine seeing a breach does not withdraw the rails — not its call", _f7)
-guard("F8 the r114 -> r115 handover: a fork r114 invalidated in level_event stays refused", _f8)
+guard("F8 r114's level_event INVALIDATED row is ignored — the fork is served", _f8)
 
 import shutil
 shutil.rmtree(WORK, ignore_errors=True)

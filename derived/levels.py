@@ -1,5 +1,9 @@
 """
-derived/levels.py  v6.3
+derived/levels.py  v6.4
+v6.4  2026-09-23  OTV4TEST r116 - the rails are read at the CURRENT minute:
+      `tines_now` adds the fraction of the forming hour elapsed (from the
+      ForkEngine's `last_bar_start`) to the bar index; the fork's life is the
+      builder's containment test alone (forks v4.4).
 v6.3  2026-09-23  OTV4TEST r115 - A FORK'S DEATH BELONGS TO ITS BUILDER. r114 judged
       rail breaches HERE and kept a private dead-set, while the ForkEngine went on
       serving the same fork to every other reader. Operator: "it's gone when the
@@ -728,6 +732,11 @@ class LevelEngine(DerivedEngine):
         # already answers for every reader. Operator, 2026-09-23: "it's gone when
         # the engine says it's gone, not when a strategy says it's gone."
         idx = _f((getattr(fe, "last_idx", {}) or {}).get("1h")) or 0.0
+        # r116 — WALK THE RAIL TO THE CURRENT MINUTE. `idx` is the forming hour's
+        # START, so without this a sloped rail sat still all hour and then jumped.
+        _bs = _f((getattr(fe, "last_bar_start", {}) or {}).get("1h"))
+        if _bs:
+            idx += min(1.0, max(0.0, (time.time() - _bs) / 3600.0))
         slope = _f(getattr(fork, "slope", None)) or 0.0
         # r19 — THE RAIL WHERE IT STOOD, NOT WHERE IT IS. `minutes_back` walks
         # the rail back along its own slope so an interaction is measured at the

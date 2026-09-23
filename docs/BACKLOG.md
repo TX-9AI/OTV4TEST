@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v1.10
+# BACKLOG.md — OTV4TEST — v1.11
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -238,6 +238,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v1.11 — 2026-09-23 — OTV4TEST r116 — THE BUILDER'S CONTAINMENT TEST IS THE ONLY JUDGE OF A FORK'S LIFE.** Operator: "If the channel gets disrespected briefly but persists it still serving us somewhat of a guide." r115's 1m breach-kill and its refusal of the builder's rebuild are removed; a 1m poke beyond a rail is a touch; a fork is gone when the builder cannot build it. Rails are now read at the current minute (they were read at the forming hour's start: median $0.06/h of slope, worst $0.69). Measured along the way: the builder flip-flopped between two anchor sets today (732.09/727.82) - candidate study: build from closed hourly bars only.
 
 **v1.10 — 2026-09-23 — OTV4TEST r115 — A FORK'S DEATH BELONGS TO ITS BUILDER.** Operator: "it's gone when the engine says it's gone, not when a strategy says it's gone"; "the same engine that declares whether there's a fork or not should decide the persistence of the projection." The breach judgement, the dead-identity set, the INVALIDATED record and the restart restore moved from the level engine (r114) into ForkEngine; the level engine keeps only the touches. One identity definition, forks.fork_identity (anchor prices).
 
