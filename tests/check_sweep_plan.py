@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tests/check_sweep_plan.py  v1.1
+tests/check_sweep_plan.py  v1.2
+v1.2  2026-09-23  OTV4TEST r113 — the r106 venv bootstrap (refused under the lander's system python3 on pandas).
 v1.1  2026-09-13  OTV4TEST r24 — X1 DRIVES THE RULE, NOT THE HOOK'S SOURCE. The spent lock is
       read from trades.db now; X1 writes a breach exit and a stop-out as REAL
       rows and asserts only the breach spends (the r5 rule this check was born
@@ -27,6 +28,13 @@ import sys
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
+# r113 — the r106 venv bootstrap: the lander runs CHECKs under system python3,
+# where pandas is absent; declared as a CHECK for the first time here, it was
+# refused on `No module named 'pandas'`.
+import glob as _glob
+for _sp in _glob.glob(os.path.join(_root, "venv", "lib", "python*", "site-packages")):
+    if _sp not in sys.path:
+        sys.path.insert(1, _sp)
 
 FAILED = []
 

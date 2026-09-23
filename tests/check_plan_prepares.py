@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_prepares.py  v1.19
+tests/check_plan_prepares.py  v1.20
+v1.20  2026-09-23  OTV4TEST r113 - S9 INVERTS and S9b is added: the sweep no longer
+      grades pierce depth (operator's HELD has no depth; step 3 approved). A
+      0.60% pierce and a 0.005% pierce BOTH fire. S9 pinned the old ceiling,
+      so it had to move with the rule - the r106 lesson.
 v1.19  2026-09-22  OTV4TEST r106 - S8 INVERTS: a REJECTED 10 bars old IS
       a trigger now. And T4's fixture had to change with the rule it depends
       on - it made events inert by AGEING them, which no longer works; they
@@ -367,8 +371,19 @@ def main():
     _reject(lid_ny, 96.0, "support", "ny", pierce=0.006, depth="deep", bar="10:36")
     sig = S.generate_signal(chain=_Chain(good_puts), **common)
     r9 = _row(st, "SweepCreditSpread", 9.0)
-    check("S9 a 0.60% pierce (deep) -> DECLINE pierce_depth under strict (a weak level)",
-          sig is None and r9 and r9[0] == "DECLINE" and r9[1].startswith("pierce_depth"), str(r9))
+    # 🔴 r113 — THIS CHECK INVERTS. It pinned the pierce CEILING ("a deep
+    # pierce is a WEAK level"). The operator's HELD has no depth — "NO grading,
+    # depth, ranking" — so a deep pierce that closed back is a HELD like any other.
+    check("S9 (r113) a 0.60% pierce (deep) FIRES — depth no longer grades a HELD",
+          sig is not None and r9 and r9[0] == "TAKE" and "ny 96.00 REJECTED (deep" in r9[1], str(r9))
+    # S9b — the FLOOR is gone too: 0.005% is a quarter of the old 0.02% minimum
+    # ("a touch, not a sweep"), which was this box's most common sweep refusal.
+    P.begin_tick(9.5)
+    _reject(lid_ny, 96.0, "support", "ny", pierce=0.00005, depth="shallow", bar="10:41")
+    sig = S.generate_signal(chain=_Chain(good_puts), **common)
+    r9b = _row(st, "SweepCreditSpread", 9.5)
+    check("S9b (r113) a 0.005% pierce FIRES — no floor either; the pierce is recorded, not graded",
+          sig is not None and r9b and r9b[0] == "TAKE" and "ny 96.00 REJECTED" in r9b[1], str(r9b))
 
     # ── the condor ────────────────────────────────────────────────────────
     from strategy.iron_condor_strategy import IronCondorStrategy

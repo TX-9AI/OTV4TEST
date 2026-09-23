@@ -1,5 +1,11 @@
 """
-strategy/sweep_plan.py  v1.10
+strategy/sweep_plan.py  v1.11
+v1.11 2026-09-23  OTV4TEST r113 - NO DEPTH GRADING (LVL.15 step 3, the sweep). The
+      pierce floor (MIN_REJECTION_PCT, "a touch, not a sweep") and the relaxed
+      ceiling (MAX_REJECTION_PCT) no longer refuse: the operator's definition
+      of HELD has no depth, and step 3 was approved ("agree on all"). The floor
+      was this box's most common sweep refusal (315 rows, 8 sessions); the
+      ceiling never refused. The pierce is still RECORDED on every row.
 v1.10 2026-09-22  OTV4TEST r106 - THE REJECTION FRESHNESS GATE IS GONE.
       Operator: "I'm done with rejection fresh bars, get rid of it altogether."
       A REJECTED older than REJECTION_FRESH_BARS left `chosen` unset, so the
@@ -110,7 +116,7 @@ from strategy import relaxed
 from strategy.criteria import R_FLOOR, R_FLOOR_STOP
 from strategy.plan import Plan, _n
 from strategy.sweep_credit_spread import (
-    ATR_MAX_PCT, MAX_REJECTION_PCT, MIN_REJECTION_PCT,
+    ATR_MAX_PCT,
     is_spent, strike_beyond_sweep, tine_spent_key, _symbol_of,
 )
 from utils.math_utils import safe_float
@@ -118,7 +124,6 @@ from utils.math_utils import safe_float
 logger = logging.getLogger(__name__)
 
 GATES = {
-    "MAX_REJECTION_PCT":    "SELECTION",     # the relaxed x3 ceiling (r321 shape)
     "EARLIEST_ET":          "SELECTION",
     "LATEST_ET":            "SELECTION",
     "LEVELS_EACH_SIDE":     "SELECTION",
@@ -500,15 +505,16 @@ class SweepPlan:
         prep.pool, prep.name = chosen.price, chosen.provenance
         prep.rej_pct, prep.depth = float(rej.get("pierce_pct") or 0.0), str(rej.get("depth") or "")
         t.anchor(invalidation=chosen.price)
-        t.check("rejection", prep.rej_pct, prep.rej_pct >= MIN_REJECTION_PCT)
-        if prep.rej_pct < MIN_REJECTION_PCT:
-            prep.unmet.append(("rejection", f"pierce {prep.rej_pct*100:.3f}% below the "
-                                            f"{MIN_REJECTION_PCT*100:.2f}% minimum — a touch, not a sweep"))
-        _max = relaxed.widen(MAX_REJECTION_PCT, 3.0, name="pierce_ceiling")
-        t.check("pierce_depth", prep.rej_pct, prep.rej_pct <= _max)
-        if prep.rej_pct > _max:
-            prep.unmet.append(("pierce_depth", f"pierce {prep.rej_pct*100:.3f}% beyond the "
-                                               f"{_max*100:.2f}% ceiling — a deep pierce is a WEAK level"))
+        # 🔴 r113 — NO DEPTH GRADING. The operator's final definitions (LVL.15,
+        # 2026-09-22): HELD is a wick in that failed to claim beyond — "NO
+        # grading, depth, ranking or touch counts" — and step 3 was approved
+        # 2026-09-23 ("Step 3, agree on all"). The pierce floor (MIN_REJECTION_PCT,
+        # "a touch, not a sweep") was the sweep's MOST COMMON refusal on this box
+        # (315 DECLINE rows over 8 sessions); the ceiling never refused. Both are
+        # RECORDED, verdict None, so the evidence survives (§31) — a shallow HELD
+        # and a deep one can still be told apart afterwards, they just both fire.
+        t.check("rejection", prep.rej_pct, None)
+        t.check("pierce_depth", prep.rej_pct, None)
         on_side = (price_now < chosen.price) if chosen.boundary == "ceiling" else (price_now > chosen.price)
         t.check("side_of_pool", price_now - chosen.price, on_side)
         if not on_side:

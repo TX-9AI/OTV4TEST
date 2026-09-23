@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v1.07
+# BACKLOG.md — OTV4TEST — v1.08
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -238,6 +238,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v1.08 — 2026-09-23 — OTV4TEST r113 — LVL.15 STEP 3, THE SWEEP: NO DEPTH GRADING.** The pierce floor (MIN_REJECTION_PCT, the sweep's most common refusal here: 315 rows, 8 sessions) and ceiling (never refused) no longer gate; both are recorded. Operator: "Step 3, agree on all." Remaining in step 3: TCS modelled on mainline's design (off levels), hunt/Breakout check, ORB rail anchors stripped; then rails onto fork_projection ("touches" = inside the channel or tickling its borders without killing the fork).
 
 **v1.07 — 2026-09-23 — OTV4TEST r112 — LVL.15 STEP 3, THE FIRST PLAN: THE TCS TRIGGER CAN MATCH.** The engine retires a breached level in the same step it publishes ACCEPTED, and the TCS required that level on the live board - so it never fired (0 of 110 trades). The candidate now comes from the event itself; the 3-bar freshness gate is removed on the operator's ruling; the breach's own bar must be inside the TCS window; and an ACCEPTED that existed at a process's first look is never fired (§37). Replay 07-25..09-22 on the live book: 17 breaches in the TCS window on 11 of 41 sessions, 3-4 of them suspect data-gap rows; the expected-move gate is not yet measured over that span.
 
