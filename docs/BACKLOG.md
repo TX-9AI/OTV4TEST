@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v1.06
+# BACKLOG.md — OTV4TEST — v1.07
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -238,6 +238,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v1.07 — 2026-09-23 — OTV4TEST r112 — LVL.15 STEP 3, THE FIRST PLAN: THE TCS TRIGGER CAN MATCH.** The engine retires a breached level in the same step it publishes ACCEPTED, and the TCS required that level on the live board - so it never fired (0 of 110 trades). The candidate now comes from the event itself; the 3-bar freshness gate is removed on the operator's ruling; the breach's own bar must be inside the TCS window; and an ACCEPTED that existed at a process's first look is never fired (§37). Replay 07-25..09-22 on the live book: 17 breaches in the TCS window on 11 of 41 sessions, 3-4 of them suspect data-gap rows; the expected-move gate is not yet measured over that span.
 
 **v1.06 — 2026-09-23 — OTV4TEST r111 — THE MORNING'S THREE RULINGS, IN THE BOOK.** Lone prints outside RTH are not session extremes ($1.00; "1. Yes"); the overnight session stays a level block ("2. Keep"); a level inside the day's 5-min opening range retires TRAVERSED at 09:35. ⚠️ r110 landed WITHOUT them - its archive was parked before the rulings and never re-cut; the post-land marker check caught it before any bake.
 

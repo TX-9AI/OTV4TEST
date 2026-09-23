@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_tcs_plan.py  v1.0
+tests/check_tcs_plan.py  v1.1
+v1.1  2026-09-23  OTV4TEST r112 — T9/T10/T11, each red at 0b2833b: the ACCEPTED
+      level comes from the EVENT when the board no longer holds it (the engine
+      retires it in the same step), a breach before the window never fires
+      when the plan wakes, and an event that existed at the first look is
+      never fired after a restart (§37). The 3-bar freshness gate is gone.
 v1.0  2026-09-09  OTV4TEST r9 — THE TREND CREDIT SPREAD ON HYPOTHETICALS
       (PLAN_SPEC §34). Real plan, real strategy, real exit engine, a
       DerivedStore fixture for the session extremes and their ACCEPTED events.
@@ -15,6 +20,11 @@ v1.0  2026-09-09  OTV4TEST r9 — THE TREND CREDIT SPREAD ON HYPOTHETICALS
   T6  POP below the floor -> REJECTED pop
   T7  the same ACCEPTED event fires once
   T8  outside 11:31–14:00 -> DORMANT
+  T9  r112: the accepted level is RETIRED (off the board) -> it still fires,
+      built from the event (the r9..r111 trigger could never match this)
+  T10 r112: a breach whose own bar is BEFORE the window never fires later
+  T11 r112: §37 — an ACCEPTED that existed at a fresh process's first look
+      is never fired
   X1  15% of credit fires on a LONE TCS and is SUPPRESSED when hedged
   X2  the level lost (a close back through the accepted extreme) -> tcs_breach
   X3  NO nickel close on the TCS (the 2026-08-14 measured ruling stands)
@@ -31,6 +41,12 @@ import types
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
+# r112 — the r106 venv bootstrap: the lander runs CHECKs under system python3,
+# where pandas is absent and this checker died before printing a line.
+import glob as _glob
+for _sp in _glob.glob(os.path.join(_root, "venv", "lib", "python*", "site-packages")):
+    if _sp not in sys.path:
+        sys.path.insert(1, _sp)
 FAILED = []
 
 
@@ -81,7 +97,6 @@ def main():
     from datetime import datetime
     ET = tcs.ET
     T = tcs.TrendCreditSpread(); T.planner.symbol = "TST"; T.plan._store = ds
-    _fresh = tp.ACCEPT_FRESH_BARS
 
     def row():
         r = st.conn.execute("SELECT verdict, reason FROM plan_tick WHERE strategy='TrendCreditSpread' "
@@ -151,6 +166,33 @@ def main():
     s1, _ = tick(7.0, 103.2, frame=_frame([102.8, 102.9, 103.2], "12:35"))
     s2, r2 = tick(7.5, 103.2, frame=_frame([102.9, 103.2, 103.2], "12:37"))
     check("T7 the same ACCEPTED event fires once", s1 is not None and s2 is None and r2[0] == "HOLD")
+
+    # T9: the level is gone from the board (the engine retired it BREACHED) — it still fires
+    T.plan._fired.clear(); T.plan._ref[hi_id] = (95.0, 99.0)
+    ds.retire_level(hi_id, now, "BREACHED")
+    accept(hi_id, 102.0, "resistance", bar="13:00")
+    sig, r = tick(7.8, 103.2, frame=_frame([102.8, 102.9, 103.2], "12:40"))
+    check("T9 accepted level RETIRED from the board -> still fires, built from the event (short at 102)",
+          sig is not None and sig.option_side == "put" and float(sig.short_put_contract.strike) == 102.0,
+          f"sig={sig is not None} {r[0]} {r[1][:100]}")
+
+    # T10: a breach BEFORE the window never fires when the plan wakes
+    T.plan._fired.clear(); T.plan._ref[lo_id] = (99.0, 101.0)
+    accept(lo_id, 98.0, "support", bar="10:11")
+    sig, r = tick(7.9, 96.8, frame=_frame([97.8, 97.6, 96.8], "12:45"))
+    check("T10 a breach at 10:11 does not fire at 12:30 — not an afternoon move, a chase",
+          sig is None and r[0] == "HOLD", f"sig={sig is not None} {r[0]} {r[1][:100]}")
+
+    # T11: §37 — a fresh process never fires the ACCEPTED that already existed
+    accept(lo_id, 98.0, "support", bar="13:05")
+    T2 = tcs.TrendCreditSpread(); T2.planner.symbol = "TST"; T2.plan._store = ds; T2.plan._ref[lo_id] = (99.0, 101.0)
+    P.begin_tick(7.95)
+    sig2 = T2.generate_signal(ms=types.SimpleNamespace(adx=12.0), vol_state=None, chain=chain, macro=None,
+                              current_price=96.8, now_et=datetime(2026, 9, 9, 13, 6, tzinfo=ET),
+                              atm_iv=0.20, df_1m=_frame([97.8, 97.6, 96.8], "12:50"))
+    P.close_tick(st, "TST")
+    check("T11 §37: a restarted process does not fire the ACCEPTED that existed at its first look",
+          sig2 is None, f"sig={sig2 is not None}")
 
     # T8: dormant outside the window
     n0 = st.conn.execute("SELECT COUNT(*) FROM plan_tick WHERE strategy='TrendCreditSpread' AND verdict='DORMANT'").fetchone()[0]

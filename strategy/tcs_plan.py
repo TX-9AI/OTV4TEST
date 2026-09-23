@@ -1,5 +1,18 @@
 """
-strategy/tcs_plan.py  v1.4
+strategy/tcs_plan.py  v1.5
+v1.5  2026-09-23  OTV4TEST r112 - THE TRIGGER COULD NEVER MATCH, AND NOW IT CAN.
+      The level engine retires a breached level in the SAME step it publishes
+      ACCEPTED, and this plan required the ACCEPTED level to be on the live
+      board - so the trigger and its candidate could never meet. 0 of 110
+      trades on this box are TCS (LVL.15 recorded it: 0 of 37 ticks matched
+      after 43 ACCEPTED events). The candidate now comes FROM THE EVENT when
+      the board no longer holds it, priced by the same _structure(). And the
+      3-bar freshness gate is REMOVED on the operator's ruling of 2026-09-23;
+      the two jobs it did by accident are now stated rules: the breach's own
+      bar must be inside the TCS window ("ACCEPTED after 11:30"), and the
+      latest ACCEPTED that already existed at this process's first look is
+      marked spent (section 37 - a restart never re-enters). Age is still
+      recorded as accepted_age_bars, gating nothing.
 v1.4  2026-09-22  OTV4TEST r104 - THE RAILS NO LONGER OUTRANK A HELD
       EXTREME. `levels = levels + prep.tines` merged both into ONE distance
       ranking, so a rail nearer than a held session extreme became
@@ -96,7 +109,6 @@ logger = logging.getLogger(__name__)
 GATES = {
     "TCS_START_ET":         "FOUNDATIONAL",
     "TCS_ENTRY_END_ET":     "SELECTION",
-    "ACCEPT_FRESH_BARS":    "SELECTION",     # prior — recorded on every fire
 }
 
 TCS_START_ET        = getattr(config, "TCS_START_ET", (11, 31))
@@ -107,7 +119,12 @@ TCS_R_FLOOR_EXPIRY  = float(getattr(config, "TCS_R_FLOOR_EXPIRY", 1.00))
 TCS_STOP_PCT        = float(getattr(config, "TCS_STOP_PCT_OF_CREDIT", 0.15))
 TCS_NICKEL_REF      = float(getattr(config, "TCS_NICKEL_REF", 0.05))
 TCS_NICKEL_MULT     = float(getattr(config, "TCS_MIN_CREDIT_NICKEL_MULT", 4.0))
-ACCEPT_FRESH_BARS   = int(getattr(config, "TCS_ACCEPT_FRESH_BARS", 3))          # prior
+# r112 — ACCEPT_FRESH_BARS IS GONE (operator's ruling, 2026-09-23: "the TCS
+# freshness gate goes"). Its age is still RECORDED as accepted_age_bars with
+# verdict None. The two jobs it was silently doing are now stated rules of their
+# own: the breach's own bar must sit INSIDE this plan's window (the spec is
+# "ACCEPTED after 11:30"), and an event that already existed when this process
+# first looked is never fired (section 37: missed, not re-entered).
 
 
 def window_end() -> tuple:
@@ -209,6 +226,7 @@ class TCSPlan:
         self._ref: dict = {}              # level_id -> frozen (lo, hi) at the first close beyond
         self._fired: set = set()          # (level_id, bar_ts) — each ACCEPTED fires once
         self._last_bar_ts = ""
+        self._first_look_done = False     # r112 — §37: what existed at the first look is spent
 
     def _store_(self):
         if self._store is not None:
@@ -292,6 +310,24 @@ class TCSPlan:
         t = self.planner.tick(price_now)
         prep = TCSPreparation(t)
         hm = _hm(now_et)
+        # 🔴 r112 — §37 AT THE FIRST LOOK, BEFORE ANY WINDOW TEST. `_fired` lives
+        # in memory, so after a restart the session's last ACCEPTED would fire
+        # again. Whatever ACCEPTED already exists the first time this process
+        # looks is marked spent: an interrupted firing sequence is MISSED, never
+        # re-entered. The freshness gate used to do this job by accident.
+        if not self._first_look_done:
+            self._first_look_done = True
+            try:
+                _st0 = self._store_()
+                _o0 = session_open_epoch or _session_open_epoch()
+                _s0 = _o0 if _o0 <= time.time() else time.time() - 86400.0
+                _prior = _st0.latest_event(_symbol_of(), "ACCEPTED", since_ts=_s0) if _st0 is not None else None
+                if _prior:
+                    self._fired.add((_prior["level_id"], _prior["bar_ts"]))
+                    logger.info("[tcs] first look: %s ACCEPTED at %s predates this process — "
+                                "MISSED, never re-entered (§37)", _prior["level_id"], _prior["bar_ts"])
+            except Exception as exc:                            # noqa: BLE001
+                logger.warning("[tcs] first-look read failed — no prior event marked: %s", exc)
         if hm is not None and hm >= tuple(TCS_ENTRY_END_ET):
             t.dormant("entry_window", f"past TCS_ENTRY_END_ET {TCS_ENTRY_END_ET[0]:02d}:{TCS_ENTRY_END_ET[1]:02d} — observing only")
             return prep
@@ -404,13 +440,29 @@ class TCSPlan:
         since = _open if _open <= time.time() else time.time() - 86400.0
         acc = store.latest_event(sym, "ACCEPTED", since_ts=since)
         cand = None
-        if acc and acc["level_id"] in {c.level_id for c in prep.above + prep.below}:
+        if acc:
             key = (acc["level_id"], acc["bar_ts"])
             age_bars = max(0.0, time.time() - float(acc["ts_epoch"] or 0)) / 60.0
-            t.check("accepted", acc["price"], key not in self._fired)
-            t.check("accepted_age_bars", round(age_bars, 2), age_bars <= ACCEPT_FRESH_BARS)
-            if key not in self._fired and age_bars <= ACCEPT_FRESH_BARS:
-                cand = next(c for c in prep.above + prep.below if c.level_id == acc["level_id"])
+            # r112 — the breach's OWN bar must be inside this plan's window: the
+            # spec is "ACCEPTED after 11:30". A 10:11 breach is not an afternoon
+            # move, and waking at 11:31 to sell against it is a chase (§37).
+            _bhm = _hm(str(acc.get("bar_ts") or "")[11:16])
+            in_window = (_bhm is not None and tuple(TCS_START_ET) <= _bhm < tuple(TCS_ENTRY_END_ET))
+            t.check("accepted", acc["price"], key not in self._fired and in_window)
+            t.check("accepted_age_bars", round(age_bars, 2), None)          # recorded, gates nothing (r112)
+            if key not in self._fired and in_window:
+                # 🔴 r112 — THE LEVEL COMES FROM THE EVENT. The engine retires a
+                # breached level in the same step it publishes ACCEPTED, so the
+                # board never holds the level this trigger names: the membership
+                # test that stood here could never pass (0 of 110 trades on this
+                # box, LVL.15). The board's candidate is used when it is still
+                # there; otherwise the event's own price, side and identity build
+                # it, and it is priced exactly the same way.
+                cand = next((c for c in prep.above + prep.below if c.level_id == acc["level_id"]), None)
+                if cand is None:
+                    cand = self._structure(Candidate({"level_id": acc["level_id"], "price": acc["price"],
+                                                      "kind": acc["kind"],
+                                                      "provenance": acc.get("provenance") or "level"}), chain)
                 prep.accepted = acc
         else:
             t.check("accepted", None, False)

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tests/check_tcs_parked.py  v1.3
+tests/check_tcs_parked.py  v1.4
+v1.4  2026-09-23  OTV4TEST r112 — the r106 venv bootstrap; red under system python3 on `pytz`.
 v1.3  2026-09-22  OTV4TEST r92 — P0/P1/P5 retargeted to the SHARED credit window. P5's
       PREMISE was superseded, not just its number: "the 14:00 bound is
       TCS-only" was true while TCS owned a private end, and r81 unified every
@@ -31,6 +32,13 @@ import sys
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# r112 — the r106 venv bootstrap: the lander runs CHECKs under system python3,
+# where `pytz` (and pandas) are absent, so this checker could never be DECLARED.
+import glob as _glob
+for _sp in _glob.glob(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                   "venv", "lib", "python*", "site-packages")):
+    if _sp not in sys.path:
+        sys.path.insert(1, _sp)
 FAILED = []
 
 

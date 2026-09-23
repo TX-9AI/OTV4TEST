@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tests/check_tcs_narrates.py  v1.1
+tests/check_tcs_narrates.py  v1.2
+v1.2  2026-09-23  OTV4TEST r112 — the r106 venv bootstrap; red under system python3 on `pytz`.
 v1.1  2026-09-09  OTV4TEST r9 — re-pointed at the TCS plan (store-driven, EM input); the
       rule it pins is unchanged: a named row on every path, never NOT ASKED.
 v1.0  2026-09-09  OTV4TEST r8 — TCS WRITES A ROW ON EVERY PATH. The dashboard on
@@ -20,6 +21,13 @@ import types
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
+# r112 — the r106 venv bootstrap: the lander runs CHECKs under system python3,
+# where `pytz` (and pandas) are absent, so this checker could never be DECLARED.
+import glob as _glob
+for _sp in _glob.glob(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                   "venv", "lib", "python*", "site-packages")):
+    if _sp not in sys.path:
+        sys.path.insert(1, _sp)
 FAILED = []
 
 
