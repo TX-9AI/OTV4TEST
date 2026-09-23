@@ -1,6 +1,23 @@
 #!/usr/bin/env python3
 """
-warehouse/retention_purge.py  v1.6
+warehouse/retention_purge.py  v1.7
+v1.7  2026-09-23  OTV4TEST r108 — 1m candles 5 -> 60 DAYS, to match 1h. The level
+      book builds its levels from the HOURLY tape (r36: an hourly high/low is
+      the true extreme of its hour, and 1h reaches back 60 days), but the
+      operator's BREACHED rule is a 1-MINUTE rule — a 1m close beyond the level
+      and the next 1m open beyond it (2026-09-22). MEASURED 2026-09-23 on
+      08-25..09-22 warehouse tape, hourly bars built from the SAME 1m bars so
+      granularity is the only difference: of 142 session extremes the 1m rule
+      breached, the hourly test saw 87 within the hour, 50 more than an hour
+      LATE (up to 22 h) and 5 NEVER — 39% of dead levels left live on the
+      board. So breaches must be judged on 1m for as far back as levels are
+      built on 1h, and 1m retention must cover 1h retention.
+      COST, MEASURED: the candles table is 68 bytes a row; 1m across QQQ,
+      QQQ_EXT, VIX and VIX_EXT is ~1,400 rows a day, so 60 days is ~85k rows,
+      ~6 MB. Every runtime 1m reader is bounded (LIMIT n / LIMIT 1 / one day),
+      so nothing loads the longer window into memory. PRUNE_KEEP_ROWS is 0 on
+      both services (checked), so this purge is the only 1m deleter.
+      Operator, 2026-09-23: "Yes, I agree on All."
 v1.6  2026-09-19  OTV4TEST r66 — `plan_tick` / `plan_check` 7 -> 90 DAYS. These
       two ARE the wargaming corpus: the replay harness runs exclusively on the
       tick log, so this number IS its reach. At 7 days a harness run on one
@@ -178,7 +195,12 @@ sys.path.insert(0, HERE)
 # is INERT so the numbers can be read and argued with without a consumer
 # existing. If they diverge, config is the document and this is the code — fix
 # this file, and say so.
-RETENTION_DAYS = {"1m": 5, "5m": 10, "15m": 20, "1h": 60, "1d": None}
+# 🔴 r108 — "1m" WAS 5 AND IS NOW 60, EQUAL TO "1h", AND THE EQUALITY IS THE
+# RULE. Levels are built from the 1h tape; the operator's BREACHED is judged on
+# 1m. A 1m window shorter than the 1h one leaves every older level's breaches
+# unjudgeable, and measured on real tape the hourly stand-in left 39% of dead
+# levels live. `check_level_tape` T8 pins 1m >= 1h. See the v1.7 note above.
+RETENTION_DAYS = {"1m": 60, "5m": 10, "15m": 20, "1h": 60, "1d": None}
 
 # Non-candle raw artifacts. A RE-PUSH window, not a warm-up requirement:
 # verified in source that the surface engine reads a 15-minute window and

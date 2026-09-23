@@ -1,6 +1,6 @@
 # WORKING_AGREEMENT.md — how we operate (read this first, every new thread)
 
-**`WORKING_AGREEMENT.md` v4.18 · 2026-09-20 — §0 through §40, plus §15a, §18a, §36a and §40.1. See the CHANGELOG at the foot.**
+**`WORKING_AGREEMENT.md` v4.19 · 2026-09-23 — §0 through §40, plus §15a, §18a, §36a and §40.1. See the CHANGELOG at the foot.**
 
 > 🔴 **§0 IS THE FLOOR — AN ATTESTATION, NOT A TIP. Read it first, every thread.**
 > The operator ordered it once before and was told it existed. It did not.
@@ -917,7 +917,9 @@ afterwards. ~~Pruning is disabled specifically so it accumulates.~~
 🔴 **CORRECTED 2026-09-14 (OTV4TEST r28) — THAT SENTENCE HAD BEEN FALSE SINCE
 MAINLINE r162**, which armed `warehouse/retention_purge.py`. The purge exists to
 keep disk available and removes only rows past its windows — the minimum the
-tenors' ramps need (1m candles 5 days, 5m 10, 15m 20, 1h 60, daily never) — and
+tenors' ramps need (1m candles ~~5 days~~ **60 days since OTV4TEST r108** — the level
+book judges breaches on 1m as far back as it builds levels on 1h — 5m 10, 15m 20,
+1h 60, daily never) — and
 `trades` and every ledger are `NEVER_PURGE`. On the fleet it rides `self_close`
 after an S3 drain; on this box it runs from its own **nightly 16:05 ET** timer
 (r53 — r27 installed it weekly and that was the bug, not a preference: a
@@ -1741,6 +1743,13 @@ joins the table above.
 ---
 
 ## CHANGELOG
+
+**v4.19 — 2026-09-23 — OTV4TEST r108 — FACTS ONLY, NO RULE CHANGED: §30's
+RETENTION WINDOW FOR 1m.** §30 named "1m candles 5 days" as the purge's policy.
+r108 moves it to 60 days, equal to 1h, on the operator's approval: levels are
+built from the hourly tape while his BREACHED rule is judged on 1m, and measured
+on real tape the hourly stand-in left 39% of dead levels live. The old figure is
+struck, not deleted (r240). ⚠️ NOTHING HERE CHANGES A RULE.
 
 **v4.18 — 2026-09-20 — OTV4TEST r67 — FACTS ONLY, NO RULE CHANGED: THIS FILE
 DESCRIBED A FUNCTION THAT DOES NOT EXIST AND A TIMER THAT HAD ALREADY MOVED.**

@@ -1,5 +1,10 @@
 """
-config.py  v4.32
+config.py  v4.33
+v4.33 2026-09-23  OTV4TEST r108 — the declared retention policy's "1m" goes
+      5 -> 60, equal to "1h". The level book builds levels from the hourly tape
+      and judges the operator's BREACHED rule on 1m, so 1m must be kept as long
+      as 1h. warehouse/retention_purge.py v1.7 carries the measurement. Comment
+      block only; nothing here is read at runtime.
 v4.32 2026-09-22  OTV4TEST r97 — PIN_PROXIMITY_ACTIVE / _MIN_FRAC. Do not fire a
       DIRECTIONAL DEBIT onto a pin you are standing on. Dealers long gamma sell
       rallies and buy dips, so price mean-reverts toward the pin and a debit
@@ -2171,7 +2176,7 @@ TIMEFRAMES = {
 # boundary breaks on the first holiday week.
 #
 # RETENTION_DAYS = {
-#     "1m":  5,
+#     "1m":  60,          # r108 — was 5; must equal "1h" (breaches judged on 1m)
 #     "5m":  10,
 #     "15m": 20,
 #     "1h":  60,

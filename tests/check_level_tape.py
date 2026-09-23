@@ -1,8 +1,18 @@
 #!/usr/bin/env python3
 """
-tests/check_level_tape.py  v1.1
+tests/check_level_tape.py  v1.2
 THE LEVEL BOARD IS BUILT FROM THE HOURLY TAPE, EXCLUSIVELY (OTV4TEST r36).
 
+v1.2  2026-09-23  OTV4TEST r108 — T8: 1m RETENTION MUST COVER 1h RETENTION.
+      Levels are built from the hourly tape; the operator's BREACHED rule is a
+      1-minute rule (a 1m close beyond, the next 1m open beyond). MEASURED on
+      08-25..09-22 warehouse tape with hourly bars built from the SAME 1m bars:
+      of 142 extremes the 1m rule breached, the hourly test was more than an
+      hour late on 50 and never saw 5 — 39% of dead levels left live. So every
+      level the 1h tape can build must have 1m bars to judge it. Born RED at
+      7b17b77, where RETENTION_DAYS["1m"] is 5 against "1h" 60. T7's label
+      named the old 5-day window as a fact; its assertion (> 30 days of hourly
+      reach) was always independent of it and is unchanged.
 v1.1  2026-09-18  OTV4TEST r39 — T6 WENT RED ON CORRECT CODE, AND THE REFLEX FIX
       WOULD HAVE BLINDED IT. It matched a FIXED 1400-CHARACTER SLICE taken from
       the `in_range` lambda. r39 inserted the zone-traversal rule between that
@@ -22,7 +32,7 @@ v1.1  2026-09-18  OTV4TEST r39 — T6 WENT RED ON CORRECT CODE, AND THE REFLEX F
 v1.0  2026-09-18  OTV4TEST r36 — born red at r35 (1006003), where `load_tape`
       reads `interval='1m'` and `daily_levels`/`load_daily` exist.
 
-WHY THE HOUR. Retention keeps 1m for FIVE DAYS and 1h for SIXTY
+WHY THE HOUR. Retention kept 1m for FIVE DAYS (until r108) and 1h for SIXTY
 (`RETENTION_DAYS`), so the board reached nine days back while twelve weeks of
 hourly history sat unread in the same store. Measured 2026-09-17 against the
 operator's own 1D chart: three of his five levels above spot were not in the
@@ -41,7 +51,9 @@ WHAT IS PINNED:
   T5   the rejection fact is NOT on this tape: `_derive_events` reads `df_1m`
   T6   the opening-range rule still retires a level inside the range, and still
        exempts a tine
-  T7   reach — the board sees further back than 1m retention could ever allow
+  T7   reach — the board sees more than 30 days back on the hourly tape
+  T8   1m retention >= 1h retention, so a breach can be judged on 1m for
+       every level the hourly tape builds (r108)
 """
 import os
 import sqlite3
@@ -82,6 +94,25 @@ def main():
           not hasattr(lm, "daily_levels") and not hasattr(lm, "load_daily"),
           "daily_levels/load_daily absent")
 
+    # ── T8 — r108: the minute is kept as long as the hour ────────────────────
+    # 🔑 THE LEVEL IS BUILT ON 1h; ITS BREACH IS JUDGED ON 1m. The operator's
+    # BREACHED (2026-09-22) is a 1m close beyond and the next 1m open beyond.
+    # An hourly close beyond + next hourly open beyond IMPLIES it, but not the
+    # reverse — measured, the hourly stand-in left 39% of dead levels live.
+    # So the 1m window must reach every level the 1h window can build.
+    # ⚠️ READ FROM THE POLICY ITSELF, not a copy of its numbers (§0.4): the
+    # fixture is the constant the purge actually executes.
+    try:
+        from warehouse import retention_purge as _rp
+        _rd = getattr(_rp, "RETENTION_DAYS", {}) or {}
+        _m, _h = _rd.get("1m"), _rd.get("1h")
+        _ok = (_m is None) or (_h is not None and _m >= _h)
+        check("T8 1m candles are kept at least as long as 1h (breaches are judged on 1m)",
+              _ok, f'RETENTION_DAYS 1m={_m!r} 1h={_h!r}')
+    except Exception as _e:                                     # noqa: BLE001
+        check("T8 1m candles are kept at least as long as 1h (breaches are judged on 1m)",
+              False, f"could not read the policy: {type(_e).__name__}: {_e}")
+
     # ── T5 — the rejection fact keeps its minute ────────────────────────────
     ev = src_lv[src_lv.index("def _derive_events"):]
     ev = ev[:ev.index("\n    def ", 10)] if "\n    def " in ev[10:] else ev
@@ -106,7 +137,7 @@ def main():
         return 1 if FAILED else 0
 
     tape = lm.load_tape(db, "QQQ")
-    check("T7 the board reaches further back than 1m retention allows (5 days)",
+    check("T7 the board reaches more than 30 days back on the hourly tape",
           tape is not None and (tape.index[-1] - tape.index[0]).days > 30,
           f"{(tape.index[-1]-tape.index[0]).days} days of tape" if tape is not None else "no tape")
 
