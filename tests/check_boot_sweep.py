@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
-tests/check_boot_sweep.py  v1.0
+tests/check_boot_sweep.py  v1.1
+v1.1  2026-09-23  OTV4TEST r109 — B3 NAMES THE THIRD STORE, AND B3b DRIVES IT.
+      The live `resting_orders.db` held 91 checker fixture rows because
+      run_one isolated only the trades and derived stores. B3b calls the REAL
+      run_one with the subprocess intercepted and asserts every store it hands
+      a checker lives inside that run's own scratch directory — born red at
+      2c17b2e on OT_RESTING_DB.
 v1.0  2026-09-21  OTV4TEST r86 — born RED at 4b1e9a2 (the tool does not exist).
 
 🔴 WHY THIS TOOL EXISTS, MEASURED. Landing a ONE-LINE change cost **297
@@ -111,8 +117,49 @@ check("B2 it reads MemAvailable and has a floor to skip under",
 # the operator's standing rule is that a check once purged live data.
 check("B3 every checker runs against SCRATCH stores",
       ("OT_TRADES_DB" in _src) and ("OT_DERIVED_DB" in _src)
+      and ("OT_RESTING_DB" in _src)
       and ("mkdtemp" in _src or "TemporaryDirectory" in _src),
-      "checkers must never see the live trades/derived stores")
+      "checkers must never see the live trades/derived/resting stores")
+
+
+# ── B3b — DRIVEN (§21): the real run_one, its subprocess intercepted, so no
+# checker runs and nothing is written — only the environment it WOULD hand a
+# checker is inspected. Every store must resolve inside run_one's own mkdtemp.
+def _b3b():
+    import importlib.util as _ilu
+    import subprocess as _spm
+    _s = _ilu.spec_from_file_location("_bs3b", _p)
+    _m = _ilu.module_from_spec(_s)
+    _s.loader.exec_module(_m)
+    seen = {}
+
+    class _R:
+        returncode = 0
+
+    def _fake_run(cmd, **kw):
+        seen["env"] = dict(kw.get("env") or {})
+        return _R()
+    _orig = _m.subprocess.run
+    _m.subprocess.run = _fake_run
+    try:
+        _m.run_one("check_nothing_real.py")
+    finally:
+        _m.subprocess.run = _orig
+    env = seen.get("env") or {}
+    want = ("OT_TRADES_DB", "OT_DERIVED_DB", "OT_RESTING_DB")
+    paths = {k: env.get(k) for k in want}
+    parents = {os.path.dirname(v) for v in paths.values() if v}
+    ok = (all(paths.values()) and len(parents) == 1
+          and os.path.basename(next(iter(parents))).startswith("bootsweep-"))
+    return ok, paths
+
+
+try:
+    _ok3b, _paths3b = _b3b()
+except Exception as _e3b:                                       # noqa: BLE001
+    _ok3b, _paths3b = False, f"{type(_e3b).__name__}: {_e3b}"
+check("B3b DRIVEN: run_one hands a checker ONLY scratch stores (trades, derived, resting)",
+      _ok3b, str(_paths3b))
 
 # ── B4 — ENV.1. System python3 here is 3.14 with NO pandas, and a systemd unit
 # reads no profile, so PATH cannot be relied on at all. An inherited

@@ -6,7 +6,7 @@ the canary fails on drift (WORKING_AGREEMENT 33).
 
 330 Python modules across 13 local packages.
 
-**Reached by:** 121 imported · 12 declared entry points · 111 referenced from a script, unit or doc but never imported · **86 by nothing here**.
+**Reached by:** 121 imported · 12 declared entry points · 113 referenced from a script, unit or doc but never imported · **84 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -592,7 +592,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_boot_sweep.py`
 - **calls:** (none)
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_breakout.py`
 - **calls:** `execution/position_manager.py`, `strategy/breakout.py`, `strategy/breakout_plan.py`, `strategy/management.py`
@@ -712,7 +712,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_entry_gate.py`
 - **calls:** `config.py`, `data/options_chain.py`, `execution/entry_engine.py`, `risk/session_guard.py`, `strategy/base_strategy.py`, `utils/time_utils.py`
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `tools/land.sh`
 
 ### `tests/check_entry_point_paths.py`
 - **calls:** (none)
@@ -788,7 +788,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_land_tooling.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `devtools.sh`, `docs/BACKLOG.md`
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/BACKLOG.md`, `tools/land.sh`
 
 ### `tests/check_late_credit_window.py`
 - **calls:** `config.py`, `execution/position_manager.py`

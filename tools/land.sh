@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
-# tools/land.sh — v1.14
+# tools/land.sh — v1.15
+# v1.15 (2026-09-23) — OTV4TEST r109. THE THIRD STORE. r13 pointed the trades and
+#   derived stores at scratch for every CHECK, and left `resting_orders.db` live.
+#   91 of its 101 rows on 2026-09-23 were checker fixtures (symbol X, strike 81,
+#   session 2026-08-25) — `check_entry_gate` drives the paper entry path after
+#   09:35 by the clock, and a paper entry places a resting offer wherever
+#   `execution/resting_orders._db_path()` resolves. It honours OT_RESTING_DB;
+#   nothing set it. Now the CHECK stage does. check_land_tooling T6 pins it.
 # v1.14 (2026-09-22) — OTV4TEST r102. EXEC BIT. THE LANDER ITSELF was 100644
 #   in the git index, so a fresh clone or a repoint got `Permission denied`
 #   on the one script needed to land the fix. Now 100755; check_configure_relaxed
@@ -520,8 +527,9 @@ land_one() {
     # r13 — CHECKS NEVER TOUCH THE BOX'S STORES. A test fixture (check_standing_offer
     # S5) landed as a live open position on 2026-09-10; every checker now runs
     # with the trades and derived stores pointed at scratch files, whatever it does.
+    # r109 — AND THE RESTING-ORDER STORE, the third one r13 missed (v1.15 above).
     _scratch="$(mktemp -d /tmp/land-check.XXXXXX)"
-    if ( cd "$repo" && env -u LAND_ARCHIVE -u LAND_STAGE OT_TRADES_DB="$_scratch/trades.db" OT_DERIVED_DB="$_scratch/derived_store.db" python3 "$chk" ) >/dev/null 2>&1; then
+    if ( cd "$repo" && env -u LAND_ARCHIVE -u LAND_STAGE OT_TRADES_DB="$_scratch/trades.db" OT_DERIVED_DB="$_scratch/derived_store.db" OT_RESTING_DB="$_scratch/resting_orders.db" python3 "$chk" ) >/dev/null 2>&1; then
       pb_clear
       echo "  check: $chk PASS"
     else

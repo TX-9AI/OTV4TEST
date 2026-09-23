@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
-"""tools/boot_sweep.py — v1.0
+"""tools/boot_sweep.py — v1.1
 
+v1.1 (2026-09-23) — OTV4TEST r109. THE RESTING-ORDER STORE IS SCRATCH TOO. Every
+      sweep wrote a `check_entry_gate` fixture offer (symbol X, strike 81) into
+      the LIVE `data/resting_orders.db` — 91 of its 101 rows by 2026-09-23 —
+      because only OT_TRADES_DB and OT_DERIVED_DB were redirected. `run_one`
+      now sets OT_RESTING_DB as well; check_boot_sweep B3b drives it.
 v1.0 (2026-09-21) — OTV4TEST r74 / SWEEP.1. THE FULL CHECK SET RUNS AT BOOT,
 SO A DELIVERY DOES NOT HAVE TO PAY FOR IT.
 
@@ -105,6 +110,7 @@ def run_one(name: str) -> bool:
     env.pop("PYTHONPATH", None)
     env["OT_TRADES_DB"] = os.path.join(d, "trades.db")
     env["OT_DERIVED_DB"] = os.path.join(d, "derived_store.db")
+    env["OT_RESTING_DB"] = os.path.join(d, "resting_orders.db")     # r109
     try:
         p = subprocess.run([PY, os.path.join(TESTS, name)],
                            cwd=_root, env=env, stdout=subprocess.DEVNULL,
