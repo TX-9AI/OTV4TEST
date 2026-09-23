@@ -1,6 +1,25 @@
 """
-derived/levels.py  v5.6
+derived/levels.py  v6.0
 Owns `level_ledger` and `level_event`. Tier 3 — stateful; the object has a biography.
+v6.0  2026-09-23  LVL.15 STEP 2 — THE LEVEL BOOK IS THE SOURCE. With
+      LEVEL_SOURCE "book" (the default) `derive()` stops computing levels and
+      events itself: once per CLOSED 1m bar it rebuilds `derived/level_book`
+      from the feed store's 1h+1m tape and PUBLISHES it — the ledger holds
+      exactly the book's live levels (old rows retire NOT_A_LEVEL, breached
+      ones BREACHED), HELD is written as REJECTED with the episode's deepest
+      pierce (r44), BREACHED as ACCEPTED. The plans read the same two tables
+      and are unchanged (step 3 retargets them). The old 0.15% close
+      tolerance, ACCEPT_CLOSES count, opening-range TRAVERSED rule and zone-
+      containing-spot retirement do not run on this path: the operator's
+      definitions replace them. §37: only events from the last BOOK_FRESH_S
+      (180s) are published, so a restart — which replays the whole book —
+      never hands a plan an old trigger. THE RAILS ARE UNTOUCHED: they still
+      take the r15..r104 path (`_derive_events(tines_only=True)`). "legacy"
+      keeps the old path whole. Gate: check_level_engine_book E1-E7.
+      ⚠️ FOUND BY MUTATION ON THE FIRST CUT: a HELD judged on the HOUR has no
+      1m candle in its episode, max() of the empty span raised, and the whole
+      sync failed — the ledger would have frozen through any hour-long 1m
+      feed hole. The pierce now falls back to the hourly candles (E7).
 v5.6  2026-09-22  OTV4TEST r104 - `rails_after_held()` and `split_rails()`:
       ONE definition of the invariant every level-trading plan must honour -
       held extremes rank first, rails rank after. The KEY is the caller's,
@@ -354,6 +373,20 @@ CLOSES_BACK = {"shallow": 1, "deep": 2}          # operator, 2026-09-08
 # not swept. ⚠️ A PRIOR, NOT A MEASUREMENT — it wants the same study the pierce
 # floor got, and it is overridable so that study can move it without a revision.
 EXCURSION_MAX_BARS = int(getattr(_cfg, "LEVEL_EXCURSION_MAX_BARS", 10)) if _cfg else 10
+# ══ v6.0 — THE LEVEL BOOK IS THE SOURCE (LVL.15 step 2) ═══════════════════════
+# "book": levels and their HELD / BREACHED events come from derived/level_book on
+# the operator's final definitions, and this engine only PUBLISHES them into the
+# ledger and event tables every plan already reads. "legacy": the r5..r106 path.
+# The rails are untouched either way (step 2 moves the levels only).
+LEVEL_SOURCE = str(getattr(_cfg, "LEVEL_SOURCE", "book")) if _cfg else "book"
+# Lone-print filter for session extremes — ⚠️ 0.0 = OFF, pending the operator's
+# ruling (2026-09-23: the 09-18 08:14 716.38 print; see level_book.spike_extremes).
+LEVEL_SPIKE_REJECT = float(getattr(_cfg, "LEVEL_SPIKE_REJECT", 0.0)) if _cfg else 0.0
+# §37 — only events this recent are published. A restart replays the whole book
+# (it is a pure function of the tape), and an older HELD must never reach a plan
+# as a fresh trigger: an interrupted firing sequence is never re-entered.
+BOOK_FRESH_S = 180.0
+_BLOCKS = ((4, 0, "overnight"), (9, 30, "premarket"), (16, 0, "rth"), (20, 0, "afterhours"))
 
 
 def _f(v) -> Optional[float]:
@@ -449,6 +482,11 @@ class LevelEngine(DerivedEngine):
                                          # own median hourly wick), so it needs the
                                          # bars, not just the levels derived from them.
         self._formed: dict = {}          # level_id -> epoch the extreme printed
+        # v6.0 — the book path's own state
+        self._book_bar = ""              # the closed 1m bar the book was last synced on
+        self._book_live: set = set()     # level_ids the ledger holds live, per the book
+        self._book_emitted: set = set()  # (level_ids, ts_ms, event) already published
+        self.last_book_ms = None         # build time of the last sync, for the log
 
     def _sources(self, ctx: dict):
         """(provenance, price, kind, timeframe, is_live) for every known level.
@@ -958,6 +996,8 @@ class LevelEngine(DerivedEngine):
         price = _f(ctx.get("price"))
         if not sym or not price:
             return 0
+        if LEVEL_SOURCE == "book":
+            return self._derive_book(ctx, sym)
 
         # ⚠️ THE LAST CLOSED BAR DECIDES, NOT THE LIVE PRICE. Bodies decide,
         # wicks test — so acceptance is judged on a CLOSE. Using `price`
@@ -1106,6 +1146,145 @@ class LevelEngine(DerivedEngine):
         written += self._derive_events(ctx, sym, now)
         return written
 
+    # ══ v6.0 — THE BOOK PATH ══════════════════════════════════════════════
+    def _derive_book(self, ctx: dict, sym: str) -> int:
+        """Once per CLOSED 1m bar: rebuild the book from the tape, make the
+        ledger hold exactly its live levels, publish its fresh events. The
+        rails keep their own path. Never raises into the tick loop."""
+        if ctx.get("level_tape") is not None:
+            self._tape = ctx["level_tape"]        # board() measures zone width from it
+        written = 0
+        d1 = ctx.get("df_1m")
+        try:
+            bar_key = str(d1.index[-2]) if d1 is not None and len(d1) >= 2 else ""
+        except Exception:                                       # noqa: BLE001
+            bar_key = ""
+        if bar_key and bar_key != self._book_bar:
+            self._book_bar = bar_key
+            try:
+                written += self._book_sync(sym)
+            except Exception as exc:                            # noqa: BLE001
+                # ⚠️ LOUD, NOT SILENT (§0.5): the ledger keeps its last good state
+                logger.error("[level] book sync FAILED — ledger unchanged this bar: %s: %s",
+                             type(exc).__name__, exc)
+        written += self._derive_events(ctx, sym, time.time(), tines_only=True)
+        return written
+
+    @staticmethod
+    def _block_of(ts_ms: int) -> str:
+        """The session block a formation time falls in — a display label only;
+        identity is side + price (ruling 2026-09-22)."""
+        import datetime as _dt
+        from zoneinfo import ZoneInfo
+        t = _dt.datetime.fromtimestamp(ts_ms / 1000.0, ZoneInfo("America/New_York"))
+        hm = (t.hour, t.minute)
+        for h, m, name in _BLOCKS:
+            if hm < (h, m):
+                return name
+        return "overnight"                        # 20:00 onward opens the next overnight
+
+    def _book_sync(self, sym: str) -> int:
+        from derived import level_book as B
+        from data.candle_feed import feed_db_path
+        store = self._store
+        t0 = time.time()
+        db = feed_db_path()
+        h1, m1 = B.load_bars(db, sym, "1h"), B.load_bars(db, sym, "1m")
+        if not h1 or not m1:
+            logger.warning("[level] book: no tape in %s (1h=%s 1m=%s) — ledger unchanged",
+                           db, len(h1 or []), len(m1 or []))
+            return 0
+        book = B.build(sym, h1, m1, spike_reject=LEVEL_SPIKE_REJECT)
+        now = time.time()
+        written = 0
+        import datetime as _dt
+        from zoneinfo import ZoneInfo
+        _et = ZoneInfo("America/New_York")
+
+        # ── 1. the ledger holds exactly the book's live levels ──
+        live_ids = set(book.live)
+        for lid in sorted(live_ids - self._book_live):
+            lv = book.live[lid]
+            day = _dt.datetime.fromtimestamp(lv.formed_ts / 1000.0, _et).date()
+            tf = f"session:{day}"
+            store.upsert_level((lid, sym, float(lv.price), lv.side, self._block_of(lv.formed_ts),
+                                tf, lv.formed_ts / 1000.0, 0, None, 0, None, None, 0))
+            store.set_level_created(lid, lv.formed_ts / 1000.0, tf)   # a re-formed price re-dates
+            written += 1
+        try:
+            rows = store.conn.execute(
+                "SELECT level_id FROM level_ledger WHERE symbol=? AND retired_ts IS NULL",
+                (sym,)).fetchall()
+        except Exception as exc:                                # noqa: BLE001
+            logger.warning("[level] book: ledger read failed — nothing retired: %s", exc)
+            rows = []
+        retired = 0
+        for (lid,) in rows:
+            if lid in live_ids:
+                continue
+            if lid in book.dead:
+                store.retire_level(lid, book.dead[lid] / 1000.0, "BREACHED")
+            else:
+                store.retire_level(lid, now, "NOT_A_LEVEL")
+            retired += 1
+        self._book_live = live_ids
+
+        # ── 2. fresh events, under the names every plan already reads ──
+        import bisect
+        m_ts = [b[0] for b in m1]
+        tested: dict = {}
+        cutoff = (now - BOOK_FRESH_S) * 1000.0
+        published = 0
+        for e in book.events:
+            key = tuple(e["level_ids"])
+            if e["event"] == "TESTED":
+                tested[key] = e["ts"]
+                continue
+            if e["ts"] < cutoff:
+                continue
+            mark = (key, e["ts"], e["event"])
+            if mark in self._book_emitted:
+                continue
+            self._book_emitted.add(mark)
+            near, side = float(e["near"]), e["side"]
+            # the member the board shows for this zone: the one AT the near edge
+            lid = min(e["level_ids"], key=lambda i: abs(float(i.rsplit(":", 1)[1]) - near))
+            i1 = bisect.bisect_right(m_ts, e["ts"])
+            close = float(m1[i1 - 1][4]) if i1 else None
+            if e["event"] == "HELD":
+                # the pierce is the deepest point beyond the near edge over the
+                # WHOLE episode, TESTED -> HELD (r44: never one bar's wick)
+                t_open = tested.get(key, e["ts"])
+                i0 = bisect.bisect_left(m_ts, t_open)
+                span = m1[i0:i1]
+                if not span:
+                    # judged on the HOUR (no 1m candle in the episode — a feed
+                    # hole, or before the minute tape): the hourly candles that
+                    # judged it carry the extreme. Found by mutation 2026-09-23:
+                    # an empty span raised inside max() and failed the whole sync.
+                    span = [b for b in h1 if t_open <= b[0] <= e["ts"]]
+                if span and near:
+                    ext = (max(b[2] for b in span) - near) if side == "resistance" else \
+                          (near - min(b[3] for b in span))
+                    pierce = max(0.0, ext) / near
+                else:
+                    pierce = 0.0
+                depth = ("shallow" if pierce <= SHALLOW_PIERCE_PCT
+                         else "deep" if pierce <= DEEP_PIERCE_PCT else "beyond")
+                name, p = "REJECTED", {"pierce_pct": pierce, "depth": depth, "closes_back": 1}
+            elif e["event"] == "BREACHED":
+                name, p = "ACCEPTED", {"pierce_pct": 0.0, "depth": "accepted", "closes_back": 0}
+            else:
+                continue
+            bar_ts = str(_dt.datetime.fromtimestamp(e["ts"] / 1000.0, _et))
+            prov = self._block_of(book.live[lid].formed_ts) if lid in book.live else "book"
+            written += self._emit(store, sym, lid, near, side, prov, bar_ts, now, name, p, close)
+            published += 1
+        self.last_book_ms = round((time.time() - t0) * 1000.0)
+        logger.info("[level] book synced in %d ms — %d live, %d retired, %d event(s) published",
+                    self.last_book_ms, len(live_ids), retired, published)
+        return written
+
     # ── v4.1: the rejection fact, from the CLOSED 1m bar ────────────────
     def _emit(self, store, sym, lid, lvl, kind, prov, bar_ts, now, name, p, close):
         row = (sym, lid, bar_ts, now, name, lvl, kind, prov,
@@ -1119,7 +1298,9 @@ class LevelEngine(DerivedEngine):
                     p["closes_back"], bar_ts)
         return store.insert_level_event(row) if store is not None else 0
 
-    def _derive_events(self, ctx: dict, sym: str, now: float) -> int:
+    def _derive_events(self, ctx: dict, sym: str, now: float, tines_only: bool = False) -> int:
+        """v6.0 — `tines_only`: the book path publishes the LEVELS' events itself
+        and routes only the rails through here, unchanged."""
         store = self._store
         df = ctx.get("df_1m")
         try:
@@ -1157,7 +1338,7 @@ class LevelEngine(DerivedEngine):
             for k in [k for k in self._pierce if ":fork1h/" in k]:
                 self._pierce.pop(k, None)
             self._fork_seen = _fkey
-        srcs = [(p_, l_, k_, t_, v_) for p_, l_, k_, t_, v_ in self._sources(ctx)]
+        srcs = [] if tines_only else [(p_, l_, k_, t_, v_) for p_, l_, k_, t_, v_ in self._sources(ctx)]
         srcs += [(t_["provenance"], t_["price"], t_["kind"], "1h", 1) for t_ in _tines]
         for prov, lvl, kind, tf, live in srcs:
             if kind not in ("support", "resistance"):

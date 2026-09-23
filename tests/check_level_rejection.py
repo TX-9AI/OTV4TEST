@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tests/check_level_rejection.py  v1.6
+tests/check_level_rejection.py  v1.7
+v1.7  2026-09-23  OTV4TEST r110 — pinned to LEVEL_SOURCE="legacy": the book is now the default path. And the r106 venv bootstrap, so it runs under the lander's system python3.
 v1.6  2026-09-17  OTV4TEST r33 — L12b PINS THE NEW BOARD CONTRACT. It asserted that
       a board with NO ORB bounds is `no_range`. The operator ruled on 2026-09-17
       that every plan reads ONE board and that levels are walked from SPOT — "three
@@ -59,6 +60,30 @@ import sys
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
+
+# r106 IDIOM — THE LANDER RUNS CHECKS UNDER SYSTEM `python3`, NOT THE VENV, and
+# this file reaches pandas/numpy, which live only in the venv (3.14, the same
+# ABI as system python3 on this box — measured 2026-09-23). Index 1: the venv
+# beats /usr/lib/python3/dist-packages while the repo root still wins. Without
+# it this checker could not be DECLARED as a CHECK — it failed under the lander
+# on `No module named 'pandas'` while passing by hand.
+import glob as _glob
+for _sp in _glob.glob(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                   "venv", "lib", "python*", "site-packages")):
+    if _sp not in sys.path:
+        sys.path.insert(1, _sp)
+
+# v1.7 (2026-09-23, OTV4TEST r110) — THIS CHECKER PINS THE LEGACY LEVEL ENGINE.
+# derived/levels v6.0 routes derive() to the level book by default (LVL.15 step
+# 2), and the book replaces the rules pinned here with the operator's final
+# definitions. The legacy path still exists as the rollback setting until step
+# 5 deletes it, so this checker keeps guarding THAT code rather than being
+# bent to fit the book; the book path is gated by check_level_engine_book.
+try:
+    import derived.levels as _legacy_pin
+    _legacy_pin.LEVEL_SOURCE = "legacy"
+except Exception:                                               # noqa: BLE001
+    pass                                   # the checker's own import reports it
 
 FAILED = []
 

@@ -1,0 +1,264 @@
+#!/usr/bin/env python3
+"""
+tests/check_level_engine_book.py  v1.0
+THE LIVE LEVEL ENGINE PUBLISHES THE LEVEL BOOK — driven through `derive()`.
+
+v1.0  2026-09-23  OTV4TEST LVL.15 step 2 (r110; carries the r106 venv bootstrap). Born RED at 7df8438, where the engine
+      has no book path: `derive()` on the same tape publishes nothing.
+
+Every plan that trades levels reads `level_ledger` (the board) and
+`level_event` (REJECTED for the sweep, ACCEPTED for the TCS). Step 2 changes
+WHERE those rows come from — the book, on the operator's definitions — and
+nothing about who reads them. So the contract is the two tables:
+
+  E1 a BREACHED (1m close beyond, next 1m open beyond) is published as
+     ACCEPTED on the level, stamped with the bar that opened beyond
+  E2 a HELD is published as REJECTED, and its pierce is the deepest point
+     beyond the near edge over the whole TESTED->HELD episode (r44)
+  E3 §37: after a restart the book replays, and an event older than
+     BOOK_FRESH_S is NOT published — an old trigger never reaches a plan
+  E4 the ledger holds exactly the book's live levels: an old-format row is
+     retired, the book's level is live, and a breached one retires BREACHED
+  E5 a second derive on the same closed bar publishes nothing new
+  E6 hop 0: `derive()` routes to the book when LEVEL_SOURCE is "book"
+  E7 a HELD judged on the HOUR (no 1m candle in its episode — a feed hole)
+     is published with the hourly pierce and does NOT fail the sync. Red on
+     the first cut of this engine: max() of an empty span raised and froze the
+     ledger; found by mutating the freshness window, which surfaced it.
+"""
+from __future__ import annotations
+
+import os
+import shutil
+import sqlite3
+import sys
+import tempfile
+from datetime import datetime, timezone
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+# r106 IDIOM — THE LANDER RUNS CHECKS UNDER SYSTEM `python3`, NOT THE VENV, and
+# this file reaches pandas/numpy, which live only in the venv (3.14, the same
+# ABI as system python3 on this box — measured 2026-09-23). Index 1: the venv
+# beats /usr/lib/python3/dist-packages while the repo root still wins. Without
+# it this checker could not be DECLARED as a CHECK — it failed under the lander
+# on `No module named 'pandas'` while passing by hand.
+import glob as _glob
+for _sp in _glob.glob(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                   "venv", "lib", "python*", "site-packages")):
+    if _sp not in sys.path:
+        sys.path.insert(1, _sp)
+FAILED, RAN = [], []
+H, M = 3_600_000, 60_000
+D = int(datetime(2026, 9, 21, tzinfo=timezone.utc).timestamp() * 1000)   # Monday, EDT
+RTH = D + 24 * H + 13 * H + 30 * M                                      # Tue 09:30 ET
+WORK = tempfile.mkdtemp(prefix="chk_lvl_engine-")
+
+
+def check(name, ok, detail=""):
+    RAN.append(name)
+    print(f"  {'PASS' if ok else 'FAIL'}  {name}" + (f"  [{detail}]" if detail else ""))
+    if not ok:
+        FAILED.append(name.split()[0])
+
+
+def guard(name, fn):
+    try:
+        ok, detail = fn()
+    except Exception as exc:                                    # noqa: BLE001
+        ok, detail = False, f"raised {type(exc).__name__}: {exc}"
+    check(name, ok, detail)
+
+
+def tape(cut_ms):
+    """A feed store: flat 100.00 +-0.30 hours for two days, a PRE-MARKET high
+    of 101.00 on Tuesday at 06:00 ET, then Tuesday's RTH on 1m:
+      09:39  reaches 101.30, closes 101.20       -> TESTED, close beyond
+      09:40  OPENS BACK INSIDE 100.95, closes 100.90 -> HELD at the close back
+             (ruling 2026-09-22); the episode's pierce is 0.30, the HELD
+             candle's own wick only 0.05 — E2 tells the two apart
+      09:50  closes 101.20                        -> close beyond
+      09:51  opens 101.25                         -> BREACHED
+    Everything at/after `cut_ms` is removed, so the tape ends where a live
+    engine would be standing."""
+    p = tempfile.mktemp(dir=WORK, prefix=f"feed-{cut_ms}-", suffix=".db")   # one tape per call
+    c = sqlite3.connect(p)
+    c.execute("CREATE TABLE candles (symbol TEXT, interval TEXT, ts_epoch_ms INTEGER, open REAL,"
+              " high REAL, low REAL, close REAL, volume REAL, PRIMARY KEY(symbol, interval, ts_epoch_ms))")
+    rows = []
+    for i in range(24 + 13):
+        t = D + i * H
+        hi = 101.0 if t == D + 24 * H + 10 * H else 100.3
+        rows.append(("QQQ", "1h", t, 100.0, hi, 99.7, 100.0, 1.0))
+    for k in range(0, 60):
+        t = RTH + k * M
+        o, h, l, cl = 100.5, 100.6, 100.4, 100.5
+        if k == 9:
+            o, h, l, cl = 100.8, 101.3, 100.8, 101.2
+        elif k == 10:
+            o, h, l, cl = 100.95, 101.05, 100.85, 100.9
+        elif k == 20:
+            o, h, l, cl = 100.9, 101.25, 100.85, 101.2
+        elif k >= 21:
+            o, h, l, cl = 101.25, 101.4, 101.22, 101.3
+        rows.append(("QQQ", "1m", t, o, h, l, cl, 1.0))
+    c.executemany("INSERT INTO candles VALUES (?,?,?,?,?,?,?,?)", [r for r in rows if r[2] < cut_ms])
+    c.commit()
+    c.close()
+    return p
+
+
+def engine_at(cut_ms, clock_s, seed_old=False, store=None):
+    """A fresh engine and derived store, the feed cut at `cut_ms`, the clock at
+    `clock_s`, and ONE derive() call with a df_1m whose [-2] is the last closed bar."""
+    import pandas as pd
+    os.environ["OT_FEED_DB"] = tape(cut_ms)
+    from data.derived_store import DerivedStore
+    import derived.levels as L
+    L.time.time = lambda: float(clock_s)
+    store = store or DerivedStore(tempfile.mktemp(dir=WORK, prefix="derived-", suffix=".db"))
+    if seed_old:
+        store.upsert_level(("QQQ:london:99.10", "QQQ", 99.1, "support", "london",
+                            "session:2026-09-18", 1.0, 0, None, 0, None, None, 0))
+    eng = L.LevelEngine(store, "QQQ")
+    idx = pd.to_datetime([cut_ms - 2 * M, cut_ms - M], unit="ms", utc=True).tz_convert("America/New_York")
+    df1 = pd.DataFrame({"open": [100.5, 100.5], "high": [100.6, 100.6], "low": [100.4, 100.4],
+                        "close": [100.5, 100.5]}, index=idx)
+    ctx = {"symbol": "QQQ", "price": 100.5, "df_1m": df1}
+    eng.derive(ctx)
+    return eng, store, ctx
+
+
+def hour_tape():
+    """Hours only on Tuesday: the 15Z (11:00 ET) HOUR reaches 101.30 and closes
+    100.90 — TESTED + HELD judged on '1h'. The only 1m candles are Monday's, so
+    the book has a minute tape but none inside this episode."""
+    p = tempfile.mktemp(dir=WORK, prefix="feedh-", suffix=".db")
+    c = sqlite3.connect(p)
+    c.execute("CREATE TABLE candles (symbol TEXT, interval TEXT, ts_epoch_ms INTEGER, open REAL,"
+              " high REAL, low REAL, close REAL, volume REAL, PRIMARY KEY(symbol, interval, ts_epoch_ms))")
+    rows = []
+    for i in range(24 + 16):
+        t = D + i * H
+        hi, cl = 100.3, 100.0
+        if t == D + 24 * H + 10 * H:
+            hi = 101.0                                   # the pre-market high
+        if t == D + 24 * H + 15 * H:
+            hi, cl = 101.3, 100.9                        # the hour that holds it
+        rows.append(("QQQ", "1h", t, 100.0, hi, 99.7, cl, 1.0))
+    rows += [("QQQ", "1m", D + 14 * H + k * M, 100.0, 100.1, 99.9, 100.0, 1.0) for k in range(30)]
+    c.executemany("INSERT INTO candles VALUES (?,?,?,?,?,?,?,?)", rows)
+    c.commit()
+    c.close()
+    return p
+
+
+def events(store):
+    return store.conn.execute("SELECT level_id, bar_ts, event, round(pierce_pct, 6) FROM level_event"
+                              " ORDER BY bar_ts").fetchall()
+
+
+def _e1():
+    cut = RTH + 23 * M                                       # standing at 09:53
+    _eng, store, _ = engine_at(cut, cut / 1000 + 5)
+    ev = [e for e in events(store) if e[2] == "ACCEPTED"]
+    ok = len(ev) == 1 and ev[0][0] == "QQQ:resistance:101.00" and ev[0][1].startswith("2026-09-22 09:51")
+    return ok, f"ACCEPTED rows {ev}"
+
+
+def _e2():
+    cut = RTH + 12 * M                                       # standing at 09:42
+    _eng, store, _ = engine_at(cut, cut / 1000 + 5)
+    ev = [e for e in events(store) if e[2] == "REJECTED"]
+    want = round(0.30 / 101.0, 6)          # the EPISODE, not the HELD candle's 0.05
+    ok = (len(ev) == 1 and ev[0][0] == "QQQ:resistance:101.00" and ev[0][1].startswith("2026-09-22 09:40")
+          and abs(ev[0][3] - want) < 1e-6)
+    return ok, f"REJECTED rows {ev} (want pierce {want})"
+
+
+def _e3():
+    cut = RTH + 23 * M
+    _eng, store, _ = engine_at(cut, cut / 1000 + 30 * 60)    # restarted 30 minutes later
+    ev = events(store)
+    live = [r[0] for r in store.conn.execute("SELECT level_id FROM level_ledger WHERE retired_ts IS NULL")]
+    return (not ev and "QQQ:resistance:101.00" not in live), f"events {ev}; 101.00 live: {'QQQ:resistance:101.00' in live}"
+
+
+def _e4():
+    cut_held, cut_dead = RTH + 12 * M, RTH + 23 * M
+    _e, s1, _ = engine_at(cut_held, cut_held / 1000 + 5, seed_old=True)
+    rows1 = dict(s1.conn.execute("SELECT level_id, retired_reason FROM level_ledger").fetchall())
+    # the SAME store, a new engine (a restart) standing after the breach
+    _e, s2, _ = engine_at(cut_dead, cut_dead / 1000 + 5, store=s1)
+    rows2 = dict(s2.conn.execute("SELECT level_id, retired_reason FROM level_ledger").fetchall())
+    ok = (rows1.get("QQQ:london:99.10") == "NOT_A_LEVEL" and "QQQ:resistance:101.00" in rows1
+          and rows1["QQQ:resistance:101.00"] is None
+          and rows2.get("QQQ:resistance:101.00") == "BREACHED"
+          and "QQQ:resistance:101.00" not in [r[0] for r in s2.conn.execute(
+              "SELECT level_id FROM level_ledger WHERE retired_ts IS NULL")])
+    return ok, f"held-time ledger {rows1}; after breach 101.00 -> {rows2.get('QQQ:resistance:101.00')}"
+
+
+def _e5():
+    cut = RTH + 23 * M
+    eng, store, ctx = engine_at(cut, cut / 1000 + 5)
+    n0 = len(events(store))
+    eng._book_bar = ""                                       # even a forced re-sync
+    eng.derive(ctx)
+    n1 = len(events(store))
+    return (n0 == n1 == 1), f"events after first {n0}, after second {n1}"
+
+
+def _e6():
+    import derived.levels as L
+    return (getattr(L, "LEVEL_SOURCE", None) == "book"
+            and hasattr(L.LevelEngine, "_derive_book")), f"LEVEL_SOURCE={getattr(L, 'LEVEL_SOURCE', None)!r}"
+
+
+def _e7():
+    import pandas as pd
+    import logging
+    os.environ["OT_FEED_DB"] = hour_tape()
+    from data.derived_store import DerivedStore
+    import derived.levels as L
+    t_ev = D + 24 * H + 15 * H
+    L.time.time = lambda: t_ev / 1000.0 + 60
+    fails = []
+
+    class _Catch(logging.Handler):
+        def emit(self, rec):
+            if "book sync FAILED" in rec.getMessage():
+                fails.append(rec.getMessage())
+    h = _Catch()
+    logging.getLogger("derived.levels").addHandler(h)
+    try:
+        store = DerivedStore(tempfile.mktemp(dir=WORK, prefix="derived-", suffix=".db"))
+        eng = L.LevelEngine(store, "QQQ")
+        idx = pd.to_datetime([t_ev, t_ev + M], unit="ms", utc=True).tz_convert("America/New_York")
+        df1 = pd.DataFrame({"open": [100.5] * 2, "high": [100.6] * 2, "low": [100.4] * 2,
+                            "close": [100.5] * 2}, index=idx)
+        eng.derive({"symbol": "QQQ", "price": 100.5, "df_1m": df1})
+    finally:
+        logging.getLogger("derived.levels").removeHandler(h)
+    ev = [e for e in events(store) if e[2] == "REJECTED" and e[0] == "QQQ:resistance:101.00"]
+    want = round(0.30 / 101.0, 6)
+    ok = not fails and len(ev) == 1 and abs(ev[0][3] - want) < 1e-6
+    return ok, f"sync failures {fails}; REJECTED {ev} (want pierce {want})"
+
+
+guard("E1 a BREACHED is published as ACCEPTED at the bar that opened beyond", _e1)
+guard("E2 a HELD is published as REJECTED with the episode's deepest pierce", _e2)
+guard("E3 §37: a restart does not publish an event older than BOOK_FRESH_S", _e3)
+guard("E4 the ledger holds exactly the book's live levels; old rows retire", _e4)
+guard("E5 a second derive on the same bar publishes nothing new", _e5)
+guard("E6 hop 0: derive() routes to the book (LEVEL_SOURCE == 'book')", _e6)
+guard("E7 a HELD judged on the hour publishes its hourly pierce; the sync survives", _e7)
+
+shutil.rmtree(WORK, ignore_errors=True)
+print()
+if FAILED:
+    print(f"RED — {len(FAILED)} of {len(RAN)} failed: {', '.join(FAILED)}")
+    sys.exit(1)
+print(f"GREEN — {len(RAN)} checks")
+sys.exit(0)

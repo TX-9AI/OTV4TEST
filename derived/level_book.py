@@ -1,0 +1,413 @@
+"""
+derived/level_book.py  v1.1
+THE ONE LEVEL BOOK: closed session extremes, walked by recency, grouped into
+zones, judged HELD / BREACHED on the 1-minute tape by `derived/level_rules`.
+
+v1.1  2026-09-23  SESSIONS ON THE ET CLOCK, EXTREMES FROM THE MINUTE. v1.0 built
+      blocks from HOURLY candles on the hour, so pre-market ended 09:00 and the
+      09:00-09:30 half hour belonged to RTH. On 09-18 the real pre-market low
+      (717.10, 09:27 ET — the operator's chart) fell into RTH, under a lower
+      RTH low, and NEVER BECAME A LEVEL. `closed_sessions_et`: overnight
+      20:00-04:00, pre-market 04:00-09:30, RTH 09:30-16:00, after-hours
+      16:00-20:00, DST-safe; candidates are every 1m candle in the block plus
+      every hourly candle WHOLLY inside it (an aggregate carries the true
+      extreme of an hour whose minutes the seeded tape is missing); `build()`
+      judges any hour with no 1m candle on its hourly candle. And
+      `spike_extremes` + `spike_reject`: a lone-print filter, OFF (0.0) until
+      the operator rules — the 09-18 08:14 candle printed 716.38 once, 1.80
+      under the market, on the vendor's tape on BOTH QQQ boxes, and his chart
+      does not show it. K11 (red on v1.0 through build()), K12.
+v1.0  2026-09-23  OTV4TEST LVL.15 step 2 (unlanded WIP, built for review).
+
+🔴 THE OPERATOR'S DEFINITION OF A LEVEL, FINAL (2026-09-22): *"a level is a
+place where there's orders resting because it was outside of the extreme of a
+session high or low. Starting most recently and working backwards."* And:
+*"I don't give a rat's ass if it's New York or Asia or London — just get the
+levels, the numbers."* A session STILL FORMING is not a level: a level becomes
+live when its session CLOSES.
+
+WHAT THIS REPLACES, AND WHY IT IS A NEW FILE. `derived/levels.py` (1,334 lines)
+and `derived/level_map.py` (379) grew by patch over r3..r106: three breach
+definitions, depth tiers, touch counts, session labels in identity, a ledger
+reconciled against the tape, and `level_map` importing the OLD mapper for its
+session clock — the single import that kept two level systems alive. The
+operator: *"Anything that has the word level in it needs to be erased ...
+Literally start over."* This file imports neither.
+
+REUSED, NOT REINVENTED — the parts that were measured and well built, COPIED
+here so the old modules can be deleted without taking them along:
+  · the HOURLY tape as the level source (r36: an hourly high/low is the true
+    extreme of its hour; 1h reaches 60 days), RTH + `_EXT` merged (r29);
+  · the zone width = the instrument's own median larger-side hourly wick,
+    recomputed, never stored (r39: the ratio replicates across QQQ/MU/SPX, a
+    percentage of spot does not);
+  · zones merged to a FIXED POINT (r39: one pass printed an overlapping
+    partition);
+  · the recency walk (r29): newest first from the anchor, each older rung only
+    if FURTHER out — at ZONE granularity, cluster first then walk (r39).
+
+WHAT IS NEW, EACH BY RULING:
+  · FOUR contiguous session blocks declared from the RTH boundary alone, so they
+    meet by construction in either DST offset — 00->08Z, 08Z->RTH open, RTH,
+    RTH close->24Z. The last is AFTER-HOURS (16:00-20:00 ET), which had never
+    been a block (r107 patch finding); the EST 08:00-09:00 ET hole is gone.
+  · NO LABELS: identity is side + price. Two sessions printing one price are one
+    pool of resting orders, one level; the newest formation dates it.
+  · HELD / BREACHED come ONLY from `level_rules` (one definition, 1m candles).
+  · A ZONE stays live until its FAR edge is accepted; a breach retires every
+    member (r39 kept); a close inside a zone is not HELD (ruling b, 09-23).
+  · No grading, depth, touch counts, freshness or age gates.
+
+⚠️ THE ONE PLACE THE HOUR STILL JUDGES, STATED RATHER THAN HIDDEN. A level
+formed before the 1m tape begins is judged on HOURLY candles until the 1m tape
+starts. Hourly close-beyond + next hourly open-beyond IMPLIES the 1m rule, but
+the converse fails (LVL.14: 39% of breaches missed or late), so such a level can
+be alive here when the minute says dead. Every event carries `judged_on`, and
+`Book.hourly_judged` counts the levels that depended on it. r108 keeps 1m for 60
+days and the 2026-09-23 backfill reaches 08-24, so this shrinks to nothing as
+the minute tape fills the hourly window.
+
+PURE: no store is written, no clock is read; the same tapes give the same book.
+"""
+from __future__ import annotations
+
+import sqlite3
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from statistics import median
+from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
+from zoneinfo import ZoneInfo
+
+from derived import level_rules as R
+
+Bar = Tuple[int, float, float, float, float]      # (ts_ms, open, high, low, close)
+HOUR_MS, MIN_MS = 3_600_000, 60_000
+_ET = ZoneInfo("America/New_York")
+_OVERNIGHT_SPLIT_UTC = 8                        # 04:00 ET in EDT, 03:00 in EST
+
+
+# ── the tape ──────────────────────────────────────────────────────────────────
+def load_bars(db_path: str, symbol: str, interval: str) -> Optional[List[Bar]]:
+    """Every `interval` bar for `symbol`, RTH (`SYM`) and extended (`SYM_EXT`)
+    merged and de-duplicated on the stamp. Read-only. None when the store is
+    unreadable or empty — never an empty list that reads as "no levels"."""
+    try:
+        c = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5.0)
+    except Exception:                                           # noqa: BLE001
+        return None
+    try:
+        rows = c.execute(
+            "SELECT ts_epoch_ms, open, high, low, close FROM candles"
+            " WHERE symbol IN (?, ?) AND interval=? AND open > 0 AND close > 0"
+            " ORDER BY ts_epoch_ms", (symbol, f"{symbol}_EXT", interval)).fetchall()
+    except Exception:                                           # noqa: BLE001
+        return None
+    finally:
+        c.close()
+    out: List[Bar] = []
+    last = None
+    for ts, o, h, l, cl in rows:
+        if ts == last:
+            continue                      # RTH and EXT stamp the same bar identically (r29)
+        out.append((int(ts), float(o), float(h), float(l), float(cl)))
+        last = ts
+    return out or None
+
+
+# ── sessions: four contiguous blocks, one declared boundary ───────────────────
+def blocks_for(d) -> Tuple[Tuple[int, int], ...]:
+    """The day's session blocks as (start_hour_utc, end_hour_utc), covering
+    00->24Z with no gap in either DST offset. Only the RTH hours are a fact;
+    every other block is the span between its neighbours."""
+    off = datetime(d.year, d.month, d.day, 12, tzinfo=_ET).utcoffset()
+    r0, r1 = (13, 20) if off == timedelta(hours=-4) else (14, 21)
+    return ((0, _OVERNIGHT_SPLIT_UTC), (_OVERNIGHT_SPLIT_UTC, r0), (r0, r1), (r1, 24))
+
+
+def et_blocks(d) -> List[Tuple[int, int]]:
+    """The four session blocks that END on ET calendar day `d`, on the ET wall
+    clock (DST-safe): overnight 20:00(d-1)->04:00, pre-market 04:00->09:30,
+    RTH 09:30->16:00, after-hours 16:00->20:00. Epoch ms, contiguous."""
+    def at(day, hh, mm):
+        return int(datetime(day.year, day.month, day.day, hh, mm, tzinfo=_ET).timestamp() * 1000)
+    prev = d - timedelta(days=1)
+    return [(at(prev, 20, 0), at(d, 4, 0)), (at(d, 4, 0), at(d, 9, 30)),
+            (at(d, 9, 30), at(d, 16, 0)), (at(d, 16, 0), at(d, 20, 0))]
+
+
+def spike_extremes(m1: Sequence[Bar], min_reject: float) -> Dict[int, Tuple[bool, bool]]:
+    """1m candles whose LOW (or HIGH) its own close AND both neighbours reject by
+    more than `min_reject` — a lone print the market never traded at. Returns
+    {ts: (low_is_spike, high_is_spike)}. `min_reject <= 0` disables it."""
+    out: Dict[int, Tuple[bool, bool]] = {}
+    if min_reject <= 0:
+        return out
+    for i in range(1, len(m1) - 1):
+        p, b, n = m1[i - 1], m1[i], m1[i + 1]
+        if n[0] - p[0] > 2 * MIN_MS:
+            continue                      # neighbours not adjacent: cannot judge
+        lo = b[4] - b[3] > min_reject and min(p[3], n[3]) - b[3] > min_reject
+        hi = b[2] - b[4] > min_reject and b[2] - max(p[2], n[2]) > min_reject
+        if lo or hi:
+            out[b[0]] = (lo, hi)
+    return out
+
+
+def closed_sessions_et(h1: Sequence[Bar], m1: Sequence[Bar], now_ms: Optional[int] = None,
+                       spike_reject: float = 0.0) -> List[dict]:
+    """Every CLOSED block on the ET clock. Candidates are every 1m candle in the
+    block PLUS every hourly candle lying wholly inside it — an hourly candle is
+    an aggregate, so it carries the true extreme of an hour whose minutes are
+    missing. A straddling hourly candle (09:00-10:00) is excluded. Extremes a
+    spike filter rejects are removed from both, by price."""
+    import bisect
+    m1 = list(m1 or [])
+    if not h1 and not m1:
+        return []
+    first = min(x[0][0] for x in (h1, m1) if x)
+    last = max(x[-1][0] for x in (h1, m1) if x)
+    now = max(last + MIN_MS, int(now_ms or 0))
+    spikes = spike_extremes(m1, spike_reject)
+    bad_lo = {round(m[3], 4) for m in m1 if spikes.get(m[0], (0, 0))[0]}
+    bad_hi = {round(m[2], 4) for m in m1 if spikes.get(m[0], (0, 0))[1]}
+    days = sorted({datetime.fromtimestamp(ts / 1000, _ET).date() for ts, *_ in (list(h1) + m1)})
+    days.append(days[-1] + timedelta(days=1))
+    m_ts = [b[0] for b in m1]
+    h_ts = [b[0] for b in h1]
+    out = []
+    for d in days:
+        for s, e in et_blocks(d):
+            if s < first or e > now:
+                continue
+            ms = m1[bisect.bisect_left(m_ts, s):bisect.bisect_left(m_ts, e)]
+            hs = [b for b in h1[bisect.bisect_left(h_ts, s):bisect.bisect_left(h_ts, e)]
+                  if b[0] + HOUR_MS <= e]
+            his = ([(b[2], b[0]) for b in ms if not spikes.get(b[0], (0, 0))[1]]
+                   + [(b[2], b[0]) for b in hs if round(b[2], 4) not in bad_hi])
+            los = ([(b[3], b[0]) for b in ms if not spikes.get(b[0], (0, 0))[0]]
+                   + [(b[3], b[0]) for b in hs if round(b[3], 4) not in bad_lo])
+            if not his or not los:
+                continue                  # no tape (weekend, holiday)
+            # ties: the 1m stamp wins over the hour it sits in (it is listed first
+            # and is the later/equal stamp only when it is the true minute)
+            hi = max(his, key=lambda x: x[0])
+            lo = min(los, key=lambda x: x[0])
+            out.append({"start": s, "end": e, "high": hi[0], "high_ts": hi[1],
+                        "low": lo[0], "low_ts": lo[1]})
+    out.sort(key=lambda z: z["start"])
+    return out
+
+
+def closed_sessions(h1: Sequence[Bar], now_ms: Optional[int] = None) -> List[dict]:
+    """Every block the hourly tape FULLY covers and that has CLOSED, oldest
+    first: {start, end, high, high_ts, low, low_ts} (epoch ms)."""
+    if not h1:
+        return []
+    first, last = h1[0][0], h1[-1][0]
+    now = max(last + HOUR_MS, int(now_ms or 0))
+    days = sorted({datetime.fromtimestamp(ts / 1000, timezone.utc).date() for ts, *_ in h1})
+    out = []
+    for d in days:
+        day0 = int(datetime(d.year, d.month, d.day, tzinfo=timezone.utc).timestamp() * 1000)
+        for a, b in blocks_for(d):
+            s, e = day0 + a * HOUR_MS, day0 + b * HOUR_MS
+            if s < first:
+                continue                  # left-truncated: its extreme is unprovable
+            if e > now:
+                continue                  # 🔴 still forming — not a level (ruling)
+            bars = [x for x in h1 if s <= x[0] < e]
+            if not bars:
+                continue                  # no tape (weekend, holiday)
+            hi = max(bars, key=lambda x: x[2])
+            lo = min(bars, key=lambda x: x[3])
+            out.append({"start": s, "end": e, "high": hi[2], "high_ts": hi[0],
+                        "low": lo[3], "low_ts": lo[0]})
+    out.sort(key=lambda z: z["start"])
+    return out
+
+
+# ── zones (r39, copied) ───────────────────────────────────────────────────────
+def zone_width(h1: Sequence[Bar]) -> Optional[float]:
+    """The instrument's own MEDIAN larger-side hourly wick. None when no tape."""
+    wicks = []
+    for _ts, o, h, l, c in h1:
+        w = max(h - max(o, c), min(o, c) - l)
+        if w >= 0:
+            wicks.append(w)
+    if not wicks:
+        return None
+    w = float(median(wicks))
+    return w if w > 0 else None
+
+
+def zones(levels: Sequence["Level"], width: Optional[float]) -> List[dict]:
+    """Cluster levels into zones {lo, hi, members}, merged to a FIXED POINT so
+    the partition cannot depend on arrival order. No width -> one per level."""
+    zs = [{"lo": l.price, "hi": l.price, "members": [l]} for l in levels]
+    if not width or width <= 0:
+        return sorted(zs, key=lambda z: z["lo"])
+    changed = True
+    while changed:
+        changed = False
+        zs.sort(key=lambda z: z["lo"])
+        out: List[dict] = []
+        for z in zs:
+            if out and z["lo"] - out[-1]["hi"] <= width:
+                out[-1]["hi"] = max(out[-1]["hi"], z["hi"])
+                out[-1]["members"] += z["members"]
+                changed = True
+            else:
+                out.append(z)
+        zs = out
+    return zs
+
+
+# ── the book ──────────────────────────────────────────────────────────────────
+@dataclass
+class Level:
+    level_id: str
+    side: str                 # resistance (a session high) / support (a session low)
+    price: float
+    formed_ts: int            # the bar the extreme printed on — the recency key
+    live_from: int            # its session's END: a forming session is not a level
+
+
+@dataclass
+class Book:
+    symbol: str
+    width: Optional[float]
+    live: Dict[str, Level] = field(default_factory=dict)
+    dead: Dict[str, int] = field(default_factory=dict)        # level_id -> breach ts
+    events: List[dict] = field(default_factory=list)
+    hourly_judged: int = 0
+    as_of: Optional[int] = None
+
+    def current_zones(self) -> List[dict]:
+        return zones(list(self.live.values()), self.width)
+
+
+def level_id(symbol: str, side: str, price: float) -> str:
+    """Side + price. NO SESSION LABEL — ruled irrelevant (2026-09-22)."""
+    return f"{symbol}:{side}:{price:.2f}"
+
+
+def _levels_from(symbol: str, sessions: Sequence[dict]) -> List[Level]:
+    by_id: Dict[str, Level] = {}
+    for s in sessions:
+        for side, px, ts in ((R.RESISTANCE, s["high"], s["high_ts"]),
+                             (R.SUPPORT, s["low"], s["low_ts"])):
+            lid = level_id(symbol, side, px)
+            lv = Level(lid, side, float(px), int(ts), int(s["end"]))
+            prev = by_id.get(lid)
+            # one price, one pool: the NEWEST formation dates it (recency orders)
+            if prev is None or lv.formed_ts > prev.formed_ts:
+                by_id[lid] = lv
+    return sorted(by_id.values(), key=lambda l: l.live_from)
+
+
+def _zone_side(members: Sequence[Level], ref_price: float) -> Optional[str]:
+    sides = {m.side for m in members}
+    if len(sides) == 1:
+        return sides.pop()
+    lo, hi = min(m.price for m in members), max(m.price for m in members)
+    if ref_price < lo:
+        return R.RESISTANCE
+    if ref_price > hi:
+        return R.SUPPORT
+    return None                       # mixed zone with price inside it: not judged yet
+
+
+def build(symbol: str, h1: Sequence[Bar], m1: Sequence[Bar],
+          now_ms: Optional[int] = None, spike_reject: float = 0.0) -> Book:
+    """Replay the tape in time order and return the book as of the last candle.
+
+    Sessions are the ET-clock blocks (`closed_sessions_et`). Every hour that has
+    1m candles is judged on them; an hour with NO 1m candle is judged on its
+    hourly candle (judged_on '1h' — see the header)."""
+    width = zone_width(h1)
+    book = Book(symbol=symbol, width=width)
+    levels = _levels_from(symbol, closed_sessions_et(h1, m1 or [], now_ms, spike_reject))
+    covered = {b[0] // HOUR_MS for b in (m1 or [])}
+    tape = sorted([("1h", b) for b in h1 if b[0] // HOUR_MS not in covered]
+                  + [("1m", b) for b in (m1 or [])], key=lambda x: x[1][0])
+    pending = list(levels)                 # not yet live, in live_from order
+    episodes: Dict[FrozenSet[str], R.Episode] = {}
+    zone_list: List[dict] = []
+    dirty = True
+    hourly_touched = set()
+    for tf, bar in tape:
+        ts = bar[0]
+        while pending and pending[0].live_from <= ts:
+            lv = pending.pop(0)
+            if lv.level_id not in book.dead:
+                book.live[lv.level_id] = lv
+                dirty = True
+        if dirty:
+            zone_list = book.current_zones()
+            keys = {frozenset(m.level_id for m in z["members"]) for z in zone_list}
+            # a zone whose MEMBERSHIP changed is a new object: its episode starts clean
+            episodes = {k: v for k, v in episodes.items() if k in keys}
+            dirty = False
+        for z in zone_list:
+            key = frozenset(m.level_id for m in z["members"])
+            if not all(k in book.live for k in key):
+                continue
+            ep = episodes.get(key)
+            if ep is None:
+                side = _zone_side(z["members"], bar[1])
+                if side is None:
+                    continue
+                ep = episodes[key] = R.Episode(side)
+            near, far = R.edges_of(z["lo"], z["hi"], ep.side)
+            for ev in ep.step(bar, (near, far)):
+                if tf == "1h":
+                    hourly_touched |= set(key)
+                book.events.append({"event": ev, "ts": ts, "judged_on": tf,
+                                    "side": ep.side, "near": near, "far": far,
+                                    "level_ids": sorted(key),
+                                    "prices": sorted(m.price for m in z["members"])})
+                if ev == R.BREACHED:
+                    for lid in key:
+                        book.dead[lid] = ts
+                        book.live.pop(lid, None)
+                    dirty = True
+        book.as_of = ts
+    book.hourly_judged = len(hourly_touched)
+    return book
+
+
+def walk(reps: Sequence[dict], anchor: float, up: bool) -> List[dict]:
+    """r29's walk (copied): newest first from the anchor, each older rung only
+    if FURTHER out. `reps` carry `price` (the NEAR edge) and `formed_ts`."""
+    newest_first = sorted(reps, key=lambda r: (-r["formed_ts"], abs(r["price"] - anchor)))
+    out, last = [], anchor
+    for r in newest_first:
+        p = r["price"]
+        if (up and p > anchor and p > last) or ((not up) and p < anchor and p < last):
+            out.append(r)
+            last = p
+    return sorted(out, key=lambda r: r["price"], reverse=not up)
+
+
+def board(book: Book, spot: float, anchor_up: Optional[float] = None,
+          anchor_dn: Optional[float] = None) -> dict:
+    """{above, below}: zones walked outward from the anchors (spot by default;
+    the opening-range edges for the hunt and the breakout). Each rung: near
+    edge, far edge, side, members, formed_ts of its newest member. No cap —
+    *"three would be ideal ... if there's more I would like to have more"*."""
+    up_from = spot if anchor_up is None else anchor_up
+    dn_from = spot if anchor_dn is None else anchor_dn
+    reps_up, reps_dn = [], []
+    for z in book.current_zones():
+        newest = max(m.formed_ts for m in z["members"])
+        rung = {"lo": z["lo"], "hi": z["hi"], "n": len(z["members"]),
+                "level_ids": sorted(m.level_id for m in z["members"]),
+                "formed_ts": newest}
+        if z["lo"] > up_from:
+            reps_up.append({**rung, "price": z["lo"], "near": z["lo"], "far": z["hi"],
+                            "side": R.RESISTANCE})
+        elif z["hi"] < dn_from:
+            reps_dn.append({**rung, "price": z["hi"], "near": z["hi"], "far": z["lo"],
+                            "side": R.SUPPORT})
+    return {"above": walk(reps_up, up_from, True), "below": walk(reps_dn, dn_from, False),
+            "width": book.width, "as_of": book.as_of}
