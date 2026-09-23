@@ -1,5 +1,18 @@
 """
-derived/levels.py  v6.1
+derived/levels.py  v6.2
+v6.2  2026-09-23  OTV4TEST r114 - THE RAILS ON THE OPERATOR'S DEFINITIONS. "Any
+      interaction that doesn't cause the fork object to destruct is a touch. A
+      breech is an event that invalidates the fork." The book path's rails no
+      longer run the old _derive_events tine branch (0.15% close tolerance,
+      depth-graded WICKED/REJECTED); `_rails_sync` judges each rail with
+      level_rules at the rail's price on the closed bar's own minute: HELD ->
+      REJECTED on the rail id (a legitimate sweep point, softer than a level);
+      BREACHED -> the fork's identity is INVALIDATED, `tines_now` serves nothing
+      for it again (board, projection, anchors all read "absent"), and the
+      INVALIDATED row carries the identity so a restart cannot resurrect it (§22).
+      AND `_fork_key` IS NOW THE ANCHORS' PRICES + KINDS: `idx` is a position in
+      the rolling frame and shifted every bar (one fork wore 17 keys 09-09..09-14),
+      so r19's identity fired hourly on the same fork (R7 pins it).
 Owns `level_ledger` and `level_event`. Tier 3 — stateful; the object has a biography.
 v6.1  2026-09-23  OTV4TEST r111 — the two rulings reach the engine: LEVEL_SPIKE_REJECT
       now defaults to level_book.SPIKE_REJECT_USD ($1.00, ON; one number, config
@@ -494,6 +507,11 @@ class LevelEngine(DerivedEngine):
         self._book_bar = ""              # the closed 1m bar the book was last synced on
         self._book_live: set = set()     # level_ids the ledger holds live, per the book
         self._book_emitted: set = set()  # (level_ids, ts_ms, event) already published
+        # v6.2 — the rails on the operator's definitions (2026-09-23)
+        self._dead_forks: set = set()    # fork identities a rail BREACH invalidated
+        self._dead_loaded = False        # restored from INVALIDATED rows on first sync (§22)
+        self._rail_eps: dict = {}        # (fork_key, rail, role) -> {"ep": Episode, "ext": price}
+        self._rail_bar = ""              # the closed 1m bar the rails were last judged on
         self.last_book_ms = None         # build time of the last sync, for the log
 
     def _sources(self, ctx: dict):
@@ -698,6 +716,13 @@ class LevelEngine(DerivedEngine):
         fe = self._forks
         fork = (getattr(fe, "last_forks", {}) or {}).get("1h") if fe is not None else None
         if fork is None:
+            return []
+        # 🔴 v6.2 — A BREACH INVALIDATES THE FORK (operator, 2026-09-23: "A breech
+        # is an event that invalidates the fork"). Its rails are no candidates for
+        # anyone — board, projection, anchors — until the builder produces a fork
+        # with a NEW identity (r19: identity is the three anchors).
+        _dead = getattr(self, "_dead_forks", None)      # engines built via __new__ have none
+        if _dead and self._fork_key() in _dead:
             return []
         idx = _f((getattr(fe, "last_idx", {}) or {}).get("1h")) or 0.0
         slope = _f(getattr(fork, "slope", None)) or 0.0
@@ -984,12 +1009,20 @@ class LevelEngine(DerivedEngine):
         fork = (getattr(fe, "last_forks", {}) or {}).get("1h") if fe is not None else None
         if fork is None:
             return None
+        # 🔴 v6.2 — IDENTITY IS THE ANCHORS' PRICES AND KINDS, NOT THEIR POSITIONS.
+        # `idx` is the anchor's position inside the ForkEngine's rolling frame, so
+        # once the frame is full EVERY new bar shifts it by one: measured on this
+        # box, one fork (724.125 / 704.66 / 721.886, alive 09-09..09-14) wore 17
+        # different keys, and 5 of 15 forks drifted the same way. r19's "a new
+        # fork is a new projection" was therefore firing hourly on the SAME fork,
+        # and a breach invalidation keyed on it would have expired at the next
+        # bar. Found by the 15m-fork study (2026-09-23), confirmed on fork_series.
         key = []
         for a in ("p0", "p1", "p2"):
             piv = getattr(fork, a, None)
             if piv is None:
                 return None
-            key.append((_f(getattr(piv, "idx", None)), _f(getattr(piv, "price", None))))
+            key.append((round(_f(getattr(piv, "price", None)) or 0.0, 4), str(getattr(piv, "kind", ""))))
         return tuple(key)
 
     def _lid(self, sym: str, prov: str, price: float) -> str:
@@ -1175,7 +1208,78 @@ class LevelEngine(DerivedEngine):
                 # ⚠️ LOUD, NOT SILENT (§0.5): the ledger keeps its last good state
                 logger.error("[level] book sync FAILED — ledger unchanged this bar: %s: %s",
                              type(exc).__name__, exc)
-        written += self._derive_events(ctx, sym, time.time(), tines_only=True)
+        written += self._rails_sync(ctx, sym)
+        return written
+
+    def _rails_sync(self, ctx: dict, sym: str) -> int:
+        """v6.2 — the 1h fork's rails judged by `derived/level_rules`, the same
+        HELD/BREACHED as a level, at the rail's price on the CLOSED bar's own
+        minute (r19). Operator, 2026-09-23: "Any interaction that doesn't cause
+        the fork object to destruct is a touch. A breech is an event that
+        invalidates the fork." So: a HELD is a touch -> published REJECTED on the
+        rail's id (the sweep's legitimate sweep point, softer than a level); a
+        BREACHED invalidates the fork -> INVALIDATED row, and `tines_now` serves
+        nothing for that identity again. No tolerance, no depth grade — the old
+        path's 0.15% close tolerance does not run here."""
+        from derived import level_rules as R
+        store = self._store
+        if not self._dead_loaded:
+            self._dead_loaded = True
+            try:
+                import ast
+                for (k,) in store.conn.execute(
+                        "SELECT depth FROM level_event WHERE symbol=? AND event='INVALIDATED'", (sym,)):
+                    try:
+                        self._dead_forks.add(ast.literal_eval(k))
+                    except Exception:                           # noqa: BLE001
+                        pass
+            except Exception as exc:                            # noqa: BLE001
+                logger.warning("[level] could not restore invalidated forks: %s", exc)
+        d1 = ctx.get("df_1m")
+        try:
+            if d1 is None or len(d1) < 2:
+                return 0
+            bar_ts = str(d1.index[-2]); row = d1.iloc[-2]
+            bar = (0, float(row["open"]), float(row["high"]), float(row["low"]), float(row["close"]))
+        except Exception:                                       # noqa: BLE001
+            return 0
+        if bar_ts == self._rail_bar:
+            return 0
+        self._rail_bar = bar_ts
+        fkey = self._fork_key()
+        if fkey is None or fkey in self._dead_forks:
+            return 0
+        self._rail_eps = {k: v for k, v in self._rail_eps.items() if k[0] == fkey}
+        now, written = time.time(), 0
+        for t_ in self.tines_now(bar[4], minutes_back=1.0):     # the rail where it stood that minute
+            name, px, kind = t_["provenance"], float(t_["price"]), t_["kind"]
+            key = (fkey, name, kind)
+            st = self._rail_eps.get(key)
+            if st is None:
+                st = self._rail_eps[key] = {"ep": R.Episode(kind), "ext": None}
+            evs = st["ep"].step(bar, (px, px))
+            reach = bar[2] if kind == R.RESISTANCE else bar[3]
+            if R.TESTED in evs or st["ep"].episode or R.HELD in evs:
+                st["ext"] = reach if st["ext"] is None else (
+                    max(st["ext"], reach) if kind == R.RESISTANCE else min(st["ext"], reach))
+            lid = self._lid(sym, name, 0.0)
+            if R.BREACHED in evs:
+                self._dead_forks.add(fkey)
+                logger.warning("[level] %s %s BREACHED at %s — the 1h fork is INVALIDATED "
+                               "(operator 2026-09-23); its rails are withdrawn until a new fork",
+                               sym, name, bar_ts)
+                written += self._emit(store, sym, lid, px, kind, name, bar_ts, now, "INVALIDATED",
+                                      {"pierce_pct": 0.0, "depth": repr(fkey), "closes_back": 0}, bar[4])
+                self._rail_eps = {}
+                break
+            if R.HELD in evs:
+                ext = st["ext"] if st["ext"] is not None else reach
+                pierce = max(0.0, (ext - px) if kind == R.RESISTANCE else (px - ext)) / px if px else 0.0
+                depth = ("shallow" if pierce <= SHALLOW_PIERCE_PCT
+                         else "deep" if pierce <= DEEP_PIERCE_PCT else "beyond")   # recorded only
+                written += self._emit(store, sym, lid, px, kind, name, bar_ts, now, "REJECTED",
+                                      {"pierce_pct": pierce, "depth": depth, "closes_back": 1}, bar[4])
+                st["ext"] = None
         return written
 
     @staticmethod

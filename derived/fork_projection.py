@@ -1,7 +1,9 @@
 """
-derived/fork_projection.py  v1.0
+derived/fork_projection.py  v1.1
 THE 1-HOUR PITCHFORK'S RAILS AS A PROJECTION — SEPARATE FROM THE LEVEL BOOK.
 
+v1.1  2026-09-23  OTV4TEST r114 — fork_key is the anchors' PRICES + KINDS, not `idx`,
+      which is a position in the rolling frame and shifted every bar.
 v1.0  2026-09-23  OTV4TEST LVL.15 step 3 (unlanded WIP, built for review).
 
 🔴 THE OPERATOR'S RULINGS, FINAL:
@@ -46,7 +48,9 @@ def fork_key(fork) -> Optional[tuple]:
     if fork is None:
         return None
     try:
-        return tuple((float(p.idx), float(p.price)) for p in (fork.p0, fork.p1, fork.p2))
+        # anchor PRICES + KINDS, never `idx`: idx is a position in the rolling
+        # frame and shifts every bar (r114 — one fork wore 17 keys, 09-09..09-14)
+        return tuple((round(float(p.price), 4), str(getattr(p, "kind", ""))) for p in (fork.p0, fork.p1, fork.p2))
     except Exception:                                           # noqa: BLE001
         return None
 

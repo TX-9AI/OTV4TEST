@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v1.08
+# BACKLOG.md — OTV4TEST — v1.09
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -238,6 +238,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v1.09 — 2026-09-23 — OTV4TEST r114 — LVL.15: THE RAILS ON THE OPERATOR'S DEFINITIONS, AND FORK IDENTITY FIXED.** Rulings: "Any interaction that doesn't cause the fork object to destruct is a touch. A breech is an event that invalidates the fork." Rail HELD -> REJECTED (no tolerance, no depth grade); rail BREACHED -> the fork is INVALIDATED everywhere and cannot resurrect on restart. Fork identity moved from anchor positions (which shift every bar - one fork wore 17 keys 09-09..09-14) to anchor prices. Observed: 1 of 138 trades ever entered on a rail (09-23 14:18, sweep on fork1h/lower). 15m fork study (27 sessions): rails ~2x closer and touched ~3x as often as 1h, but a HELD led to a half-ATR move away 35% of the time vs a 31% random-extreme baseline - not respected on this sample; 1h 36% vs 12% null on n=11. A 15m fork also needs a fractal k (none ruled) and a timeframe-aware rail_edges.
 
 **v1.08 — 2026-09-23 — OTV4TEST r113 — LVL.15 STEP 3, THE SWEEP: NO DEPTH GRADING.** The pierce floor (MIN_REJECTION_PCT, the sweep's most common refusal here: 315 rows, 8 sessions) and ceiling (never refused) no longer gate; both are recorded. Operator: "Step 3, agree on all." Remaining in step 3: TCS modelled on mainline's design (off levels), hunt/Breakout check, ORB rail anchors stripped; then rails onto fork_projection ("touches" = inside the channel or tickling its borders without killing the fork).
 
