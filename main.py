@@ -1,5 +1,11 @@
 """
-main.py  v4.67
+main.py  v4.68
+v4.68 2026-09-23  OTV4TEST r124 — `ctx["level_tape"]` IS NO LONGER BUILT. `_level_tape()`
+      read every hourly bar the feed store holds (through derived/level_map's
+      load_tape) once a minute, for two readers: the level engine's LEGACY path
+      (not live under LEVEL_SOURCE="book") and `board()`'s zone width, which
+      now comes from the book the engine builds every bar (levels v6.5, the
+      same width - measured equal). The function and its cache are removed.
 v4.67 2026-09-23  OTV4TEST r123 — THE OLD LIQUIDITY MAPPER STOPS RUNNING (LVL.15 step 5).
       `get_liquidity_mapper().analyze()` ran every tick over a deep 1h frame
       (`_named_level_frame`) and its output reached NOTHING THAT TRADES — each
@@ -1511,38 +1517,6 @@ class BotState:
 
 
 
-_LEVEL_TAPE_CACHE = (0.0, None)
-
-
-def _level_tape():
-    """The HOURLY tape the level engine builds session levels from (r36).
-
-    r29 built this on the 1m tape, which retention keeps for FIVE DAYS — so the
-    board reached back nine days while twelve weeks of hourly history sat in the
-    same store. The operator, reading his own 1D chart against it: *"use 1-hr as
-    far back as you can"*, then *"use the hour exclusively"*.
-    ⚠️ Re-read at most once a minute still: the cache is cheap and a new closed
-    HOUR is now the only thing that can change the answer, so this is if anything
-    more conservative than it was. None on any failure, logged, never an empty
-    frame — an empty frame reads as "no levels"."""
-    global _LEVEL_TAPE_CACHE
-    try:
-        ts, df = _LEVEL_TAPE_CACHE
-        if df is not None and (time.time() - ts) < 60.0:
-            return df
-        from data.candle_feed import feed_db_path
-        from derived.level_map import load_tape
-        df = load_tape(feed_db_path(), INSTRUMENT)
-        if df is None:
-            logger.warning("[levels] no hourly tape readable for %s — session "
-                           "levels unavailable this minute", INSTRUMENT)
-        _LEVEL_TAPE_CACHE = (time.time(), df)
-        return df
-    except Exception as exc:                                   # noqa: BLE001
-        logger.warning("[levels] level tape read failed: %s", exc)
-        return None
-
-
 def atm_iv_from_chain(chain):
     """The ONE conversion from a chain to a stored ATM IV. None when absent.
 
@@ -1641,7 +1615,6 @@ def run_analysis(state: BotState, chain=None) -> dict:
         # OTV4TEST r5 — the level engine retires levels inside the opening range
         "orb":       (get_orb_engine().data if _orb_engine_ready() else None),
         # OTV4TEST r29 — the tape the session levels are built from (levels v5.0)
-        "level_tape": _level_tape(),
         # 🔴 r51 — `_flow_conn` HAD NO PRODUCER. It is READ by `derived/notes.py`
         # (tape, defence, break_tape) and by `derived/snapshot.py`, and was set
         # by NOTHING — so `analysis/order_flow.aggression()` on that path has

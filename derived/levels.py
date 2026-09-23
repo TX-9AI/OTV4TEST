@@ -1,5 +1,15 @@
 """
-derived/levels.py  v6.4
+derived/levels.py  v6.5
+v6.5  2026-09-23  OTV4TEST r124 - THE BOARD NO LONGER READS derived/level_map
+      (LVL.15 step 5). `board()` grouped the book's levels into zones with
+      `level_map.zone_width(self._tape)`, `level_map.zones` and `level_map.walk`,
+      measuring the width from `ctx["level_tape"]` (main.py's hourly tape read).
+      The SAME width is now taken from the book `_book_sync` builds every closed
+      bar (`book.width`: level_book.zone_width over the same SYM+SYM_EXT hourly
+      bars - MEASURED EQUAL on the live store, 828 bars, 0.5600 both), and the
+      two dict-based helpers are MOVED here verbatim as `_zones`/`_walk`, so the
+      board runs the same code on the same numbers. level_map is left to the
+      legacy path alone, which r125 deletes with it.
 v6.4  2026-09-23  OTV4TEST r116 - the rails are read at the CURRENT minute:
       `tines_now` adds the fraction of the forming hour elapsed (from the
       ForkEngine's `last_bar_start`) to the bar index; the fork's life is the
@@ -477,6 +487,59 @@ def _walked(rows, price):
     return [x["row"] for x in w["up"] + w["down"]]
 
 
+def _zones(levels, width):
+    """Cluster levels into ZONES {lo, hi, members, seed}, merged to a FIXED POINT.
+
+    MOVED VERBATIM from derived/level_map.zones (r39; the operator's spec of
+    2026-09-18: the outermost members of a cluster are its only voice, and a
+    breach of the cluster takes every member with it) at r124, so the board
+    stops importing level_map. `levels` are dicts with `price` and `formed_ts`;
+    `seed` is the NEWEST member. derived/level_book.zones is the same merge over
+    Level objects, used by the book itself."""
+    if not levels or not width or width <= 0:
+        return [{"lo": l["price"], "hi": l["price"], "members": [l], "seed": l}
+                for l in sorted(levels, key=lambda x: x["price"])]
+    zs = [{"lo": l["price"], "hi": l["price"], "members": [l]} for l in levels]
+    changed = True
+    while changed:
+        changed = False
+        zs.sort(key=lambda z: z["lo"])
+        out = []
+        for z in zs:
+            if out and z["lo"] - out[-1]["hi"] <= width:
+                out[-1]["hi"] = max(out[-1]["hi"], z["hi"])
+                out[-1]["members"] += z["members"]
+                changed = True
+            else:
+                out.append(z)
+        zs = out
+    for z in zs:
+        z["seed"] = max(z["members"], key=lambda l: l["formed_ts"])
+    return zs
+
+
+def _walk(levels, spot: float) -> dict:
+    """From spot outward, newest first, each older level only if further out
+    (r29). MOVED VERBATIM from derived/level_map.walk at r124.
+    -> {"up": [...], "down": [...]}, nearest first."""
+    import pandas as pd
+    newest_first = sorted(levels, key=lambda l: (-pd.Timestamp(l["formed_ts"]).value,
+                                                 abs(float(l["price"]) - spot)))
+    up, down = [], []
+    last_up, last_dn = spot, spot
+    for lv in newest_first:
+        p = float(lv["price"])
+        if p > spot and p > last_up:
+            up.append(lv)
+            last_up = p
+        elif p < spot and p < last_dn:
+            down.append(lv)
+            last_dn = p
+    up.sort(key=lambda l: float(l["price"]))
+    down.sort(key=lambda l: -float(l["price"]))
+    return {"up": up, "down": down}
+
+
 def _level_id(symbol: str, provenance: str, price: float) -> str:
     """Stable identity so touches land on the SAME row across ticks.
 
@@ -517,6 +580,9 @@ class LevelEngine(DerivedEngine):
         self._formed: dict = {}          # level_id -> epoch the extreme printed
         # v6.0 — the book path's own state
         self._book_bar = ""              # the closed 1m bar the book was last synced on
+        # v6.5 — the zone width the board groups by: the book's own (book.width),
+        # set on every sync; None until the first one (the board is then ungrouped)
+        self._zone_width: Optional[float] = None
         self._book_live: set = set()     # level_ids the ledger holds live, per the book
         self._book_emitted: set = set()  # (level_ids, ts_ms, event) already published
         # v6.2 — the rails' TOUCHES (a fork's death is the ForkEngine's alone, v6.3)
@@ -872,19 +938,16 @@ class LevelEngine(DerivedEngine):
         # failed IMPORT is a broken tree, and swallowing it here would leave
         # `_lmz` unbound for `_side()` below, turning a missing module into a
         # NameError raised from the middle of the walk instead of at the import.
-        from derived import level_map as _lmz
-        try:
-            _w = _lmz.zone_width(self._tape) if getattr(self, "_tape", None) is not None else None
-        except Exception as exc:                                # noqa: BLE001
-            logger.warning("[level] zone width unavailable, board ungrouped: %s", exc)
-            _w = None
+        # v6.5 (r124) — the book's width; the grouping and walk are this
+        # module's `_zones`/`_walk` (moved verbatim from level_map).
+        _w = getattr(self, "_zone_width", None)
         out["zone_width"] = _w
 
         import pandas as _pdz
         _lv = [{"price": float(r[0]),
                 "formed_ts": _pdz.Timestamp(float(r[-1] or 0.0), unit="s", tz="UTC"),
                 "row": r} for r in rows]
-        _zs = _lmz.zones(_lv, _w) if _w else [
+        _zs = _zones(_lv, _w) if _w else [
             {"lo": x["price"], "hi": x["price"], "members": [x], "seed": x} for x in _lv]
 
         # a zone is walked by its NEAR edge and dated by its NEWEST member, so
@@ -899,7 +962,7 @@ class LevelEngine(DerivedEngine):
                     continue
                 near = z["lo"] if ascending else z["hi"]
                 reps.append({"price": near, "formed_ts": z["seed"]["formed_ts"], "z": z})
-            w2 = _lmz.walk(reps, float(edge))
+            w2 = _walk(reps, float(edge))
             return (w2["up"] if ascending else w2["down"])
 
         def fmtz(rep, edge, ascending):
@@ -1305,6 +1368,7 @@ class LevelEngine(DerivedEngine):
                            db, len(h1 or []), len(m1 or []))
             return 0
         book = B.build(sym, h1, m1, spike_reject=LEVEL_SPIKE_REJECT)
+        self._zone_width = getattr(book, "width", None)   # v6.5 — board() groups by it
         now = time.time()
         written = 0
         import datetime as _dt

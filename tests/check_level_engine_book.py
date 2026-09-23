@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_level_engine_book.py  v1.1
+tests/check_level_engine_book.py  v1.2
+v1.2  2026-09-23  OTV4TEST r124 — E9: the board's zone width comes from the BOOK the
+      engine builds (book.width), with NO ctx["level_tape"] — main.py no longer
+      sends one. Red on r123, where board() measured the width from that tape.
 THE LIVE LEVEL ENGINE PUBLISHES THE LEVEL BOOK — driven through `derive()`.
 
 v1.1  2026-09-23  OTV4TEST r111 — E8: the ledger reads TRAVERSED for a level retired
@@ -25,6 +28,8 @@ nothing about who reads them. So the contract is the two tables:
   E6 hop 0: `derive()` routes to the book when LEVEL_SOURCE is "book"
   E8 a level the book retired inside the opening range is retired TRAVERSED
      in the ledger, never BREACHED (operator's ruling 2026-09-23)
+  E9 the board's zone width is the book's own (level_book.zone_width of the
+     same hourly bars), set by the sync, with no level_tape in ctx (r124)
   E7 a HELD judged on the HOUR (no 1m candle in its episode — a feed hole)
      is published with the hourly pierce and does NOT fail the sync. Red on
      the first cut of this engine: max() of an empty span raised and froze the
@@ -284,6 +289,20 @@ guard("E5 a second derive on the same bar publishes nothing new", _e5)
 guard("E6 hop 0: derive() routes to the book (LEVEL_SOURCE == 'book')", _e6)
 guard("E7 a HELD judged on the hour publishes its hourly pierce; the sync survives", _e7)
 guard("E8 a level retired inside the opening range reads TRAVERSED in the ledger", _e8)
+
+
+def _e9():
+    from derived import level_book as B
+    cut = RTH + 15 * M
+    eng, store, ctx = engine_at(cut, cut / 1000 + 5)
+    want = B.zone_width(B.load_bars(os.environ["OT_FEED_DB"], "QQQ", "1h"))
+    got = getattr(eng, "_zone_width", None)
+    bw = eng.board(100.5).get("zone_width")
+    return (want is not None and got == want and bw == want and "level_tape" not in ctx), \
+        f"book width {want}; engine {got}; board {bw}"
+
+
+guard("E9 the board's zone width is the book's, with no level_tape in ctx (r124)", _e9)
 
 shutil.rmtree(WORK, ignore_errors=True)
 print()

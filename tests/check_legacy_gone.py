@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """
-tests/check_legacy_gone.py  v1.2
+tests/check_legacy_gone.py  v1.3
 LVL.15 STEP 5 — THE OLD LEVEL CODE LEAVES, ONE MODULE AT A TIME, AND NOTHING
 STILL IMPORTS WHAT LEFT.
 
+v1.3  2026-09-23  OTV4TEST r124 — G3: the live board and main.py no longer use
+      derived/level_map (the board's zoning moved into derived/levels; main.py's
+      level_tape read is gone). level_map joins LEGACY in r125 with the legacy path.
 v1.2  2026-09-23  OTV4TEST r123 — G2: main.py no longer runs the old liquidity mapper.
       The module cannot join LEGACY yet (derived/level_map still imports it
       until r124), so this pins the ONE live caller that r123 removes.
@@ -25,6 +28,7 @@ land, by hand, and recorded in the ledger.
   G0 CONTROL — the scanner FINDS a live import (execution/exit_engine.py
      imports derived.level_rules), so an empty result below means something
   G1 nothing in the tree imports any module in LEGACY
+  G3 LevelEngine.board() and main.py import nothing from derived.level_map (r124)
   G2 main.py does not import analysis.liquidity_mapper (r123 — it ran every
      tick and fed nothing that trades); r124 moves the module into LEGACY
 """
@@ -102,6 +106,19 @@ def main():
     main_imports = imports_of(os.path.join(ROOT, "main.py"))
     hit = sorted(m for m in main_imports if m.startswith("analysis.liquidity_mapper"))
     check("G2 main.py no longer imports the old liquidity mapper", not hit, ", ".join(hit) or "none")
+    # G3 — the board's own function body, and main.py, import nothing from level_map
+    lv_src = open(os.path.join(ROOT, "derived", "levels.py"), encoding="utf-8").read()
+    board_fn = next((n for n in ast.walk(ast.parse(lv_src)) if isinstance(n, ast.FunctionDef)
+                     and n.name == "board"), None)
+    in_board = set()
+    for n in ast.walk(board_fn) if board_fn is not None else ():
+        if isinstance(n, ast.ImportFrom) and n.module:
+            in_board.update([n.module] + [f"{n.module}.{a.name}" for a in n.names])
+        elif isinstance(n, ast.Import):
+            in_board.update(a.name for a in n.names)
+    hit3 = sorted(m for m in (in_board | main_imports) if "level_map" in m)
+    check("G3 board() and main.py no longer use derived.level_map",
+          board_fn is not None and not hit3, ", ".join(hit3) or ("none" if board_fn else "board() not found"))
     print()
     if FAILED:
         print(f"RED — {len(FAILED)} of {len(RAN)} failed: {', '.join(FAILED)}")

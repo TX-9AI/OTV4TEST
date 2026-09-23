@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v1.18
+# BACKLOG.md — OTV4TEST — v1.19
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -238,6 +238,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v1.19 — 2026-09-23 — OTV4TEST r124 — LVL.15 STEP 5: THE LIVE BOARD STOPS READING derived/level_map.** Found while mapping the deletion: board() - read by every level-trading plan - grouped the book's levels into zones with level_map.zone_width/zones/walk over main.py's ctx["level_tape"]. The width now comes from the book the engine builds every bar (equal on the live store: 828 hourly bars, 0.56 both) and zones/walk are moved into derived/levels verbatim. Proven identical: 704 boards across a price grid, spot- and range-anchored, byte-identical old vs new on the live ledger. main.py's level_tape read is removed. Gates: check_level_engine_book E9, check_zones retargeted (+ bootstrap), check_legacy_gone G3. Next, r125: the pure deletions.
 
 **v1.18 — 2026-09-23 — OTV4TEST r123 — LVL.15 STEP 5: THE OLD LIQUIDITY MAPPER STOPS RUNNING.** main.py no longer calls get_liquidity_mapper().analyze() each tick, nor builds its deep 1h frame, nor publish_tines. Every consumer was measured first: the level_near record fallback filled nothing on 138 trades; publish_tines only rewrote the map object; MarketState sweep_recent/sweep_age_bars have no reader; the readiness sweep track is log-only; shadow is not installed; the level engine reads liq_map only on its legacy path. Full boot sweep of the build: 158/165, the six standing reds plus check_land_tooling T3b (environmental, identical on an untouched worktree). Next, r124: level_map + the legacy levels path + liquidity_mapper + shadow/ (operator: "Yep, delete").
 

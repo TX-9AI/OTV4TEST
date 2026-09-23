@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """
-tests/check_zones.py  v1.0
+tests/check_zones.py  v1.1
+v1.1  2026-09-23  OTV4TEST r124 — RETARGETED, NOT REMOVED (§38.4), with the code it
+      pins: the board's `zones`/`walk` moved from derived/level_map into
+      derived/levels (`_zones`/`_walk`, verbatim) and its width now comes from the
+      book (level_book.zone_width over hourly BARS, set on the engine as
+      `_zone_width`). Every assertion is unchanged; Z1 measures the book's width
+      function on the same bars, Z2-Z4 the moved `_zones`, Z5 the board with the
+      engine holding the book's width instead of a tape. And the r106 venv
+      bootstrap it never had: under system python3 it died on pandas.
 CLUSTERED EXTREMES ARE ONE ZONE, AND ONLY ITS OUTER MEMBERS DECLARE ANYTHING.
 
 v1.0  2026-09-18  OTV4TEST r39 — born red at r38 (5c7213b): no `zone_width`, no
@@ -27,6 +35,10 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+import glob as _glob                                             # r106 venv bootstrap (r124:
+for _sp in _glob.glob(os.path.join(ROOT, "venv", "lib", "python*", "site-packages")):   # absent until
+    if _sp not in sys.path:                                      # now; it died on pandas under
+        sys.path.insert(1, _sp)                                  # the lander's system python3)
 os.environ.setdefault("OT_DERIVED_DB", os.path.join(tempfile.mkdtemp(), "d.db"))
 FAILED, RAN = [], []
 
@@ -58,16 +70,18 @@ def guard(name, fn, detail=""):
 
 def main():
     import pandas as pd
-    from derived import level_map as lm
+    from derived import level_book as B
+    try:                                           # a MISSING symbol is a red line (guard's rule)
+        from derived.levels import _zones
+    except ImportError:
+        _zones = None
 
-    # a frame whose median larger-side wick is exactly 1.00
-    idx = pd.date_range("2026-09-01", periods=20, freq="1h", tz="UTC")
-    df = pd.DataFrame({"open": [100.0] * 20, "close": [100.0] * 20,
-                       "high": [101.0] * 20, "low": [100.0] * 20}, index=idx)
+    # hourly bars whose median larger-side wick is exactly 1.00
+    bars = [(1_788_000_000_000 + i * 3_600_000, 100.0, 101.0, 100.0, 100.0) for i in range(20)]
     guard("Z1 the width is the instrument's own MEDIAN HOURLY WICK, measured",
-          lambda: abs(lm.zone_width(df) - 1.0) < 1e-9)
+          lambda: abs(B.zone_width(bars) - 1.0) < 1e-9)
     guard("Z1b an empty frame yields no width, not a zero",
-          lambda: lm.zone_width(pd.DataFrame()) is None)
+          lambda: B.zone_width([]) is None)
 
     def L(p, t):
         return {"price": p, "formed_ts": pd.Timestamp(f"2026-09-{t:02d}", tz="UTC")}
@@ -75,7 +89,7 @@ def main():
     # 100.0 / 100.4 / 100.7 cluster at width 1.0; 103.0 is separate
     lv = [L(100.0, 1), L(100.4, 3), L(100.7, 2), L(103.0, 4)]
     try:
-        zs = lm.zones(lv, 1.0)
+        zs = _zones(lv, 1.0)
     except Exception:
         zs = []
     guard("Z2 levels within a wick of each other are ONE zone",
@@ -94,7 +108,7 @@ def main():
         for _ in range(12):
             shuffled = lv[:]
             random.shuffle(shuffled)
-            z = lm.zones(shuffled, 1.0)
+            z = _zones(shuffled, 1.0)
             sg = [(round(x["lo"], 6), round(x["hi"], 6), len(x["members"])) for x in z]
             sig = sg if sig is None else sig
             same = same and (sg == sig)
@@ -107,14 +121,15 @@ def main():
     guard("Z3c every level lands in exactly one zone",
           lambda: sum(len(z["members"]) for z in zs) == len(lv))
     guard("Z4 no width means no grouping — it fails OPEN to the pre-zone board",
-          lambda: len(lm.zones(lv, None)) == len(lv), "one zone per level")
+          lambda: len(_zones(lv, None)) == len(lv), "one zone per level")
 
     # ── the board: cluster BEFORE the walk, and no 'inside' answer ──────────
     from derived.levels import LevelEngine
     from data.derived_store import DerivedStore
     ds = DerivedStore(path=os.path.join(tempfile.mkdtemp(), "d.db"))
     eng = LevelEngine.__new__(LevelEngine)
-    eng._store, eng.symbol, eng._forks, eng._tape = ds, "TST", None, df
+    eng._store, eng.symbol, eng._forks = ds, "TST", None
+    eng._zone_width = B.zone_width(bars)          # what _book_sync sets from the book
     import time
     now = time.time()
     for i, p in enumerate([100.0, 100.4, 100.7, 103.0, 96.0, 95.6]):
