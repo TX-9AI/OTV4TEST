@@ -6,7 +6,7 @@ the canary fails on drift (WORKING_AGREEMENT 33).
 
 342 Python modules across 13 local packages.
 
-**Reached by:** 124 imported · 12 declared entry points · 116 referenced from a script, unit or doc but never imported · **90 by nothing here**.
+**Reached by:** 124 imported · 12 declared entry points · 117 referenced from a script, unit or doc but never imported · **89 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -124,11 +124,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `analysis/pitchfork.py`
 - **calls:** `utils/math_utils.py`
-- **called by:** `analysis/pitchfork_lifecycle.py`, `analysis/pitchfork_observer.py`, `derived/forks.py`, `main.py`, `status.py`, `tests/check_condor_rails.py`, `tests/check_condor_spec.py`, `tests/check_fork_closed_bars.py`, `tests/check_fork_invalidation.py`, `tests/check_fork_projection.py`
-
-### `analysis/pitchfork_lifecycle.py`
-- **calls:** `analysis/pitchfork.py`
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** `analysis/pitchfork_observer.py`, `derived/forks.py`, `main.py`, `status.py`, `tests/check_condor_rails.py`, `tests/check_condor_spec.py`, `tests/check_fork_closed_bars.py`, `tests/check_fork_invalidation.py`, `tests/check_fork_projection.py`
 
 ### `analysis/pitchfork_observer.py`
 - **calls:** `analysis/pitchfork.py`
@@ -829,6 +825,10 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tests/check_ledger_paths.py`
 - **calls:** (none)
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+
+### `tests/check_legacy_gone.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_level_book.py`
 - **calls:** `derived/__init__.py`, `derived/level_book.py`, `derived/level_rules.py`

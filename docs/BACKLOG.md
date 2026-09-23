@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v1.15
+# BACKLOG.md — OTV4TEST — v1.16
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -238,6 +238,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v1.16 — 2026-09-23 — OTV4TEST r121 — LVL.15 STEP 5 BEGINS: analysis/pitchfork_lifecycle.py (502 lines) IS DELETED.** Operator: "Yes, for sure." Its own header said "Consumed by nothing, gating nothing"; an AST scan of every .py confirms no static, lazy or importlib import. New gate check_legacy_gone (G0 control, G1 nothing imports a deleted module) - each step-5 delivery appends its module. Remaining, in order: liquidity_ledger (fed every tick from main.py), liquidity_mapper (main.py, shadow/observer.py, level_map), level_map + the legacy path in derived/levels.py. 🔴 RULED 2026-09-23, recorded here as promised: after a breach exit on a RAIL, "no more tries today. Too much uncertainty" - so is_spent / tine_spent_key are NOT legacy; since r116 a breached rail survives and the lock is the only guard. Step 5 keeps them.
 
 **v1.15 — 2026-09-23 — OTV4TEST r120 — THE SWEEP'S BREACH EXIT RUNS ON THE OPERATOR'S BREACHED (LVL.15 step 4, part 1).** exit_engine's `_sweep_breach_accepted` counted two closed bars beyond the pool; it now judges the bars since entry with derived/level_rules.judge - a 1m close beyond, then the next 1m open beyond (live: the forming bar's open). Replayed on all 11 sweep trades: the old rule's replay reproduces every actual breach-exit minute; the new one fires 1 minute earlier on 7 of 8, and cuts two premium-stop losers earlier (09-14 PDL 10:20 vs the 11:06 -$306 stop; 09-22 asia 09:49 vs 09:51 -$160). is_spent is NOT touched: every level lock predates the book, and since r116 a breached rail survives, so for rails the lock is the only guard against re-entry - that is the operator's call (part 2). Gate: check_sweep_plan E6-E8b.
 
