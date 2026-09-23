@@ -1,5 +1,17 @@
 """
-derived/forks.py  v4.4
+derived/forks.py  v4.5
+v4.5  2026-09-23  OTV4TEST r117 — THE 1h FORK IS BUILT FROM CLOSED HOURLY BARS ONLY.
+      The operator, 2026-09-23: "Closed hourly. I like that." The 1h frame
+      carried its still-forming bar, whose close moves every minute, and the
+      builder's anchor search and containment read it — so INSIDE one hour
+      the fork flipped between two first anchors (fork_series, 09-23 ET: p0
+      732.09 at 14:05 -> 727.82 at 14:10; 732.09 from 15:03, then 727.82 at
+      15:35 inside the same hour). The forming 1h bar (now <
+      its start + 60 min) is now dropped before the build and before the ATR.
+      Positions are unchanged by dropping the tail, so `last_idx` and
+      `last_bar_start` still name the forming bar and r116's walk of the rail
+      to the current minute still applies. The 1d frame is NOT changed here —
+      the ruling was about the hourly fork.
 v4.4  2026-09-23  OTV4TEST r116 — THE BUILDER'S CONTAINMENT TEST IS THE ONLY JUDGE.
       The operator, asked whether a killed fork the builder serves again argues
       for its persistence: "I agree. If the channel gets disrespected briefly but
@@ -102,6 +114,25 @@ def fork_identity(fork) -> Optional[tuple]:
 # along it by (minutes / TF_MINUTES) of a bar to find where it stood at a minute
 TF_MINUTES = {"15m": 15, "1h": 60, "1d": 390}
 
+# v4.5 — frames whose still-forming bar is dropped before the build (the
+# operator's "closed hourly"). 1d is deliberately absent: not ruled.
+CLOSED_BARS_ONLY = ("1h",)
+
+
+def closed_frame(df, tf: str, now: float):
+    """The frame the builder is handed: for a CLOSED_BARS_ONLY frame, without
+    its newest bar while that bar is still forming (now < start + one bar).
+    Anything that cannot be read is handed through unchanged."""
+    if tf not in CLOSED_BARS_ONLY or df is None or len(df) == 0:
+        return df
+    try:
+        start = float(df.index[-1].timestamp())
+    except Exception:                                           # noqa: BLE001
+        return df
+    if now < start + TF_MINUTES[tf] * 60.0:
+        return df.iloc[:-1]
+    return df
+
 
 class ForkEngine(DerivedEngine):
     name = "forks"
@@ -144,13 +175,16 @@ class ForkEngine(DerivedEngine):
                              None, None, None, None, None, None, None, None,
                              None, None, None, None, None, None))
                 continue
+            # v4.5 — the builder sees CLOSED hourly bars only; `df` keeps the
+            # forming bar so last_idx/last_bar_start below still name it
+            bdf = closed_frame(df, tf, now)
             try:
-                atr = float((df["high"] - df["low"]).tail(20).mean())
+                atr = float((bdf["high"] - bdf["low"]).tail(20).mean())
             except Exception:                                   # noqa: BLE001
                 atr = 0.0
             fork = None
             try:
-                fork = pf.build_fork_contained(sym, df, tf, atr)
+                fork = pf.build_fork_contained(sym, bdf, tf, atr)
             except Exception as exc:                            # noqa: BLE001
                 logger.debug("fork build raised for %s %s: %s", sym, tf, exc)
             # r15 (mainline r364's rule): a failed build CLEARS the held fork, so a

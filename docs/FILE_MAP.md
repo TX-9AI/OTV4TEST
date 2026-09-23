@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-339 Python modules across 13 local packages.
+340 Python modules across 13 local packages.
 
-**Reached by:** 124 imported · 12 declared entry points · 113 referenced from a script, unit or doc but never imported · **90 by nothing here**.
+**Reached by:** 124 imported · 12 declared entry points · 114 referenced from a script, unit or doc but never imported · **90 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -55,7 +55,7 @@ Change these with the most care; a break here reaches everything downstream.
 | `strategy/__init__.py` | 49 | atp_butterfly_plan.py, breakout_plan.py, check_age_gate_gone.py, check_anchors.py |
 | `strategy/plan.py` | 45 | atp_butterfly_plan.py, breakout_plan.py, check_anchors.py, check_atp_butterfly.py |
 | `utils/time_utils.py` | 40 | alert_manager.py, broker_reconcile.py, check_bfly_vwap_band.py, check_butterfly_foundational.py |
-| `data/derived_store.py` | 30 | anchors.py, breakout_plan.py, check_bfly_vwap_band.py, check_derived_layer.py |
+| `data/derived_store.py` | 31 | anchors.py, breakout_plan.py, check_bfly_vwap_band.py, check_derived_layer.py |
 | `database/trade_logger.py` | 25 | check_atp_butterfly.py, check_condor_mgmt.py, check_condor_pairing.py, check_condor_stop_suppression.py |
 | `derived/__init__.py` | 24 | atp_butterfly_plan.py, check_anchors.py, check_atp_butterfly.py, check_bfly_vwap_band.py |
 | `strategy/base_strategy.py` | 20 | atp_butterfly.py, breakout_plan.py, check_credit_remainder.py, check_entry_gate.py |
@@ -68,7 +68,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `analysis/__init__.py`
 - **calls:** (none)
-- **called by:** `derived/forks.py`, `main.py`, `tests/check_audit_20260823.py`, `tests/check_condor_rails.py`, `tests/check_derived_layer.py`, `tests/check_fork_invalidation.py`, `tests/check_orb_one_order.py`, `tests/check_orb_rearm_zone.py`, `tests/check_plan_wiring.py`, `tests/check_pool_geometry.py`
+- **called by:** `derived/forks.py`, `main.py`, `tests/check_audit_20260823.py`, `tests/check_condor_rails.py`, `tests/check_derived_layer.py`, `tests/check_fork_closed_bars.py`, `tests/check_fork_invalidation.py`, `tests/check_orb_one_order.py`, `tests/check_orb_rearm_zone.py`, `tests/check_plan_wiring.py`, `tests/check_pool_geometry.py`
 
 ### `analysis/chain_snapshot.py`
 - **calls:** `config.py`
@@ -124,7 +124,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `analysis/pitchfork.py`
 - **calls:** `utils/math_utils.py`
-- **called by:** `analysis/pitchfork_lifecycle.py`, `analysis/pitchfork_observer.py`, `derived/forks.py`, `main.py`, `status.py`, `tests/check_condor_rails.py`, `tests/check_condor_spec.py`, `tests/check_fork_invalidation.py`, `tests/check_fork_projection.py`
+- **called by:** `analysis/pitchfork_lifecycle.py`, `analysis/pitchfork_observer.py`, `derived/forks.py`, `main.py`, `status.py`, `tests/check_condor_rails.py`, `tests/check_condor_spec.py`, `tests/check_fork_closed_bars.py`, `tests/check_fork_invalidation.py`, `tests/check_fork_projection.py`
 
 ### `analysis/pitchfork_lifecycle.py`
 - **calls:** `analysis/pitchfork.py`
@@ -204,7 +204,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `data/derived_store.py`
 - **calls:** (none)
-- **called by:** `analysis/gate_report.py`, `derived/anchors.py`, `derived/gamma_regime.py`, `derived/registry.py`, `derived/snapshot.py`, `execution/exit_engine.py`, `strategy/breakout_plan.py`, `strategy/liquidity_hunt.py`, `strategy/plan.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_bfly_vwap_band.py`, `tests/check_derived_layer.py`, `tests/check_engine_status.py`, `tests/check_fork_invalidation.py`, `tests/check_indicator_votes.py`, `tests/check_level_engine_book.py`, `tests/check_level_map.py`, `tests/check_level_rejection.py`, `tests/check_level_source.py`, `tests/check_levels_in_play.py`, `tests/check_liquidity_hunt.py`, `tests/check_plan_heartbeat.py`, `tests/check_plan_prepares.py`, `tests/check_rails_book.py`, `tests/check_runaway_plan.py`, `tests/check_sweep_excursion.py`, `tests/check_tcs_narrates.py`, `tests/check_tcs_plan.py`, `tests/check_zones.py`
+- **called by:** `analysis/gate_report.py`, `derived/anchors.py`, `derived/gamma_regime.py`, `derived/registry.py`, `derived/snapshot.py`, `execution/exit_engine.py`, `strategy/breakout_plan.py`, `strategy/liquidity_hunt.py`, `strategy/plan.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_bfly_vwap_band.py`, `tests/check_derived_layer.py`, `tests/check_engine_status.py`, `tests/check_fork_closed_bars.py`, `tests/check_fork_invalidation.py`, `tests/check_indicator_votes.py`, `tests/check_level_engine_book.py`, `tests/check_level_map.py`, `tests/check_level_rejection.py`, `tests/check_level_source.py`, `tests/check_levels_in_play.py`, `tests/check_liquidity_hunt.py`, `tests/check_plan_heartbeat.py`, `tests/check_plan_prepares.py`, `tests/check_rails_book.py`, `tests/check_runaway_plan.py`, `tests/check_sweep_excursion.py`, `tests/check_tcs_narrates.py`, `tests/check_tcs_plan.py`, `tests/check_zones.py`
 
 ### `data/disk_watch.py`
 - **calls:** (none)
@@ -268,7 +268,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `derived/forks.py`
 - **calls:** `analysis/__init__.py`, `analysis/pitchfork.py`, `derived/base.py`
-- **called by:** `derived/fork_projection.py`, `derived/levels.py`, `derived/registry.py`, `tests/check_fork_invalidation.py`
+- **called by:** `derived/fork_projection.py`, `derived/levels.py`, `derived/registry.py`, `tests/check_fork_closed_bars.py`, `tests/check_fork_invalidation.py`
 
 ### `derived/gamma_regime.py`
 - **calls:** `config.py`, `data/derived_store.py`
@@ -765,6 +765,10 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tests/check_fill_basis.py`
 - **calls:** `strategy/credit_vertical.py`
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+
+### `tests/check_fork_closed_bars.py`
+- **calls:** `analysis/__init__.py`, `analysis/pitchfork.py`, `data/derived_store.py`, `derived/forks.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_fork_invalidation.py`
 - **calls:** `analysis/__init__.py`, `analysis/pitchfork.py`, `data/derived_store.py`, `derived/forks.py`, `derived/levels.py`

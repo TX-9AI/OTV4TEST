@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v1.11
+# BACKLOG.md — OTV4TEST — v1.12
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -238,6 +238,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v1.12 — 2026-09-23 — OTV4TEST r117 — THE 1h FORK IS BUILT FROM CLOSED HOURLY BARS ONLY.** Operator: "Closed hourly. I like that." The builder was handed the 1h frame WITH its forming bar, so the fork flipped anchors inside an hour. Replayed minute by minute on 09-23's tape through the real builder: the forming frame changed the first anchor 8 times (all inside an hour, 732.09 <-> 727.82); the closed frame changed it ONCE, at 15:01 when the 14:00 bar closed. The rails are still walked to the current minute (r116). The 1d frame is unchanged - not ruled. Gate: check_fork_closed_bars C1-C5 (C1/C4 red on r116).
 
 **v1.11 — 2026-09-23 — OTV4TEST r116 — THE BUILDER'S CONTAINMENT TEST IS THE ONLY JUDGE OF A FORK'S LIFE.** Operator: "If the channel gets disrespected briefly but persists it still serving us somewhat of a guide." r115's 1m breach-kill and its refusal of the builder's rebuild are removed; a 1m poke beyond a rail is a touch; a fork is gone when the builder cannot build it. Rails are now read at the current minute (they were read at the forming hour's start: median $0.06/h of slope, worst $0.69). Measured along the way: the builder flip-flopped between two anchor sets today (732.09/727.82) - candidate study: build from closed hourly bars only.
 
