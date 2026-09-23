@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_level_engine_book.py  v1.0
+tests/check_level_engine_book.py  v1.1
 THE LIVE LEVEL ENGINE PUBLISHES THE LEVEL BOOK — driven through `derive()`.
 
+v1.1  2026-09-23  OTV4TEST r111 — E8: the ledger reads TRAVERSED for a level retired
+      inside the opening range.
 v1.0  2026-09-23  OTV4TEST LVL.15 step 2 (r110; carries the r106 venv bootstrap). Born RED at 7df8438, where the engine
       has no book path: `derive()` on the same tape publishes nothing.
 
@@ -21,6 +23,8 @@ nothing about who reads them. So the contract is the two tables:
      retired, the book's level is live, and a breached one retires BREACHED
   E5 a second derive on the same closed bar publishes nothing new
   E6 hop 0: `derive()` routes to the book when LEVEL_SOURCE is "book"
+  E8 a level the book retired inside the opening range is retired TRAVERSED
+     in the ledger, never BREACHED (operator's ruling 2026-09-23)
   E7 a HELD judged on the HOUR (no 1m candle in its episode — a feed hole)
      is published with the hourly pierce and does NOT fail the sync. Red on
      the first cut of this engine: max() of an empty span raised and froze the
@@ -247,6 +251,31 @@ def _e7():
     return ok, f"sync failures {fails}; REJECTED {ev} (want pierce {want})"
 
 
+def _e8():
+    """The ledger names WHY: a level retired inside the opening range reads
+    TRAVERSED, never BREACHED (operator's ruling 2026-09-23)."""
+    import derived.levels as L
+    import derived.level_book as B
+
+    class _Book:
+        live, dead, traversed, events = {}, {"QQQ:support:99.00": RTH + 5 * M}, {"QQQ:support:99.00"}, []
+    _orig = B.build
+    B.build = lambda *a, **k: _Book()
+    try:
+        cut = RTH + 6 * M
+        os.environ["OT_FEED_DB"] = tape(cut)
+        from data.derived_store import DerivedStore
+        L.time.time = lambda: cut / 1000.0 + 5
+        store = DerivedStore(tempfile.mktemp(dir=WORK, prefix="derived-", suffix=".db"))
+        store.upsert_level(("QQQ:support:99.00", "QQQ", 99.0, "support", "premarket",
+                            "session:2026-09-22", 1.0, 0, None, 0, None, None, 0))
+        L.LevelEngine(store, "QQQ")._book_sync("QQQ")
+        why = store.conn.execute("SELECT retired_reason FROM level_ledger WHERE level_id='QQQ:support:99.00'").fetchone()
+    finally:
+        B.build = _orig
+    return (why and why[0] == "TRAVERSED"), f"retired_reason {why}"
+
+
 guard("E1 a BREACHED is published as ACCEPTED at the bar that opened beyond", _e1)
 guard("E2 a HELD is published as REJECTED with the episode's deepest pierce", _e2)
 guard("E3 §37: a restart does not publish an event older than BOOK_FRESH_S", _e3)
@@ -254,6 +283,7 @@ guard("E4 the ledger holds exactly the book's live levels; old rows retire", _e4
 guard("E5 a second derive on the same bar publishes nothing new", _e5)
 guard("E6 hop 0: derive() routes to the book (LEVEL_SOURCE == 'book')", _e6)
 guard("E7 a HELD judged on the hour publishes its hourly pierce; the sync survives", _e7)
+guard("E8 a level retired inside the opening range reads TRAVERSED in the ledger", _e8)
 
 shutil.rmtree(WORK, ignore_errors=True)
 print()

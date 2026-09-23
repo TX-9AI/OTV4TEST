@@ -1,6 +1,10 @@
 """
-derived/levels.py  v6.0
+derived/levels.py  v6.1
 Owns `level_ledger` and `level_event`. Tier 3 — stateful; the object has a biography.
+v6.1  2026-09-23  OTV4TEST r111 — the two rulings reach the engine: LEVEL_SPIKE_REJECT
+      now defaults to level_book.SPIKE_REJECT_USD ($1.00, ON; one number, config
+      key LEVEL_SPIKE_REJECT overrides), and a level the book retired inside the
+      day's opening range is retired TRAVERSED in the ledger, never BREACHED (E8).
 v6.0  2026-09-23  LVL.15 STEP 2 — THE LEVEL BOOK IS THE SOURCE. With
       LEVEL_SOURCE "book" (the default) `derive()` stops computing levels and
       events itself: once per CLOSED 1m bar it rebuilds `derived/level_book`
@@ -379,9 +383,13 @@ EXCURSION_MAX_BARS = int(getattr(_cfg, "LEVEL_EXCURSION_MAX_BARS", 10)) if _cfg 
 # ledger and event tables every plan already reads. "legacy": the r5..r106 path.
 # The rails are untouched either way (step 2 moves the levels only).
 LEVEL_SOURCE = str(getattr(_cfg, "LEVEL_SOURCE", "book")) if _cfg else "book"
-# Lone-print filter for session extremes — ⚠️ 0.0 = OFF, pending the operator's
-# ruling (2026-09-23: the 09-18 08:14 716.38 print; see level_book.spike_extremes).
-LEVEL_SPIKE_REJECT = float(getattr(_cfg, "LEVEL_SPIKE_REJECT", 0.0)) if _cfg else 0.0
+# Lone-print filter for session extremes, outside RTH — RULED 2026-09-23
+# ("1. Yes"); the value lives in level_book.SPIKE_REJECT_USD ($1.00) so there is
+# one number, overridable here by config key LEVEL_SPIKE_REJECT.
+def _spike_default() -> float:
+    from derived import level_book as _B
+    return float(getattr(_cfg, "LEVEL_SPIKE_REJECT", _B.SPIKE_REJECT_USD)) if _cfg else _B.SPIKE_REJECT_USD
+LEVEL_SPIKE_REJECT = _spike_default()
 # §37 — only events this recent are published. A restart replays the whole book
 # (it is a pure function of the tape), and an older HELD must never reach a plan
 # as a fresh trigger: an interrupted firing sequence is never re-entered.
@@ -1222,7 +1230,9 @@ class LevelEngine(DerivedEngine):
         for (lid,) in rows:
             if lid in live_ids:
                 continue
-            if lid in book.dead:
+            if lid in book.traversed:
+                store.retire_level(lid, book.dead[lid] / 1000.0, "TRAVERSED")   # inside the opening range
+            elif lid in book.dead:
                 store.retire_level(lid, book.dead[lid] / 1000.0, "BREACHED")
             else:
                 store.retire_level(lid, now, "NOT_A_LEVEL")

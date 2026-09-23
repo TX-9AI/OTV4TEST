@@ -1,8 +1,22 @@
 """
-derived/level_book.py  v1.1
+derived/level_book.py  v1.2
 THE ONE LEVEL BOOK: closed session extremes, walked by recency, grouped into
 zones, judged HELD / BREACHED on the 1-minute tape by `derived/level_rules`.
 
+v1.2  2026-09-23  OTV4TEST r111 — TWO OPERATOR RULINGS, BOTH IN THE BOOK.
+      (1) A LONE PRINT IS NOT A SESSION EXTREME ("1. Yes"): `spike_extremes`
+      is ON by default at SPIKE_REJECT_USD $1.00 and judges OUTSIDE RTH ONLY —
+      inside RTH the same shape measured as real fast flushes. 09-21's 725.75
+      (08:25 ET, one print 2.45 under a market at 728.2, absent from his chart)
+      leaves the book; Monday's pre-market low is 726.70. The overnight block
+      STAYS ("2. Keep"). (2) "ANY LEVEL THAT'S INSIDE TODAY'S 5-MIN OPENING
+      RANGE IS AUTOMATICALLY RETIRED": at the first 1m candle at/after 09:35
+      every live level inside the 09:30-09:34 range retires TRAVERSED
+      (`Book.traversed`) — r5's rule, which the v1.1 book path had dropped. On
+      the real tape since 08-10 it fired 7 times and retired 12 levels. K13,
+      K14. ⚠️ r110 LANDED WITHOUT THESE: its archive was parked before the
+      rulings and never re-cut — found by the post-land marker check, before
+      any bake, so no running process ever held r110's v1.1.
 v1.1  2026-09-23  SESSIONS ON THE ET CLOCK, EXTREMES FROM THE MINUTE. v1.0 built
       blocks from HOURLY candles on the hour, so pre-market ended 09:00 and the
       09:00-09:30 half hour belonged to RTH. On 09-18 the real pre-market low
@@ -84,6 +98,14 @@ Bar = Tuple[int, float, float, float, float]      # (ts_ms, open, high, low, clo
 HOUR_MS, MIN_MS = 3_600_000, 60_000
 _ET = ZoneInfo("America/New_York")
 _OVERNIGHT_SPLIT_UTC = 8                        # 04:00 ET in EDT, 03:00 in EST
+# 🔴 OPERATOR'S RULING 2026-09-23 ("1. Yes"): a LONE PRINT is not a session
+# extreme. The vendor's tape carries single ticks the market never traded at —
+# 09-18 08:14 ET 716.38 (market ~718.2) and 09-21 08:25 ET 725.75 (market
+# ~728.2), on BOTH QQQ boxes, absent from his chart — and the book made each a
+# session low. A 1m extreme its own close AND both neighbours reject by more
+# than this is dropped, OUTSIDE RTH ONLY: inside RTH the same shape measured as
+# real fast flushes (07-10 10:33 717.00 closing 720.71), which are sweeps.
+SPIKE_REJECT_USD = 1.00
 
 
 # ── the tape ──────────────────────────────────────────────────────────────────
@@ -135,15 +157,23 @@ def et_blocks(d) -> List[Tuple[int, int]]:
             (at(d, 9, 30), at(d, 16, 0)), (at(d, 16, 0), at(d, 20, 0))]
 
 
+def _in_rth(ts_ms: int) -> bool:
+    t = datetime.fromtimestamp(ts_ms / 1000, _ET)
+    return (9, 30) <= (t.hour, t.minute) < (16, 0)
+
+
 def spike_extremes(m1: Sequence[Bar], min_reject: float) -> Dict[int, Tuple[bool, bool]]:
-    """1m candles whose LOW (or HIGH) its own close AND both neighbours reject by
-    more than `min_reject` — a lone print the market never traded at. Returns
-    {ts: (low_is_spike, high_is_spike)}. `min_reject <= 0` disables it."""
+    """1m candles OUTSIDE RTH whose LOW (or HIGH) its own close AND both
+    neighbours reject by more than `min_reject` — a lone print the market never
+    traded at. Returns {ts: (low_is_spike, high_is_spike)}. `min_reject <= 0`
+    disables it. RTH candles are never judged (ruling 2026-09-23)."""
     out: Dict[int, Tuple[bool, bool]] = {}
     if min_reject <= 0:
         return out
     for i in range(1, len(m1) - 1):
         p, b, n = m1[i - 1], m1[i], m1[i + 1]
+        if _in_rth(b[0]):
+            continue                      # inside RTH the shape is a real flush
         if n[0] - p[0] > 2 * MIN_MS:
             continue                      # neighbours not adjacent: cannot judge
         lo = b[4] - b[3] > min_reject and min(p[3], n[3]) - b[3] > min_reject
@@ -154,7 +184,7 @@ def spike_extremes(m1: Sequence[Bar], min_reject: float) -> Dict[int, Tuple[bool
 
 
 def closed_sessions_et(h1: Sequence[Bar], m1: Sequence[Bar], now_ms: Optional[int] = None,
-                       spike_reject: float = 0.0) -> List[dict]:
+                       spike_reject: float = SPIKE_REJECT_USD) -> List[dict]:
     """Every CLOSED block on the ET clock. Candidates are every 1m candle in the
     block PLUS every hourly candle lying wholly inside it — an hourly candle is
     an aggregate, so it carries the true extreme of an hour whose minutes are
@@ -278,6 +308,7 @@ class Book:
     width: Optional[float]
     live: Dict[str, Level] = field(default_factory=dict)
     dead: Dict[str, int] = field(default_factory=dict)        # level_id -> breach ts
+    traversed: set = field(default_factory=set)               # level_ids retired INSIDE an opening range
     events: List[dict] = field(default_factory=list)
     hourly_judged: int = 0
     as_of: Optional[int] = None
@@ -318,7 +349,7 @@ def _zone_side(members: Sequence[Level], ref_price: float) -> Optional[str]:
 
 
 def build(symbol: str, h1: Sequence[Bar], m1: Sequence[Bar],
-          now_ms: Optional[int] = None, spike_reject: float = 0.0) -> Book:
+          now_ms: Optional[int] = None, spike_reject: float = SPIKE_REJECT_USD) -> Book:
     """Replay the tape in time order and return the book as of the last candle.
 
     Sessions are the ET-clock blocks (`closed_sessions_et`). Every hour that has
@@ -330,6 +361,14 @@ def build(symbol: str, h1: Sequence[Bar], m1: Sequence[Bar],
     covered = {b[0] // HOUR_MS for b in (m1 or [])}
     tape = sorted([("1h", b) for b in h1 if b[0] // HOUR_MS not in covered]
                   + [("1m", b) for b in (m1 or [])], key=lambda x: x[1][0])
+    # 🔴 OPERATOR'S RULING 2026-09-23: "any level that's inside today's 5-min
+    # opening range is automatically retired" (r5's rule, carried onto the book).
+    # The range is the 09:30-09:34 minutes — the same five minutes as the 09:30
+    # 5m candle the ORB arms on. At the first 1m candle at/after 09:35 every LIVE
+    # level whose price lies inside [low, high] retires TRAVERSED: price has been
+    # through it. Applied on every day of the replay, so today is no special case.
+    or_rng: Dict[object, List[float]] = {}
+    or_done: set = set()
     pending = list(levels)                 # not yet live, in live_from order
     episodes: Dict[FrozenSet[str], R.Episode] = {}
     zone_list: List[dict] = []
@@ -337,6 +376,26 @@ def build(symbol: str, h1: Sequence[Bar], m1: Sequence[Bar],
     hourly_touched = set()
     for tf, bar in tape:
         ts = bar[0]
+        if tf == "1m":
+            t_et = datetime.fromtimestamp(ts / 1000, _ET)
+            day, hm = t_et.date(), (t_et.hour, t_et.minute)
+            if (9, 30) <= hm < (9, 35):
+                r = or_rng.setdefault(day, [bar[3], bar[2]])
+                r[0], r[1] = min(r[0], bar[3]), max(r[1], bar[2])
+            elif hm >= (9, 35) and day in or_rng and day not in or_done:
+                or_done.add(day)
+                lo_, hi_ = or_rng[day]
+                gone = [lid for lid, lv in book.live.items() if lo_ <= lv.price <= hi_]
+                for lid in gone:
+                    book.dead[lid] = ts
+                    book.traversed.add(lid)
+                    book.live.pop(lid, None)
+                if gone:
+                    book.events.append({"event": "TRAVERSED", "ts": ts, "judged_on": "1m",
+                                        "side": None, "near": lo_, "far": hi_,
+                                        "level_ids": sorted(gone), "prices": sorted(
+                                            float(x.rsplit(":", 1)[1]) for x in gone)})
+                    dirty = True
         while pending and pending[0].live_from <= ts:
             lv = pending.pop(0)
             if lv.level_id not in book.dead:

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_level_book.py  v1.1
+tests/check_level_book.py  v1.2
 THE LEVEL BOOK, DRIVEN ON HAND-BUILT TAPES.
 
+v1.2  2026-09-23  OTV4TEST r111 — K13 (the lone-print ruling, on build()'s defaults)
+      and K14 (the opening-range ruling); each red on r110's book.
 v1.1  2026-09-23  OTV4TEST r110 — K11, K12: the book moved to ET-clock blocks built
       from the 1m tape (pre-market ends 09:30), with an hourly fallback.
 v1.0  2026-09-23  OTV4TEST LVL.15 step 2 (unlanded WIP). Born RED where
@@ -29,6 +31,10 @@ v1.0  2026-09-23  OTV4TEST LVL.15 step 2 (unlanded WIP). Born RED where
       seeded 1m tape is missing (green on v1.0 too: it pins the fallback)
   K1b/K2b v1.1: K1 and K2 on the ET-clock path build() uses (K1/K2 pin the
       hourly helpers, which build() no longer calls)
+  K13 v1.1: the operator's ruling (2026-09-23) — a lone 1m print outside RTH
+      is not a session extreme; the same shape inside RTH stays
+  K14 v1.1: the operator's ruling (2026-09-23) — a level inside the day's
+      5-min opening range retires TRAVERSED at 09:35; one outside stays
 
 """
 from __future__ import annotations
@@ -319,6 +325,72 @@ def _k2b():
 
 
 guard("K2b ET path: pre-market is NOT a level at 09:29, and IS at 09:30", _k2b)
+
+
+# ── K13 — the operator's ruling: a lone print is not a session extreme ──
+def _k13():
+    """09-21 08:25 ET, as it printed: the market at 728.2-728.4 and ONE candle
+    opening 728.22, printing 725.75, closing 728.24. The same shape inside RTH
+    is a real flush and must STAY. Driven through build() with its DEFAULTS."""
+    d = ms(2026, 9, 21, 0)
+    pre = d + 12 * H + 25 * M                       # 08:25 ET
+    rth = d + 14 * H + 25 * M                       # 10:25 ET
+    h1 = flat_hours(d, 24, px=728.3, wick=0.1)
+    h1[12] = (h1[12][0], 728.3, 728.4, 725.75, 728.3)   # the hour carries the print too
+    h1[14] = (h1[14][0], 728.3, 728.4, 725.60, 728.3)
+    m1 = []
+    for base in (d + 12 * H, d + 14 * H):
+        for k in range(60):
+            t = base + k * M
+            if t == pre:
+                m1.append((t, 728.22, 728.24, 725.75, 728.24))      # the lone print
+            elif t == rth:
+                m1.append((t, 728.22, 728.24, 725.60, 728.24))      # same shape, RTH
+            else:
+                m1.append((t, 728.3, 728.4, 728.2, 728.3))
+    # the SESSION EXTREMES, on defaults (a flat fixture re-prints 728.20 as every
+    # block's low, so by "the newest print dates it" that level re-dates to a
+    # later block — the extremes are the direct statement of the rule)
+    lows = {(s_["start"] - d) // M: s_["low"] for s_ in B.closed_sessions_et(h1, m1, now_ms=d + 24 * H)}
+    pre_low, rth_low = lows.get(8 * 60), lows.get(13 * 60 + 30)
+    b = B.build("QQQ", h1, m1, now_ms=d + 24 * H)
+    ids = set(b.live) | set(b.dead)
+    ok = (round(pre_low or 0, 2) == 728.2 and round(rth_low or 0, 2) == 725.6 and "QQQ:support:725.75" not in ids
+          and "QQQ:support:725.60" in ids)
+    return ok, (f"pre-market low {pre_low} (want 728.2, not the 725.75 print); RTH low {rth_low} "
+                f"(want 725.6, the flush kept); 725.75 in book: {'QQQ:support:725.75' in ids}")
+
+
+guard("K13 ruling: a lone print outside RTH is not a session extreme; the same shape in RTH stays", _k13)
+
+
+# ── K14 — the operator's ruling: a level inside today's 5-min opening range retires ──
+def _k14():
+    """Two session highs live at 09:30: the OVERNIGHT high 100.50 (INSIDE the
+    09:30-09:34 range 100.20-100.80) and the PRE-MARKET high 101.50 (outside).
+    At 09:35 the inside one retires TRAVERSED, with no BREACHED; the outside
+    one stays live. (The first cut put both in pre-market, where only the
+    higher is an extreme — the fixture, not the book.)"""
+    d = ms(2026, 9, 21, 0)
+    h1 = flat_hours(d, 13, px=100.0, wick=0.1)
+    h1[3] = (h1[3][0], 100.0, 100.5, 99.9, 100.0)        # 23:00 ET Sun: the overnight high 100.50
+    h1[10] = (h1[10][0], 100.0, 101.5, 99.9, 100.0)      # 06:00 ET: a high of 101.50
+    rth = d + 13 * H + 30 * M
+    m1 = [(d + 13 * H + k * M, 100.0, 100.05, 99.95, 100.0) for k in range(0, 30)]   # 09:00-09:29
+    m1 += [(rth + k * M, 100.3, 100.8 if k == 2 else 100.4, 100.2 if k == 3 else 100.3, 100.35)
+           for k in range(0, 5)]                                                    # the opening range
+    m1 += [(rth + k * M, 100.3, 100.4, 100.25, 100.3) for k in range(5, 10)]         # 09:35 on
+    b = B.build("QQQ", h1, m1, now_ms=rth + 10 * M)
+    inside, outside = "QQQ:resistance:100.50", "QQQ:resistance:101.50"
+    breached = [e for e in b.events if e["event"] == "BREACHED" and inside in e["level_ids"]]
+    ok = (inside in getattr(b, "traversed", set()) and b.dead.get(inside) == rth + 5 * M
+          and outside in b.live and not breached)
+    return ok, (f"100.50 traversed: {inside in getattr(b, 'traversed', set())} at "
+                f"{(b.dead.get(inside, 0) - rth) // M if inside in b.dead else None}m after 09:30; "
+                f"101.50 live: {outside in b.live}; breach events on 100.50: {len(breached)}")
+
+
+guard("K14 ruling: a level inside the 09:30-09:34 opening range retires TRAVERSED at 09:35", _k14)
 
 print()
 if FAILED:

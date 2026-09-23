@@ -280,7 +280,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `derived/level_book.py`
 - **calls:** `derived/__init__.py`, `derived/level_rules.py`
-- **called by:** `derived/levels.py`, `tests/check_level_book.py`
+- **called by:** `derived/levels.py`, `tests/check_level_book.py`, `tests/check_level_engine_book.py`
 
 ### `derived/level_map.py`
 - **calls:** `analysis/liquidity_mapper.py`
@@ -827,7 +827,7 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
 ### `tests/check_level_engine_book.py`
-- **calls:** `data/derived_store.py`, `derived/levels.py`
+- **calls:** `data/derived_store.py`, `derived/level_book.py`, `derived/levels.py`
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
 ### `tests/check_level_map.py`
