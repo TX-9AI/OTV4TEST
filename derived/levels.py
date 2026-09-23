@@ -1,5 +1,17 @@
 """
-derived/levels.py  v6.5
+derived/levels.py  v6.6
+v6.6  2026-09-23  OTV4TEST r126 - THE LEGACY LEVEL PATH IS DELETED (LVL.15 step 5,
+      the operator: "Yes, for sure" / "Yep, delete"). `derive()` publishes the
+      book, and nothing else: the LEVEL_SOURCE switch, the legacy body of
+      derive(), `_sources`, `_tape_sources`, `_reconcile`, `_derive_events`,
+      `_walked`, `split_rails`, `pd_ts`, the legacy-only constants
+      (TOUCH_TOL_PCT, ACCEPT_CLOSES, CLOSES_BACK, EXCURSION_MAX_BARS) and nine
+      engine attributes only they touched are removed. Found by a reachability
+      pass from the live roots (the book sync, the rails, board/tines_now/
+      rail_projection/walk and the module functions other files import), not
+      by reading: 21 functions are live, 7 were not. SHALLOW/DEEP_PIERCE_PCT
+      stay - the book and rail syncs read them. derived/level_map.py, which
+      only this path still imported, is deleted with it.
 v6.5  2026-09-23  OTV4TEST r124 - THE BOARD NO LONGER READS derived/level_map
       (LVL.15 step 5). `board()` grouped the book's levels into zones with
       `level_map.zone_width(self._tape)`, `level_map.zones` and `level_map.walk`,
@@ -378,20 +390,10 @@ from derived.base import DerivedEngine
 
 logger = logging.getLogger(__name__)
 
-# A close beyond by less than this is inside the noise of the level itself.
-TOUCH_TOL_PCT = 0.0015
-# CLOSED 1m BARS beyond required before the level is retired ACCEPTED_THROUGH.
-# Inherited from the sweep rules, where it was MEASURED rather than chosen.
-# ⚠️ r18 — THE UNIT USED TO BE A LIE. This counted TICKS against a 5m close,
-# so the second poll of the SAME bar satisfied it: ~15 seconds, one close, not
-# two. It is now what the name says — two CLOSED 1m BARS, so 2 minutes — and it
-# is a real key, so the operator can drop it to 1 without a redeploy.
 try:
     import config as _cfg
-    ACCEPT_CLOSES = int(getattr(_cfg, "LEVEL_ACCEPT_CLOSES", 2))
 except Exception:                                               # noqa: BLE001
     _cfg = None
-    ACCEPT_CLOSES = 2
 # v4.1 — pierce depth bands, from the sweep's own ceiling (strict / relaxed x3).
 # 🔴 r18 — THIS KEY DID NOT EXIST IN config.py AND THE DEFAULT WAS WHAT RAN.
 # `SWEEP_CS_MAX_REJECTION_PCT` was never defined, so every pierce band on every
@@ -406,18 +408,6 @@ try:
 except Exception:                                               # noqa: BLE001
     SHALLOW_PIERCE_PCT = 0.0025
 DEEP_PIERCE_PCT = SHALLOW_PIERCE_PCT * 3.0
-CLOSES_BACK = {"shallow": 1, "deep": 2}          # operator, 2026-09-08
-# r44 — how many consecutive bars may sit beyond a level and still count as ONE
-# sweep. A grab is fast; a level price spends twenty minutes under is broken,
-# not swept. ⚠️ A PRIOR, NOT A MEASUREMENT — it wants the same study the pierce
-# floor got, and it is overridable so that study can move it without a revision.
-EXCURSION_MAX_BARS = int(getattr(_cfg, "LEVEL_EXCURSION_MAX_BARS", 10)) if _cfg else 10
-# ══ v6.0 — THE LEVEL BOOK IS THE SOURCE (LVL.15 step 2) ═══════════════════════
-# "book": levels and their HELD / BREACHED events come from derived/level_book on
-# the operator's final definitions, and this engine only PUBLISHES them into the
-# ledger and event tables every plan already reads. "legacy": the r5..r106 path.
-# The rails are untouched either way (step 2 moves the levels only).
-LEVEL_SOURCE = str(getattr(_cfg, "LEVEL_SOURCE", "book")) if _cfg else "book"
 # Lone-print filter for session extremes, outside RTH — RULED 2026-09-23
 # ("1. Yes"); the value lives in level_book.SPIKE_REJECT_USD ($1.00) so there is
 # one number, overridable here by config key LEVEL_SPIKE_REJECT.
@@ -440,11 +430,6 @@ def _f(v) -> Optional[float]:
     except (TypeError, ValueError):
         return None
     return None if f != f else f
-
-
-def pd_ts(ts) -> float:
-    """Epoch seconds of a pandas/py timestamp."""
-    return float(ts.timestamp())
 
 
 def board_for(store, symbol: str, price: float, orb_high=None, orb_low=None, limit: int = 3):
@@ -474,17 +459,6 @@ def board_for(store, symbol: str, price: float, orb_high=None, orb_low=None, lim
                 "fork": "absent", "anchor": "spot",
                 "count": {"above": 0, "below": 0, "tines": 0}}
     return LevelEngine(store, symbol, forks=None).board(price, orb_high, orb_low, limit)
-
-
-def _walked(rows, price):
-    """r29 — ledger rows (price, ..., created_ts last) through `level_map.walk`:
-    the newest held level each side of price, older ones only if further out."""
-    from derived import level_map as lm
-    import pandas as _pd
-    lv = [{"price": float(r[0]), "formed_ts": _pd.Timestamp(float(r[-1] or 0.0), unit="s", tz="UTC"),
-           "row": r} for r in rows]
-    w = lm.walk(lv, float(price))
-    return [x["row"] for x in w["up"] + w["down"]]
 
 
 def _zones(levels, width):
@@ -560,24 +534,7 @@ class LevelEngine(DerivedEngine):
         super().__init__(store)
         self.symbol = symbol
         self._forks = forks              # v4.2: the ForkEngine, for tine prices
-        self._live: dict = {}
-        self._pierce: dict = {}          # level_id -> {"depth", "pierce_pct", "closes_back", "bar_ts"}
-        self._excursion: dict = {}       # r44 — level_id -> {"pierce", "bars"}:
-                                         # how deep price actually went while it
-                                         # was BEYOND the level and had not yet
-                                         # closed back. Without this the pierce
-                                         # is only ever the reclaim bar's wick.
-        self._fork_seen = None           # r19: the anchors of the fork whose projection we hold
-        self._last_bar_ts: str = ""
         self.last_events: list = []      # events emitted on the most recent derive()
-        # r29 — tape-derived session levels, recomputed once per new tape bar
-        self._tape_key = None
-        self._tape_srcs: list = []       # (prov, price, kind, tf, live) held levels
-        self._tape = None                # r39 — the frame itself: board() computes
-                                         # the zone width from it (the instrument's
-                                         # own median hourly wick), so it needs the
-                                         # bars, not just the levels derived from them.
-        self._formed: dict = {}          # level_id -> epoch the extreme printed
         # v6.0 — the book path's own state
         self._book_bar = ""              # the closed 1m bar the book was last synced on
         # v6.5 — the zone width the board groups by: the book's own (book.width),
@@ -590,195 +547,6 @@ class LevelEngine(DerivedEngine):
         self._rail_bar = ""              # the closed 1m bar the rails were last judged on
         self.last_book_ms = None         # build time of the last sync, for the log
 
-    def _sources(self, ctx: dict):
-        """(provenance, price, kind, timeframe, is_live) for every known level.
-
-        ⚠️ PROVENANCE TRAVELS WITH THE LEVEL. "Resistance at 218.40, from Asia"
-        is a different trade from "resistance at 218.40, from yesterday's
-        close", and today the map exposes a bare price with the origin lost.
-        """
-        liq = ctx.get("liq_map")
-        # r33 — `vol` was read here ONLY to mint the VWAP row. VWAP is not a
-        # level; the binding goes with the producer rather than sitting unused.
-        out = []
-        if "level_tape" in ctx:
-            # r29 — THE TAPE IS THE SOURCE (see v5.0). The mapper's pools are not.
-            out.extend(self._tape_sources(ctx))
-            liq = None
-        if liq is not None:
-            for attr, prov, kind, live in (
-                ("prev_day_high", "prev_day", "resistance", 0),
-                ("prev_day_low", "prev_day", "support", 0),
-                ("asia_session_high", "asia", "resistance", 0),
-                ("asia_session_low", "asia", "support", 0),
-                ("london_session_high", "london", "resistance", 0),
-                ("london_session_low", "london", "support", 0),
-                # NY is LIVE — flagged, never treated as settled.
-                ("ny_session_high", "ny", "resistance", 1),
-                ("ny_session_low", "ny", "support", 1),
-            ):
-                p = _f(getattr(liq, attr, None))
-                if p and p > 0:
-                    out.append((prov, p, kind, "1d" if "prev" in prov else "session", live))
-            # r15 (mainline r364, LVL.2): a pool is classified by SIDE at write —
-            # above the live price is resistance, below is support; with no price,
-            # the formation ("high"→resistance). The detector wrote "high"/"low"
-            # and live_levels() filters support/resistance, so PDH/PDL and the
-            # whole R1/R2/R3 ladder were INVISIBLE to the hunt, the sweep and the
-            # TCS (measured on mainline's warehouse, 786 rows, 2026-09-11).
-            _px_now = _f(ctx.get("price"))
-            for pool in (getattr(liq, "pools", None) or []):
-                # 🔴 r19 — A MOVING RAIL IS NOT A LEVEL, AND IT NEVER ENTERS THIS
-                # BOOK. `publish_tines` puts every active fork rail on the map as
-                # a named pool with `moving=True`; this loop admitted them, and
-                # `_lid` bakes the price into the id, so ONE rail became a NEW
-                # LEDGER ROW EVERY TIME IT DRIFTED A CENT. Measured on this box:
-                # 22 simultaneously-live `1h upper tine` rows spanning 5.79
-                # points, none retired, including four positions of a fork that
-                # had already died and been superseded.
-                # ⚠️ r15 BELIEVED IT HAD CLOSED THIS. It removed `_tines()` from
-                # this function and pinned it with "no fork1h/* row in the
-                # ledger" — but the mapper's rails are named "1h upper tine",
-                # so `_is_tine()` returned False and they came in through the
-                # POOL door instead. A canary scoped to the name that was
-                # removed, not to the one that remained (§20, one level up).
-                # 🔑 THE OPERATOR'S RULE: the fork projection CO-INFORMS, it is
-                # not conjoined. Session extremes are stored and have a
-                # biography; the rails are a PROJECTION evaluated at a bar index
-                # and are served beside the ledger by `tines_now()`, living and
-                # dying with the fork that casts them.
-                if getattr(pool, "moving", False):
-                    continue
-                p = _f(getattr(pool, "price", None))
-                if p and p > 0:
-                    _formed = str(getattr(pool, "kind", "") or "")
-                    if _px_now and _px_now > 0:
-                        _side = "resistance" if p > _px_now else "support"
-                    else:
-                        _side = "resistance" if _formed == "high" else "support"
-                    out.append((str(getattr(pool, "name", None) or "pool"), p,
-                                _side,
-                                str(getattr(pool, "timeframe", "") or ""), 0))
-        # r33 — VWAP IS NOT A LEVEL IN THIS LEDGER AND NO LONGER ENTERS IT.
-        # Operator, 2026-09-17: get everything that does not belong out of the
-        # levels ledger. It wrote a `kind="dynamic"` row every tick keyed on the
-        # PRICE, so a moving average minted a new identity each time it moved —
-        # 844 rows, of which NO READER HAS EVER SEEN ONE: `live_levels()`,
-        # `board()` and `walk()` all filter `kind IN ('support','resistance')`,
-        # and `board()`'s own docstring says VWAP is not a level a trade
-        # contends with. It is the same defect r19 found in the fork rails —
-        # a MOVING object given a FROZEN horizontal identity — and the fix is
-        # the same one: it is not a source. VWAP remains available to any plan
-        # that wants it from `ctx["vol"].vwap`, which is where it always was and
-        # where the butterfly's own VWAP band already reads it (BFLY.5).
-        # r15 — tines are NOT sources any more: never stored, computed at read
-        # (`tines_now`); the emitter reads them beside the ledger's levels.
-        return out
-
-    # ── r29 — levels from the tape ─────────────────────────────────────────
-    def _tape_sources(self, ctx: dict):
-        """Held session levels off the tape plus ledger rows older than the tape.
-        Recomputed and RECONCILED once per new tape bar; cached in between."""
-        tape = ctx.get("level_tape")
-        store = self._store
-        sym = self.symbol or ctx.get("symbol") or ""
-        if tape is None or len(tape) == 0 or store is None or not sym:
-            return list(self._tape_srcs) if tape is not None else []
-        self._tape = tape                # r39 — kept for zone_width()
-        key = (str(tape.index[-1]), len(tape))
-        if key == self._tape_key:
-            return list(self._tape_srcs)
-        from derived import level_map as lm
-        levels = lm.session_levels(tape, accept_closes=ACCEPT_CLOSES, tol_pct=TOUCH_TOL_PCT)
-        tape_start = float(tape.index[0].timestamp())
-        srcs, formed, spent, tfs = [], {}, {}, {}
-        for lv in levels:
-            prov = lm.provenance(lv["label"])
-            lid = self._lid(sym, prov, lv["price"])
-            if lv["spent_ts"] is not None:
-                spent[lid] = lv
-                continue
-            srcs.append((prov, lv["price"], lm.kind_of(lv["side"]), f"session:{lv['date']}", 0))
-            formed[lid] = float(pd_ts(lv["formed_ts"]))
-            tfs[lid] = f"session:{lv['date']}"
-        held_ids = set(formed)
-        # the book reaches further than the tape: rows formed before the tape
-        try:
-            older = store.conn.execute(
-                "SELECT level_id, price, kind, provenance, timeframe, created_ts FROM level_ledger"
-                " WHERE symbol=? AND retired_ts IS NULL AND timeframe LIKE 'session:%'"
-                " AND created_ts < ?", (sym, tape_start)).fetchall()
-        except Exception:                                       # noqa: BLE001
-            older = []
-        for lid, price, kind, prov, tf, created in older:
-            if lid not in held_ids and lid not in spent:
-                srcs.append((prov, float(price), kind, tf, 0))
-                formed[lid] = float(created)
-        # r33 — the VWAP id went with the producer; nothing is exempted any more.
-        self._reconcile(store, sym, set(formed), formed, spent, tape, tfs=tfs)
-        self._formed.update(formed)
-        self._tape_srcs = srcs
-        self._tape_key = key
-        return list(srcs)
-
-    def _reconcile(self, store, sym, keep: set, formed: dict, spent: dict, tape,
-                   tfs: Optional[dict] = None) -> None:
-        """Retire every live row the tape does not hold; stamp formation times."""
-        try:
-            rows = store.conn.execute(
-                "SELECT level_id, price, kind, provenance, created_ts, timeframe FROM level_ledger"
-                " WHERE symbol=? AND retired_ts IS NULL", (sym,)).fetchall()
-        except Exception as exc:                                # noqa: BLE001
-            logger.warning("[level] reconcile read failed — nothing retired: %s", exc)
-            return
-        now = time.time()
-        fresh_after = now - 60.0 * max(3, ACCEPT_CLOSES + 1)
-        retired = 0
-        tfs = tfs or {}
-        for lid, price, kind, prov, created, tf in rows:
-            if lid in keep:
-                f = formed.get(lid)
-                want_tf = tfs.get(lid) or tf
-                if f is not None and (created is None or abs(float(created) - f) > 1.0
-                                      or want_tf != tf):
-                    # r30 — formation time AND dated timeframe, or the row cannot
-                    # be kept once the tape no longer reaches it
-                    store.set_level_created(lid, f, want_tf)
-                continue
-            if kind == "dynamic":
-                # r33 — r30's STALE_VWAP sweep retired every id but the current
-                # one. With the producer gone nothing creates them, and the rows
-                # that existed were DELETED in this revision, so this branch can
-                # only ever see a row from a pre-r33 store. Retire it and let it
-                # go rather than leaving a `dynamic` row live in a ledger that
-                # has no reader for one.
-                store.retire_level(lid, now, "NOT_A_LEVEL")
-                st = self._live.get(lid)
-                if st is not None:
-                    st["retired"], st["reason"] = now, "NOT_A_LEVEL"
-                retired += 1
-                continue
-            sp = spent.get(lid)
-            if sp is not None:
-                ts = float(pd_ts(sp["spent_ts"]))
-                store.retire_level(lid, ts, "ACCEPTED_THROUGH")
-                st = self._live.get(lid)
-                if st is not None:
-                    st["retired"], st["reason"] = ts, "ACCEPTED_THROUGH"
-                if ts >= fresh_after:
-                    bar_ts = str(sp["spent_ts"].tz_convert("America/New_York"))
-                    self._emit(store, sym, lid, float(price), kind, prov, bar_ts, now,
-                               "ACCEPTED", {"pierce_pct": 0.0, "depth": "accepted",
-                                            "closes_back": 0}, None)
-            else:
-                store.retire_level(lid, now, "NOT_A_LEVEL")
-                st = self._live.get(lid)
-                if st is not None:
-                    st["retired"], st["reason"] = now, "NOT_A_LEVEL"
-            self._pierce.pop(lid, None)
-            retired += 1
-        if retired:
-            logger.info("[level] reconciled to the tape — %d row(s) retired, %d held", retired, len(keep))
 
     def tines_now(self, price: float, minutes_back: float = 0.0):
         """The 1h fork's rails at THIS read, from the fork the ForkEngine holds
@@ -933,11 +701,6 @@ class LevelEngine(DerivedEngine):
         # implies: group, then walk what you grouped.
         # ⚠️ FAILS OPEN: no width, no grouping — every level is its own zone,
         # which is exactly the pre-r39 board.
-        # ⚠️ THE IMPORT IS NOT INSIDE THE try. A failed WIDTH is a board without
-        # grouping — degraded but correct, and that is what the except covers. A
-        # failed IMPORT is a broken tree, and swallowing it here would leave
-        # `_lmz` unbound for `_side()` below, turning a missing module into a
-        # NameError raised from the middle of the walk instead of at the import.
         # v6.5 (r124) — the book's width; the grouping and walk are this
         # module's `_zones`/`_walk` (moved verbatim from level_map).
         _w = getattr(self, "_zone_width", None)
@@ -1114,163 +877,13 @@ class LevelEngine(DerivedEngine):
         price = _f(ctx.get("price"))
         if not sym or not price:
             return 0
-        if LEVEL_SOURCE == "book":
-            return self._derive_book(ctx, sym)
-
-        # ⚠️ THE LAST CLOSED BAR DECIDES, NOT THE LIVE PRICE. Bodies decide,
-        # wicks test — so acceptance is judged on a CLOSE. Using `price`
-        # mid-bar would retire levels on wicks, which is the failure the
-        # convention exists to prevent.
-        close = price
-        df = ctx.get("df_5m")
-        try:
-            if df is not None and not getattr(df, "empty", True):
-                close = _f(df["close"].iloc[-1]) or price
-        except Exception:                                       # noqa: BLE001
-            pass
-
-        # ── r18 — THE ACCOUNTING RUNS ON A CLOSED 1m BAR, NOT ON A TICK ──
-        # Operator's rulings, 2026-09-13. `derive()` is called EVERY TICK and the
-        # touch/acceptance block had no bar guard at all, so both counters
-        # advanced ~4x a minute: one 5m bar polled 20 times scored 20 "touches",
-        # and ACCEPT_CLOSES=2 was satisfied by the SECOND TICK re-reading the
-        # SAME close — 15 seconds, not the two closes the constant names.
-        # 🔑 THE BAR IS THE 1m CLOSE, THE SAME ONE THE REJECTION FACT USES.
-        # Acceptance read `df_5m` and was the only part of this engine on a
-        # different clock. Operator on two 5m bars: *"Hell no. 10 minutes leaves
-        # us nothing actionable, the move is already long over."* On closed 1m
-        # bars the same ACCEPT_CLOSES=2 is TWO MINUTES and is now deterministic
-        # rather than accidental — and it is a real config key, so it moves
-        # without a redeploy.
-        acc_bar_ts, bar_close = "", None
-        d1 = ctx.get("df_1m")
-        try:
-            if d1 is not None and len(d1) >= 2:
-                acc_bar_ts = str(d1.index[-2])          # [-2] = the CLOSED bar
-                bar_close = float(d1.iloc[-2]["close"])
-        except Exception:                                       # noqa: BLE001
-            acc_bar_ts, bar_close = "", None
-
-        now = time.time()
-        written = 0
-        self.last_events = []
-        orb = ctx.get("orb")
-        rng_lo = _f(getattr(orb, "orb_low", None)) if orb is not None else None
-        rng_hi = _f(getattr(orb, "orb_high", None)) if orb is not None else None
-        in_range = (lambda p: bool(rng_lo and rng_hi and rng_lo <= p <= rng_hi))
-
-        # ══ r39 — A ZONE THAT HOLDS PRICE IS FINISHED ═════════════════════════
-        # Operator, 2026-09-18: *"one zone containing spot isn't a zone, then.
-        # It's done — as a zone is defined, it's finished. There's no reclaim
-        # trade for that."* A zone is a region price held AWAY from; once price
-        # is inside it, its near edge has been gone through and the object is
-        # spent. EVERY member retires, not just the one price crossed.
-        # 🔑 THIS MAKES r5's OPENING-RANGE RULE A SPECIAL CASE OF A GENERAL ONE.
-        # "Everything between orb_low and orb_high is retired TRAVERSED — price
-        # has been through it" is the same statement about a different region.
-        # ⚠️ JUDGED ON A CLOSED BAR, NOT A TICK, and that is deliberate. r5 ruled
-        # that a wick never spends a level — bodies decide, wicks test — and
-        # retirement has no undo, so a tick-rate test would let a single wick
-        # into a cluster consume six levels permanently. The opening-range rule
-        # stays at tick rate because its boundary is FIXED once the 09:30 bar
-        # prints; a zone's boundary moves with the book, so it needs the close.
-        _zone_gone: set = set()
-        if bar_close:
-            try:
-                from derived import level_map as _lmz
-                _zw = _lmz.zone_width(self._tape) if getattr(self, "_tape", None) is not None else None
-                if _zw:
-                    _src = [{"price": float(p), "formed_ts": self._formed.get(
-                                self._lid(sym, pr, p), now)}
-                            for pr, p, k, _tf, _lv in self._tape_srcs
-                            if k in ("support", "resistance")]
-                    for _z in _lmz.zones(_src, _zw):
-                        if _z["lo"] <= bar_close <= _z["hi"]:
-                            _zone_gone = {round(m["price"], 4) for m in _z["members"]}
-                            break
-            except Exception as exc:                            # noqa: BLE001
-                logger.warning("[level] zone traversal check skipped: %s", exc)
-
-        for prov, lvl_price, kind, tf, live in self._sources(ctx):
-            lid = self._lid(sym, prov, lvl_price)
-            st = self._live.get(lid)
-            if st is None:
-                st = {"created": self._formed.get(lid, now), "touches": 0, "beyond": 0,
-                      "last_touch": None, "retired": None, "reason": None}
-                self._live[lid] = st
-            if st["retired"]:
-                continue                       # finished — operator's ruling
-            # v4.2 — NO LEVEL INSIDE THE OPENING RANGE (tines exempt: they move)
-            _in_zone = round(lvl_price, 4) in _zone_gone
-            if kind in ("support", "resistance") and not self._is_tine(prov) and (
-                    in_range(lvl_price) or _in_zone):
-                st["retired"] = now
-                st["reason"] = "TRAVERSED"
-                self._pierce.pop(lid, None)
-                logger.info("[level] %s %s %.2f (%s) retired TRAVERSED — %s",
-                            sym, kind, lvl_price, prov,
-                            "price closed inside its zone" if _in_zone
-                            else f"inside the opening range {rng_lo:.2f}-{rng_hi:.2f}")
-                store.upsert_level((lid, sym, lvl_price, kind, prov, tf,
-                                    st["created"], st["touches"], st["last_touch"],
-                                    st["beyond"], st["retired"], st["reason"], int(live)))
-                written += 1
-                continue
-
-            tol = lvl_price * TOUCH_TOL_PCT
-            # ⚠️ ONE CLOSED BAR, ONCE — per level, so a level created mid-session
-            # starts counting from ITS first bar rather than inheriting a guard.
-            # Everything below this line is bar-rate; everything above is tick-rate.
-            if acc_bar_ts and st.get("last_bar") != acc_bar_ts:
-                st["last_bar"] = acc_bar_ts
-                bc = bar_close if bar_close is not None else close
-                if kind == "resistance":
-                    accepted = bc > lvl_price + tol
-                elif kind == "support":
-                    accepted = bc < lvl_price - tol
-                else:
-                    accepted = False           # VWAP is crossed, not broken
-
-                if accepted:
-                    st["beyond"] += 1
-                    if st["beyond"] >= ACCEPT_CLOSES:
-                        st["retired"] = now
-                        st["reason"] = "ACCEPTED_THROUGH"
-                        self._pierce.pop(lid, None)
-                        self._emit(store, sym, lid, lvl_price, kind, prov,
-                                   acc_bar_ts, now, "ACCEPTED",
-                                   {"pierce_pct": 0.0, "depth": "accepted",
-                                    "closes_back": 0}, bc)
-                elif abs(bc - lvl_price) <= tol:
-                    # Held at the level — that is a TOUCH. ONE per closed bar
-                    # (operator, 2026-09-13), never one per poll.
-                    st["touches"] += 1
-                    st["last_touch"] = now
-                    st["beyond"] = 0           # the run of acceptance is broken
-                else:
-                    # 🔴 A CLOSE BACK INSIDE BREAKS THE RUN (operator, 2026-09-13).
-                    # Until now ONLY a touch — within TOUCH_TOL_PCT of the level —
-                    # reset `beyond`, so a close that was plainly, obviously inside
-                    # left the run standing. Two excursions NINETY MINUTES APART,
-                    # with price six points inside for an hour in between, read as
-                    # "two consecutive closes beyond" and retired the level.
-                    st["beyond"] = 0
-
-            store.upsert_level((lid, sym, lvl_price, kind, prov, tf,
-                                st["created"], st["touches"], st["last_touch"],
-                                st["beyond"], st["retired"], st["reason"],
-                                int(live)))
-            written += 1
-        written += self._derive_events(ctx, sym, now)
-        return written
+        return self._derive_book(ctx, sym)
 
     # ══ v6.0 — THE BOOK PATH ══════════════════════════════════════════════
     def _derive_book(self, ctx: dict, sym: str) -> int:
         """Once per CLOSED 1m bar: rebuild the book from the tape, make the
         ledger hold exactly its live levels, publish its fresh events. The
         rails keep their own path. Never raises into the tick loop."""
-        if ctx.get("level_tape") is not None:
-            self._tape = ctx["level_tape"]        # board() measures zone width from it
         written = 0
         d1 = ctx.get("df_1m")
         try:
@@ -1292,12 +905,14 @@ class LevelEngine(DerivedEngine):
         """v6.2 — the 1h fork's rails judged by `derived/level_rules`, the same
         HELD/BREACHED as a level, at the rail's price on the CLOSED bar's own
         minute (r19). Operator, 2026-09-23: "Any interaction that doesn't cause
-        the fork object to destruct is a touch. A breech is an event that
-        invalidates the fork." So: a HELD is a touch -> published REJECTED on the
-        rail's id (the sweep's legitimate sweep point, softer than a level); a
-        BREACHED invalidates the fork -> INVALIDATED row, and `tines_now` serves
-        nothing for that identity again. No tolerance, no depth grade — the old
-        path's 0.15% close tolerance does not run here."""
+        the fork object to destruct is a touch." So: a HELD is a touch ->
+        published REJECTED on the rail's id (the sweep's legitimate sweep point,
+        softer than a level). A BREACHED is NOT judged here: since r116 a fork
+        lives while the ForkEngine's containment test can build it ("If the
+        channel gets disrespected briefly but persists it still serving us
+        somewhat of a guide"), so a breach only ends the rail's episode. (r126:
+        this docstring still described r114's invalidation until now.) No
+        tolerance, no depth grade."""
         from derived import level_rules as R
         store = self._store
         d1 = ctx.get("df_1m")
@@ -1474,139 +1089,6 @@ class LevelEngine(DerivedEngine):
                     p["closes_back"], bar_ts)
         return store.insert_level_event(row) if store is not None else 0
 
-    def _derive_events(self, ctx: dict, sym: str, now: float, tines_only: bool = False) -> int:
-        """v6.0 — `tines_only`: the book path publishes the LEVELS' events itself
-        and routes only the rails through here, unchanged."""
-        store = self._store
-        df = ctx.get("df_1m")
-        try:
-            if df is None or len(df) < 2:
-                return 0
-            bar = df.iloc[-2]
-            bar_ts = str(df.index[-2])
-            hi, lo, close = float(bar["high"]), float(bar["low"]), float(bar["close"])
-        except Exception:                                       # noqa: BLE001
-            return 0
-        if bar_ts == self._last_bar_ts:
-            return 0                                 # one closed bar, once
-        self._last_bar_ts = bar_ts
-        written = 0
-        _px = _f(ctx.get("price")) or close
-        # r15 — the tines are read, not stored: they join the ledger's levels here
-        # for the emitter only, and vanish with the fork (their pierce state too)
-        # 🔴 r19 — THE PROJECTION LIVES AND DIES WITH ITS FORK. The rails are
-        # evaluated ONE BAR BACK because that is the bar whose extreme is being
-        # judged: `bar`/`hi`/`lo` below come from df.index[-2], the last CLOSED
-        # bar, so reading the rail at "now" measured the interaction against a
-        # rail that had already moved past it.
-        _tines = self.tines_now(_px, minutes_back=1.0)
-        _fkey = self._fork_key()
-        if _fkey != self._fork_seen:
-            # A NEW FORK (or none) — the old projection's interaction state is
-            # not inherited. r15 dropped state only when a tine NAME vanished,
-            # and a reborn fork republishes the same three names at new prices,
-            # so that condition could never fire: a dead fork's pierce state
-            # lived on inside its successor's rails.
-            if self._fork_seen is not None:
-                logger.info("[level] 1h fork replaced — dropping %d tine pierce "
-                            "state(s); a new projection starts clean",
-                            sum(1 for k in self._pierce if ":fork1h/" in k))
-            for k in [k for k in self._pierce if ":fork1h/" in k]:
-                self._pierce.pop(k, None)
-            self._fork_seen = _fkey
-        srcs = [] if tines_only else [(p_, l_, k_, t_, v_) for p_, l_, k_, t_, v_ in self._sources(ctx)]
-        srcs += [(t_["provenance"], t_["price"], t_["kind"], "1h", 1) for t_ in _tines]
-        for prov, lvl, kind, tf, live in srcs:
-            if kind not in ("support", "resistance"):
-                continue                             # VWAP is crossed, not swept
-            lid = self._lid(sym, prov, lvl)
-            if self._is_tine(prov):
-                orb = ctx.get("orb")
-                lo_, hi_ = (_f(getattr(orb, "orb_low", None)), _f(getattr(orb, "orb_high", None))) if orb is not None else (None, None)
-                if lo_ and hi_ and lo_ <= lvl <= hi_:
-                    continue                   # a tine inside the range, this bar
-            else:
-                st = self._live.get(lid)
-                if st is None or st["retired"]:
-                    continue
-            tol = lvl * TOUCH_TOL_PCT
-            # the CLOSE keeps the touch tolerance (inside it is noise, as
-            # derive() counts touches); the WICK does not — a wick through
-            # the level is a wick through the level, and the depth bands
-            # (0.25% / 0.75%) are what grade it, not the 0.15% close noise.
-            # "inside" means the close is on the HELD side of the level — not
-            # merely within the touch tolerance on the far side, which is a
-            # bar trading beyond it (v4.2, found by T2: a bar wholly below a
-            # support is not a rejection of it).
-            if kind == "resistance":
-                close_beyond = close > lvl + tol
-                close_held = close <= lvl
-                wick_beyond = hi > lvl
-                pierce = (hi - lvl) / lvl if wick_beyond else 0.0
-            else:
-                close_beyond = close < lvl - tol
-                close_held = close >= lvl
-                wick_beyond = lo < lvl
-                pierce = (lvl - lo) / lvl if wick_beyond else 0.0
-            if close_beyond:
-                # a rejection cannot survive a close through the level;
-                # acceptance itself is counted by derive() on the 5m close.
-                self._pierce.pop(lid, None)
-                self._excursion.pop(lid, None)
-                continue
-            if not close_held:
-                # ══ r44 — THE EXCURSION IS REMEMBERED, NOT DISCARDED ═════════
-                # 🔴 THIS `continue` THREW AWAY THE SWEEP ITSELF. A bar that
-                # trades beyond the level and does NOT close back is not noise —
-                # it is the grab. The old code skipped it, so `pierce` was only
-                # ever measured on the ONE bar that closed back, and every bar
-                # of the actual excursion was lost.
-                # ⚠️ THE BIAS RAN AGAINST THE BEST SETUPS. A one-bar
-                # wick-and-reclaim measured correctly; a REAL liquidity grab —
-                # price under the level for two or three bars while stops are
-                # taken — always reported the shallowest bar of the sequence.
-                # The more convincing the sweep, the shallower the number.
-                # MEASURED 2026-09-18 over 182 banked REJECTED events: 58 had a
-                # true excursion >1.5x what was recorded, and 23 were refused as
-                # "a touch, not a sweep" when the excursion CLEARED the sweep's
-                # floor. Operator's own case, 09-18 10:16-10:18 on london
-                # 716.38: true pierce 0.0681%, recorded 0.0102% — 6.7x short,
-                # against a 0.02% minimum it would have passed by 3.4x.
-                if wick_beyond:
-                    ex = self._excursion.get(lid) or {"pierce": 0.0, "bars": 0}
-                    ex["pierce"] = max(float(ex["pierce"]), pierce)
-                    ex["bars"] = int(ex["bars"]) + 1
-                    # ⚠️ A CAP, BECAUSE A SWEEP IS FAST. A level price spends a
-                    # long time beneath is not being swept, it is being broken,
-                    # and carrying that depth forward would dress a breakdown up
-                    # as a grab. Overridable; it wants its own measurement.
-                    if ex["bars"] > EXCURSION_MAX_BARS:
-                        self._excursion.pop(lid, None)
-                    else:
-                        self._excursion[lid] = ex
-                continue
-            # ── the bar CLOSED BACK: this is the reclaim ────────────────────
-            ex = self._excursion.pop(lid, None)
-            if ex and float(ex["pierce"]) > pierce:
-                # the sweep's depth is how far price actually went, not the
-                # wick of whichever bar happened to close back.
-                pierce = float(ex["pierce"])
-                wick_beyond = True          # it DID go beyond — on an earlier bar
-            ps = self._pierce.get(lid)
-            if wick_beyond:
-                depth = ("shallow" if pierce <= SHALLOW_PIERCE_PCT
-                         else "deep" if pierce <= DEEP_PIERCE_PCT else "beyond")
-                ps = {"depth": depth, "pierce_pct": pierce, "closes_back": 1, "bar_ts": bar_ts}
-                self._pierce[lid] = ps
-                written += self._emit(store, sym, lid, lvl, kind, prov, bar_ts, now,
-                                      "WICKED", ps, close)
-            elif ps:
-                ps["closes_back"] += 1
-            if ps and ps["depth"] in CLOSES_BACK and ps["closes_back"] >= CLOSES_BACK[ps["depth"]]:
-                written += self._emit(store, sym, lid, lvl, kind, prov, bar_ts, now,
-                                      "REJECTED", ps, close)
-                self._pierce.pop(lid, None)
-        return written
 
     def walk(self, price: float, limit: int = 3):
         """The walk from SPOT — nearest first, each older level further out.
@@ -1677,15 +1159,3 @@ def rails_after_held(held, rails, key):
     return sorted(held, key=key) + sorted(rails, key=key)
 
 
-def split_rails(rows):
-    """(held_extremes, rails) from a mixed list, by PROVENANCE not by position.
-
-    🔴 BY PROVENANCE, NEVER BY PRICE OR ORDER. A rail is identified by its
-    `fork1h/` provenance — the same test `_is_tine` uses — because a rail's
-    price moves every tick and its position in a list is exactly what the
-    caller is trying to decide."""
-    held, rails = [], []
-    for r in rows:
-        (rails if LevelEngine._is_tine(str((r or {}).get("provenance") or ""))
-         else held).append(r)
-    return held, rails

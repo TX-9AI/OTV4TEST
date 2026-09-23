@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v1.20
+# BACKLOG.md — OTV4TEST — v1.21
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -238,6 +238,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v1.21 — 2026-09-23 — OTV4TEST r126 — LVL.15 STEP 5 COMPLETE: THE LEGACY LEVEL PATH, derived/level_map AND analysis/liquidity_mapper ARE DELETED.** derived/levels.py 1,630 -> ~1,160 lines: derive() publishes the book and nothing else; the LEVEL_SOURCE switch, the legacy derive body and 7 functions found unreachable by a reachability pass from the live roots are removed. Four legacy checkers are deleted and every property still live is MOVED, not dropped: latest_rejection's kind/time filter (E10), no-tape-leaves-the-ledger (E11), the sloped rail judged where it stood (R8/R9), no partial hourly bars + reach + retention (check_level_tape v2.0). Deleted copy: 121/121 modules import; full boot sweep 153/160, the same seven reds. is_spent / tine_spent_key stay (the rail lock, ruled today). LVL.15's five steps are done.
 
 **v1.20 — 2026-09-23 — OTV4TEST r125 — LVL.15 STEP 5: shadow/ AND analysis/level_grade.py ARE DELETED.** Operator: "Yep, delete." shadow/ (6 modules) and its 5 units (observer, start/stop services and timers) were a fleet observer never installed on this box, and shadow/observer.py imported the old mapper, so it goes first. level_grade was orphaned by r123. install.sh drops shadow from TRADER_DIRS (a missing declared dir is fatal there); gen_file_map drops the two entry points; check_holiday_aware H5 is retargeted to scan the whole runtime tree for a second holiday list (H5c/H5d retire with the unit they executed; + venv bootstrap); check_shadow_velocity is deleted with its subject. Deleted in a scratch copy: 123/123 modules import, full boot sweep 157/164 with the same seven reds. Next, r126: level_map, the mapper, the legacy levels path.
 

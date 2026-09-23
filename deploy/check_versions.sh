@@ -1,6 +1,9 @@
 #!/bin/bash
 # ==========================================================================
-# deploy/check_versions.sh  v4.6
+# deploy/check_versions.sh  v4.7
+# v4.7 2026-09-23 OTV4TEST r126 - the A2.1/A2.5 pins and the A2.6 absence canary on
+#      analysis/liquidity_mapper.py are removed with it (deleted, LVL.15 step 5);
+#      the canary would otherwise pass vacuously on a file that no longer exists.
 # v4.6 2026-09-23 OTV4TEST r123 - the A2.1 pin on main.py's named-level frame is
 #      removed with it (main.py no longer runs the old liquidity mapper).
 # v4.5 2026-09-23 OTV4TEST r122 - the three A2.3/A2.4 pins on the old liquidity
@@ -856,8 +859,6 @@ check "deploy/push.sh"                          "diverged"                    "D
 check "setup_ec2.sh"                     'GITHUB_REPO#https://'         "GitHub URL normalization"
 
 # ── AUDIT A2 (2026-08-15) — the six unbaked-queue fixes ──────────────────────
-check "analysis/liquidity_mapper.py"     "frame_start > start"          "A2.1 left-truncated section guard (wrong-price pools)"
-check "analysis/liquidity_mapper.py"     "_ny_utc_hours"                "A2.5 NY section hours derived from ET offset (2026-11-01)"
 check "execution/position_manager.py"    "def open_condor_leg_count"    "A2.2 leg count the announcement reads"
 check "tests/test_audit2_fixes.py"       "test_a22_why_the_old_site_was_dead" "A2 executing suite present (born-red verified vs 89cbaf6)"
 check "main.py"                          "ORB_WINDOW_MINUTES % 5"       "TCS.3 bound reads the 5m frame (1m-only lost 09:30 at ~10:35 ET)"
@@ -869,18 +870,6 @@ if grep -q "pos_mgr.open_condor_leg_count())" main.py 2>/dev/null && [ "$_n_orph
     echo "  ✓ PRESENT: A2.2 orphan announcement fires from the manage branch"
 else
     echo "  ✗ MISSING: A2.2 orphan announcement not wired where a leg is visible — the F5 warning is dead code again"
-    MISS=$((MISS+1))
-fi
-# A2.6 — ABSENCE canary: the dead session-pool knob must stay gone. Grep the
-# ASSIGNMENT pattern, not the bare name — changelogs legitimately mention it.
-# grep -c exits 1 when the count IS zero — the expected result here — so the
-# usual `|| echo 0` fallback would print a second 0. Capture, then default.
-_n_knob=$(grep -c "NAMED_POOLS_INCLUDE_SESSIONS =" analysis/liquidity_mapper.py 2>/dev/null)
-_n_knob=${_n_knob:-0}
-if [ "$_n_knob" = "0" ]; then
-    echo "  ✓ ABSENT:  A2.6 dead session-pool knob stays deleted (ladder never read it)"
-else
-    echo "  ✗ STALE:   NAMED_POOLS_INCLUDE_SESSIONS assigned again ($_n_knob) — a switch that gates nothing plus a green test is the renders-cleanly class"
     MISS=$((MISS+1))
 fi
 

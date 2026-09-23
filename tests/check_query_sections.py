@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_query_sections.py  v1.5
+tests/check_query_sections.py  v1.6
+v1.6  2026-09-23  OTV4TEST r126 — Q4 no longer opens analysis/liquidity_mapper.py (deleted):
+      it read the file into a variable nothing used. Q4's assertion is unchanged.
 v1.5  2026-09-22  OTV4TEST r92 — Q7 covers the two panels that still range-query; Q7b pins
       what replaced the third. r83 replaced show_decisions WHOLESALE by
       ruling and it reads plan_heartbeat — current state, one row per plan,
@@ -112,8 +114,6 @@ def main():
     # ⚠️ THE CHECK THAT MATTERS MOST HERE. "Take Live Levels out" is a request
     # about a PANEL. If it were read as a request about the DATA it would blind
     # the sweep and the fork, and r81 keeps this table unpurged on purpose.
-    lm = open(os.path.join(_root, "analysis", "liquidity_mapper.py"),
-              encoding="utf-8").read()
     writers = [f for f in os.listdir(os.path.join(_root, "derived"))
                if f.endswith(".py")]
     lev = any("level_ledger" in open(os.path.join(_root, "derived", f),

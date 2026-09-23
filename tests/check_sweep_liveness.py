@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_sweep_liveness.py  v1.4
+tests/check_sweep_liveness.py  v1.5
+v1.5  2026-09-23  OTV4TEST r126 — L3d RETIRED with analysis/liquidity_mapper (deleted): it
+      guarded the mapper's own `sweep_age_bars` gate against a grep-and-delete;
+      that gate and the mapper are gone.
 v1.4  2026-09-22  OTV4TEST r105 - L3 INVERTS. It used to pin
       `sig.sweep_age_bars = 0` as deliberate while the inherited mainline gate
       check_age_gate_gone A3 demanded the real measurement - two gates in one
@@ -144,13 +147,8 @@ def main():
     check("L3c the real age still reaches the plan row",
           "rejection_age_bars" in _SP3.PLAN_CHECKS,
           "the measurement lives here, not on the signal")
-    # ⚠️ L3d — THE MAPPER'S FIELD OF THE SAME NAME IS A DIFFERENT QUANTITY AND
-    # IS STILL LIVE. It gates `recent_sweep`. If a future cleanup greps the
-    # name and removes this too, a real gate dies silently.
-    import analysis.liquidity_mapper as _LM3
-    check("L3d the mapper's sweep_age_bars is untouched and still gates",
-          "sweep_age_bars <= max_bars" in open(_LM3.__file__, encoding="utf-8").read(),
-          "same name, different quantity — do not grep-and-delete")
+    # L3d RETIRED at r126: it protected the old mapper's own `sweep_age_bars`
+    # gate, and the mapper is deleted — there is no second quantity left.
 
     # ── L4 — THE UNMEASURABLE CASE REFUSES ON ITS OWN TERMS ──────────────
     # 🔴 A 999 sentinel means `bars_ago` could not be read AT ALL. That is a

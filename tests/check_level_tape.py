@@ -1,7 +1,22 @@
 #!/usr/bin/env python3
 """
-tests/check_level_tape.py  v1.2
-THE LEVEL BOARD IS BUILT FROM THE HOURLY TAPE, EXCLUSIVELY (OTV4TEST r36).
+tests/check_level_tape.py  v2.0
+THE LEVEL BOOK IS BUILT FROM THE HOURLY TAPE, AND ITS BREACHES ARE JUDGED ON 1m.
+
+v2.0  2026-09-23  OTV4TEST r126 — derived/level_map and the old mapper are DELETED
+      (LVL.15 step 5), so the checks that pinned THEIR internals retire with
+      them, and the three that pin the DATA the book depends on stay:
+      KEPT  T2 (no PARTIAL hourly bar - it caught a real corruption on 09-18,
+            and the book builds every level from these bars) and T8 (1m
+            retention covers 1h, r108 - the book judges BREACHED on 1m).
+      MOVED T7 (reach > 30 days) now reads the book's own bar loader,
+            derived/level_book.load_bars, not level_map.load_tape.
+      RETIRED T1/T1b (load_tape's default interval), T3 (the mapper's section
+            hours), T4 (level_map's daily source), T5 (`_derive_events`, the
+            legacy engine path) - all four name code that no longer exists.
+      COVERED ELSEWHERE T6 (the opening-range rule): check_level_book K14 and
+            check_level_engine_book E8 pin it on the book path.
+      And the r106 venv bootstrap.
 
 v1.2  2026-09-23  OTV4TEST r108 — T8: 1m RETENTION MUST COVER 1h RETENTION.
       Levels are built from the hourly tape; the operator's BREACHED rule is a
@@ -39,19 +54,9 @@ operator's own 1D chart: three of his five levels above spot were not in the
 ledger at all. Operator: *"use 1-hr as far back as you can"*, then *"use the
 hour exclusively"*.
 
-WHAT IS PINNED:
-  T1   `load_tape` reads the HOUR by default, and nothing in the level path
-       asks for 1m
-  T2   an hourly bar's high/low IS the extreme of its hour — merged 1h equals
-       merged 1m on the 24-hour high AND low, every day both series cover
-  T3   the sections stay hour-granular, so an hourly bar lands in exactly one
-       section with no straddle
-  T4   the DAILY source is GONE — it could not see overnight, which is the one
-       thing the operator said matters most
-  T5   the rejection fact is NOT on this tape: `_derive_events` reads `df_1m`
-  T6   the opening-range rule still retires a level inside the range, and still
-       exempts a tine
-  T7   reach — the board sees more than 30 days back on the hourly tape
+WHAT IS PINNED (v2.0):
+  T2   an hourly bar's high/low IS the extreme of its hour — no PARTIAL bars
+  T7   reach — the book sees more than 30 days back on the hourly tape
   T8   1m retention >= 1h retention, so a breach can be judged on 1m for
        every level the hourly tape builds (r108)
 """
@@ -62,6 +67,10 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+import glob as _glob                                             # r106 venv bootstrap
+for _sp in _glob.glob(os.path.join(ROOT, "venv", "lib", "python*", "site-packages")):
+    if _sp not in sys.path:
+        sys.path.insert(1, _sp)
 
 FAILED, RAN = [], []
 
@@ -74,26 +83,6 @@ def check(name, ok, detail=""):
 
 
 def main():
-    from derived import level_map as lm
-    src_map = open(os.path.join(ROOT, "derived", "level_map.py"), encoding="utf-8").read()
-    src_lv = open(os.path.join(ROOT, "derived", "levels.py"), encoding="utf-8").read()
-
-    # ── T1 — the hour is the default, and nothing asks for 1m ───────────────
-    check("T1 load_tape defaults to the HOUR",
-          getattr(lm, "TAPE_INTERVAL", None) == "1h"
-          and lm.load_tape.__defaults__ and lm.load_tape.__defaults__[0] == "1h",
-          f"TAPE_INTERVAL={getattr(lm, 'TAPE_INTERVAL', None)!r}")
-
-    # scoped to a CALL, not a mention (§20): the changelog says "1m" on purpose
-    check("T1b no level-path call asks for the 1m interval",
-          "interval='1m'" not in src_map and 'interval="1m"' not in src_map,
-          "no 1m literal in a query")
-
-    # ── T4 — the daily source is gone, by ruling ────────────────────────────
-    check("T4 the DAILY source is removed — it cannot see overnight",
-          not hasattr(lm, "daily_levels") and not hasattr(lm, "load_daily"),
-          "daily_levels/load_daily absent")
-
     # ── T8 — r108: the minute is kept as long as the hour ────────────────────
     # 🔑 THE LEVEL IS BUILT ON 1h; ITS BREACH IS JUDGED ON 1m. The operator's
     # BREACHED (2026-09-22) is a 1m close beyond and the next 1m open beyond.
@@ -113,22 +102,6 @@ def main():
         check("T8 1m candles are kept at least as long as 1h (breaches are judged on 1m)",
               False, f"could not read the policy: {type(_e).__name__}: {_e}")
 
-    # ── T5 — the rejection fact keeps its minute ────────────────────────────
-    ev = src_lv[src_lv.index("def _derive_events"):]
-    ev = ev[:ev.index("\n    def ", 10)] if "\n    def " in ev[10:] else ev
-    check("T5 the rejection fact reads df_1m, NOT the level tape",
-          'ctx.get("df_1m")' in ev and "level_tape" not in ev,
-          "WICKED/REJECTED/ACCEPTED stay on the closed MINUTE")
-
-    # ── T3 — sections are hour-granular, so an hourly bar cannot straddle ───
-    from analysis.liquidity_mapper import LiquidityMapper
-    import datetime as _dt
-    secs = LiquidityMapper._sections_for(LiquidityMapper.__new__(LiquidityMapper),
-                                         _dt.date(2026, 9, 17))
-    check("T3 every section boundary is a whole UTC hour",
-          all(isinstance(h0, int) and isinstance(h1, int) for _, h0, h1 in secs),
-          str([(n, h0, h1) for n, h0, h1 in secs]))
-
     # ── the real store: T2, T7 ──────────────────────────────────────────────
     db = os.path.join(ROOT, "data", "feed_store.db")
     if not os.path.exists(db):
@@ -136,10 +109,12 @@ def main():
         print()
         return 1 if FAILED else 0
 
-    tape = lm.load_tape(db, "QQQ")
-    check("T7 the board reaches more than 30 days back on the hourly tape",
-          tape is not None and (tape.index[-1] - tape.index[0]).days > 30,
-          f"{(tape.index[-1]-tape.index[0]).days} days of tape" if tape is not None else "no tape")
+    # T7 (r126: the book's own loader) — the book reaches more than 30 days back
+    from derived import level_book as B
+    h1 = B.load_bars(db, "QQQ", "1h") or []
+    span_days = ((h1[-1][0] - h1[0][0]) / 86_400_000.0) if len(h1) >= 2 else 0.0
+    check("T7 the book reaches more than 30 days back on the hourly tape",
+          span_days > 30, f"{span_days:.1f} days of hourly tape ({len(h1)} bars)")
 
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
 
@@ -170,28 +145,6 @@ def main():
           judged and not bad,
           f"{len(judged)} bars judged, {len(bad)} narrower than the minute truth"
           + (f" e.g. {bad[0][0]} {bad[0][2]:.2f}/{bad[0][3]:.2f} vs {bad[0][4]:.2f}/{bad[0][5]:.2f}" if bad else ""))
-
-    # ── T6 — the opening-range rule survives, tines still exempt ────────────
-    # ⚠️ THE FIRST CUT OF T6 MATCHED THE DOCSTRING, NOT THE CODE — §21 again,
-    # in a checker. `levels.py` explains the rule at :204 and implements it at
-    # :811, and a 600-char slice from the prose contains the word TRAVERSED
-    # while containing none of the logic. Anchored on the CODE now.
-    # 🔴 AND ITS SECOND CUT BROKE ON CORRECT CODE AT r39, WHICH IS THE SAME
-    # LESSON ONE LAYER IN. It took a FIXED 1400-CHARACTER SLICE from the
-    # `in_range` lambda. r39 inserted the zone-traversal rule between that
-    # lambda and the retirement it guards — the rule was untouched and fully
-    # bound, and T6 went red anyway. A canary keyed to a MAGIC DISTANCE fires
-    # on any insertion above its target, and the reflex fix is to raise 1400
-    # until it passes, which is §20's loosened-canary exactly. It is anchored
-    # on the BINDING now — the `if` that actually reads `in_range(lvl_price)`,
-    # located wherever it sits — so inserting code above it cannot move it.
-    m6 = re.search(
-        r'if kind in \("support", "resistance"\)[^\n]*\n(?:[^\n]*\n){0,3}?'
-        r'[^\n]*in_range\(lvl_price\)[^\n]*\n(?:[^\n]*\n){0,4}?'
-        r'[^\n]*st\["reason"\] = "TRAVERSED"', src_lv)
-    check("T6 a level inside the opening range is retired TRAVERSED, tines exempt",
-          bool(m6) and "not self._is_tine(prov)" in m6.group(0),
-          "r5's rule, asserted against the binding that enforces it")
 
     print()
     if FAILED:

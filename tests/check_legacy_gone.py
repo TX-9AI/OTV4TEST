@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_legacy_gone.py  v1.4
+tests/check_legacy_gone.py  v1.5
 LVL.15 STEP 5 — THE OLD LEVEL CODE LEAVES, ONE MODULE AT A TIME, AND NOTHING
 STILL IMPORTS WHAT LEFT.
 
+v1.5  2026-09-23  OTV4TEST r126 — derived/level_map.py and analysis/liquidity_mapper.py, the
+      last of LVL.15 step 5, with the four legacy checkers deleted beside them.
 v1.4  2026-09-23  OTV4TEST r125 — shadow/ (the package and all five modules) and
       analysis/level_grade.py (orphaned by r123). G1 now ignores importers
       INSIDE a deleted package: its own files are deleted with it, but the
@@ -55,6 +57,8 @@ LEGACY = {
     "shadow.registry": "r125",
     "shadow.scorers": "r125",
     "shadow.trading_day": "r125",
+    "derived.level_map": "r126",
+    "analysis.liquidity_mapper": "r126",
 }
 
 # Files the SAME delivery deletes (by DEL) that import a LEGACY module. The CHECKs
@@ -62,6 +66,10 @@ LEGACY = {
 # listing them here is a statement, not a wildcard.
 DELETED_WITH = {
     "tests/check_shadow_velocity.py": "r125",
+    "tests/check_level_map.py": "r126",
+    "tests/check_level_rejection.py": "r126",
+    "tests/check_sweep_excursion.py": "r126",
+    "tests/check_pool_geometry.py": "r126",
 }
 
 FAILED, RAN = [], []
@@ -120,6 +128,7 @@ def main():
         pkg = mod.split(".")[0] + "/"                  # a deleted package's own files
         users = sorted(u for u in found.get(mod, set())
                        if u != own and u not in DELETED_WITH
+                       and u[:-3].replace("/", ".") not in LEGACY   # itself a deleted module
                        and not (pkg.rstrip("/") in LEGACY and u.startswith(pkg)))
         bad += [f"{u} -> {mod}" for u in users]
     check("G1 nothing imports a deleted legacy module", not bad,

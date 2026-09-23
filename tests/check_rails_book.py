@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """
-tests/check_rails_book.py  v1.1
+tests/check_rails_book.py  v1.2
+v1.2  2026-09-23  OTV4TEST r126 — R8/R9 MOVED HERE from check_plan_prepares T1/T2
+      (§38.4), which tested the same property on the old mapper's
+      `publish_tines` — deleted with the mapper. A SLOPED rail is judged where it
+      STOOD at the closed bar's own minute (`tines_now(..., minutes_back=1)`):
+      R8 a bar that reached the rail as it stood then is a touch though it is
+      below the rail's value now; R9 a bar that reaches the rail's value NOW but
+      not where it stood then is not. Both pass on r125 too — a moved property,
+      not a new behaviour.
 v1.1  2026-09-23  OTV4TEST r115 — THE FORK'S DEATH MOVED TO ITS BUILDER, SO ITS CHECKS
       MOVED WITH IT (moved, not removed — §38.4). R3/R4/R5/R7 asserted that the
       LEVEL engine invalidates a fork; the operator ruled "it's gone when the
@@ -25,6 +33,8 @@ destruct is a touch. A breech is an event that invalidates the fork."
      tines_now, and the board reads fork "absent"
   R4 §22: a restarted engine on the same store does not resurrect that fork
   R5 a fork with a NEW identity (new anchors) serves rails again
+  R8 a sloped rail is judged where it stood on the bar's minute (moved from
+     check_plan_prepares T1 at r126); R9 its mirror (T2)
   R6 no WICKED rows are written for rails (the old branch does not run)
   R7 identity survives the rolling frame: the same fork one bar later (every
      anchor idx - 1, prices unchanged) is still invalidated — r19 keyed on idx
@@ -134,6 +144,43 @@ def _r6():
 guard("R1 a wick that REACHES a rail and closes inside is a touch -> REJECTED", _r1)
 guard("R2 a wick past the rail that closes back inside is a touch, pierce recorded", _r2)
 guard("R6 no WICKED rows for rails — the old tine branch does not run", _r6)
+
+
+def sloped_forks(slope):
+    """A 1h fork whose upper rail is 100.00 at the current bar index (20) and moves
+    `slope` per bar (hour); no last_bar_start, so the read is at the bar index."""
+    fork = types.SimpleNamespace(
+        slope=slope, direction="up",
+        p0=types.SimpleNamespace(idx=1.0, price=90.0), p1=types.SimpleNamespace(idx=5.0, price=110.0),
+        p2=types.SimpleNamespace(idx=9.0, price=91.0),
+        upper_at=lambda i: 100.0 + slope * (i - 20.0), median_at=lambda i: 95.0 + slope * (i - 20.0),
+        lower_at=lambda i: 90.0 + slope * (i - 20.0))
+    return types.SimpleNamespace(last_forks={"1h": fork}, last_idx={"1h": 20.0})
+
+
+def _upper_rejected(slope, o, h, l, c):
+    from data.derived_store import DerivedStore
+    import derived.levels as L
+    st = DerivedStore(tempfile.mktemp(dir=WORK, prefix="d-", suffix=".db"))
+    eng = L.LevelEngine(st, "QQQ", forks=sloped_forks(slope))
+    step(eng, o, h, l, c)
+    return [r for r in rows(st, "REJECTED") if r[0] == "QQQ:fork1h/upper:0.00"]
+
+
+def _r8():
+    # rising $6/hour = $0.10/min: the rail reads 100.00 now and stood at 99.90 on the bar's minute
+    rj = _upper_rejected(6.0, 99.80, 99.92, 99.75, 99.85)
+    return (len(rj) == 1), f"upper-rail REJECTED rows {rj} (bar high 99.92: reaches 99.90, not 100.00)"
+
+
+def _r9():
+    # falling $6/hour: the rail reads 100.00 now and stood at 100.10 on the bar's minute
+    rj = _upper_rejected(-6.0, 99.90, 100.05, 99.85, 99.95)
+    return (not rj), f"upper-rail REJECTED rows {rj} (bar high 100.05: reaches 100.00 now, not 100.10 then)"
+
+
+guard("R8 a SLOPED rail is judged where it STOOD on the bar's minute: reached then -> touch", _r8)
+guard("R9 ...and a bar reaching only the rail's value NOW, not then, is no touch", _r9)
 
 
 

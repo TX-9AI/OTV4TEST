@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """
-tests/check_level_engine_book.py  v1.2
+tests/check_level_engine_book.py  v1.3
+v1.3  2026-09-23  OTV4TEST r126 — THE LEGACY PATH IS DELETED, SO THREE THINGS MOVE HERE.
+      E6 is RETARGETED: there is no LEVEL_SOURCE switch left to be "book" — the
+      assertion is now that derive() has only the book path (no switch, no
+      legacy methods), red on r125 where both still exist. And two properties
+      MOVED from deleted legacy checkers (§38.4), both still live: E10 (was
+      check_level_rejection L7) — DerivedStore.latest_rejection filters by
+      KIND and by TIME, which the sweep's trigger and the exit engine's handoff
+      both call; E11 (was check_level_map M8) — a feed with NO tape leaves the
+      ledger exactly as it was: nothing is retired for want of bars.
 v1.2  2026-09-23  OTV4TEST r124 — E9: the board's zone width comes from the BOOK the
       engine builds (book.width), with NO ctx["level_tape"] — main.py no longer
       sends one. Red on r123, where board() measured the width from that tape.
@@ -30,6 +39,9 @@ nothing about who reads them. So the contract is the two tables:
      in the ledger, never BREACHED (operator's ruling 2026-09-23)
   E9 the board's zone width is the book's own (level_book.zone_width of the
      same hourly bars), set by the sync, with no level_tape in ctx (r124)
+  E10 latest_rejection() filters by kind and by time (moved from check_level_rejection L7)
+  E11 no tape in the feed -> the ledger is left exactly as it was (moved from
+      check_level_map M8)
   E7 a HELD judged on the HOUR (no 1m candle in its episode — a feed hole)
      is published with the hourly pierce and does NOT fail the sync. Red on
      the first cut of this engine: max() of an empty span raised and froze the
@@ -221,8 +233,10 @@ def _e5():
 
 def _e6():
     import derived.levels as L
-    return (getattr(L, "LEVEL_SOURCE", None) == "book"
-            and hasattr(L.LevelEngine, "_derive_book")), f"LEVEL_SOURCE={getattr(L, 'LEVEL_SOURCE', None)!r}"
+    legacy = [m for m in ("_derive_events", "_sources", "_tape_sources", "_reconcile")
+              if hasattr(L.LevelEngine, m)]
+    return (not hasattr(L, "LEVEL_SOURCE") and not legacy and hasattr(L.LevelEngine, "_derive_book")), \
+        f"LEVEL_SOURCE present: {hasattr(L, 'LEVEL_SOURCE')}; legacy methods: {legacy}"
 
 
 def _e7():
@@ -286,7 +300,7 @@ guard("E2 a HELD is published as REJECTED with the episode's deepest pierce", _e
 guard("E3 §37: a restart does not publish an event older than BOOK_FRESH_S", _e3)
 guard("E4 the ledger holds exactly the book's live levels; old rows retire", _e4)
 guard("E5 a second derive on the same bar publishes nothing new", _e5)
-guard("E6 hop 0: derive() routes to the book (LEVEL_SOURCE == 'book')", _e6)
+guard("E6 hop 0: derive() has only the book path — no LEVEL_SOURCE switch, no legacy methods", _e6)
 guard("E7 a HELD judged on the hour publishes its hourly pierce; the sync survives", _e7)
 guard("E8 a level retired inside the opening range reads TRAVERSED in the ledger", _e8)
 
@@ -303,6 +317,29 @@ def _e9():
 
 
 guard("E9 the board's zone width is the book's, with no level_tape in ctx (r124)", _e9)
+
+
+def _e10():
+    cut = RTH + 12 * M
+    clock = cut / 1000 + 5
+    _eng, store, _ = engine_at(cut, clock)
+    r = store.latest_rejection("QQQ", 0.0, kind="resistance")
+    none_kind = store.latest_rejection("QQQ", 0.0, kind="support")
+    none_time = store.latest_rejection("QQQ", clock + 60.0)
+    ok = (r is not None and r["level_id"] == "QQQ:resistance:101.00"
+          and none_kind is None and none_time is None)
+    return ok, f"resistance {r and r['level_id']}; support {none_kind}; after {none_time}"
+
+
+def _e11():
+    cut = D                                                   # the feed ends before its first bar
+    _eng, store, _ = engine_at(cut, cut / 1000 + 5, seed_old=True)
+    rows = store.conn.execute("SELECT level_id, retired_ts FROM level_ledger").fetchall()
+    return (rows == [("QQQ:london:99.10", None)]), f"ledger {rows}"
+
+
+guard("E10 latest_rejection() filters by kind and by time", _e10)
+guard("E11 no tape in the feed -> the ledger is left exactly as it was", _e11)
 
 shutil.rmtree(WORK, ignore_errors=True)
 print()

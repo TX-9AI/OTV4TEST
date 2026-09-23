@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""check_attr_fidelity.py — v1.0
+"""check_attr_fidelity.py — v1.1
+v1.1  2026-09-23 — OTV4TEST r126. The `sweep` subject (analysis.liquidity_mapper
+      .LiquiditySweep) and its A2 regression pin (bars_ago / bars_since_reclaim)
+      are removed with the mapper, which is deleted. The other four stay.
 
 🔴 THE GATE FOR THE FAILURE THAT COST FIVE SETUPS IN ONE WEEK.
 
@@ -67,7 +70,6 @@ def _load_subjects():
         # people to ignore it. ForkTrigger fields are covered by the A2 pin and
         # by check_fixture_fidelity, which scopes to the file that owns them.
         ("orb",       "analysis.orb_engine",         "ORBData"),
-        ("sweep",     "analysis.liquidity_mapper",   "LiquiditySweep"),
         ("contract",  "data.options_chain",          "OptionContract"),
         ("chain",     "data.options_chain",          "OptionsChain"),
         ("gex",       "data.gex_data",               "GEXSnapshot"),
@@ -139,7 +141,6 @@ def main():
     # check quietly passing on a smaller surface.
     for var, real, ghost in (("ctm", "all_rails", "all"),
                              ("contract", "open_interest", "oi"),
-                             ("sweep", "bars_ago", "bars_since_reclaim"),
                              ("orb", "target_50pct", "tp50"),
                              ("gex", "net_gex", "gex_value")):
         if var not in subjects:

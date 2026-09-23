@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_prepares.py  v1.20
+tests/check_plan_prepares.py  v1.21
+v1.21 2026-09-23  OTV4TEST r126 — T1-T3 RETIRED with analysis/liquidity_mapper (deleted):
+      T1/T2's property MOVED to check_rails_book R8/R9; T1b went with the map
+      object; T3 was reversed by r116 (a fork lives while its builder builds it).
 v1.20  2026-09-23  OTV4TEST r113 - S9 INVERTS and S9b is added: the sweep no longer
       grades pierce depth (operator's HELD has no depth; step 3 approved). A
       0.60% pierce and a 0.005% pierce BOTH fire. S9 pinned the old ceiling,
@@ -617,55 +620,14 @@ def main():
     check("B7 add_open_position APPENDS — the vertical under management is not dropped",
           [r["trade_id"] for r in pm._open_records] == ["v1", "bf1"])
 
-    # ── THE TINE AS A MOVING LEVEL (r163) — slope, time, touch ────────────
-    from analysis.liquidity_mapper import (publish_tines, LiquidityMap,
-                                           _ACCEPT_CLOSES as _AC)
+    # ── T1–T3 (r163) RETIRED AT r126 WITH THE MAPPER THEY DROVE ───────────
+    # They tested analysis/liquidity_mapper.publish_tines. T1/T2's property — a
+    # SLOPED rail is judged where it STOOD on the bar's minute — MOVED to
+    # check_rails_book R8/R9 on the live path (`_rails_sync`). T1b (the tine as a
+    # moving pool on the map object) went with the map. T3 (two closes beyond
+    # invalidate the rail) was reversed by the operator's r116 ruling: a fork
+    # lives while its builder can build it.
     import pandas as pd
-
-    class _Rail:
-        def __init__(self, tf, side, rail, slope):
-            self.tf, self.side, self.rail, self.slope = tf, side, rail, slope
-            self.trigger, self.median, self.active = rail, rail, True
-
-    class _CTM:
-        def __init__(self, *rails): self._r = list(rails)
-        def all_rails(self): return self._r
-
-    def _bars(rows, t0=2_000_000):
-        idx = pd.to_datetime([t0 + 60 * i for i in range(len(rows))], unit="s", utc=True)
-        return pd.DataFrame({"open": [r[2] for r in rows], "high": [r[0] for r in rows],
-                             "low": [r[1] for r in rows], "close": [r[2] for r in rows]}, index=idx)
-
-    # a 1h upper tine at 100.00 NOW, rising 0.60/bar of 1h = 0.01/min; 10 bars
-    # back it stood at 99.90. T1: a bar 10 minutes ago with high 99.95 touches
-    # the rail AS IT WAS (99.90) even though it is below the rail NOW (100.00).
-    rows = [(99.5, 99.0, 99.3)] * 5 + [(99.95, 99.4, 99.6)] + [(99.7, 99.2, 99.5)] * 4 + [(99.8, 99.3, 99.6)]
-    lm = LiquidityMap()
-    n = publish_tines(lm, _CTM(_Rail("1h", "call", 100.0, 0.60)), _bars(rows))
-    ev = lm.recent_sweep
-    check("T1 slope+time: a bar that reached the rail WHERE IT WAS is a touch (rail now 100.00, "
-          "then 99.90, high 99.95)",
-          n == 1 and ev is not None and ev.touch and ev.kind == "high_sweep"
-          and ev.swept_named_level == "1h upper tine" and abs(ev.sweep_price - 99.95) < 1e-9
-          and ev.reclaimed and not ev.invalidated,
-          f"n={n} ev={ev and (ev.kind, ev.sweep_price, ev.bars_ago)}")
-    pool = next(p for p in lm.pools if p.moving)
-    check("T1b the tine is on the map as a MOVING named pool with price_at(t)",
-          pool.is_named and abs(pool.price_at(pool.as_of - 600) - 99.90) < 1e-6,
-          f"{pool.name} now {pool.price} 10m-ago {pool.price_at(pool.as_of - 600):.4f}")
-    # T2: same tape, a FALLING rail (was 100.10 ten minutes ago): the 99.95
-    # high never reached it -> NO touch. Today's value alone would say otherwise.
-    lm2 = LiquidityMap()
-    n2 = publish_tines(lm2, _CTM(_Rail("1h", "call", 100.0, -0.60)), _bars(rows))
-    check("T2 a bar below the rail as it stood then is NOT a touch, whatever the rail reads now", n2 == 0)
-    # T3: two closes above the rail(t) since the first touch -> ACCEPTED -> invalidated
-    rows3 = [(99.5, 99.0, 99.3)] * 5 + [(100.3, 99.6, 100.2), (100.5, 99.9, 100.3)] * 1 + [(100.4, 100.0, 100.3)] * 4
-    lm3 = LiquidityMap()
-    publish_tines(lm3, _CTM(_Rail("1h", "call", 100.0, 0.0)), _bars(rows3))
-    ev3 = lm3.recent_sweep
-    check(f"T3 {_AC}+ closes beyond the rail since the touch -> the tine is INVALIDATED",
-          ev3 is not None and ev3.touch and ev3.invalidated and ev3.closes_beyond_live >= _AC,
-          str(ev3 and ev3.closes_beyond_live))
 
     # T4: the sweep's plan takes the TOUCH as leg one: short beyond the move's
     # extreme, no reclaim required. Price is back inside (99.6 < 100).
