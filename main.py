@@ -1,5 +1,19 @@
 """
-main.py  v4.66
+main.py  v4.67
+v4.67 2026-09-23  OTV4TEST r123 — THE OLD LIQUIDITY MAPPER STOPS RUNNING (LVL.15 step 5).
+      `get_liquidity_mapper().analyze()` ran every tick over a deep 1h frame
+      (`_named_level_frame`) and its output reached NOTHING THAT TRADES — each
+      consumer measured before removal: (1) `ctx["level_near"]`, the record
+      fallback for `level_strength`/`swept_level_name`, filled NOTHING on any of
+      the 138 trades on this box (every non-sweep row is ''/0; the sweep sets
+      its own); (2) `publish_tines` only rewrote the map object in memory —
+      the rails the sweep trades come from the ForkEngine (r114-r116);
+      (3) MarketState `sweep_recent`/`sweep_age_bars` have no reader; (4) the
+      readiness engine's sweep track is LOG-ONLY ("Gates NOTHING") and now
+      records no sweep; (5) the shadow observer is not installed here; and the
+      level engine reads `liq_map` only on its legacy path, which the book
+      (LEVEL_SOURCE="book") returns before. The module itself goes in r124 with
+      level_map, which still imports it.
 v4.66 2026-09-23  OTV4TEST r122 — THE OLD LIQUIDITY LEDGER IS UNWIRED (LVL.15 step 5).
       `_feed_liquidity_ledger` seeded analysis/liquidity_ledger from the old
       mapper's named pools and fed it every closed 1m bar, writing
@@ -1315,7 +1329,6 @@ from analysis.volatility_engine import get_volatility_engine
 from analysis.trend_engine import get_trend_engine
 from analysis.structure_analyzer import get_structure_analyzer
 from analysis.entry_snapshot import to_json as _entry_snapshot_json
-from analysis.liquidity_mapper import get_liquidity_mapper
 from analysis.market_state import MarketState
 from analysis.orb_engine import get_orb_engine, ORBState
 
@@ -1496,23 +1509,6 @@ class BotState:
 
 
 
-# ── A2.1 — a deep frame for NAMED levels only ────────────────────────────────
-# The mapper's section lookback is 10 days; the cached 5m frame is 100 bars.
-# 1h bars carry hour granularity (all the section masks use). Read directly
-# from the store with a local TTL - the shared cache stays capped for every
-# other consumer (raising it would re-seed EMAs across the engines).
-# DEPTH TRUTH (corrected r2): BACKFILL_DAYS requests 16 days of 1h ONCE, but
-# candle_feed's pruner trims 1h to max(50,60)*PRUNE_FACTOR = 240 rows every
-# 300s - so steady state is ~240h: ~10 days of 24h tape, ~34 RTH-only
-# sessions. Asking for 264 is harmless headroom (fetch returns what exists);
-# with the earliest partial day skipped by the truncation guard, the ladder
-# effectively sees ~9 complete days + today on 24h symbols.
-NAMED_FRAME_1H_BARS = 264      # >= prune ceiling (240); fetch caps at reality
-_NLF_TTL_S = 300               # sections only change on an hour boundary
-_NLF_CACHE = (0.0, None)
-
-
-_NLF_SAID = {}
 
 
 _LEVEL_TAPE_CACHE = (0.0, None)
@@ -1544,45 +1540,6 @@ def _level_tape():
         return df
     except Exception as exc:                                   # noqa: BLE001
         logger.warning("[levels] level tape read failed: %s", exc)
-        return None
-
-
-def _named_level_frame():
-    """The deep 1h frame for the mapper's named levels, or None (fail soft).
-    None simply means the mapper falls back to the live frame - where its
-    truncation guard (A2.1) keeps partial sections out."""
-    global _NLF_CACHE
-    try:
-        ts, df = _NLF_CACHE
-        if df is not None and (time.time() - ts) < _NLF_TTL_S:
-            return df
-        from data.market_data import fetch_candles
-        # ── FEED.2 (2026-08-15) — PREFER THE EXTENDED-HOURS STREAM ───────────
-        # `<SYM>_EXT` is the same 1h interval subscribed WITHOUT `tho=true`, so
-        # it carries the overnight bars that Asia and London sections are built
-        # from. Plain "1h" is RTH-only and always will be — it is read by
-        # structure_analyzer, the pitchfork and entry_snapshot, and must not
-        # move under them.
-        # ⚠️ FALLS BACK, DELIBERATELY. A box baked before FEED.2, or one with
-        # OT_EXT_1H=0, has no _EXT rows. Falling back to RTH-only 1h means the
-        # named levels are exactly what they are today — the sections simply
-        # stay inert there, which is the CURRENT behaviour and not a regression.
-        df = fetch_candles(f"{INSTRUMENT}_EXT", "1h", NAMED_FRAME_1H_BARS)
-        if df is None or df.empty:
-            df = fetch_candles(INSTRUMENT, "1h", NAMED_FRAME_1H_BARS)
-            if df is not None and not df.empty and not _NLF_SAID.get("rth"):
-                _NLF_SAID["rth"] = True
-                logger.warning(
-                    "[named-levels] no %s_EXT rows - using RTH-ONLY 1h. Asia and "
-                    "London sections CANNOT build from this frame; the ladder is "
-                    "NY-only on this box until the extended stream collects.",
-                    INSTRUMENT)
-        if df is not None and not df.empty:
-            _NLF_CACHE = (time.time(), df)
-            return df
-        return None
-    except Exception as exc:                                   # noqa: BLE001
-        logger.debug("named-level frame unavailable: %s", exc)
         return None
 
 
@@ -1662,8 +1619,6 @@ def run_analysis(state: BotState, chain=None) -> dict:
     vol_state = get_volatility_engine().analyze(df_5m, df_1h_safe, price)
     trend     = get_trend_engine().analyze(data)
     structure = get_structure_analyzer().analyze(df_5m, df_15m, df_1h, price)
-    liq_map   = get_liquidity_mapper().analyze(df_5m, df_15m, price,
-                                               named_df=_named_level_frame())
 
     # ── v6.18 — BIND ctx BEFORE ANYTHING WRITES INTO IT ─────────────────────
     # v6.16/v6.17 (Level.1, A2.6b) wrote ctx["gap"] / ctx["level_near"] into a
@@ -1681,7 +1636,6 @@ def run_analysis(state: BotState, chain=None) -> dict:
         "vol":       vol_state,
         "trend":     trend,
         "structure": structure,
-        "liq_map":   liq_map,
         "df_1m":     df_1m,
         "df_5m":     df_5m,
         # OTV4TEST r5 — the level engine retires levels inside the opening range
@@ -1742,12 +1696,6 @@ def run_analysis(state: BotState, chain=None) -> dict:
     except Exception:                                          # noqa: BLE001
         ctx["gap"] = None
 
-    try:
-        from analysis.level_grade import nearest_graded
-        _ng = nearest_graded(getattr(liq_map, "pools", None), price)
-        ctx["level_near"] = _ng          # (name, grade, dist_pct) or None
-    except Exception:                                          # noqa: BLE001
-        ctx["level_near"] = None
     macro     = get_macro_manager().get()
 
     # engine can gate its re-arm decision (this runs before reclassification).
@@ -2016,18 +1964,6 @@ def run_analysis(state: BotState, chain=None) -> dict:
     except Exception as exc:                                   # noqa: BLE001
         logger.debug("condor trigger map (pre-engines): %s", exc)
         ctx.setdefault("condor_triggers", None)
-    # 🔴 r163 — THE TINES GO ON THE LIQUIDITY MAP AS MOVING LEVELS, and a TOUCH
-    # of one is emitted as a sweep-shaped event (liquidity_mapper v4.2). The
-    # sweep's plan then prepares a spread beyond the touching move like any
-    # other pool; the daily-fork strategy is retired.
-    try:
-        from analysis.liquidity_mapper import publish_tines as _pub_tines
-        _n_touch = _pub_tines(ctx.get("liq_map"), ctx.get("condor_triggers"),
-                              ctx.get("df_1m"))
-        if _n_touch:
-            logger.debug("tines: %d touch event(s) on the map", _n_touch)
-    except Exception as exc:                                   # noqa: BLE001
-        logger.debug("tine publication skipped: %s", exc)
 
     # 🔴 r134 — THE OPENING RANGE ON ctx. `_opening_range()` existed and was
     # recomputed from the tape, but its result was never PUBLISHED, so the
@@ -2242,7 +2178,6 @@ def assemble_market_state(ctx: dict, trigger: str, state: BotState) -> MarketSta
     vol = ctx.get("vol")
     trend = ctx.get("trend")
     structure = ctx.get("structure")
-    liq = ctx.get("liq_map")
     macro = ctx.get("macro")
 
     ms = MarketState(
@@ -2252,8 +2187,6 @@ def assemble_market_state(ctx: dict, trigger: str, state: BotState) -> MarketSta
         bb_width_pct=float(getattr(vol, "bb_width_pct", 0.5) or 0.5),
         trend_direction=getattr(trend, "overall_direction", "NEUTRAL") or "NEUTRAL",
         structure_sequence=getattr(structure, "structure_sequence", "NEUTRAL") or "NEUTRAL",
-        sweep_recent=bool(getattr(liq, "recent_sweep", None) is not None),
-        sweep_age_bars=int(getattr(liq, "sweep_age_bars", 999) or 999),
         vix_band=getattr(macro, "vix_band", "UNKNOWN") or "UNKNOWN",
         classified_at=now_utc().isoformat(),
         trigger=trigger,
@@ -2894,16 +2827,14 @@ def _execute_condor_leg(signal: "OptionsSignal", state: BotState,
         # Falls back to the strategy's own value (sweep sets one directly), so
         # a strategy with a better local read is not overwritten by a generic
         # proximity grade.
-        level_strength    = (float(getattr(signal, "level_strength", 0.0) or 0.0)
-                             or ((ctx.get("level_near") or (None, 0.0, 0))[1]
-                                 if isinstance(ctx, dict) else 0.0)),
+        # r123 — the strategy's own value only: the old mapper's nearest-pool
+        # fallback filled nothing on any of 138 trades and is gone with it.
+        level_strength    = float(getattr(signal, "level_strength", 0.0) or 0.0),
         # A2.6b: persist the gap or it is telemetry. Backfillable, so historical
         # rows can be filled retroactively — unlike everything else this week.
         gap_pct           = ((ctx.get("gap") or {}).get("gap_pct")
                              if isinstance(ctx, dict) else None),
-        swept_level_name  = (getattr(signal, "swept_level_name", "") or
-                             ((ctx.get("level_near") or ("", 0, 0))[0]
-                              if isinstance(ctx, dict) else "")),
+        swept_level_name  = getattr(signal, "swept_level_name", "") or "",
         # v6.9 (AUDIT F6): a TC.6 record must not claim condor-leg identity —
         # is_condor_leg is what _condor_sibling_open and condor_roll key on,
         # and condor_leg_num=2 on every TC.6 row was data pollution.

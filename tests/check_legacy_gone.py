@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """
-tests/check_legacy_gone.py  v1.1
+tests/check_legacy_gone.py  v1.2
 LVL.15 STEP 5 — THE OLD LEVEL CODE LEAVES, ONE MODULE AT A TIME, AND NOTHING
 STILL IMPORTS WHAT LEFT.
 
+v1.2  2026-09-23  OTV4TEST r123 — G2: main.py no longer runs the old liquidity mapper.
+      The module cannot join LEGACY yet (derived/level_map still imports it
+      until r124), so this pins the ONE live caller that r123 removes.
 v1.1  2026-09-23  OTV4TEST r122 — analysis/liquidity_ledger.py, fed every tick from
       main.py and read back by nothing on this box.
 v1.0  2026-09-23  OTV4TEST r121 — analysis/pitchfork_lifecycle.py, the first.
@@ -22,6 +25,8 @@ land, by hand, and recorded in the ledger.
   G0 CONTROL — the scanner FINDS a live import (execution/exit_engine.py
      imports derived.level_rules), so an empty result below means something
   G1 nothing in the tree imports any module in LEGACY
+  G2 main.py does not import analysis.liquidity_mapper (r123 — it ran every
+     tick and fed nothing that trades); r124 moves the module into LEGACY
 """
 from __future__ import annotations
 
@@ -94,6 +99,9 @@ def main():
         bad += [f"{u} -> {mod}" for u in users]
     check("G1 nothing imports a deleted legacy module", not bad,
           "; ".join(bad) if bad else f"{len(LEGACY)} module(s): {', '.join(LEGACY)}")
+    main_imports = imports_of(os.path.join(ROOT, "main.py"))
+    hit = sorted(m for m in main_imports if m.startswith("analysis.liquidity_mapper"))
+    check("G2 main.py no longer imports the old liquidity mapper", not hit, ", ".join(hit) or "none")
     print()
     if FAILED:
         print(f"RED — {len(FAILED)} of {len(RAN)} failed: {', '.join(FAILED)}")

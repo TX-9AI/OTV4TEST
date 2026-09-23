@@ -1,6 +1,8 @@
 #!/bin/bash
 # ==========================================================================
-# deploy/check_versions.sh  v4.5
+# deploy/check_versions.sh  v4.6
+# v4.6 2026-09-23 OTV4TEST r123 - the A2.1 pin on main.py's named-level frame is
+#      removed with it (main.py no longer runs the old liquidity mapper).
 # v4.5 2026-09-23 OTV4TEST r122 - the three A2.3/A2.4 pins on the old liquidity
 #      ledger are removed with it (analysis/liquidity_ledger.py deleted, main.py's
 #      feed unwired - LVL.15 step 5). A pin on a deleted file only adds a miss.
@@ -856,7 +858,6 @@ check "setup_ec2.sh"                     'GITHUB_REPO#https://'         "GitHub 
 # ── AUDIT A2 (2026-08-15) — the six unbaked-queue fixes ──────────────────────
 check "analysis/liquidity_mapper.py"     "frame_start > start"          "A2.1 left-truncated section guard (wrong-price pools)"
 check "analysis/liquidity_mapper.py"     "_ny_utc_hours"                "A2.5 NY section hours derived from ET offset (2026-11-01)"
-check "main.py"                          "named_df=_named_level_frame()" "A2.1 deep 1h store frame feeds named levels"
 check "execution/position_manager.py"    "def open_condor_leg_count"    "A2.2 leg count the announcement reads"
 check "tests/test_audit2_fixes.py"       "test_a22_why_the_old_site_was_dead" "A2 executing suite present (born-red verified vs 89cbaf6)"
 check "main.py"                          "ORB_WINDOW_MINUTES % 5"       "TCS.3 bound reads the 5m frame (1m-only lost 09:30 at ~10:35 ET)"

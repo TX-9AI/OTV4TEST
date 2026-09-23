@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v1.17
+# BACKLOG.md — OTV4TEST — v1.18
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -238,6 +238,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v1.18 — 2026-09-23 — OTV4TEST r123 — LVL.15 STEP 5: THE OLD LIQUIDITY MAPPER STOPS RUNNING.** main.py no longer calls get_liquidity_mapper().analyze() each tick, nor builds its deep 1h frame, nor publish_tines. Every consumer was measured first: the level_near record fallback filled nothing on 138 trades; publish_tines only rewrote the map object; MarketState sweep_recent/sweep_age_bars have no reader; the readiness sweep track is log-only; shadow is not installed; the level engine reads liq_map only on its legacy path. Full boot sweep of the build: 158/165, the six standing reds plus check_land_tooling T3b (environmental, identical on an untouched worktree). Next, r124: level_map + the legacy levels path + liquidity_mapper + shadow/ (operator: "Yep, delete").
 
 **v1.17 — 2026-09-23 — OTV4TEST r122 — LVL.15 STEP 5: THE OLD LIQUIDITY LEDGER IS UNWIRED AND DELETED (analysis/liquidity_ledger.py, 399 lines).** main.py fed it every closed 1m bar from the old mapper's named pools and it wrote data/liquidity_ledger/<date>/QQQ.json each tick; nothing on this box read it back (the only file reader, warehouse/s3_push.py, is masked). The level book is the record. The 12 day-folders already written (100K) are left on disk. check_legacy_gone v1.1 adds it (G1 red on r121 at main.py). Next: liquidity_mapper.
 
