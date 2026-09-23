@@ -1,6 +1,9 @@
 #!/bin/bash
 # ==========================================================================
-# deploy/install.sh  v4.2
+# deploy/install.sh  v4.3
+# v4.3  2026-09-23  OTV4TEST r125 — `shadow` leaves TRADER_DIRS: shadow/ is deleted
+#       (LVL.15 step 5, operator "Yep, delete"). A MISSING declared directory is
+#       fatal here, so leaving it listed would fail the next install outright.
 # v4.2  2026-09-11  OTV4TEST r14 — moved from the repo root to deploy/ (root cleanup); no behaviour change.
 # v4.1 (2026-09-07) - r303 / DEP.8. WHAT SHIPS IS DECLARED, WHAT LANDED IS
 #   VERIFIED. `docs/` joins `tests/` as control-only. New TRADER_DIRS and
@@ -101,7 +104,7 @@ _sparse_trader() {
 # box - quietly, because the box still trades. Subprocess edges are invisible
 # to the thing that would otherwise generate this list, which is exactly why it
 # is written down rather than derived.
-TRADER_DIRS="analysis data database deploy derived execution notifications risk shadow strategy tools utils warehouse"
+TRADER_DIRS="analysis data database deploy derived execution notifications risk strategy tools utils warehouse"
 
 # ── VERIFY WHAT LANDED, NOT WHAT WE ASKED FOR ───────────────────────────────
 # ⚠️ THE FAILURE MODES ARE ASYMMETRIC AND ONLY ONE OF THEM IS LOUD. Shipping

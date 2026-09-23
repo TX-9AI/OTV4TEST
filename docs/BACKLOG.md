@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v1.19
+# BACKLOG.md — OTV4TEST — v1.20
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -238,6 +238,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v1.20 — 2026-09-23 — OTV4TEST r125 — LVL.15 STEP 5: shadow/ AND analysis/level_grade.py ARE DELETED.** Operator: "Yep, delete." shadow/ (6 modules) and its 5 units (observer, start/stop services and timers) were a fleet observer never installed on this box, and shadow/observer.py imported the old mapper, so it goes first. level_grade was orphaned by r123. install.sh drops shadow from TRADER_DIRS (a missing declared dir is fatal there); gen_file_map drops the two entry points; check_holiday_aware H5 is retargeted to scan the whole runtime tree for a second holiday list (H5c/H5d retire with the unit they executed; + venv bootstrap); check_shadow_velocity is deleted with its subject. Deleted in a scratch copy: 123/123 modules import, full boot sweep 157/164 with the same seven reds. Next, r126: level_map, the mapper, the legacy levels path.
 
 **v1.19 — 2026-09-23 — OTV4TEST r124 — LVL.15 STEP 5: THE LIVE BOARD STOPS READING derived/level_map.** Found while mapping the deletion: board() - read by every level-trading plan - grouped the book's levels into zones with level_map.zone_width/zones/walk over main.py's ctx["level_tape"]. The width now comes from the book the engine builds every bar (equal on the live store: 828 hourly bars, 0.56 both) and zones/walk are moved into derived/levels verbatim. Proven identical: 704 boards across a price grid, spot- and range-anchored, byte-identical old vs new on the live ledger. main.py's level_tape read is removed. Gates: check_level_engine_book E9, check_zones retargeted (+ bootstrap), check_legacy_gone G3. Next, r125: the pure deletions.
 

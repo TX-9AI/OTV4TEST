@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/gen_file_map.py  v4.8
+tests/gen_file_map.py  v4.9
+
+v4.9  2026-09-23  OTV4TEST r125 — `shadow/observer.py` and `shadow/trading_day.py`
+      leave ENTRY_POINTS: shadow/ and its units are deleted (LVL.15 step 5).
 
 v4.8  2026-09-20  OTV4TEST r68 — `tools/claude_boot.py` DECLARED. It is launched
       by optbot-claude-boot.service (BOX.11) and nothing imports it, so without
@@ -128,13 +131,11 @@ ENTRY_POINTS = {
     "main.py", "query.py", "status.py", "tools/debug_status.py",
     "tools/eod_summary.py", "tools/stress_theta_bleed.py",      # r14: root cleanup
     # systemd-launched services
-    "shadow/observer.py",          # shadow-observer.service
-    "shadow/trading_day.py",       # shadow-start.service ExecCondition
     "data/candle_logger.py",       # candle-logger.service
     "warehouse/s3_push.py",        # s3-push.service
     "data/candle_feed.py",         # candle-feed.service
     # r28 — the box's own timers (installed here, BOX.2/BOX.4) and a fleet unit.
-    # ⚠️ shadow-*, candle-logger and s3-push above are FLEET services: this box
+    # ⚠️ candle-logger and s3-push above are FLEET services: this box
     # has none of them installed (BOX.1). Declared because the units ship in deploy/.
     "warehouse/midnight_halt.py",  # optbot-midnight-halt.service (this box, r21)
     "warehouse/retention_purge.py",  # optbot-retention-purge.service (this box, r27)

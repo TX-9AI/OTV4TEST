@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """
-tests/check_legacy_gone.py  v1.3
+tests/check_legacy_gone.py  v1.4
 LVL.15 STEP 5 — THE OLD LEVEL CODE LEAVES, ONE MODULE AT A TIME, AND NOTHING
 STILL IMPORTS WHAT LEFT.
 
+v1.4  2026-09-23  OTV4TEST r125 — shadow/ (the package and all five modules) and
+      analysis/level_grade.py (orphaned by r123). G1 now ignores importers
+      INSIDE a deleted package: its own files are deleted with it, but the
+      CHECKs run before the lander's DEL (r302), so they are still on disk.
 v1.3  2026-09-23  OTV4TEST r124 — G3: the live board and main.py no longer use
       derived/level_map (the board's zoning moved into derived/levels; main.py's
       level_tape read is gone). level_map joins LEGACY in r125 with the legacy path.
@@ -44,6 +48,20 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LEGACY = {
     "analysis.pitchfork_lifecycle": "r121",
     "analysis.liquidity_ledger": "r122",
+    "analysis.level_grade": "r125",
+    "shadow": "r125",
+    "shadow.observer": "r125",
+    "shadow.primitives": "r125",
+    "shadow.registry": "r125",
+    "shadow.scorers": "r125",
+    "shadow.trading_day": "r125",
+}
+
+# Files the SAME delivery deletes (by DEL) that import a LEGACY module. The CHECKs
+# run before the lander's DEL (r302), so they are still on disk when this runs;
+# listing them here is a statement, not a wildcard.
+DELETED_WITH = {
+    "tests/check_shadow_velocity.py": "r125",
 }
 
 FAILED, RAN = [], []
@@ -99,7 +117,10 @@ def main():
     bad = []
     for mod in LEGACY:
         own = mod.replace(".", "/") + ".py"
-        users = sorted(u for u in found.get(mod, set()) if u != own)
+        pkg = mod.split(".")[0] + "/"                  # a deleted package's own files
+        users = sorted(u for u in found.get(mod, set())
+                       if u != own and u not in DELETED_WITH
+                       and not (pkg.rstrip("/") in LEGACY and u.startswith(pkg)))
         bad += [f"{u} -> {mod}" for u in users]
     check("G1 nothing imports a deleted legacy module", not bad,
           "; ".join(bad) if bad else f"{len(LEGACY)} module(s): {', '.join(LEGACY)}")

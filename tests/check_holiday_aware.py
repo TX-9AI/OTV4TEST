@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """
-tests/check_holiday_aware.py  v1.2
+tests/check_holiday_aware.py  v1.3
+v1.3  2026-09-23  OTV4TEST r125 — shadow/ IS DELETED (LVL.15 step 5), so H5 is
+      RETARGETED, NOT REMOVED (§38.4): its property was "one holiday list, not
+      three", and it now scans EVERY .py in the tree for a second
+      `US_MARKET_HOLIDAYS = {` outside utils/market_calendar.py — stronger than
+      reading one file. H5c/H5d RETIRE WITH THE THING THEY RAN: they executed
+      shadow-start.service's ExecCondition (shadow/trading_day.py), and that unit
+      and script are deleted in the same delivery; there is no condition left.
+      And the r106 venv bootstrap: under system python3 it died on pytz.
 v1.2  2026-09-08  r319 / SHD.3 — H5c RUNS THE ExecCondition, BECAUSE H5 READ
       SOURCE TEXT AND WATCHED THE FLEET GO DARK. H5 asserts that
       `shadow/trading_day.py` contains the string `from utils.market_calendar
@@ -52,6 +60,11 @@ import sys
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import glob as _glob                                             # r106 venv bootstrap (r125:
+for _sp in _glob.glob(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                   "venv", "lib", "python*", "site-packages")):  # it died on pytz
+    if _sp not in sys.path:                                      # under system python3)
+        sys.path.insert(1, _sp)
 ET = ZoneInfo("America/New_York")
 F: list = []
 
@@ -95,34 +108,24 @@ def main() -> int:
         _sat += _dt.timedelta(days=1)
     check("H4b a weekend beyond coverage is still closed", not is_rth(_sat))
 
-    # H5 — one list, not three. shadow must not carry its own copy back.
+    # H5 — one list, not three (r125: retargeted from shadow/trading_day.py,
+    # deleted, to the whole tree). Only utils/market_calendar.py defines it.
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    sh = open(os.path.join(root, "shadow", "trading_day.py")).read()
-    check("H5  shadow/trading_day.py IMPORTS the list, does not redefine it",
-          "US_MARKET_HOLIDAYS = {" not in sh
-          and "from utils.market_calendar import" in sh)
-    # ── 🔴 H5c — THE ExecCondition IS EXECUTED, NOT READ ──────────────────
-    # `deploy/shadow-start.service` runs:
-    #   ExecCondition=/usr/bin/python3 <install>/shadow/trading_day.py
-    # so the test is that exact shape: SYSTEM python, absolute script path,
-    # from a directory that is NOT the repo — because `WorkingDirectory=` does
-    # not put the cwd on `sys.path` and does not rescue this.
-    # ⚠️ 0 and 1 are BOTH legitimate (trading day / not), so the assertion is
-    # that it exits CLEANLY with one of them and prints no traceback. An
-    # ImportError also exits 1 — indistinguishable from "not a trading day" by
-    # exit code alone, which is exactly why it went unnoticed for a session.
-    import subprocess as _sp
-    _script = os.path.join(root, "shadow", "trading_day.py")
-    _r = _sp.run([sys.executable, _script], capture_output=True, text=True,
-                 cwd=os.path.dirname(root))
-    check("H5c shadow/trading_day.py RUNS as a bare script from outside the repo "
-          "(the systemd ExecCondition form)",
-          _r.returncode in (0, 1) and "Traceback" not in _r.stderr,
-          f"exit={_r.returncode} stderr={_r.stderr.strip().splitlines()[-1] if _r.stderr.strip() else ''}")
-    check("H5d and it agrees with the calendar it imports",
-          _r.returncode == (0 if mc.is_trading_day() else 1),
-          f"script exit={_r.returncode} "
-          f"is_trading_day={mc.is_trading_day()}")
+    _defs = []
+    for _dp, _dns, _fns in os.walk(root):
+        _dns[:] = [d for d in _dns if d not in ("venv", ".git", "__pycache__", "tests")]  # runtime code only
+        for _fn in _fns:
+            if _fn.endswith(".py"):
+                _p = os.path.join(_dp, _fn)
+                try:
+                    if "US_MARKET_HOLIDAYS = {" in open(_p, encoding="utf-8").read():
+                        _defs.append(os.path.relpath(_p, root))
+                except (OSError, UnicodeDecodeError):
+                    pass
+    check("H5  ONE holiday list: only utils/market_calendar.py defines US_MARKET_HOLIDAYS",
+          _defs == [os.path.join("utils", "market_calendar.py")], str(sorted(_defs)))
+    # H5c/H5d RETIRED at r125 with shadow-start.service and shadow/trading_day.py
+    # (the ExecCondition they executed no longer exists). See the v1.3 note.
 
     tu = open(os.path.join(root, "utils", "time_utils.py")).read()
     check("H5b time_utils does not define a holiday set of its own",
