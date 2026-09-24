@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# deploy/install_claude_boot.sh  v1.2
+# deploy/install_claude_boot.sh  v1.3
 #
+# v1.3  2026-09-24  OTV4TEST r133 — the closing message said "NOT started ... start
+#       it deliberately" one line before setup_ec2.sh started it on a fresh box.
+#       It now says what is true in both cases: enabled for every boot, and how to
+#       raise it now by hand. No behaviour change.
 # v1.2  2026-09-24  OTV4TEST r132 — OT_RC_NAME, when set at install, rides into
 #       the unit so tools/claude_boot.py names the Remote Control session with
 #       it; unset writes nothing and the name stays qqq-test.
@@ -94,7 +98,7 @@ mkdir -p "$DIR/logs"
 sudo systemctl daemon-reload
 sudo systemctl enable optbot-claude-boot.service
 echo
-echo "installed. NOT started — it raises a session, so start it deliberately:"
+echo "installed and enabled: a Claude session is raised at every boot. To raise one now by hand:"
 echo "  sudo systemctl start optbot-claude-boot.service"
 echo "  python3 $DIR/tools/claude_boot.py --status-only"
 # ⚠️ `|| true`, AND THE GATE IS WHY. Under `set -euo pipefail` this REPORTING

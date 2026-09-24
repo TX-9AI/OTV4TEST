@@ -1,6 +1,8 @@
 #!/bin/bash
 # ==========================================================================
-# deploy/install.sh  v4.4
+# deploy/install.sh  v4.5
+# v4.5  2026-09-24  OTV4TEST r133 — the banner's right border is padded by printf
+#       to one width (it was hand-padded and overshot). No behaviour change.
 # v4.4  2026-09-24  OTV4TEST r132 — IT INSTALLS THIS REPO. REPO still named
 #       options_trader_v3, the r3.1 'repo pointer' defect inherited a second time:
 #       every fresh install from this fork would have deployed v3. Now
@@ -55,9 +57,11 @@ REF="${OT_GIT_REF:-main}"
 DEPLOY_DIR="$HOME/options-trader-deploy"
 
 echo ""
-echo "╔══════════════════════════════════════════════════════╗"
-echo "║     OTV4TEST  |  Web Installer (deploy/install.sh 4.4) ║"
-echo "╚══════════════════════════════════════════════════════╝"
+# r133 — padded to one width; keep the text ASCII (see setup_ec2.sh box()).
+_rule="$(printf '═%.0s' $(seq 1 54))"
+echo "╔${_rule}╗"
+printf "║ %-52s ║\n" "   OTV4TEST  |  Web Installer  |  install.sh 4.5"
+echo "╚${_rule}╝"
 echo ""
 
 # r132 — OT_PLAN_ONLY=1: preview what setup_ec2.sh would do, change nothing.

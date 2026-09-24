@@ -1,6 +1,15 @@
 #!/bin/bash
 # ==========================================================================
-# setup_ec2.sh  v4.3
+# setup_ec2.sh  v4.4
+# v4.4  2026-09-24  OTV4TEST r133 — COSMETIC, FROM THE FIRST PROVING RUN'S SCREEN.
+#       The operator, on the banner: "can you also fix that little alignment thing".
+#       Banners are drawn by box(), which pads every line to one width (the right
+#       border was hand-padded and landed wherever the text ended; the Setup
+#       Complete box also carried a double-width emoji). The banner said
+#       "options_trader v3.0" - VERSION now tracks this file (4.4) and the name is
+#       OTV4TEST; Vertigo Capital stays. The instrument is the configured one, not
+#       a hardcoded "QQQ/SPX". Step 4's "Enter the GitHub repo ... Press ENTER to
+#       skip" is printed only when it will actually ask. No behaviour change.
 # v4.3  2026-09-24  OTV4TEST r132 — THE UNATTENDED INSTALL BUILDS THE WHOLE BOX.
 #       Operator: "make sure that I can do a boot strap install of this repo onto
 #       a fresh instance using unattended install with pre-seeded boot strap file",
@@ -89,7 +98,7 @@ INSTALL_DIR="$HOME/options-trader"
 DEPLOY_DIR="$HOME/options-trader-deploy"
 SERVICE_NAME="optionsbot"
 VENV="$INSTALL_DIR/venv"
-VERSION="3.0"
+VERSION="4.4"
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLAN=0
 [ "${1:-}" = "--plan" ] && PLAN=1
@@ -113,6 +122,20 @@ print_step() { echo -e "\n${BOLD}${GREEN}[ $1 ]${RESET} $2"; }
 print_ok()   { echo -e "  ${GREEN}✓${RESET}  $1"; }
 print_info() { echo -e "  ${CYAN}→${RESET}  $1"; }
 print_warn() { echo -e "  ${YELLOW}⚠${RESET}  $1"; }
+# r133 — every banner line is padded to ONE width by printf, so the right border
+# lines up. ⚠️ KEEP THE TEXT INSIDE A BOX ASCII: a multibyte or double-width glyph
+# (✅, —, →) pads by bytes in some locales and by cells in others.
+BOX_W=52
+box() {
+    local color="$1"; shift
+    local rule ln
+    rule="$(printf '═%.0s' $(seq 1 $((BOX_W + 2))))"
+    echo -e "${BOLD}${color}╔${rule}╗${RESET}"
+    for ln in "$@"; do
+        printf "${BOLD}${color}║ %-${BOX_W}s ║${RESET}\n" "$ln"
+    done
+    echo -e "${BOLD}${color}╚${rule}╝${RESET}"
+}
 ask()        { local -n __v="$2"; [ -n "$__v" ] || read -rp "    $1: " "$2"; }
 ask_secret() { local -n __v="$2"; [ -n "$__v" ] || { read -rsp "    $1 (paste, then ENTER): " "$2"; echo ""; }; }
 ask_yn()     {
@@ -123,10 +146,8 @@ ask_yn()     {
 }
 
 echo ""
-echo -e "${BOLD}${CYAN}╔══════════════════════════════════════════════════════╗${RESET}"
-echo -e "${BOLD}${CYAN}║     options_trader v${VERSION}  |  Vertigo Capital     ║${RESET}"
-echo -e "${BOLD}${CYAN}║     QQQ/SPX 0DTE  |  TastyTrade  |  Telegram       ║${RESET}"
-echo -e "${BOLD}${CYAN}╚══════════════════════════════════════════════════════╝${RESET}"
+box "$CYAN" "   OTV4TEST v${VERSION}  |  Vertigo Capital" \
+           "   ${OT_INSTRUMENT:-QQQ} 0DTE  |  TastyTrade  |  Telegram"
 echo ""
 echo "  Have ready:"
 echo "    - TastyTrade Client Secret"
@@ -220,12 +241,14 @@ print_ok "Telegram configured."
 
 # ─── STEP 4: GITHUB REPO & TOKEN ────────────────────────────────────────────
 print_step "4/8" "GitHub Repository (optional)"
-echo ""
-echo -e "  Enter the GitHub repo to link this server to for push.sh."
-echo -e "  Format: TX-9AI/OTV4TEST"
-echo -e "  (Full URLs are also accepted and will be normalized automatically)"
-echo -e "  Press ENTER to skip."
-echo ""
+if [ "$UNATTENDED" = false ]; then
+    echo ""
+    echo -e "  Enter the GitHub repo to link this server to for push.sh."
+    echo -e "  Format: TX-9AI/OTV4TEST"
+    echo -e "  (Full URLs are also accepted and will be normalized automatically)"
+    echo -e "  Press ENTER to skip."
+    echo ""
+fi
 # In unattended mode, KEEP the GITHUB_REPO / GITHUB_TOKEN the bootstrap exported.
 # Only blank + prompt for them in an interactive install (otherwise we'd wipe the
 # env values and skip `git remote add origin`, leaving the repo with no remote).
@@ -524,11 +547,9 @@ fi
 STATUS=$(systemctl is-active ${SERVICE_NAME})
 if [ "$STATUS" = "active" ]; then
     echo ""
-    echo -e "${BOLD}${CYAN}╔══════════════════════════════════════════════════════╗${RESET}"
-    echo -e "${BOLD}${GREEN}║          ✅  Setup Complete — Bot Running!          ║${RESET}"
-    echo -e "${BOLD}${CYAN}╚══════════════════════════════════════════════════════╝${RESET}"
+    box "$GREEN" "          Setup Complete - Bot Running"
     echo ""
-    echo -e "  Instrument:  QQQ/SPX 0DTE (TastyTrade)"
+    echo -e "  Instrument:  ${INSTRUMENT} 0DTE (TastyTrade)"
     echo -e "  Mode:        $([ "$PAPER_TRADING" = "True" ] && echo "📄 PAPER" || echo "🔴 LIVE")"
     echo -e "  Risk:        \$${RISK_USD}/trade"
     echo -e "  TT Account:  ${TT_ACCOUNT_NUMBER}"

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# deploy/install_claude.sh  v1.0
+# deploy/install_claude.sh  v1.1
 #
+# v1.1  2026-09-24  OTV4TEST r133 — ~/.local/bin goes on PATH for login shells
+#       (~/.bashrc, once). Anthropic's installer warns it is missing on a fresh
+#       box; tools/claude_boot.py never needed it (it resolves the binary by path)
+#       but the operator typing `claude` over SSH did.
 # v1.0  2026-09-24  OTV4TEST r132 — CLAUDE CODE ON A FRESH BOX, PINNED, WITH ITS
 #       OWN LOGIN. The operator: "after the first boot on a fresh instance, I want
 #       Claude to come up with it in a remote control session and look everything
@@ -63,6 +67,12 @@ else
         say "🔴 expected $VERSION at $BIN, found '${have:-nothing}'"; exit 1
     fi
     say "binary $VERSION installed at $BIN"
+fi
+
+# r133 — `claude` by name in the operator's shell; added once, never duplicated.
+if ! grep -qs '\.local/bin' "$HOME/.bashrc"; then
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
+    say "~/.local/bin added to PATH in ~/.bashrc"
 fi
 
 # ── 2. user settings, never overwritten ─────────────────────────────────────

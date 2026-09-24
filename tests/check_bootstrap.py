@@ -1,5 +1,11 @@
-"""tests/check_bootstrap.py — v1.0
+"""tests/check_bootstrap.py — v1.1
 A FRESH BOX CAN BE BUILT FROM THIS REPO, HANDS-FREE, AND IT IS THIS REPO IT BUILDS.
+
+v1.1  2026-09-24 — OTV4TEST r133. G12: every banner the installers draw is
+      RENDERED and measured - all box lines one width, in the C and the UTF-8
+      locale (the operator circled the overshooting border on the first proving
+      run; a 53-character line in a 52 box was caught by this measurement before
+      it shipped). G9f: ~/.local/bin is put on PATH in ~/.bashrc exactly once.
 
 v1.0  2026-09-24 — OTV4TEST r132. The operator: "make sure that I can do a boot
       strap install of this repo onto a fresh instance using unattended install
@@ -611,6 +617,62 @@ else:
     guard("G11 ordering, niceness and timeouts (no reference unit here — the written values)",
           lambda: _directives(_u11).get("After") == "optionsbot.service candle-feed.service"
           and _directives(_u11).get("SuccessExitStatus") == "0 1")
+
+# ── G12 — banners, rendered and measured ────────────────────────────────────
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _box_lines(txt):
+    return [ln for ln in (_ANSI.sub("", x) for x in txt.splitlines())
+            if ln[:1] in ("\u2554", "\u2551", "\u255a")]
+
+
+def _render(locale):
+    env_base = {"PATH": "/usr/bin:/bin", "LANG": locale, "LC_ALL": locale}
+    out = []
+    home = _mk("banner_")
+    r = subprocess.run(["setsid", "-w", "bash", os.path.join(_root, "setup_ec2.sh"), "--plan"],
+                       stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60,
+                       env={**env_base, "HOME": home, **_CREDS})
+    out.append(("setup_ec2 banner", _box_lines(r.stdout)))
+    fn = re.search(r"^BOX_W=\d+\n.*?^}\n", _read("setup_ec2.sh"), re.M | re.S)
+    if fn:
+        r = subprocess.run(["bash", "-c", "BOLD=; RESET=; GREEN=; " + fn.group(0)
+                            + 'box "" "          Setup Complete - Bot Running"'],
+                           capture_output=True, text=True, env=env_base, timeout=30)
+        out.append(("setup complete box", _box_lines(r.stdout)))
+    blk = re.search(r"^_rule=.*?^echo \"\u255a.*?$", _read("deploy/install.sh"), re.M | re.S)
+    if blk:
+        r = subprocess.run(["bash", "-c", blk.group(0)], capture_output=True, text=True,
+                           env=env_base, timeout=30)
+        out.append(("install.sh banner", _box_lines(r.stdout)))
+    return out
+
+
+for _loc in ("C", "C.UTF-8"):
+    _boxes = _render(_loc)
+    guard("G12 [%s] all three banners render" % _loc,
+          lambda b=_boxes: len(b) == 3 and all(len(lines) >= 3 for _n, lines in b),
+          lambda b=_boxes: str([(n, len(l)) for n, l in b]))
+    guard("G12 [%s] every box line is one width, border to border" % _loc,
+          lambda b=_boxes: all(len({len(x) for x in lines}) == 1 for _n, lines in b),
+          lambda b=_boxes: str({n: sorted({len(x) for x in lines}) for n, lines in b}))
+guard("G12 no hand-padded banner line is left in either installer",
+      lambda: not any(re.search(r"echo[^\n]*\u2551[^\n]*\u2551", t)
+                      for t in (_read("setup_ec2.sh"), _read("deploy/install.sh"))))
+guard("G12 the banner no longer says options_trader v3.0",
+      lambda: 'VERSION="3.0"' not in _read("setup_ec2.sh"))
+
+
+def _g9f():
+    h, st = _fixture_home(_PIN, 0)
+    _run_ic(h, st)
+    _run_ic(h, st)
+    rc = open(os.path.join(h, ".bashrc")).read()
+    return rc.count(".local/bin") == 1
+
+
+guard("G9f ~/.local/bin goes on PATH in ~/.bashrc exactly once across re-runs", _g9f)
 
 # ── G0 ────────────────────────────────────────────────────────────────────────
 for d in _TMP:
