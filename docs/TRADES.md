@@ -16,7 +16,9 @@ Each spec declares its gates in three categories (WA §36):
 | **FOUNDATIONAL** | defines the setup's **identity**. Relax it and this is not that trade. **A gate can be perfectly winnable and still be foundational.** | never |
 | **FEASIBILITY** | the trade cannot win, however good it looks. | never |
 
-⚠️ **The relaxed toggle is `configure.sh` option 7, per box, paper only.** It
+⚠️ **The relaxed toggle is NO LONGER ON `configure.sh` (removed r127, operator: *"we don't do
+relaxed entries here"*); item 7 is now r97's pin-proximity gate.** `OT_RELAXED_ENTRY=1` in the unit
+still turns it on (strategy/relaxed.py), per box, paper only, and is unset on this box. It
 exists to get trades *firing* so the sequence can be watched, plumbing errors
 surfaced, and the stops exercised on deliberately mediocre entries. Every relaxed
 trade carries `relaxed_entry=1` and a `_relaxed` setup suffix. **Data collected

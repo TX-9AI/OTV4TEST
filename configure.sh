@@ -1,6 +1,22 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# configure.sh  v4.7
+# configure.sh  v4.8
+# v4.8  2026-09-24  OTV4TEST r127 — ITEM 7 IS THE PIN-PROXIMITY GATE; THE RELAXED
+#       ENTRY TOGGLE IS REMOVED. Operator: *"make it replace the relaxed entry
+#       toggle. Since we don't do relaxed entries here."* and, turning r97's gate
+#       off pending data: *"I would prefer to interact with it there."*
+#       `change_pin_gate` writes OT_PIN_PROXIMITY_ACTIVE (1 on / 0 off) with the
+#       same set_env + reload_daemon every item uses. `pin_gate_label` shows what
+#       the operator SET, or "not set" plus the default read from config.py — the
+#       r91 rule: nothing is displayed that he did not choose, and the default is
+#       never hardcoded here, where it would rot the day config.py moves.
+#       ⚠️ RELAXED ENTRY IS NOT DELETED FROM THE CODE: strategy/relaxed.py still
+#       honours OT_RELAXED_ENTRY if a unit sets it; this box does not (measured
+#       2026-09-24: unset), and unset is OFF. Only the menu item is gone.
+#       ⚠️ THE GEX PIN BUTTERFLY DOES NOT READ THIS KEY — its PINNING condition is
+#       foundational in strategy/gex_pin_butterfly.py. The gate is main.py:4802,
+#       long_debit entries only.
+#       Also fixes the out-of-range prompt, which said 1-9 on a 10-item menu.
 # v4.7  2026-09-22  r91 — A DECLARATION SURFACE PRINTS DECLARATIONS. Operator:
 #       *"Configure.sh is where I enter env variables. The only thing it
 #       displays is the current variables that the operator has chosen... The
@@ -224,6 +240,7 @@ show_config() {
     echo -e "  Risk per trade: ${BOLD}\$${risk:-not set}${RESET}"
     local dll=$(get_env "OT_DAILY_LOSS_LIMIT")
     echo -e "  Daily loss cap: ${BOLD}$(fmt_declared "$dll")${RESET}"
+    echo -e "  Pin gate:       ${BOLD}$(pin_gate_label)${RESET}"
     echo -e "  Trading mode:   $(echo -e $mode_label)"
     local rec_pin rec_label
     rec_pin=$(get_env "OT_BROKER_RECONCILE")
@@ -318,61 +335,45 @@ change_risk() {
     done
 }
 
-change_relaxed() {
-    # ── RELAXED ENTRY CRITERIA (v4.0) ───────────────────────────────────────
-    # Loosens SELECTION gates so trades actually fire: the sequence can be
-    # watched, plumbing errors surfaced, and the stops exercised on deliberately
-    # mediocre entries.
-    #
-    # ⚠️ IT DOES NOT LOOSEN FEASIBILITY VETOES. Below 0.05% ATR the required
-    # move was reached on 0% of 5,517 measured bars - relaxing that would only
-    # produce trades that cannot pay, which teaches nothing about stops and adds
-    # noise to the very log this mode exists to read.
-    # ⚠️ PAPER ONLY. strategy/relaxed.py refuses on a live box whatever this
-    # says, and it requires OT_PAPER_TRADING to be asserted EXPLICITLY - a
-    # config default is not an assertion.
-    # ⚠️ EVERY relaxed trade is tagged `relaxed_entry=1` and its setup_type gets
-    # a `_relaxed` suffix, so the population stays separable forever. **Data
-    # collected here must never validate a tight threshold.**
-    local current
-    current=$(get_env "OT_RELAXED_ENTRY")
+# ── r127 — THE PIN-PROXIMITY GATE (r97), ON OR OFF ─────────────────────────
+# r97 refuses a DIRECTIONAL DEBIT (ORB, Breakout, Runaway, VOLT, the hunt) when
+# GEX reads PINNING and price sits within 0.32 of an expected move of the pin.
+# Operator, 2026-09-24, after it replayed to -$739 net across every fire and cut
+# 18 of 24 trades on 09-21's trend day: *"Turn it off. We need to collect more
+# data before ruling on it."* The data keeps collecting with the gate OFF:
+# every fire_snapshot records pin_em_fraction, pin_strike and gex_environment.
+pin_gate_label() {
+    local v dflt
+    v=$(get_env "OT_PIN_PROXIMITY_ACTIVE")
+    if [[ "$v" == "1" ]]; then printf 'ON'; return; fi
+    if [[ "$v" == "0" ]]; then printf 'OFF'; return; fi
+    if [[ -n "$v" ]]; then printf 'OFF (set to %s; only 1 is on)' "$v"; return; fi
+    # Unset: say so, and name the default from config.py rather than from memory.
+    # The key is removed from THIS shell's env first so the answer is the code's.
+    dflt=$(cd "$BOT_DIR" && env -u OT_PIN_PROXIMITY_ACTIVE python3 -c \
+        "import config; print('ON' if config.PIN_PROXIMITY_ACTIVE else 'OFF')")
+    printf 'not set (code default: %s)' "${dflt:-UNREADABLE - config.py did not import}"
+}
+
+change_pin_gate() {
     echo ""
-    echo "  Relaxed entry criteria: ${current:-0}  (1 = on, paper only)"
+    echo "  Pin-proximity gate: $(pin_gate_label)"
     echo ""
-    echo "  ON  - trades fire on looser SELECTION gates so the sequence,"
-    echo "        the logs and the stops can be watched. Every trade is"
-    echo "        tagged relaxed_entry=1."
-    echo "  OFF - measured criteria only. This is the trading setting."
+    echo "  ON  - a directional debit (ORB, Breakout, Runaway, VOLT, hunt) is"
+    echo "        REFUSED when GEX is PINNING and price is within 0.32 EM of"
+    echo "        the pin. (r97)"
+    echo "  OFF - no refusal. Pin distance is still recorded on every fire."
+    echo "  The GEX pin butterfly is NOT affected either way."
     echo ""
-    # v4.1 — `confirm` DOES NOT EXIST IN THIS REPO. The helper is `ask_yn`
-    # (line ~69), and the only other yes/no caller in the file uses it. The
-    # undefined name meant bash printed "confirm: command not found", returned
-    # 127, and the `if` took the ELSE branch — so option 7 could never turn
-    # relaxed entry ON, and MERELY OPENING IT WROTE `OT_RELAXED_ENTRY=0`.
-    # ⚠️ IT FAILED IN THE SAFE DIRECTION, WHICH IS WHY IT SURVIVED. A
-    # command-not-found in an `if` is indistinguishable from an honest "no":
-    # the menu printed a plausible "Relaxed entry OFF." and carried on. Found
-    # 2026-08-20 on the AMD box the night before the first v4 session.
-    if ask_yn "Enable relaxed entry criteria?"; then
-        set_env "OT_RELAXED_ENTRY" "1"
+    if ask_yn "Turn the pin-proximity gate ON?"; then
+        set_env "OT_PIN_PROXIMITY_ACTIVE" "1"
         reload_daemon
-        echo "  RELAXED ENTRY ON - paper only, and every trade is tagged."
+        echo "  Pin-proximity gate ON."
     else
-        set_env "OT_RELAXED_ENTRY" "0"
+        set_env "OT_PIN_PROXIMITY_ACTIVE" "0"
         reload_daemon
-        echo "  Relaxed entry OFF."
+        echo "  Pin-proximity gate OFF."
     fi
-    # v4.2 — `set_env` EDITS THE UNIT FILE, so systemd must be told. Every
-    # other change_* already reloads after writing (change_instrument,
-    # change_risk, change_mode, change_daily_loss, change_telegram,
-    # change_tt_credentials); this one never did, which is why the restart
-    # printed "The unit file ... changed on disk. Run 'systemctl
-    # daemon-reload'".
-    # ⚠️ IT IS NOT COSMETIC. Without the reload systemd restarts from its
-    # CACHED copy of the unit, so the bot comes back up on the OLD
-    # OT_RELAXED_ENTRY while configure.sh and the menu both report the NEW
-    # one. The setting appears applied and is not — this project's named
-    # failure class, one layer below the code.
 }
 
 
@@ -639,7 +640,7 @@ while true; do
     echo -e "  ${BOLD}4.${RESET}  Telegram alerts     (chat: $(get_env TELEGRAM_CHAT_ID))"
     echo -e "  ${BOLD}5.${RESET}  TastyTrade credentials"
     echo -e "  ${BOLD}6.${RESET}  Daily loss cap      (currently: \$$(dll=$(get_env OT_DAILY_LOSS_LIMIT); echo ${dll:-$(get_env OT_RISK_USD)}))"
-    echo -e "  ${BOLD}7.${RESET}  Relaxed entry       (currently: $([ "$(get_env OT_RELAXED_ENTRY)" = "1" ] && echo "ON - paper only" || echo "off"))"
+    echo -e "  ${BOLD}7.${RESET}  Pin-proximity gate  (currently: $(pin_gate_label))"
     echo -e "  ${BOLD}8.${RESET}  ORB ramp TOP        (currently: $(fmt_declared "$(get_env OT_ORB_BUDGET_USD)"))"
     echo -e "  ${BOLD}9.${RESET}  ORB ramp START      (currently: $(fmt_declared "$(get_env OT_ORB_RISK_USD)"))"
     echo -e "  ${BOLD}10.${RESET} Done"
@@ -653,11 +654,11 @@ while true; do
         4) change_telegram;       CHANGED=true ;;
         5) change_tt_credentials; CHANGED=true ;;
         6) change_daily_loss;     CHANGED=true ;;
-        7) change_relaxed;        CHANGED=true ;;
+        7) change_pin_gate;       CHANGED=true ;;
         8) change_orb_budget;     CHANGED=true ;;
         9) change_orb_risk;       CHANGED=true ;;
         10) break ;;
-        *) print_warn "Please enter a number between 1 and 9." ;;
+        *) print_warn "Please enter a number between 1 and 10." ;;
     esac
     echo ""
 done

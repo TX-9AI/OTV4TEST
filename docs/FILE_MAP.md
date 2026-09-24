@@ -626,9 +626,9 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** `config.py`, `database/trade_logger.py`, `execution/exit_engine.py`
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
-### `tests/check_configure_relaxed.py`
+### `tests/check_configure_pin_gate.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `configure.sh`, `tools/land.sh`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_conviction_removed.py`
 - **calls:** (none)
