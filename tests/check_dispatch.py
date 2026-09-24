@@ -1,6 +1,22 @@
 #!/usr/bin/env python3
 """
-tests/check_dispatch.py  v4.2
+tests/check_dispatch.py  v4.3
+v4.3  2026-09-24  OTV4TEST r128 — TWO STANDING REDS, BOTH THE CHECKER'S, NEITHER THE
+      CODE'S. (1) "no dispatch-local name is used before it is assigned" flagged
+      `_fire` (a NESTED `def`, main.py:3849) and `_adm_rules` (a LOCAL import,
+      main.py:3758): the scan counted only `Name` stores as bindings, so a def or
+      an import could never bind — it cried wolf on every run. AND IT NEVER
+      CHECKED "BEFORE": ast.walk is breadth-first and the bound set grew in walk
+      order, not line order. Now bindings of every kind (assignment, nested
+      def/class, import, argument, loop/with/except/comprehension target, walrus)
+      carry their LINE, and a load is flagged only if no binding of that name sits
+      on an earlier line — what (3) below always claimed to do. Mutation-proven:
+      a use moved above its assignment goes red. (2) The Runaway fixture predates
+      r24's rule that the 50% must be ACCEPTED on the latch AND HELD NOW
+      (runaway_plan.py:325, :353): its ORB double carried no `fifty_accepted` and
+      no 1m frame, so the plan correctly held and the check read "does not fire".
+      The fixture now supplies both; the pin is unchanged (fires, and VALID).
+      Plus the r106 venv bootstrap (the lander runs CHECKs under system python3).
 v4.2  2026-08-26  r146: the runaway fixture supplies a chain and the pin is that
       the signal is VALID (strike, premium, contract resolved) — it never was
       before r146; without a chain the strategy is starved, not fired.
@@ -41,6 +57,11 @@ what all three incidents above got wrong.
 import ast
 import os
 import sys
+import glob as _glob                                             # r106 venv bootstrap
+for _sp in _glob.glob(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                   "venv", "lib", "python*", "site-packages")):
+    if _sp not in sys.path:
+        sys.path.insert(1, _sp)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")
@@ -117,16 +138,37 @@ def main(argv):
                         for a in sub.names:
                             module_bound.add((a.asname or a.name).split(".")[0])
 
-        bound, unbound = set(module_bound), []
-        for a in fn.args.args:
-            bound.add(a.arg)
+        # r128 — BINDINGS OF EVERY KIND, BY LINE. A load is unbound if no binding
+        # of that name sits at or before its line. Module-level names and the
+        # function's own arguments are bound from the start.
+        first_bind = {}
+        def _bind(name, line):
+            if name not in first_bind or line < first_bind[name]:
+                first_bind[name] = line
+        for a in fn.args.args + fn.args.kwonlyargs:
+            _bind(a.arg, 0)
         for node in ast.walk(fn):
-            if isinstance(node, ast.Name):
-                if isinstance(node.ctx, ast.Store):
-                    bound.add(node.id)
-                elif isinstance(node.ctx, ast.Load) and node.id.startswith("_"):
-                    if node.id not in bound:
-                        unbound.append(f"{node.id}@{node.lineno}")
+            if node is fn:
+                continue
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                _bind(node.id, node.lineno)
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                _bind(node.name, node.lineno)
+            elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                for a in node.names:
+                    _bind((a.asname or a.name).split(".")[0], node.lineno)
+            elif isinstance(node, ast.ExceptHandler) and node.name:
+                _bind(node.name, node.lineno)
+            elif isinstance(node, ast.arg):
+                _bind(node.arg, node.lineno)     # lambda / nested-def parameters
+        unbound = []
+        for node in ast.walk(fn):
+            if (isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+                    and node.id.startswith("_") and node.id not in module_bound):
+                b = first_bind.get(node.id)
+                if b is None or b > node.lineno:
+                    unbound.append(f"{node.id}@{node.lineno}")
+        unbound.sort(key=lambda x: int(x.split("@")[1]))
         check("no dispatch-local name is used before it is assigned",
               not unbound, f"{unbound[:5]}")
 
@@ -145,6 +187,9 @@ def main(argv):
             # must match the real class, not the caller's assumption.
             orb_high, orb_low, target_50pct = 101.0, 100.0, 101.5
             invalidation_reason = "runaway"
+            # r128 — r24's trigger: the 50 ACCEPTED on the engine's latch
+            # (runaway_plan.py:325). Without it the plan HOLDS, correctly.
+            fifty_accepted = True
 
         class _LM:
             recent_sweep = None
@@ -171,9 +216,17 @@ def main(argv):
               r0 is None)
         import os as _os
         _os.environ["OT_RELAXED_ENTRY"] = "1"      # mute the R hurdle for the pin
+        # r128 — and HELD NOW (runaway_plan.py:353): the last CLOSED 1m bar
+        # beyond the 50 as well as the live price. Two bars, both beyond 101.5.
+        import pandas as _pd
+        _df1 = _pd.DataFrame({"open": [101.52, 101.55], "high": [101.58, 101.62],
+                              "low": [101.51, 101.54], "close": [101.55, 101.60],
+                              "volume": [1000.0, 1000.0]},
+                             index=_pd.to_datetime(["2026-08-26 14:14",
+                                                    "2026-08-26 14:15"], utc=True))
         r = RunawayContinuationStrategy().generate_signal(
             orb=_ORB(), atr_pct=0.14, price_now=101.6, prev_close=101.55,
-            now_et="10:15", chain=_Chain())
+            now_et="10:15", chain=_Chain(), df_1m=_df1)
         check("RunawayContinuation.generate_signal RUNS and fires", r is not None)
         check("RunawayContinuation signal is VALID (strike+premium+contract "
               "resolved — r146 P0)", r is not None and r.is_valid,

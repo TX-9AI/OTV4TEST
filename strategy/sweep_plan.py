@@ -1,5 +1,14 @@
 """
-strategy/sweep_plan.py  v1.11
+strategy/sweep_plan.py  v1.12
+v1.12 2026-09-24  OTV4TEST r128 - "stop_vs_spread" DECLARED IN PLAN_CHECKS. It is
+      a refusal gate this plan already raises: `_structure` calls
+      `credit_vertical.search_wing`, which refuses a wing whose stop cannot
+      survive its own bid-ask under the key "stop_vs_spread"
+      (credit_vertical.py:460), and that key reaches `t.refuse` through
+      `prep.structural`. TCSPlan declares it (tcs_plan.py:218); this plan did
+      not, so check_structure_viable V7 read a string in sweep_credit_spread.py
+      that fork r5 had moved here. Declaration only: `Plan.checks` is read by
+      nothing (strategy/plan.py:769) - no behaviour changes.
 v1.11 2026-09-23  OTV4TEST r113 - NO DEPTH GRADING (LVL.15 step 3, the sweep). The
       pierce floor (MIN_REJECTION_PCT, "a touch, not a sweep") and the relaxed
       ceiling (MAX_REJECTION_PCT) no longer refuse: the operator's definition
@@ -290,6 +299,7 @@ class SweepPlan:
                    "side_of_pool", "spent_level", "geometry", "short_anchor", "contract",
                    "credit", "width", "richness", "r", "r_stop", "stop_premium",
                    "complement_richness",
+                   "stop_vs_spread",   # r128 - search_wing's survivability refusal (credit_vertical.py:460)
                    # r102 — record-only telemetry, restored; gates nothing
                    "pierce_pts", "level_dist_pts", "level_dist_pct")
 

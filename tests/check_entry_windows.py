@@ -1,5 +1,36 @@
 #!/usr/bin/env python3
-"""check_entry_windows.py — v1.3
+"""check_entry_windows.py — v1.4
+v1.4  2026-09-24  OTV4TEST r128: FOUR STALE ASSERTIONS AND TWO HOLLOW GREENS
+      RE-POINTED AT WHERE THE CODE LIVES NOW. Every property is MOVED, NOT
+      DROPPED (section 38.4). Fork r5 (8a36b6f) moved the sweep's logic into
+      strategy/sweep_plan.py, and r3/r9 moved PLAN_CHECKS onto the plan
+      classes; this file kept reading the old homes.
+      · W9pre: the recorder wrapped `relaxed.window`, which the sweep no longer
+        calls at all - its window is the fixed EARLIEST_ET/LATEST_ET pair
+        (sweep_plan.py:132-133) compared in `prepare()`. The property ("the
+        sweep window is never relaxable") is now an AST check: sweep_plan.py
+        calls no relaxed.window / relaxed.widen and imports neither by name.
+      · W9: EXECUTES the real window gate - SweepCreditSpreadStrategy().prepare
+        (which delegates to SweepPlan.prepare) at every minute 09:30-16:00
+        under OT_RELAXED_ENTRY=0 and =1 (paper, so relaxed is genuinely
+        allowed) and asserts the entry_window outcome is identical minute for
+        minute. Plan rows go to an in-memory store, never a live one.
+      · W9b: SUPERSEDED BY PLAN_SPEC 31.2 (docs/PLAN_SPEC.md:1271), which set
+        the sweep window to open 09:35 on purpose. It pinned the applied start
+        to CREDIT_ENTRY_START_ET (11:31); it now pins the APPLIED window,
+        measured from the W9 run, to config.SWEEP_CS_EARLIEST_ET_FORK (09:35)
+        -> CREDIT_ENTRY_END_ET, in both modes.
+      · W7: read PLAN_CHECKS off the STRATEGY classes; three of them now set it
+        per instance from their plan. It reads the declaring classes: RunawayPlan
+        (runaway_plan.py:154), TCSPlan (tcs_plan.py:212), SweepPlan
+        (sweep_plan.py:285), GEXPinButterflyStrategy, IronCondorStrategy.
+      · W1 / W5 (HOLLOW GREENS): compared sweep_credit_spread.EARLIEST_ET and
+        C.SWEEP_CS_EARLIEST_ET, constants nothing live reads. W1 now holds the
+        universal start on condor + TCS and pins the sweep's own ruled start
+        (C.SWEEP_CS_EARLIEST_ET_FORK == 09:35, PLAN_SPEC 31.2); W5 asserts
+        sweep_plan.EARLIEST_ET is that config value.
+      Plus the r106 venv bootstrap (the lander runs CHECKs under
+      /usr/bin/python3).
 v1.3  2026-09-08  r321: W9 — THE WINDOW A STRATEGY COMPUTES, NOT THE CONSTANT
       IT DECLARES. W5 asserts `sweep.EARLIEST_ET == CREDIT_ENTRY_START_ET` and
       was green while the sweep OPENED AT 09:45 under relaxed, because
@@ -36,6 +67,11 @@ drift happened to put it.
 """
 import sys
 import os
+import ast
+import glob as _glob                                             # r106 venv bootstrap
+for _sp in _glob.glob(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "venv", "lib", "python*", "site-packages")):
+    if _sp not in sys.path:
+        sys.path.insert(1, _sp)
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
@@ -57,12 +93,19 @@ def main():
     # DEFAULT that was never in config, so it kept 11:11 while the other three
     # moved — caught by check_sweep_spread's S8a, not by me. Any credit path
     # that carries its own literal is the failure this check exists to prevent.
-    _sw = tuple(int(x) for x in C.SWEEP_CS_EARLIEST_ET.split(":"))
-    check("W1 there is ONE credit start and every credit path uses it",
+    # r128 — RE-POINTED (38.4: moved, not dropped). `SWEEP_CS_EARLIEST_ET` is
+    # read by nothing live since fork r5; the sweep reads
+    # `SWEEP_CS_EARLIEST_ET_FORK` (sweep_plan.py:132), and PLAN_SPEC 31.2 opened
+    # it at 09:35 ON PURPOSE. So the one-start rule holds on condor + TCS, and
+    # the sweep's divergence is pinned to the RULED value — a move of it is a
+    # ruling to record here, not a drift to absorb (W8's warning).
+    _sw = tuple(C.SWEEP_CS_EARLIEST_ET_FORK)
+    check("W1 condor and TCS use the ONE credit start; the sweep uses its ruled "
+          "09:35 (PLAN_SPEC 31.2)",
           C.CONDOR_ENTRY_START_ET == start and C.TCS_START_ET == start
-          and _sw == start,
+          and _sw == (9, 35),
           f"credit={start} condor={C.CONDOR_ENTRY_START_ET} "
-          f"tcs={C.TCS_START_ET} sweep={_sw}")
+          f"tcs={C.TCS_START_ET} sweep_fork={_sw}")
 
     # 🔴 THE DAYLIGHT RULE. The debit cutoff is `>= (11, 30)` — debit is blocked
     # AT 11:30 — so the credit must start STRICTLY LATER than 11:30, or both
@@ -102,6 +145,7 @@ def main():
     import strategy.gex_pin_butterfly as _bf
     import strategy.runaway_continuation as _rc
     import strategy.sweep_credit_spread as _sc
+    import strategy.sweep_plan as _sp_mod
 
     def _hm(t):
         return tuple(int(x) for x in t.split(":")) if isinstance(t, str) else tuple(t)
@@ -110,9 +154,12 @@ def main():
           _hm(_bf.EARLIEST_ET) == tuple(C.BUTTERFLY_ENTRY_START_ET),
           f"strategy {_bf.EARLIEST_ET} vs config {C.BUTTERFLY_ENTRY_START_ET}")
 
-    check("W5 the sweep STRATEGY honours the universal credit start",
-          _hm(_sc.EARLIEST_ET) == tuple(start),
-          f"strategy {_sc.EARLIEST_ET} vs config {start}")
+    # r128 — the constant the LIVE gate compares against (sweep_plan.py:132,
+    # applied in prepare()), not sweep_credit_spread.EARLIEST_ET, which nothing
+    # live reads since fork r5.
+    check("W5 the sweep PLAN honours its config start (SWEEP_CS_EARLIEST_ET_FORK)",
+          _hm(_sp_mod.EARLIEST_ET) == tuple(C.SWEEP_CS_EARLIEST_ET_FORK),
+          f"sweep_plan {_sp_mod.EARLIEST_ET} vs config {C.SWEEP_CS_EARLIEST_ET_FORK}")
 
     # 🔴 THE DAYLIGHT, MEASURED FROM BOTH SIDES. The debit cutoff and the
     # credit start must be exactly one minute apart — the operator's 08-24
@@ -156,61 +203,99 @@ def main():
 
     # ── 🔴 W9 — THE APPLIED WINDOW, IN BOTH MODES ────────────────────────
     # Operator, 2026-09-08: *"The sweep window cannot be relaxed. It needs to
-    # remain strict at all times at 11:31."* W5 above compares the module
-    # CONSTANT to config and cannot see what `prepare()` actually computes;
-    # this drives the identical `relaxed.window()` call under both flags.
-    # 🔴 A FIRST CUT OF W9 CALLED `relaxed.window()` ITSELF, PASSING THE
-    # ARGUMENTS THE FIX ADDS — and it was GREEN at the broken HEAD, because it
-    # tested the assumption instead of the code (§0.4: a fixture built from
-    # your own belief cannot fail). This RUNS `prepare()` and RECORDS what the
-    # strategy actually passes, so the arguments come from the call site.
-    import os as _os
+    # remain strict at all times"* — the start has since been ruled 09:35
+    # (PLAN_SPEC 31.2); "never relaxable" stands.
+    # r128 — RE-POINTED (38.4: moved, not dropped). Fork r5 (8a36b6f) moved the
+    # gate into SweepPlan.prepare, which compares `now_et` to the fixed
+    # EARLIEST_ET / LATEST_ET (sweep_plan.py:132-133) and never calls
+    # `relaxed.window` — so the old recorder saw nothing and read None/None.
+    # 🔴 §0.4 STILL APPLIES: this RUNS the real gate and reads the outcome the
+    # plan itself records (`checks["entry_window"]`), rather than re-deriving it.
+
+    # W9pre — the static half: nothing in the sweep plan can widen its window.
+    _spsrc = open(os.path.join(_root, "strategy", "sweep_plan.py"),
+                  encoding="utf-8").read()
+    _bad = []
+    for _n in ast.walk(ast.parse(_spsrc)):
+        if (isinstance(_n, ast.Call) and isinstance(_n.func, ast.Attribute)
+                and _n.func.attr in ("window", "widen")
+                and isinstance(_n.func.value, ast.Name)
+                and _n.func.value.id in ("relaxed", "_rx", "rx")):
+            _bad.append(f"{_n.func.value.id}.{_n.func.attr}() @L{_n.lineno}")
+        if (isinstance(_n, ast.ImportFrom) and (_n.module or "").endswith("relaxed")
+                and any(a.name in ("window", "widen") for a in _n.names)):
+            _bad.append(f"from {_n.module} import window/widen @L{_n.lineno}")
+    check("W9pre the sweep plan never passes its window through relaxed.window/widen",
+          not _bad, ", ".join(_bad) or "no relaxed.window / relaxed.widen call")
+
+    import sqlite3 as _sq
+    import strategy.plan as _P
     from strategy import relaxed as _rx
 
-    class _StubMap:                      # the window gate is the first thing
-        pools = []                       # prepare() reaches; nothing below it
-        def __getattr__(self, _n): return []
+    class _MemStore:                     # plan rows land here, never in a live store
+        def __init__(self):
+            self.conn = _sq.connect(":memory:")
+
+        def commit(self):
+            self.conn.commit()
 
     # ⚠️ RELAXED IS PAPER-ONLY AND `is_live()` FAILS CLOSED, so without this
-    # the "relaxed" arm runs STRICT and the check passes on a broken tree —
-    # verified: the first cut was GREEN at 82d369e for exactly that reason.
+    # the "relaxed" arm runs STRICT and the check passes on a broken tree.
     # A checker whose two arms are secretly the same arm cannot fail.
-    _prev = _os.environ.get("OT_RELAXED_ENTRY")
-    _prev_paper = _os.environ.get("OT_PAPER_TRADING")
-    _os.environ["OT_PAPER_TRADING"] = "1"
-    assert _rx.is_live() is False, "relaxed arm would silently run strict"
-    _orig_window, _applied = _rx.window, {}
+    _prev = os.environ.get("OT_RELAXED_ENTRY")
+    _prev_paper = os.environ.get("OT_PAPER_TRADING")
+    os.environ["OT_PAPER_TRADING"] = "1"
+    _minutes = [(h, m) for h in range(9, 16) for m in range(60) if (h, m) >= (9, 30)] + [(16, 0)]
+    _open, _armed = {}, {}
     try:
         for _m in ("0", "1"):
-            _os.environ["OT_RELAXED_ENTRY"] = _m
-            _seen = {}
-            def _rec(_e, _l, __o=_orig_window, __s=_seen, **_kw):
-                __s["out"] = __o(_e, _l, **_kw)
-                return __s["out"]
-            _rx.window = _rec
-            _sc.SweepCreditSpreadStrategy().prepare(
-                liq_map=_StubMap(), price_now=100.0, now_et="10:00",
-                atr_pct=0.5, chain=None)
-            _applied[_m] = _seen.get("out")
+            os.environ["OT_RELAXED_ENTRY"] = _m
+            _armed[_m] = _rx.is_allowed()
+            _strat = _sc.SweepCreditSpreadStrategy()
+            _strat.plan.planner._store = _MemStore()
+            _row = {}
+            for _hmv in _minutes:
+                _P.clear_dormant(_strat.plan.planner.strategy)   # a dormant repeat records nothing
+                # price_now=None: an OPEN window records entry_window=True and
+                # then starves on price, so nothing past the gate runs.
+                _prep = _strat.prepare(price_now=None, now_et=f"{_hmv[0]:02d}:{_hmv[1]:02d}",
+                                       atr_pct=0.1, chain=None)
+                _row[_hmv] = _prep.tick.checks.get("entry_window", (None, None))[1]
+            _open[_m] = _row
     finally:
-        _rx.window = _orig_window
         if _prev is None:
-            _os.environ.pop("OT_RELAXED_ENTRY", None)
+            os.environ.pop("OT_RELAXED_ENTRY", None)
         else:
-            _os.environ["OT_RELAXED_ENTRY"] = _prev
+            os.environ["OT_RELAXED_ENTRY"] = _prev
         if _prev_paper is None:
-            _os.environ.pop("OT_PAPER_TRADING", None)
+            os.environ.pop("OT_PAPER_TRADING", None)
         else:
-            _os.environ["OT_PAPER_TRADING"] = _prev_paper
+            os.environ["OT_PAPER_TRADING"] = _prev_paper
 
-    check("W9pre the relaxed arm was genuinely RELAXED (not silently strict)",
-          _applied["1"] is not None, "prepare() never reached the window gate")
-    check("W9 the sweep's APPLIED window is identical in both modes",
-          _applied["0"] is not None and _applied["0"] == _applied["1"],
-          f"strict={_applied['0']} relaxed={_applied['1']}")
-    check("W9b and it starts at the universal credit start under RELAXED",
-          _applied["1"] is not None and _hm(_applied["1"][0]) == tuple(start),
-          f"applied start {_applied['1'] and _applied['1'][0]} vs credit start {start}")
+    def _span(row):
+        on = [k for k, v in row.items() if v is True]
+        if not on:
+            return None
+        last = on[-1]
+        end = (last[0] + (last[1] + 1) // 60, (last[1] + 1) % 60)
+        return on[0], end                # [start, end) — the gate is `hm >= LATEST`
+
+    _diff = [f"{h:02d}:{m:02d}" for (h, m) in _minutes if _open["0"][(h, m)] != _open["1"][(h, m)]]
+    _unrec = [f"{h:02d}:{m:02d}" for (h, m) in _minutes if _open["0"][(h, m)] is None]
+    check("W9 the sweep's APPLIED window is identical in both modes (09:30-16:00, "
+          "every minute, relaxed arm genuinely relaxed)",
+          _armed["0"] is False and _armed["1"] is True and not _diff and not _unrec
+          and _span(_open["0"]) is not None,
+          f"relaxed allowed strict={_armed['0']} relaxed={_armed['1']}; "
+          f"differ at {_diff[:6] or 'none'}; unrecorded {_unrec[:6] or 'none'}; "
+          f"strict={_span(_open['0'])} relaxed={_span(_open['1'])}")
+    # W9b — SUPERSEDED BY PLAN_SPEC 31.2: the start is 09:35 by ruling, not the
+    # universal 11:31; the end is the universal credit end (W8's property).
+    _want = (tuple(C.SWEEP_CS_EARLIEST_ET_FORK), tuple(C.CREDIT_ENTRY_END_ET))
+    check("W9b and the applied window is SWEEP_CS_EARLIEST_ET_FORK -> CREDIT_ENTRY_END_ET "
+          "in both modes (PLAN_SPEC 31.2)",
+          _span(_open["0"]) == _want and _span(_open["1"]) == _want,
+          f"strict={_span(_open['0'])} relaxed={_span(_open['1'])} want={_want}")
 
     # ── W7 — the PLAN side declares and applies the same window ──────────
     # ⚠️ NO PLAN BUILDER CHECKED THE CLOCK AT ALL until r142. A fork plan read
@@ -219,13 +304,17 @@ def main():
     # r146 — the plan is now the strategy's own (strategy/plan.py); each
     # strategy declares the checks it owns as PLAN_CHECKS. ORB is exempt by
     # ruling (record-only, zero hurdles) and the roll is management.
-    from strategy.runaway_continuation import RunawayContinuationStrategy
-    from strategy.trend_credit_spread import TrendCreditSpread
-    from strategy.sweep_credit_spread import SweepCreditSpreadStrategy
+    # r128 — RE-POINTED (38.4: moved, not dropped). Since r3/r9 the runaway,
+    # TCS and sweep STRATEGIES set PLAN_CHECKS per instance from their plan, so
+    # reading the strategy CLASS found nothing. Read the classes that DECLARE
+    # it; the butterfly and the condor still declare on the strategy class.
+    from strategy.runaway_plan import RunawayPlan
+    from strategy.tcs_plan import TCSPlan
+    from strategy.sweep_plan import SweepPlan
     from strategy.gex_pin_butterfly import GEXPinButterflyStrategy
     from strategy.iron_condor_strategy import IronCondorStrategy
     _missing = [c.__name__ for c in (
-        RunawayContinuationStrategy, TrendCreditSpread, SweepCreditSpreadStrategy,
+        RunawayPlan, TCSPlan, SweepPlan,
         GEXPinButterflyStrategy, IronCondorStrategy)
         if "entry_window" not in getattr(c, "PLAN_CHECKS", ())]
     check("W7 every entry strategy's plan declares an entry_window check",

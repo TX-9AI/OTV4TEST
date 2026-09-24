@@ -1,5 +1,18 @@
 """
-warehouse/s3_push.py  v4.6
+warehouse/s3_push.py  v4.7
+v4.7  2026-09-24  OTV4TEST r128 — `level_event` JOINS `DERIVED_TABLES`. It is a
+      lifecycle biography — every HELD/BREACHED (legacy: WICKED/REJECTED/ACCEPTED)
+      the level engine records — and it has been in retention_purge's NEVER_PURGE
+      since OTV4TEST r3, which by check_purge_pushed C6's own reasoning means the
+      box held the ONLY copy: a recomputation cannot rebuild a biography. Red at C6
+      since r3; BACKLOG PRE.3 had handed it to mainline. Operator, 2026-09-24:
+      *"Include. When our branch becomes the successor (otv5) our architecture
+      will inherit the 15 symbols & the warehouse."* Keyed on
+      (symbol, level_id, bar_ts, event) and an ordinary rowid table, so it takes
+      the same CDC-by-rowid path as level_ledger with no other change.
+      ⚠️ INERT ON QQQ-TEST: s3-push.service is MASKED here (BOX.1, WA 38.3) because
+      the mainline QQQ box owns that prefix and holds the corpus. This lands for
+      the fleet this branch will inherit.
 v4.6  2026-09-05  r270 / ASK.1 — `character_axis_sample` JOINS
       `DERIVED_SERIES_TABLES`. Operator ruled: push it. Append-only and keyed
       `(symbol, ts_epoch)`, so it takes the HIGH-WATER path, not CDC.
@@ -941,6 +954,7 @@ DERIVED_SERIES_TABLES = ("fork_series", "indicator_series", "surface_series",
 DERIVED_TABLES = ("fire_snapshot", "strategy_note", "plan_ledger",
                   "plan_tick", "plan_check",
                   "gate_disposition", "character_ledger", "level_ledger",
+                  "level_event",              # r128 — NEVER_PURGE since r3, never shipped
                   "exit_counterfactual")
 
 

@@ -1,6 +1,25 @@
 #!/usr/bin/env python3
 """
-tests/check_fill_basis.py  v1.3
+tests/check_fill_basis.py  v1.4
+v1.4  2026-09-24  OTV4TEST r128 — F6 AND F6b MOVED, NOT DROPPED (WORKING_AGREEMENT
+      38.4). Both grepped the WHOLE of main.py for r220's inline names
+      (`_lr.price_for(_lkey`, `_lr.refuse(_lkey`, `_lr.clear(_lkey)`,
+      `fill.quantity >= _req_contracts`); mainline r315 moved placement and
+      pricing into the ONE shared placer `main._post_credit_vertical`, which
+      the entry (`_execute_condor_leg`) and the remainder supervisor both call,
+      so the names left and both went red on a correct change. The PROPERTY
+      held. They now (a) read the helper's own FunctionDef by AST, docstring
+      and comments stripped — the default pricer is `_lr.price_for`, the
+      rung is priced as a "sell", `_lr.clear(lkey)` sits under
+      `_filled >= contracts` and `_lr.refuse(lkey, ...)` in its else — and
+      that `_execute_condor_leg` calls it WITHOUT a pricer override; and (b)
+      EXECUTE it with an injected placer/confirmer and the REAL registry
+      (tests/check_credit_remainder.py's harness): the posted limit is the
+      ladder's rung, not the mark; a non-fill ratchets the walk to the next
+      rung; a partial keeps it; a complete fill clears it. The old whole-file
+      `'"sell"' in mainsrc` clause was hollow (any "sell" anywhere in main.py
+      satisfied it). Also gains the r106 venv bootstrap: the lander runs
+      CHECKs under /usr/bin/python3, which has no pandas/pytz.
 v1.3  2026-09-03  r234 — RE-DERIVED. F0 asserted "five values" — the
       exact invariant r219 broke by adding a fifth and missing two guard
       returns, which this check could not see because it only drove the
@@ -48,8 +67,14 @@ Born red at fd84426 (r218), where F1 and F3 fail.
 """
 from __future__ import annotations
 
+import ast
 import os
 import sys
+
+import glob as _glob                                             # r106 venv bootstrap
+for _sp in _glob.glob(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "venv", "lib", "python*", "site-packages")):
+    if _sp not in sys.path:
+        sys.path.insert(1, _sp)
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
@@ -214,15 +239,134 @@ def main():
     # conceding toward mark, which is where the ladder's own "never posts worse
     # than mark" rule stops it.
     mainsrc = open(os.path.join(_root, "main.py"), encoding="utf-8").read()
+    # 🔴 r128 — MOVED, NOT DROPPED. mainline r315 took r220's inline pricing
+    # out of `_execute_condor_leg` into ONE shared placer,
+    # `_post_credit_vertical`, called by the entry AND the remainder
+    # supervisor. The old whole-file greps for `_lr.price_for(_lkey` went red
+    # on that correct move, and `'"sell"' in mainsrc` was hollow: ANY "sell"
+    # anywhere in main.py satisfied it. Scoped to the helper's own AST now,
+    # docstring and comments gone, so prose cannot satisfy it.
+    _mtree = ast.parse(mainsrc)
+    _fns = {n.name: n for n in ast.walk(_mtree) if isinstance(n, ast.FunctionDef)}
+    _pcv = _fns.get("_post_credit_vertical")
+    _ecl = _fns.get("_execute_condor_leg")
+
+    def _calls(fn):
+        return [n for n in ast.walk(fn) if isinstance(n, ast.Call)] if fn else []
+
+    def _is(call, obj, attr):
+        f = call.func
+        return (isinstance(f, ast.Attribute) and f.attr == attr
+                and isinstance(f.value, ast.Name) and f.value.id == obj)
+
+    _pc = _calls(_pcv)
+    _ladder_default = any(_is(c, "_lr", "price_for") for c in _pc)
+    _priced_sell = any(isinstance(c.func, ast.Name) and c.func.id == "pricer"
+                       and len(c.args) >= 2 and isinstance(c.args[1], ast.Constant)
+                       and c.args[1].value == "sell" for c in _pc)
+    _entry_calls = [c for c in _calls(_ecl)
+                    if isinstance(c.func, ast.Name) and c.func.id == "_post_credit_vertical"]
+    _entry_uses_ladder = bool(_entry_calls) and not any(
+        k.arg == "pricer" for c in _entry_calls for k in c.keywords)
+
+    # EXECUTED, the way tests/check_credit_remainder.py C2 does it: injected
+    # placer/confirmer (no broker), NO pricer — so the default under test is
+    # the one the live entry gets — and the REAL ladder registry.
+    os.environ.setdefault("OT_PAPER_TRADING", "1")
+    _ex = {}
+    try:
+        import main as _main
+        from config import INSTRUMENT as _SYM
+        from execution import ladder_registry as _lreg
+        from execution.entry_ladder import LadderState as _LS
+
+        class _Q:
+            def __init__(self, sym, k, b, a):
+                self.symbol, self.strike, self.bid, self.ask = sym, float(k), b, a
+                self.mark = (b + a) / 2.0
+
+        class _Fl:
+            def __init__(self, filled, qty=0, net=None):
+                self.filled, self.quantity, self.net_price = filled, qty, net
+                self.order_id, self.detail, self.working_order_id = "F6", "", None
+
+        class _Rsp:
+            errors = None
+            order = "PLACED"
+
+        _qs, _ql = _Q("SYN P99", 99, 1.00, 1.20), _Q("SYN P94", 94, 0.30, 0.40)
+        _stb, _sta = 1.00 - 0.40, 1.20 - 0.30          # structure 0.60 / 0.90
+        _box = {}
+
+        def _placer(legs, limit):
+            _box["posted"] = limit
+            return _Rsp()
+
+        def _confirmer(placed, basis, deadline_s):
+            return _box["fill"]
+
+        def _post(q):
+            return _main._post_credit_vertical(_qs, _ql, q, _k, "S",
+                                               placer=_placer, confirmer=_confirmer,
+                                               mark_fallback=0.75)
+        _k = "cv:F6:check_fill_basis:put"
+        _lreg.reset_all()
+        _ref = _LS("sell", _SYM)
+        _r1, _ = _ref.next_price(_stb, _sta, structure="S")
+        _ref.refuse(_r1)
+        _r2, _ = _ref.next_price(_stb, _sta, structure="S")
+        _box["fill"] = _Fl(False)
+        _ex["l1"] = _post(4)[1]
+        _ex["held1"] = _lreg.active() == 1 and _lreg.get(_k, "sell", _SYM).best_refused == _ex["l1"]
+        _box["fill"] = _Fl(True, 2, 0.80)               # a PARTIAL: 2 of 4
+        _ex["l2"] = _post(4)[1]
+        _ex["held2"] = _lreg.active() == 1 and _lreg.get(_k, "sell", _SYM).best_refused == _ex["l2"]
+        _box["fill"] = _Fl(True, 2, 0.75)               # the whole of 2
+        _post(2)
+        _ex["cleared"] = _lreg.active() == 0
+        _ex["r1"], _ex["r2"], _ex["mark"] = _r1, _r2, (_stb + _sta) / 2.0
+        _lreg.reset_all()
+    except Exception as _exc:                                   # noqa: BLE001
+        _ex["err"] = f"{type(_exc).__name__}: {_exc}"
+
+    _l1 = _ex.get("l1")
     check("F6 the credit-vertical live order prices through the ladder",
-          "_lr.price_for(_lkey" in mainsrc and '"sell"' in mainsrc)
+          _pcv is not None and _ladder_default and _priced_sell and _entry_uses_ladder
+          and "err" not in _ex and _l1 is not None
+          and abs(_l1 - _ex["r1"]) < 1e-9 and abs(_l1 - _ex["mark"]) > 1e-9
+          and abs(_l1 - 0.75) > 1e-9,
+          _ex.get("err") or f"helper={_pcv is not None} default=_lr.price_for:{_ladder_default} "
+          f"sell:{_priced_sell} entry-no-override:{_entry_uses_ladder} "
+          f"posted {_l1} vs ladder rung {_ex.get('r1')} / mark {_ex.get('mark')}")
 
     # 🔑 A LADDER THAT NEVER ADVANCES IS THE STATIC LIMIT WITH A NEW NAME.
     # `refuse` on a non-fill, `clear` on a complete fill — and NOT on a
     # partial, because the remainder is still an open intent.
+    _clear_on_full = _refuse_else = False
+    for _n in (ast.walk(_pcv) if _pcv else ()):
+        if not isinstance(_n, ast.If):
+            continue
+        _t = _n.test
+        if (isinstance(_t, ast.Compare) and isinstance(_t.left, ast.Name)
+                and _t.left.id == "_filled" and len(_t.ops) == 1
+                and isinstance(_t.ops[0], ast.GtE)
+                and isinstance(_t.comparators[0], ast.Name)
+                and _t.comparators[0].id == "contracts"):
+            _body = [c for s in _n.body for c in ast.walk(s) if isinstance(c, ast.Call)]
+            _else = [c for s in _n.orelse for c in ast.walk(s) if isinstance(c, ast.Call)]
+            _clear_on_full = any(_is(c, "_lr", "clear") for c in _body) \
+                and not any(_is(c, "_lr", "refuse") for c in _body)
+            _refuse_else = any(_is(c, "_lr", "refuse") for c in _else) \
+                and not any(_is(c, "_lr", "clear") for c in _else)
+    _l2 = _ex.get("l2")
     check("F6b a non-fill advances the walk and a full fill ends it",
-          "_lr.refuse(_lkey" in mainsrc and "_lr.clear(_lkey)" in mainsrc
-          and "fill.quantity >= _req_contracts" in mainsrc)
+          _clear_on_full and _refuse_else and "err" not in _ex
+          and _ex.get("held1") and _l2 is not None and abs(_l2 - _ex["r2"]) < 1e-9
+          and _l2 < _l1 and _ex.get("held2") and _ex.get("cleared"),
+          _ex.get("err") or f"clear-under-_filled>=contracts:{_clear_on_full} "
+          f"refuse-in-else:{_refuse_else} non-fill kept+ratcheted:{_ex.get('held1')} "
+          f"next {_l2} (want {_ex.get('r2')}) partial kept:{_ex.get('held2')} "
+          f"full cleared:{_ex.get('cleared')}")
 
     # ⚠️ AND THE STRUCTURE QUOTE IS BUILT PER LEG. `short.ask - long.bid` is
     # the best credit and `short.bid - long.ask` the worst; their midpoint is
