@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/gen_file_map.py  v4.10
+tests/gen_file_map.py  v4.11
+v4.11 2026-09-24  OTV4TEST r132 — `tools/boot_sweep.py` DECLARED. Its unit now ships
+      as deploy/install_boot_sweep.sh (it was hand-written on the reference box), so
+      check_map_accuracy E1 sees a deploy/ unit launch it — caught red by E1 on the build.
 v4.10 2026-09-24  OTV4TEST r130 — `tools/open_scan.py` DECLARED. It is launched by the
       two units deploy/install_open_scan_timer.sh writes (09:35 ready, 09:45 live);
       undeclared, it would map as an orphan and check_map_accuracy E1 would go red.
@@ -150,6 +153,7 @@ ENTRY_POINTS = {
     # point IS.
     "tools/claude_boot.py",
     "tools/open_scan.py",          # r130 — launched by deploy/install_open_scan_timer.sh
+    "tools/boot_sweep.py",         # r132 — launched by deploy/install_boot_sweep.sh
     # CLI helpers, run by hand or by a script
     "analysis/get_orb_range.py",
     "utils/check_sdk.py",

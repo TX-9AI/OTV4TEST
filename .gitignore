@@ -90,3 +90,15 @@ venv/
 
 # retention_purge.py flock sentinel — runtime state, never committed
 data/retention_purge.lock
+
+# ── r132 — THE BOOTSTRAP TEMPLATE IS TRACKED AGAIN ──────────────────────────
+# 🔴 THE `!bootstrap.example.sh` AT THE TOP OF THIS FILE HAS NOT WORKED SINCE
+# THE FILE WAS SORTED. gitignore is LAST MATCH WINS, and the sort floated the
+# `!` line above `bootstrap*.sh`, so the rule it was meant to override re-ignored
+# it — the template silently left the repo and a fresh box had nothing to copy.
+# Re-included HERE, after every pattern that could match it. Keep it last.
+# ⚠️ ONLY THE .example IS INCLUDED; every other bootstrap*.sh holds real secrets.
+!bootstrap.example.sh
+# Claude Code's per-checkout overrides — machine-local by design (the shared,
+# committed permissions are .claude/settings.json).
+.claude/settings.local.json

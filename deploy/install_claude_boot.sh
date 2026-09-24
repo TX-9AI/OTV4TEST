@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# deploy/install_claude_boot.sh  v1.1
+# deploy/install_claude_boot.sh  v1.2
 #
+# v1.2  2026-09-24  OTV4TEST r132 — OT_RC_NAME, when set at install, rides into
+#       the unit so tools/claude_boot.py names the Remote Control session with
+#       it; unset writes nothing and the name stays qqq-test.
 # v1.1  2026-09-22  OTV4TEST r102 — EXEC BIT. 100644 in the git INDEX, so a
 #       fresh clone or a repoint got Permission denied. Now 100755; C5 pins
 #       it. No content change.
@@ -74,6 +77,7 @@ User=ubuntu
 # ⚠️ HOME IS EXPLICIT. Claude's credentials live in ~/.claude and ~/.claude.json;
 # a unit with no HOME finds neither and fails looking like an auth problem.
 Environment=HOME=/home/ubuntu
+${OT_RC_NAME:+Environment=OT_RC_NAME=$OT_RC_NAME}
 WorkingDirectory=$DIR
 ExecStart=$PY $DIR/tools/claude_boot.py
 # Bounds the delay this can add to the bot. The script's own settle budget

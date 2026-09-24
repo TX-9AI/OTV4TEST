@@ -1,6 +1,39 @@
 #!/bin/bash
 # ==========================================================================
-# setup_ec2.sh  v4.2
+# setup_ec2.sh  v4.3
+# v4.3  2026-09-24  OTV4TEST r132 — THE UNATTENDED INSTALL BUILDS THE WHOLE BOX.
+#       Operator: "make sure that I can do a boot strap install of this repo onto
+#       a fresh instance using unattended install with pre-seeded boot strap file",
+#       "The entire Suite. The timers, the diagnostics, the menus full capability
+#       out of the box", "freeze every software version", "we want a swap file as
+#       part of the installer", and a toggle for whether Claude comes up at first
+#       boot. WHAT CHANGED, each measured against the reference box (qqq-test):
+#       (1) NO TTY IS NOT FATAL. `exec < /dev/tty` ran unconditionally under
+#       `set -e`, so any caller without a terminal (cloud-init user-data, a CI
+#       runner, this file's own gate) died on line 61. It reattaches a terminal
+#       only when one exists, and refuses clearly when there is neither a
+#       terminal nor pre-seeded credentials. (2) `--plan` resolves every setting
+#       and every step, prints them as `PLAN key=value`, and exits BEFORE ANY
+#       SYSTEM CHANGE — the operator's preview and the gate's handle.
+#       (3) SWAP: a /swapfile of OT_SWAP_GB (default 2) when the box has none —
+#       the reference box has run on a 2G swapfile made by hand. (4) PINNED:
+#       requirements.lock (the reference venv, 41 packages, Python 3.14) is
+#       installed when present, with no pip upgrade and no silent fallback to the
+#       floors; a pin that fails stops the install. (5) THE FOUR KEYS configure.sh
+#       grew after v3 are PRIMED: OT_ORB_RISK_USD, OT_ORB_BUDGET_USD,
+#       OT_DAILY_LOSS_LIMIT (all default to the base risk, as config.py does) and
+#       OT_PIN_PROXIMITY_ACTIVE=0 — config.py defaults the gate ON, and the
+#       operator turned it OFF 2026-09-24 pending data (PIN.1), so an unprimed box
+#       would have run the gate he switched off. (6) GIT: fetch failures were
+#       `|| true` — silent. Now OT_GIT_REF is fetched and checked out or the
+#       install says loudly that the tree is not a checkout. OT_GIT_PUSH (default
+#       0) decides whether the box can push: 1 stores GITHUB_TOKEN for git over
+#       HTTPS; 0 sets a push URL that fails by name. (7) THE SUITE: midnight-halt,
+#       retention-purge, open-scan, boot-sweep, s3-push MASKED (the mainline box
+#       owns that prefix), Claude pinned with its own login (deploy/install_claude.sh),
+#       and the claude-boot unit only when OT_CLAUDE_AT_BOOT=1 — "Installed yes but
+#       running on first boot not necessarily." (8) Every secret variable is unset
+#       before the final login shell, which used to inherit them all.
 # v4.2  2026-09-17  OTV4TEST r34 — the three operator scripts moved back to the repo root (configure.sh, status.py, query.py); this file's reference re-pointed. No behaviour change. The printed hints name the root paths again.
 # v4.1
 # v4.1  2026-09-11  OTV4TEST r14 — the helper scripts it names live in deploy/ and the
@@ -57,8 +90,20 @@ DEPLOY_DIR="$HOME/options-trader-deploy"
 SERVICE_NAME="optionsbot"
 VENV="$INSTALL_DIR/venv"
 VERSION="3.0"
+SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLAN=0
+[ "${1:-}" = "--plan" ] && PLAN=1
 
-exec < /dev/tty
+# 🔴 r132 — REATTACH A TERMINAL ONLY WHEN ONE EXISTS. The probe opens /dev/tty in a
+# subshell: with no controlling terminal it fails there, not in this shell, where
+# a failed `exec` redirection under `set -e` would end the install.
+HAVE_TTY=0
+if [ -t 0 ]; then
+    HAVE_TTY=1
+elif [ "$PLAN" = 0 ] && ( : < /dev/tty ) 2>/dev/null; then
+    exec < /dev/tty
+    HAVE_TTY=1
+fi
 
 # ── Colours ───────────────────────────────────────────────────────────────────
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'
@@ -98,8 +143,13 @@ if [ -n "$TT_CLIENT_SECRET" ] && [ -n "$TT_REFRESH_TOKEN" ] && [ -n "$TT_ACCOUNT
     UNATTENDED=true
     print_ok "Credentials found in environment — unattended install, prompts skipped."
 fi
+if [ "$UNATTENDED" = false ] && [ "$HAVE_TTY" = 0 ] && [ "$PLAN" = 0 ]; then
+    echo "  🔴 No credentials in the environment and no terminal to ask for them."
+    echo "     Run through bootstrap.sh (see bootstrap.example.sh), or from an SSH session."
+    exit 1
+fi
 
-[ "$UNATTENDED" = true ] || read -rp "  Press ENTER to continue or Ctrl+C to cancel..."
+[ "$UNATTENDED" = true ] || [ "$PLAN" = 1 ] || read -rp "  Press ENTER to continue or Ctrl+C to cancel..."
 
 # ─── STEP 1: TRADING MODE ────────────────────────────────────────────────────
 print_step "1/8" "Trading Mode"
@@ -109,6 +159,17 @@ echo ""
 INSTRUMENT="${OT_INSTRUMENT:-QQQ}"
 RISK_USD="${OT_RISK_USD:-200}"
 PAPER_TRADING="True"
+# r132 — the keys configure.sh grew after v3, primed so a fresh box shows values
+# the operator chose. Defaults match config.py's, EXCEPT the pin gate: config.py
+# defaults it ON and the operator ruled it OFF on 2026-09-24 (PIN.1).
+ORB_RISK_USD="${OT_ORB_RISK_USD:-$RISK_USD}"
+ORB_BUDGET_USD="${OT_ORB_BUDGET_USD:-$RISK_USD}"
+DAILY_LOSS_LIMIT="${OT_DAILY_LOSS_LIMIT:-$RISK_USD}"
+PIN_GATE="${OT_PIN_PROXIMITY_ACTIVE:-0}"
+SWAP_GB="${OT_SWAP_GB:-2}"
+CLAUDE_AT_BOOT="${OT_CLAUDE_AT_BOOT:-0}"
+GIT_PUSH="${OT_GIT_PUSH:-0}"
+GIT_REF="${OT_GIT_REF:-main}"
 
 print_ok "Defaults: ${INSTRUMENT} | \$${RISK_USD}/trade | PAPER"
 print_info "Change risk, mode (paper/live), and instrument anytime via configure.sh"
@@ -161,7 +222,7 @@ print_ok "Telegram configured."
 print_step "4/8" "GitHub Repository (optional)"
 echo ""
 echo -e "  Enter the GitHub repo to link this server to for push.sh."
-echo -e "  Format: TX-9AI/options_trader_v3"
+echo -e "  Format: TX-9AI/OTV4TEST"
 echo -e "  (Full URLs are also accepted and will be normalized automatically)"
 echo -e "  Press ENTER to skip."
 echo ""
@@ -189,7 +250,11 @@ if [[ -n "$GITHUB_REPO" ]]; then
     GITHUB_REPO="${GITHUB_REPO%/}"
 fi
 
-if [[ -n "$GITHUB_REPO" ]]; then
+# r132 — the repo is public: an UNATTENDED install never stops for a token. With
+# none, push.sh has nothing to use and OT_GIT_PUSH cannot enable pushing.
+if [[ -n "$GITHUB_REPO" ]] && [ "$UNATTENDED" = true ]; then
+    [[ -n "$GITHUB_TOKEN" ]] && print_ok "GitHub token provided." || print_ok "No GitHub token — clone/pull only."
+elif [[ -n "$GITHUB_REPO" ]]; then
     echo ""
     echo -e "  Get token from: github.com → Settings → Developer settings → Tokens (classic)"
     echo ""
@@ -203,12 +268,65 @@ if [[ -n "$GITHUB_REPO" ]]; then
 else
     print_ok "Skipping GitHub — push.sh will prompt for token when needed."
 fi
+# r132 — every box is a checkout of SOME repo; this fork unless told otherwise.
+[ -n "${GITHUB_REPO:-}" ] || GITHUB_REPO="TX-9AI/OTV4TEST"
+
+# The suite, in install order. Each is run with `bash`, so a lost exec bit
+# cannot stop it, and one failure is reported rather than ending the install.
+SUITE="deploy/harden_hosts.sh deploy/install_midnight_halt.sh deploy/install_retention_purge_timer.sh deploy/install_open_scan_timer.sh deploy/install_boot_sweep.sh deploy/install_claude.sh"
+[ "$CLAUDE_AT_BOOT" = 1 ] && SUITE="$SUITE deploy/install_claude_boot.sh"
+REQ_FILE="requirements.lock"
+[ -f "$SRC_DIR/$REQ_FILE" ] || REQ_FILE="requirements.txt"
+
+# ─── r132 — --plan: EVERYTHING RESOLVED, NOTHING CHANGED ────────────────────
+if [ "$PLAN" = 1 ]; then
+    echo "PLAN unattended=$UNATTENDED"
+    echo "PLAN tty=$HAVE_TTY"
+    echo "PLAN instrument=$INSTRUMENT"
+    echo "PLAN paper=$PAPER_TRADING"
+    echo "PLAN risk_usd=$RISK_USD"
+    echo "PLAN orb_risk_usd=$ORB_RISK_USD"
+    echo "PLAN orb_budget_usd=$ORB_BUDGET_USD"
+    echo "PLAN daily_loss_limit=$DAILY_LOSS_LIMIT"
+    echo "PLAN pin_gate=$PIN_GATE"
+    echo "PLAN swap_gb=$SWAP_GB"
+    echo "PLAN requirements=$REQ_FILE"
+    echo "PLAN git_repo=$GITHUB_REPO"
+    echo "PLAN git_ref=$GIT_REF"
+    echo "PLAN git_push=$GIT_PUSH"
+    echo "PLAN claude_at_boot=$CLAUDE_AT_BOOT"
+    echo "PLAN claude_login=$([ -n "${CLAUDE_LOGIN_B64:-}" ] && echo provided || echo absent)"
+    echo "PLAN units=candle-feed optionsbot"
+    echo "PLAN masked=s3-push.service s3-push.timer"
+    for f in $SUITE; do
+        echo "PLAN suite=$f present=$([ -f "$SRC_DIR/$f" ] && echo yes || echo NO)"
+    done
+    exit 0
+fi
 
 # ─── STEP 5: SYSTEM PACKAGES ─────────────────────────────────────────────────
 print_step "5/8" "System packages"
 sudo apt-get update -qq
-sudo apt-get install -y -qq python3 python3-pip python3-venv python-is-python3 git rsync bc sqlite3
+sudo apt-get install -y -qq python3 python3-pip python3-venv python-is-python3 git rsync bc sqlite3 tmux curl ca-certificates
 print_ok "System packages ready."
+# r132 — the lock was frozen on the reference box; say so when this one differs.
+. /etc/os-release 2>/dev/null || true
+PYV="$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+if [ "${VERSION_ID:-}" != "26.04" ] || [ "$PYV" != "3.14" ]; then
+    print_warn "Reference box is Ubuntu 26.04 / Python 3.14; this is ${VERSION_ID:-?} / $PYV — pins may not resolve."
+fi
+
+# ── r132 — SWAP ─────────────────────────────────────────────────────────────
+if [ "$SWAP_GB" -gt 0 ] 2>/dev/null && [ -z "$(swapon --show --noheadings)" ]; then
+    sudo fallocate -l "${SWAP_GB}G" /swapfile
+    sudo chmod 600 /swapfile
+    sudo mkswap /swapfile >/dev/null
+    sudo swapon /swapfile
+    grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
+    print_ok "Swap: ${SWAP_GB}G /swapfile, on and in fstab."
+else
+    print_ok "Swap: $(swapon --show --noheadings | awk '{print $1" "$3}' | head -1 || true) (left as is)"
+fi
 
 # ─── STEP 6: INSTALL FILES ───────────────────────────────────────────────────
 print_step "6/8" "Installing bot files"
@@ -235,10 +353,14 @@ print_ok "Files installed to ${INSTALL_DIR}"
 print_step "7/8" "Python environment"
 python3 -m venv "$VENV"
 source "$VENV/bin/activate"
-pip install --upgrade pip -q
-pip install -r "$INSTALL_DIR/requirements.txt" -q
-pip install requests -q
-print_ok "Dependencies installed."
+# r132 — PINNED. No pip upgrade (that is a version change too) and no fallback to
+# the floors when a pin fails: a box that differs from the reference is the
+# "weird one-off problem" the freeze exists to prevent.
+if ! pip install -r "$INSTALL_DIR/$REQ_FILE" -q; then
+    echo "  🔴 pip could not install $REQ_FILE — stopping. Nothing is running yet."
+    exit 1
+fi
+print_ok "Dependencies installed from $REQ_FILE."
 
 grep -q "options-trader/venv" ~/.bashrc || echo "source $VENV/bin/activate" >> ~/.bashrc
 grep -q "cd ~/options-trader"  ~/.bashrc || echo "cd $INSTALL_DIR"           >> ~/.bashrc
@@ -295,6 +417,10 @@ Environment=TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
 Environment=TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
 Environment=GITHUB_TOKEN=${GITHUB_TOKEN}
 Environment=GITHUB_REPO=${GITHUB_REPO}
+Environment=OT_ORB_RISK_USD=${ORB_RISK_USD}
+Environment=OT_ORB_BUDGET_USD=${ORB_BUDGET_USD}
+Environment=OT_DAILY_LOSS_LIMIT=${DAILY_LOSS_LIMIT}
+Environment=OT_PIN_PROXIMITY_ACTIVE=${PIN_GATE}
 ExecStartPre=/bin/bash -c 'touch ${INSTALL_DIR}/bot.log ${INSTALL_DIR}/trades.db && chown ${USER}:${USER} ${INSTALL_DIR}/bot.log ${INSTALL_DIR}/trades.db'
 ExecStart=${VENV}/bin/python main.py --service
 Restart=always
@@ -312,46 +438,71 @@ sudo systemctl daemon-reload
 sudo systemctl enable candle-feed
 sudo systemctl enable ${SERVICE_NAME}
 
-# ── Host hardening ────────────────────────────────────────────────────────────
-# Stop package upgrades (unattended-upgrades -> needrestart) from restarting the
-# bot mid-session, and move the apt schedule out of RTH. See harden_hosts.sh.
-# Invoked with `bash` so it runs before the chmod +x pass later in this script.
-if [ -f "$INSTALL_DIR/deploy/harden_hosts.sh" ]; then
-    if bash "$INSTALL_DIR/deploy/harden_hosts.sh"; then
-        print_ok "Host hardening applied (needrestart shield + apt timers off-RTH)."
-    else
-        print_warn "harden_hosts.sh reported an issue — review before market open."
-    fi
-else
-    print_warn "harden_hosts.sh not found in ${INSTALL_DIR} — host hardening SKIPPED."
-fi
-
 touch "$INSTALL_DIR/bot.log" "$INSTALL_DIR/trades.db"
 chown "${USER}:${USER}" "$INSTALL_DIR/bot.log" "$INSTALL_DIR/trades.db"
+INSTALL_FAILED=""
 
 # ── Git init — repo-ready on every fresh install ─────────────────────────────
 cd "$INSTALL_DIR"
 if [ ! -d ".git" ]; then
     git init -q
     git branch -M main 2>/dev/null || git checkout -b main 2>/dev/null || true
-    if [[ -n "$GITHUB_REPO" ]]; then
-        git remote add origin "https://github.com/${GITHUB_REPO}.git"
-        # Author commits as the repo owner (e.g. TX-9AI), not the ubuntu user
-        GH_OWNER="${GITHUB_REPO%%/*}"
-        git config user.name  "$GH_OWNER"
-        git config user.email "${GH_OWNER}@users.noreply.github.com"
-        git fetch origin main -q 2>/dev/null || true
-        git reset --hard origin/main -q 2>/dev/null || true
-        print_ok "Git repo initialized — push.sh ready to use"
+    git remote add origin "https://github.com/${GITHUB_REPO}.git"
+    # Author commits as the repo owner (e.g. TX-9AI), not the ubuntu user
+    GH_OWNER="${GITHUB_REPO%%/*}"
+    git config user.name  "$GH_OWNER"
+    git config user.email "${GH_OWNER}@users.noreply.github.com"
+    # 🔴 r132 — NOT `|| true`. A tree that is not a checkout cannot be baked.
+    if git fetch -q origin && { git reset -q --hard "origin/$GIT_REF" 2>/dev/null || git reset -q --hard "$GIT_REF"; }; then
+        git branch -q -u origin/main main 2>/dev/null || true
+        print_ok "Git: $(git log -1 --format='%h %s' | cut -c1-70)"
     else
-        print_ok "Git repo initialized — add remote manually when ready"
+        print_warn "🔴 GIT FETCH/CHECKOUT FAILED — ${INSTALL_DIR} is NOT a checkout of ${GITHUB_REPO} ${GIT_REF}."
+        INSTALL_FAILED="$INSTALL_FAILED git"
     fi
+fi
+# r132 — push is a toggle. 1: GITHUB_TOKEN is stored for git over HTTPS.
+# 0: a push URL that fails BY NAME, so nobody mistakes it for a network fault.
+if [ "$GIT_PUSH" = 1 ] && [ -n "${GITHUB_TOKEN:-}" ]; then
+    git config credential.helper store
+    ( umask 077; printf 'https://x-access-token:%s@github.com\n' "$GITHUB_TOKEN" > "$HOME/.git-credentials" )
+    print_ok "Git push: ENABLED (token stored for HTTPS, 0600)"
+else
+    git remote set-url --push origin "PUSH-DISABLED-set-OT_GIT_PUSH=1-in-bootstrap.sh"
+    print_ok "Git push: disabled (pull only)"
 fi
 
 # Set execute permissions on ALL shell scripts after git operations.
 # Must run after git reset --hard which can strip permissions set during rsync.
 find "$INSTALL_DIR" -name "*.sh" -exec chmod +x {} \;
 find "$INSTALL_DIR" -name "get_orb_range.py" -exec chmod +x {} \;
+
+# ── r132 — THE SUITE ────────────────────────────────────────────────────────
+# harden_hosts (needrestart shield + apt timers off-RTH) runs first, as before.
+# ⚠️ midnight-halt POWERS THE BOX OFF at 00:00 ET; the reference box is woken at
+# 08:00 by an EventBridge schedule that lives OUTSIDE this repo. A box without
+# one stays off until started by hand.
+print_step "suite" "Timers, diagnostics, Claude"
+mkdir -p "$INSTALL_DIR/logs"
+for f in $SUITE; do
+    if [ ! -f "$INSTALL_DIR/$f" ]; then
+        print_warn "$f missing — SKIPPED"; INSTALL_FAILED="$INSTALL_FAILED $f"; continue
+    fi
+    if bash "$INSTALL_DIR/$f"; then
+        print_ok "$f"
+    else
+        print_warn "$f FAILED"; INSTALL_FAILED="$INSTALL_FAILED $f"
+    fi
+done
+# The mainline QQQ box owns the warehouse prefix; this box never pushes (38.3).
+sudo systemctl mask s3-push.service s3-push.timer >/dev/null 2>&1 || true
+print_ok "s3-push masked"
+if [ "$CLAUDE_AT_BOOT" = 1 ]; then
+    # consumed by tools/claude_boot.py once a FIRST_BOOT-briefed session is up
+    mkdir -p "$HOME/.optbot" && touch "$HOME/.optbot/first_boot"
+else
+    print_info "Claude installed, NOT raised at boot (OT_CLAUDE_AT_BOOT=0). Later: bash deploy/install_claude_boot.sh"
+fi
 
 # ── Start feed, then bot ──────────────────────────────────────────────────────
 print_info "Starting candle feed..."
@@ -364,6 +515,11 @@ fi
 print_info "Starting bot..."
 sudo systemctl start ${SERVICE_NAME}
 sleep 8
+if [ "$CLAUDE_AT_BOOT" = 1 ]; then
+    print_info "Raising the Claude session (first boot)..."
+    sudo systemctl start optbot-claude-boot.service || true
+    print_info "Claude: $(cat "$INSTALL_DIR/data/AGENT_STATUS" 2>/dev/null | tail -1 || echo 'status unknown')"
+fi
 
 STATUS=$(systemctl is-active ${SERVICE_NAME})
 if [ "$STATUS" = "active" ]; then
@@ -377,6 +533,9 @@ if [ "$STATUS" = "active" ]; then
     echo -e "  Risk:        \$${RISK_USD}/trade"
     echo -e "  TT Account:  ${TT_ACCOUNT_NUMBER}"
     echo -e "  Telegram:    chat ${TELEGRAM_CHAT_ID}"
+    echo -e "  Commit:      $(git -C "$INSTALL_DIR" log -1 --format='%h' 2>/dev/null) (${GIT_REF})"
+    echo -e "  Swap:        $(swapon --show --noheadings | awk '{print $3}' | head -1)"
+    echo -e "  Timers:      $(systemctl list-timers 'optbot-*' --all --no-legend 2>/dev/null | wc -l) optbot timers"
     echo ""
     echo -e "  Commands:"
     echo -e "    python status.py             — live status"
@@ -411,6 +570,13 @@ for _secret_file in "$HOME/bootstrap.sh" "$HOME/cred.txt"; do
 done
 
 print_ok "Cleanup complete."
+if [ -n "$INSTALL_FAILED" ]; then
+    echo -e "${BOLD}${RED}  🔴 INSTALL INCOMPLETE:${INSTALL_FAILED}${RESET}"
+else
+    print_ok "Every step completed."
+fi
+# r132 — the final shell must not inherit the secrets this install was given.
+unset TT_CLIENT_SECRET TT_REFRESH_TOKEN TELEGRAM_TOKEN GITHUB_TOKEN CLAUDE_LOGIN_B64
 
 # Always end in the install dir with venv active
 export PATH="$VENV/bin:$PATH"

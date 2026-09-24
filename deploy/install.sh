@@ -1,6 +1,14 @@
 #!/bin/bash
 # ==========================================================================
-# deploy/install.sh  v4.3
+# deploy/install.sh  v4.4
+# v4.4  2026-09-24  OTV4TEST r132 — IT INSTALLS THIS REPO. REPO still named
+#       options_trader_v3, the r3.1 'repo pointer' defect inherited a second time:
+#       every fresh install from this fork would have deployed v3. Now
+#       TX-9AI/OTV4TEST (public — no token needed to clone), overridable with
+#       OT_REPO_URL, and OT_GIT_REF (default main) picks what is checked out; the
+#       installed commit is printed. Run it through bootstrap.sh (OT_ROLE=control
+#       there: this fork's box needs tests/ for the sweep and docs/ for the agent's
+#       brief, which the trader-role sparse list excludes).
 # v4.3  2026-09-23  OTV4TEST r125 — `shadow` leaves TRADER_DIRS: shadow/ is deleted
 #       (LVL.15 step 5, operator "Yep, delete"). A MISSING declared directory is
 #       fatal here, so leaving it listed would fail the next install outright.
@@ -37,18 +45,32 @@
 #         rebuild, whose banner printed v2.5 — v2's setup_ec2.sh). Now clones
 #         options_trader_v3. Display banner v2.0 -> v3.1 (was never bumped).
 # Run on a fresh EC2:
-#   curl -fsSL https://raw.githubusercontent.com/TX-9AI/options_trader_v3/main/install.sh -o install.sh && bash install.sh
+#   curl -fsSL https://raw.githubusercontent.com/TX-9AI/OTV4TEST/main/deploy/install.sh -o install.sh && bash install.sh
+#   (normally via bootstrap.sh — see bootstrap.example.sh)
 # ==========================================================================
 set -e
 
-REPO="https://github.com/TX-9AI/options_trader_v3.git"
+REPO="${OT_REPO_URL:-https://github.com/TX-9AI/OTV4TEST.git}"
+REF="${OT_GIT_REF:-main}"
 DEPLOY_DIR="$HOME/options-trader-deploy"
 
 echo ""
 echo "╔══════════════════════════════════════════════════════╗"
-echo "║     options_trader v3.1  |  Web Installer           ║"
+echo "║     OTV4TEST  |  Web Installer (deploy/install.sh 4.4) ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo ""
+
+# r132 — OT_PLAN_ONLY=1: preview what setup_ec2.sh would do, change nothing.
+# The clone goes to a throwaway directory and is removed; no apt, no units.
+if [ -n "${OT_PLAN_ONLY:-}" ]; then
+    command -v git >/dev/null 2>&1 || { echo "  plan needs git on the box (sudo apt-get install -y git)"; exit 1; }
+    _plan="$(mktemp -d)"
+    git clone -q "$REPO" "$_plan/r" && git -C "$_plan/r" checkout -q "$REF" \
+        && bash "$_plan/r/setup_ec2.sh" --plan
+    _rc=$?
+    rm -rf "$_plan"
+    exit $_rc
+fi
 
 # Install git if needed
 sudo apt-get update -qq
@@ -166,6 +188,10 @@ else
     echo "  Cloning repository..."
     git clone "$REPO" "$DEPLOY_DIR"
 fi
+# r132 — the ref the operator asked for, and say which commit that is.
+git -C "$DEPLOY_DIR" checkout -q "$REF"
+export OT_GIT_REF="$REF" OT_REPO_URL="$REPO"
+echo "  Installing $(git -C "$DEPLOY_DIR" log -1 --format='%h %ad' --date=short) ($REF) from $REPO"
 
 if [ "${OT_ROLE:-trader}" = "trader" ]; then
     if _sparse_trader "$DEPLOY_DIR"; then

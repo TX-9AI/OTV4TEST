@@ -1,6 +1,24 @@
 #!/usr/bin/env python3
-"""tools/claude_boot.py — v1.3
+"""tools/claude_boot.py — v1.4
 RAISE AN AGENT SESSION AT BOOT, AND PROVE IT IS ACTUALLY RUNNING.
+
+v1.4 (2026-09-24) — OTV4TEST r132. A FRESH BOX IS BRIEFED FOR A FRESH BOX, AND
+      A MISSING LOGIN IS NAMED INSTEAD OF RAISED. The operator, on the unattended
+      install: *"after the first boot on a fresh instance, I want Claude to come
+      up with it in a remote control session and look everything over."*
+      🔑 THREE CHANGES, NOTHING ELSE MOVES. (1) `choose_brief()`: while the
+      installer's first-boot marker exists (`OT_FIRST_BOOT_MARKER`, default
+      ~/.optbot/first_boot) the session is briefed from docs/FIRST_BOOT.md — the
+      daily HANDOFF.md would send a new box's agent to catch up on a history it
+      does not have. The marker is consumed only once a briefed session is
+      VERIFIED up, so a failed first raise retries on the next boot. (2)
+      `auth_ok()`: `claude auth status` exits 0 logged in and 1 not (measured on
+      2.1.281, must-fail control an empty CLAUDE_CONFIG_DIR). A box with no
+      login used to raise a session that sat at a login screen and read "up";
+      it now records NOT AVAILABLE with the one command that fixes it. An auth
+      check that cannot run (timeout, crash) does NOT block the raise — only a
+      definite "not logged in" does. (3) `RC_NAME` reads `OT_RC_NAME`, default
+      unchanged (qqq-test).
 
 v1.3 (2026-09-23) — OTV4TEST r107. THE PURGE WAS MOVING A LIVE AGENT'S FILES
       OUT FROM UNDER IT, TEN TIMES IN TWO DAYS, AND ITS OWN CHECKER WAS THE
@@ -108,7 +126,7 @@ def claude_bin() -> str:
         if os.path.isfile(cand) and os.access(cand, os.X_OK):
             return cand
     return ""
-RC_NAME = "qqq-test"
+RC_NAME = os.environ.get("OT_RC_NAME") or "qqq-test"
 # 🔴 r70 / AUTH.1 — LAUNCH ON THE SUBSCRIPTION, NEVER ON API CREDITS.
 # Operator's instruction. Measured 2026-09-20: no key is set anywhere on this
 # box and `~/.claude.json` authenticates through `oauthAccount` — so today it
@@ -118,6 +136,37 @@ RC_NAME = "qqq-test"
 ENV_STRIP = ("env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN"
              " -u CLAUDE_API_KEY -u ANTHROPIC_BASE_URL")
 BRIEF = os.path.join(_root, "docs", "HANDOFF.md")
+# r132 — a fresh box's first session is briefed for a fresh box. The installer
+# (setup_ec2.sh) writes the marker; bring_up() consumes it once verified.
+FIRST_BOOT_BRIEF = os.path.join(_root, "docs", "FIRST_BOOT.md")
+FIRST_BOOT_MARKER = (os.environ.get("OT_FIRST_BOOT_MARKER")
+                     or os.path.expanduser("~/.optbot/first_boot"))
+
+
+def choose_brief() -> tuple[str, bool]:
+    """-> (brief path, is_first_boot). FIRST_BOOT.md while the installer's
+    marker exists and the brief is readable; HANDOFF.md otherwise."""
+    if os.path.exists(FIRST_BOOT_MARKER) and os.path.exists(FIRST_BOOT_BRIEF):
+        return FIRST_BOOT_BRIEF, True
+    return BRIEF, False
+
+
+def auth_ok(binp: str, timeout: float = 10.0):
+    """True logged in, False definitely not, None when the check itself could
+    not run. ⚠️ Output is DISCARDED — it names the account (§18a)."""
+    try:
+        r = subprocess.run(["env", "-u", "ANTHROPIC_API_KEY",
+                            "-u", "ANTHROPIC_AUTH_TOKEN", "-u", "CLAUDE_API_KEY",
+                            "-u", "ANTHROPIC_BASE_URL", binp, "auth", "status"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if r.returncode == 0:
+        return True
+    if r.returncode == 1:
+        return False
+    return None
 
 # The settle budget. `claude` needs a few seconds to be a real process; the
 # unit's own TimeoutStartSec sits above this so systemd never waits longer
@@ -382,15 +431,29 @@ def bring_up(dry: bool = False) -> tuple[bool, str]:
     if not binp:
         return False, "NOT AVAILABLE (claude binary not found)"
 
+    # r132 — a DEFINITE "not logged in" is named, not raised into a login
+    # screen that reads "up". None (the check could not run) does not block.
+    if auth_ok(binp) is False:
+        return False, ("NOT AVAILABLE (not logged in — ssh in and run: "
+                       "claude auth login)")
+
     # 1 — r86, THE OPERATOR'S CURRENT RULING: a HANDOFF session, briefed.
     # ⚠️ The brief is passed as ONE argument. r32 measured the hazard: the file
     # contains double quotes, and expanding it through another shell layer ends
     # the argument at the first one and hands Claude a truncated brief.
-    if os.path.exists(BRIEF):
+    # r132 — FIRST_BOOT.md on a freshly installed box (choose_brief).
+    brief, first = choose_brief()
+    if os.path.exists(brief):
         _kill()
         _raise("%s %s --remote-control %s \"$(cat %s)\"; exec bash"
-               % (ENV_STRIP, binp, RC_NAME, _sh_quote(BRIEF)))
+               % (ENV_STRIP, binp, _sh_quote(RC_NAME), _sh_quote(brief)))
         if _settle():
+            if first:
+                try:
+                    os.unlink(FIRST_BOOT_MARKER)
+                except OSError:
+                    pass
+                return True, "up (first boot)"
             return True, "up (handoff)"
 
     # 2 — the fallback, which is r68's ruling kept for exactly this case: a
@@ -399,7 +462,7 @@ def bring_up(dry: bool = False) -> tuple[bool, str]:
     # strictly better than silence (§0.5).
     _kill()
     _raise("%s %s --remote-control %s --continue; exec bash"
-           % (ENV_STRIP, binp, RC_NAME))
+           % (ENV_STRIP, binp, _sh_quote(RC_NAME)))
     if _settle():
         return True, ("up (continue — FALLBACK, brief missing)"
                       if not os.path.exists(BRIEF) else

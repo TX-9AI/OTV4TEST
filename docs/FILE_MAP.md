@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-334 Python modules across 12 local packages.
+335 Python modules across 12 local packages.
 
-**Reached by:** 117 imported · 11 declared entry points · 126 referenced from a script, unit or doc but never imported · **80 by nothing here**.
+**Reached by:** 117 imported · 12 declared entry points · 126 referenced from a script, unit or doc but never imported · **80 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -559,6 +559,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_boot_sweep.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
+### `tests/check_bootstrap.py`
 - **calls:** (none)
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
@@ -1292,7 +1296,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tools/boot_sweep.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/HANDOFF.md`
+- **called by:** (entry point)
 
 ### `tools/check_land_discipline.py`
 - **calls:** (none)
@@ -1316,7 +1320,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tools/last_session.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `devtools.sh`, `docs/BACKLOG.md`, `docs/HANDOFF.md`
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/BACKLOG.md`, `docs/FIRST_BOOT.md`, `docs/HANDOFF.md`
 
 ### `tools/manifold_health.py`
 - **calls:** `config.py`, `utils/time_utils.py`
