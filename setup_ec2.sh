@@ -1,6 +1,18 @@
 #!/bin/bash
 # ==========================================================================
-# setup_ec2.sh  v4.5
+# setup_ec2.sh  v4.6
+# v4.6  2026-09-24  OTV4TEST r136 — DATA CAPTURE IS A MODE, NOT A HARD-CODED MASK.
+#       OT_DATA_CAPTURE=standalone (default, the reference box's shape) or
+#       managed (the day_trader_pro conductor owns the box's data), applied by
+#       deploy/data_capture.sh - the same script configure.sh item 10 runs.
+#       This used to mask s3-push unconditionally. Two system packages join the
+#       apt list, both found testing the conductor's menu against this fork:
+#       python3-boto3 (s3-push and the conductor's `--verify` run under
+#       /usr/bin/python3, which had no boto3 on a fresh box) and tzdata-legacy
+#       (Ubuntu 26.04 moved `US/Eastern` out of tzdata; the conductor runs
+#       `python status.py` / `python query.py --decisions` with the SYSTEM
+#       python, and both died with ZoneInfoNotFoundError - measured on the
+#       reference box; the venv never noticed because it ships its own tzdata).
 # v4.5  2026-09-24  OTV4TEST r134 — EVERY FRESH BOX STARTED WITH A DIRTY TREE. The
 #       install chmod'ed analysis/get_orb_range.py, which git tracks as 100644, so
 #       `git status` read ` M analysis/get_orb_range.py` from minute one (found by
@@ -195,6 +207,9 @@ DAILY_LOSS_LIMIT="${OT_DAILY_LOSS_LIMIT:-$RISK_USD}"
 PIN_GATE="${OT_PIN_PROXIMITY_ACTIVE:-0}"
 SWAP_GB="${OT_SWAP_GB:-2}"
 CLAUDE_AT_BOOT="${OT_CLAUDE_AT_BOOT:-0}"
+DATA_CAPTURE="${OT_DATA_CAPTURE:-standalone}"
+case "$DATA_CAPTURE" in managed|standalone) ;; *)
+    echo "  🔴 OT_DATA_CAPTURE must be 'managed' or 'standalone', got '$DATA_CAPTURE'."; exit 1 ;; esac
 GIT_PUSH="${OT_GIT_PUSH:-0}"
 GIT_REF="${OT_GIT_REF:-main}"
 
@@ -326,7 +341,7 @@ if [ "$PLAN" = 1 ]; then
     echo "PLAN claude_at_boot=$CLAUDE_AT_BOOT"
     echo "PLAN claude_login=$([ -n "${CLAUDE_LOGIN_B64:-}" ] && echo provided || echo absent)"
     echo "PLAN units=candle-feed optionsbot"
-    echo "PLAN masked=s3-push.service s3-push.timer"
+    echo "PLAN data_capture=$DATA_CAPTURE"
     for f in $SUITE; do
         echo "PLAN suite=$f present=$([ -f "$SRC_DIR/$f" ] && echo yes || echo NO)"
     done
@@ -336,7 +351,7 @@ fi
 # ─── STEP 5: SYSTEM PACKAGES ─────────────────────────────────────────────────
 print_step "5/8" "System packages"
 sudo apt-get update -qq
-sudo apt-get install -y -qq python3 python3-pip python3-venv python-is-python3 git rsync bc sqlite3 tmux curl ca-certificates
+sudo apt-get install -y -qq python3 python3-pip python3-venv python-is-python3 git rsync bc sqlite3 tmux curl ca-certificates python3-boto3 tzdata-legacy
 print_ok "System packages ready."
 # r132 — the lock was frozen on the reference box; say so when this one differs.
 . /etc/os-release 2>/dev/null || true
@@ -522,9 +537,13 @@ for f in $SUITE; do
         print_warn "$f FAILED"; INSTALL_FAILED="$INSTALL_FAILED $f"
     fi
 done
-# The mainline QQQ box owns the warehouse prefix; this box never pushes (38.3).
-sudo systemctl mask s3-push.service s3-push.timer >/dev/null 2>&1 || true
-print_ok "s3-push masked"
+# r136 — managed or standalone, by the one script configure.sh item 10 also runs.
+# standalone (default) masks s3-push: the reference QQQ box never pushes (38.3).
+if OT_INSTRUMENT="$INSTRUMENT" bash "$INSTALL_DIR/deploy/data_capture.sh" "$DATA_CAPTURE"; then
+    print_ok "data capture: $DATA_CAPTURE"
+else
+    print_warn "data capture ($DATA_CAPTURE) did not fully apply"; INSTALL_FAILED="$INSTALL_FAILED data_capture"
+fi
 if [ "$CLAUDE_AT_BOOT" = 1 ]; then
     # consumed by tools/claude_boot.py once a FIRST_BOOT-briefed session is up
     mkdir -p "$HOME/.optbot" && touch "$HOME/.optbot/first_boot"

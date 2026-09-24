@@ -1,6 +1,19 @@
 #!/usr/bin/env python3
 """
-warehouse/retention_purge.py  v1.7
+warehouse/retention_purge.py  v1.8
+v1.8  2026-09-24  OTV4TEST r136 — THE PURGE NEVER DELETES WHAT S3 HAS NOT CONFIRMED
+      (mainline r417's `_safe_cutoff`, ported). The operator, 2026-09-24:
+      "Adopt mainline's approach. Should work under managed or standalone."
+      Every series cutoff (feed ARTIFACT_DAYS, derived DERIVED_ARTIFACT_DAYS +
+      DERIVED_CDC_DAYS) is clamped to the push mark s3_push records for that
+      table - `series|<table>` in candle_ledger.json, `dseries|<table>` in
+      dseries_ledger.json (the same keys this fork's pusher writes, verified).
+      A lagging pusher now GROWS the store instead of silently shredding rows
+      nobody shipped. 🔑 BOTH MODES: a STANDALONE box has no push marks, so the
+      clamp falls back to age-only - exactly mainline's fresh-box rule - and
+      says "no push mark (standalone, or nothing shipped yet)" rather than
+      mainline's warning, which would cry wolf every night on a box that never
+      pushes by design.
 v1.7  2026-09-23  OTV4TEST r108 — 1m candles 5 -> 60 DAYS, to match 1h. The level
       book builds its levels from the HOURLY tape (r36: an hourly high/low is
       the true extreme of its hour, and 1h reaches back 60 days), but the
@@ -188,6 +201,42 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# ── r136 (mainline r417) — THE CLAMP: never delete past the confirmed push mark ─
+# ⚠️ AN ABSENT LEDGER FALLS BACK TO AGE-ONLY RATHER THAN REFUSING TO DELETE: a
+# standalone box (and a fresh managed one) has no marks, and a purge that
+# declined everything would fill the disk. The absence is NAMED, not hidden.
+_STATE_DIR = os.environ.get("OT_WAREHOUSE_STATE",
+                            os.path.join(os.path.expanduser("~"),
+                                         ".vertigo_warehouse"))
+SERIES_LEDGER  = os.path.join(_STATE_DIR, "candle_ledger.json")
+DSERIES_LEDGER = os.path.join(_STATE_DIR, "dseries_ledger.json")
+
+
+def _pushed_hwm(path, ns, table):
+    """The ts_epoch S3 has CONFIRMED for this table, or None if unknowable."""
+    import json
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            led = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    try:
+        return float(led.get("%s|%s" % (ns, table)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_cutoff(table, age_cutoff, path, ns):
+    """(cutoff, note) — the age cutoff, clamped to what S3 has confirmed."""
+    hwm = _pushed_hwm(path, ns, table)
+    if hwm is None:
+        return age_cutoff, ""       # standalone, or nothing shipped yet: age only
+    if hwm < age_cutoff:
+        return hwm, ("CLAMPED to the push mark (%.0f): S3 is %.1f day(s) "
+                     "behind the retention window and the rows above it are "
+                     "NOT YET SHIPPED" % (hwm, (age_cutoff - hwm) / 86400))
+    return age_cutoff, ""
 sys.path.insert(0, HERE)
 
 # ── The policy. Mirrors the (commented-out) block in config.py v4.4. ────────
@@ -601,6 +650,9 @@ def purge(apply: bool = False, feed_db: str = "", derived_db: str = "") -> dict:
             if table in NEVER_PURGE:
                 continue                      # belt and braces
             cutoff = now - days * DAY
+            cutoff, _note = _safe_cutoff(table, cutoff, SERIES_LEDGER, "series")
+            if _note:
+                _log(f"🛡️ {table}: {_note}")
             try:
                 n = fc.execute(f"SELECT COUNT(*) FROM {table}"
                                " WHERE ts_epoch < ?", (cutoff,)).fetchone()[0]
@@ -641,6 +693,9 @@ def purge(apply: bool = False, feed_db: str = "", derived_db: str = "") -> dict:
             if table in NEVER_PURGE:
                 continue
             cutoff = now - days * DAY
+            cutoff, _note = _safe_cutoff(table, cutoff, DSERIES_LEDGER, "dseries")
+            if _note:
+                _log(f"🛡️ derived/{table}: {_note}")
             try:
                 n = dc.execute(f"SELECT COUNT(*) FROM {table}"
                                " WHERE ts_epoch < ?", (cutoff,)).fetchone()[0]

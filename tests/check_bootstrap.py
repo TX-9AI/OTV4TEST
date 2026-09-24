@@ -1,4 +1,9 @@
-"""tests/check_bootstrap.py — v1.3
+"""tests/check_bootstrap.py — v1.4
+
+v1.4  2026-09-24 — OTV4TEST r136. MOVED, NOT DROPPED (section 38.4): G3's
+      "plan masked=s3-push..." is now "plan data_capture=standalone" - the mask
+      is what standalone data capture does (check_data_capture D3 proves it), and
+      the unattended default must still be standalone. G3c adds managed.
 
 v1.3  2026-09-24 — OTV4TEST r135. G15: a fresh box's FIRST hourly backfill is
       deep enough for everything that reads it, and no deeper than what is kept -
@@ -232,7 +237,7 @@ _WANT = {"unattended": "true", "tty": "0", "paper": "True", "instrument": "QQQ",
          "daily_loss_limit": "200", "pin_gate": "0", "swap_gb": "2",
          "requirements": "requirements.lock", "git_repo": "TX-9AI/OTV4TEST",
          "git_ref": "main", "git_push": "0", "claude_at_boot": "1",
-         "claude_login": "provided", "masked": "s3-push.service s3-push.timer"}
+         "claude_login": "provided", "data_capture": "standalone"}
 guard("G3 --plan with no terminal exits 0", lambda: r.returncode == 0,
       lambda: "rc=%s %s" % (r.returncode, (r.stderr or r.stdout)[-200:]))
 for k, v in _WANT.items():
@@ -259,12 +264,13 @@ guard("G3b OT_CLAUDE_AT_BOOT=0 leaves the claude-boot installer out, keeps insta
 
 r1, plan1, _s1, _h1, _x1 = _setup(["--plan"], {"OT_RISK_USD": "500", "OT_PIN_PROXIMITY_ACTIVE": "1",
                                                "OT_SWAP_GB": "0", "OT_GIT_PUSH": "1",
-                                               "OT_GIT_REF": "abc1234"})
+                                               "OT_GIT_REF": "abc1234", "OT_DATA_CAPTURE": "managed"})
 guard("G3c the bootstrap's values win (risk 500 flows to ORB/loss; gate, swap, push, ref)",
       lambda: r1.returncode == 0 and plan1.get("orb_risk_usd") == "500"
       and plan1.get("orb_budget_usd") == "500" and plan1.get("daily_loss_limit") == "500"
       and plan1.get("pin_gate") == "1" and plan1.get("swap_gb") == "0"
-      and plan1.get("git_push") == "1" and plan1.get("git_ref") == "abc1234",
+      and plan1.get("git_push") == "1" and plan1.get("git_ref") == "abc1234"
+      and plan1.get("data_capture") == "managed",
       lambda: str(plan1))
 
 r4, _p4, _s4, home4, sudo4 = _setup([], creds=False)

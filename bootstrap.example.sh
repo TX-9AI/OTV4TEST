@@ -57,6 +57,9 @@ export OT_ROLE="control"        # full checkout: tests/ (the sweep) and docs/ (t
 export OT_SWAP_GB="2"           # /swapfile when the box has no swap; 0 = none
 export OT_GIT_REF="main"        # branch, tag or commit to install
 export OT_GIT_PUSH="0"          # 1 = this box may push (stores GITHUB_TOKEN); 0 = pull only
+export OT_DATA_CAPTURE="standalone"  # managed = the day_trader_pro conductor owns this box's data
+                                     # (S3 push on; tag the instance Name=<SYMBOL>, attach
+                                     # role day-trader-box, launch with the fleet key pair)
 
 # ── TastyTrade OAuth ──────────────────────────────────────────────────────────
 export TT_CLIENT_SECRET="REPLACE_ME"

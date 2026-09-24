@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# configure.sh  v4.8
+# configure.sh  v4.9
+# v4.9  2026-09-24  OTV4TEST r136 — ITEM 10 IS DATA CAPTURE: MANAGED OR STANDALONE.
+#       Operator: *"a toggle in configure.sh call it 'managed' or 'standalone'
+#       data capture"*. `change_data_capture` runs deploy/data_capture.sh - the
+#       ONE implementation setup_ec2.sh also calls - and the label is read from
+#       the UNITS (data_capture.sh status), never from a flag file. It does not
+#       touch the bot unit, so it does not set CHANGED and the bot is not
+#       restarted for it. "Done" moves to 11; the prompt names 1-11.
 # v4.8  2026-09-24  OTV4TEST r127 — ITEM 7 IS THE PIN-PROXIMITY GATE; THE RELAXED
 #       ENTRY TOGGLE IS REMOVED. Operator: *"make it replace the relaxed entry
 #       toggle. Since we don't do relaxed entries here."* and, turning r97's gate
@@ -241,6 +248,7 @@ show_config() {
     local dll=$(get_env "OT_DAILY_LOSS_LIMIT")
     echo -e "  Daily loss cap: ${BOLD}$(fmt_declared "$dll")${RESET}"
     echo -e "  Pin gate:       ${BOLD}$(pin_gate_label)${RESET}"
+    echo -e "  Data capture:   ${BOLD}$(data_capture_label)${RESET}"
     echo -e "  Trading mode:   $(echo -e $mode_label)"
     local rec_pin rec_label
     rec_pin=$(get_env "OT_BROKER_RECONCILE")
@@ -353,6 +361,30 @@ pin_gate_label() {
     dflt=$(cd "$BOT_DIR" && env -u OT_PIN_PROXIMITY_ACTIVE python3 -c \
         "import config; print('ON' if config.PIN_PROXIMITY_ACTIVE else 'OFF')")
     printf 'not set (code default: %s)' "${dflt:-UNREADABLE - config.py did not import}"
+}
+
+# ── r136 — DATA CAPTURE: managed (the conductor owns this box's data) or
+# standalone (nothing is pushed). One implementation: deploy/data_capture.sh.
+data_capture_label() {
+    bash "$BOT_DIR/deploy/data_capture.sh" status 2>/dev/null | head -1 | sed 's/^data capture: //'
+}
+
+change_data_capture() {
+    echo ""
+    echo "  Data capture: $(data_capture_label)"
+    echo ""
+    echo "  MANAGED    - the day_trader_pro conductor owns this box's data: S3 push,"
+    echo "               candle-logger and the 16:45 self-close ON; this box's own"
+    echo "               16:05 purge OFF (the conductor runs it). Pushes as its own"
+    echo "               symbol; never the VIX family."
+    echo "  STANDALONE - nothing is pushed (s3-push masked); this box purges itself"
+    echo "               at 16:05. The reference QQQ box is standalone."
+    echo ""
+    if ask_yn "Make this box MANAGED?"; then
+        bash "$BOT_DIR/deploy/data_capture.sh" managed
+    else
+        bash "$BOT_DIR/deploy/data_capture.sh" standalone
+    fi
 }
 
 change_pin_gate() {
@@ -643,9 +675,10 @@ while true; do
     echo -e "  ${BOLD}7.${RESET}  Pin-proximity gate  (currently: $(pin_gate_label))"
     echo -e "  ${BOLD}8.${RESET}  ORB ramp TOP        (currently: $(fmt_declared "$(get_env OT_ORB_BUDGET_USD)"))"
     echo -e "  ${BOLD}9.${RESET}  ORB ramp START      (currently: $(fmt_declared "$(get_env OT_ORB_RISK_USD)"))"
-    echo -e "  ${BOLD}10.${RESET} Done"
+    echo -e "  ${BOLD}10.${RESET} Data capture        (currently: $(data_capture_label))"
+    echo -e "  ${BOLD}11.${RESET} Done"
     echo ""
-    read -p "    Select [1-10]: " menu_choice
+    read -p "    Select [1-11]: " menu_choice
 
     case "$menu_choice" in
         1) change_instrument; CHANGED=true ;;
@@ -657,8 +690,9 @@ while true; do
         7) change_pin_gate;       CHANGED=true ;;
         8) change_orb_budget;     CHANGED=true ;;
         9) change_orb_risk;       CHANGED=true ;;
-        10) break ;;
-        *) print_warn "Please enter a number between 1 and 10." ;;
+        10) change_data_capture ;;
+        11) break ;;
+        *) print_warn "Please enter a number between 1 and 11." ;;
     esac
     echo ""
 done

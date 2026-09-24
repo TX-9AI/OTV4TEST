@@ -1,5 +1,14 @@
 """
-warehouse/s3_push.py  v4.7
+warehouse/s3_push.py  v4.8
+v4.8  2026-09-24  OTV4TEST r136 — THE VIX FAMILY IS SPX'S, MATCHED BY ROOT (mainline
+      r350, ported). The exact match `in ("VIX","^VIX")` let every non-SPX box
+      push `sym=VIX_EXT` - this fork's feed stores VIX_EXT rows - over the SPX
+      box's series in the shared warehouse. Harmless while this fork never
+      pushed; the operator's 2026-09-24 ruling puts OTV4TEST boxes under the
+      conductor ("managed" data capture), so it had to land before the first
+      push. Operator: "Have the same toggle switch off the VIX logging": no
+      OTV4TEST box ever uploads the VIX family; the feed still collects VIX for
+      the box's own decisions.
 v4.7  2026-09-24  OTV4TEST r128 — `level_event` JOINS `DERIVED_TABLES`. It is a
       lifecycle biography — every HELD/BREACHED (legacy: WICKED/REJECTED/ACCEPTED)
       the level engine records — and it has been in retention_purge's NEVER_PURGE
@@ -890,8 +899,10 @@ def push_candles(s3, bucket, db_path, ledger, me, counters=None):
     except Exception:
         return 0, 0
     for sym, iv in pairs:
-        if str(sym).upper() in ("VIX", "^VIX") and me != "SPX":
-            continue                                  # SPX owns VIX
+        # r136 (mainline r350) — FAMILY MATCH BY ROOT, so VIX_EXT and any future
+        # VIX_W / VIX_9D cannot slip; VIXY does not match (a different product).
+        if str(sym).upper().split("_")[0] in ("VIX", "^VIX") and me != "SPX":
+            continue                                  # SPX owns the VIX family
         lk = "%s|%s" % (sym, iv)
         hwm = int(ledger.get(lk, 0) or 0)
         try:
