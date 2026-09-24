@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# devtools.sh  v3.7  — OTV4TEST box menu
+# devtools.sh  v3.8  — OTV4TEST box menu
+# v3.8  2026-09-24  OTV4TEST r129 — R SUITE gains STOP VS SPREAD, the Saturday
+#       review of criteria.stop_survivable: how often a fly or vertical was
+#       refused because its stop could not clear its own bid-ask, how close the
+#       rest came, and whether the rule was the one that declined the tick.
+#       Operator: "we can build that & review it on Saturdays with our other
+#       reviews" — "Both" (flies and verticals). It reads the DERIVED store
+#       (plan_check), not trades.db, so it has its own date prompt; ENTER is
+#       the last 7 days — the Saturday week. Read-only. Appended after Edge
+#       scan so no existing item moves.
 # v3.7  2026-09-23  OTV4TEST r119 — MAINLINE'S TRADE REPORTS REPLACE ITEM 35.
 #       Operator: "let's get those reports borrowed, repurposed & added to our
 #       devtools menu. You can retire our current one option 35 — I hate it."
@@ -270,6 +279,20 @@ r_ledger()      { echo; echo "  R, expectancy, capture + giveback per strategy/s
 r_stop_sweep()  { echo; echo "  Bounds, not points: a cell matters only when its PESSIMISTIC net beats the book."; _r_tool stop_sweep.py; }
 r_exit_replay() { echo; echo "  Trail fit on real premium paths."; _r_tool exit_replay.py; }
 r_edge_scan()   { echo; echo "  Edge scan over the recorded book."; _r_tool edge_scan.py; }
+# r129 — reads the DERIVED store (plan_check), so it cannot use _r_tool's --db.
+r_stop_spread() {
+  echo; echo "  Stop vs spread: refusals, near misses and ratios, flies + verticals."
+  [ -f "$REPO/tests/stop_spread_report.py" ] || { echo "  🔴 tests/stop_spread_report.py missing"; pause; return; }
+  [ -f "$DERIVED_DB" ] || { echo "  no derived store at $DERIVED_DB"; pause; return; }
+  echo "    ENTER  = the last 7 days · a date = single session or START of a range · all = everything"
+  read -rp "  Date (YYYY-MM-DD, ENTER, or 'all'): " d; local d2=""
+  if [ -n "$d" ] && [ "$d" != "all" ] && [ "$d" != "ALL" ]; then read -rp "  END of range (ENTER = single day): " d2; fi
+  local ARGS=(--derived "$DERIVED_DB")
+  if [ "$d" = "all" ] || [ "$d" = "ALL" ]; then ARGS+=(--all-history)
+  elif [ -n "$d" ] && [ -n "$d2" ]; then ARGS+=(--from "$d" --to "$d2")
+  elif [ -n "$d" ]; then ARGS+=(--date "$d"); fi
+  "$PY" "$REPO/tests/stop_spread_report.py" "${ARGS[@]}"; pause
+}
 # r119 — mainline's reports 47/48 (tests/trade_report.py), on this box's
 # trades.db. ENTER = the engine epoch onward; a date = from that date; all =
 # no floor. Display only (--no-json): nothing is written anywhere.
@@ -576,6 +599,7 @@ MENU=(
   "ITEM|Stop / TP sweep      R surface over excursions|r_stop_sweep"
   "ITEM|Exit replay          trail fit on real paths|r_exit_replay"
   "ITEM|Edge scan|r_edge_scan"
+  "ITEM|STOP VS SPREAD       Saturday: stop vs bid-ask|r_stop_spread"
 
   "SECTION|CLAUDE CODE (these items END the menu)"
   "ITEM|HAND OFF -> fresh Claude thread, bootstrapped|mi_claude_handoff"

@@ -1,5 +1,15 @@
 """
-strategy/sweep_plan.py  v1.12
+strategy/sweep_plan.py  v1.13
+v1.13 2026-09-24  OTV4TEST r129 - "stop_vs_spread" IS RECORDED, WITH ITS RATIO. It
+      was declared (r128) and never written on a pass. `sv_ratio` = the chosen
+      wing's `stop_dist` (credit_vertical.search_wing's own number) / the short's
+      bid-ask - the two quantities `criteria.stop_survivable` compares against
+      STOP_VS_SPREAD_MIN (2.0) - recorded True beside credit/width/r. A refusal
+      under that key still writes its row through `t.refuse`; search_wing does
+      not return the refused wings' ratios, so that row's value stays empty
+      (the report counts it as "refused, ratio unmeasured"). RECORD ONLY:
+      nothing reads a check to decide (strategy/plan.py:491). Operator,
+      2026-09-24: a stop-vs-spread report reviewed on Saturdays.
 v1.12 2026-09-24  OTV4TEST r128 - "stop_vs_spread" DECLARED IN PLAN_CHECKS. It is
       a refusal gate this plan already raises: `_structure` calls
       `credit_vertical.search_wing`, which refuses a wing whose stop cannot
@@ -166,7 +176,7 @@ def _hm(now_et: str):
 class Candidate:
     __slots__ = ("level_id", "price", "kind", "provenance", "side", "boundary",
                  "short", "long", "credit", "width", "r", "r_stop", "richness",
-                 "stop_prem", "why", "why_key", "geometry")
+                 "stop_prem", "why", "why_key", "geometry", "sv_ratio")   # r129
 
     def __init__(self, lvl):
         self.level_id, self.price = lvl["level_id"], float(lvl["price"])
@@ -175,6 +185,7 @@ class Candidate:
         self.boundary = "ceiling" if self.kind == "resistance" else "floor"
         self.short = self.long = None
         self.credit = self.width = self.r = self.r_stop = self.richness = self.stop_prem = None
+        self.sv_ratio = None                          # r129 - stop / short bid-ask
         self.why = self.why_key = ""
         self.geometry = None
 
@@ -358,6 +369,9 @@ class SweepPlan:
         cand.r, cand.r_stop = float(w.r), (float(w.r_stop) if w.r_stop is not None else None)
         cand.richness = (cand.credit / cand.width) if cand.width > 0 else None
         cand.stop_prem = (float(w.fill) + float(w.stop_dist)) if (w.fill is not None and w.stop_dist is not None) else None
+        _sb, _sa = safe_float(getattr(short, "bid", None)), safe_float(getattr(short, "ask", None))
+        cand.sv_ratio = (round(float(w.stop_dist) / (_sa - _sb), 4)                       # r129
+                         if (w.stop_dist is not None and _sb is not None and _sa is not None and _sa > _sb) else None)
         return cand
 
     # ══════════════════════════════════════════════════════════════════════
@@ -560,6 +574,7 @@ class SweepPlan:
             t.check("r", chosen.r, chosen.r >= R_FLOOR)
             t.check("r_stop", chosen.r_stop, None)
             t.check("stop_premium", chosen.stop_prem, None)
+            t.check("stop_vs_spread", chosen.sv_ratio, True)   # r129 - search_wing passed it
             t.credit_spread(chosen.short.strike, chosen.long.strike, chosen.credit,
                             invalidation=chosen.price)
             # r12 — ANCHORS, record only: is the pool a gamma wall; who traded the rejection;

@@ -1,5 +1,15 @@
 """
-strategy/tcs_plan.py  v1.5
+strategy/tcs_plan.py  v1.6
+v1.6  2026-09-24  OTV4TEST r129 - "stop_vs_spread" RECORDS THE RATIO THE RULE TESTS.
+      It recorded `stop_dist` (DOLLARS) under the ratio's name, and only on a pass,
+      so no report could say how close a wing came. `criteria.stop_survivable`
+      compares stop distance / the short's bid-ask against STOP_VS_SPREAD_MIN
+      (2.0); `sv_ratio` is that number, computed in the same loop from the same
+      `sd`, `sb`, `sa`. Recorded True on the chosen wing, and False (the BEST
+      ratio among the refused wings) just before a stop_vs_spread refusal, so
+      `t.refuse` carries it into the row. RECORD ONLY: `PlanTick.check` writes,
+      nothing reads a check to decide (strategy/plan.py:491). Operator,
+      2026-09-24: a stop-vs-spread report reviewed on Saturdays.
 v1.5  2026-09-23  OTV4TEST r112 - THE TRIGGER COULD NEVER MATCH, AND NOW IT CAN.
       The level engine retires a breached level in the SAME step it publishes
       ACCEPTED, and this plan required the ACCEPTED level to be on the live
@@ -155,7 +165,8 @@ def _session_open_epoch() -> float:
 
 class Candidate:
     __slots__ = ("level_id", "price", "kind", "provenance", "side", "short", "long", "credit",
-                 "width", "r", "stop_dist", "pop", "richness", "long_leg_spread_pct", "why", "why_key")
+                 "width", "r", "stop_dist", "pop", "richness", "long_leg_spread_pct", "why", "why_key",
+                 "sv_ratio")                                   # r129
 
     def __init__(self, lvl):
         self.level_id, self.price = lvl["level_id"], float(lvl["price"])
@@ -165,6 +176,7 @@ class Candidate:
         self.short = self.long = None
         self.credit = self.width = self.r = self.stop_dist = self.pop = None
         self.richness = self.long_leg_spread_pct = None
+        self.sv_ratio = None                          # r129 - stop / short bid-ask
         self.why = self.why_key = ""
 
     @property
@@ -271,6 +283,8 @@ class TCSPlan:
         sb = safe_float(getattr(short, "bid", 0.0)) or 0.0
         sa = safe_float(getattr(short, "ask", 0.0)) or 0.0
         best, why = None, ""
+        _spr = (sa - sb) if sa > sb else None       # r129 - the spread stop_survivable judges against
+        _sv_fail = None                             # r129 - best ratio among the refused wings
         for c in contracts:
             kk = safe_float(getattr(c, "strike", 0)) or 0.0
             if kk <= 0 or (kk >= k if cand.side == "put" else kk <= k):
@@ -288,16 +302,21 @@ class TCSPlan:
                 continue
             sd = credit * TCS_STOP_PCT
             ok, svwhy = stop_survivable(sd, sb, sa)
+            _ratio = round(sd / _spr, 4) if _spr else None
             if not ok:
                 why = f"15%-of-credit stop is unsurvivable: {svwhy}"
+                if _ratio is not None and (_sv_fail is None or _ratio > _sv_fail):
+                    _sv_fail = _ratio
                 continue
             if best is None or width > best[0]:      # WIDEST clearing 1R = the most credit
-                best = (width, c, credit, r_expiry, sd)
+                best = (width, c, credit, r_expiry, sd, _ratio)
         if best is None:
             cand.why = why or f"no wing beyond {k:g} prices a credit"
             cand.why_key = "wing_r_best" if "1:1" in cand.why else "stop_vs_spread"
+            if cand.why_key == "stop_vs_spread":
+                cand.sv_ratio = _sv_fail
             return cand
-        width, long_c, credit, r_expiry, sd = best
+        width, long_c, credit, r_expiry, sd, cand.sv_ratio = best
         cand.long, cand.credit, cand.width, cand.r, cand.stop_dist = long_c, round(credit, 4), width, round(r_expiry, 4), round(sd, 4)
         cand.richness = round(credit / width, 4) if width else None
         lb, la = safe_float(getattr(long_c, "bid", 0.0)) or 0.0, safe_float(getattr(long_c, "ask", 0.0)) or 0.0
@@ -488,6 +507,8 @@ class TCSPlan:
         t.direction = prep.direction
         t.anchor(trigger=cand.price, invalidation=cand.price)
         if not cand.sellable:
+            if cand.why_key == "stop_vs_spread":      # r129 - the ratio rides into t.refuse's row
+                t.check("stop_vs_spread", cand.sv_ratio, False)
             prep.structural.append((cand.why_key or "contract", cand.why))
         else:
             t.check("contract", float(cand.short.strike), True)
@@ -502,7 +523,7 @@ class TCSPlan:
             t.check("wing_r_best", cand.r, True)
             t.check("r", cand.r, True)
             t.check("stop_dist", cand.stop_dist, None)
-            t.check("stop_vs_spread", cand.stop_dist, True)
+            t.check("stop_vs_spread", cand.sv_ratio, True)   # r129 - the RATIO, not dollars
             t.check("risk", round(cand.width - cand.credit, 4), None)
             t.check("pop", cand.pop, cand.pop >= TCS_MIN_POP)
             if cand.pop < TCS_MIN_POP:
