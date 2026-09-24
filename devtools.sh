@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# devtools.sh  v3.8  — OTV4TEST box menu
+# devtools.sh  v3.9  — OTV4TEST box menu
+# v3.9  2026-09-24  OTV4TEST r130 — R SUITE gains OPEN SCAN: today's two reports
+#       from tools/open_scan.py (09:35 ready, 09:45 live), and a RUN NOW for
+#       either phase. Read-only. Operator: "the scan you just ran should be done
+#       every trading day". Appended after STOP VS SPREAD; nothing moves.
 # v3.8  2026-09-24  OTV4TEST r129 — R SUITE gains STOP VS SPREAD, the Saturday
 #       review of criteria.stop_survivable: how often a fly or vertical was
 #       refused because its stop could not clear its own bid-ask, how close the
@@ -279,6 +283,18 @@ r_ledger()      { echo; echo "  R, expectancy, capture + giveback per strategy/s
 r_stop_sweep()  { echo; echo "  Bounds, not points: a cell matters only when its PESSIMISTIC net beats the book."; _r_tool stop_sweep.py; }
 r_exit_replay() { echo; echo "  Trail fit on real premium paths."; _r_tool exit_replay.py; }
 r_edge_scan()   { echo; echo "  Edge scan over the recorded book."; _r_tool edge_scan.py; }
+# r130 — the daily open scan: show today's two reports, or run a phase now.
+r_open_scan() {
+  echo; echo "  Open scan: 09:35 READY (feed, engines, levels, forks) · 09:45 LIVE (plan inputs, fires, warnings)."
+  [ -f "$REPO/tools/open_scan.py" ] || { echo "  🔴 tools/open_scan.py missing"; pause; return; }
+  read -rp "  ENTER = show today's reports · r = run READY now · l = run LIVE now: " a
+  case "$a" in
+    r|R) "$PY" "$REPO/tools/open_scan.py" --phase ready ;;
+    l|L) "$PY" "$REPO/tools/open_scan.py" --phase live ;;
+    *)   "$PY" "$REPO/tools/open_scan.py" --phase ready --show; "$PY" "$REPO/tools/open_scan.py" --phase live --show ;;
+  esac
+  pause
+}
 # r129 — reads the DERIVED store (plan_check), so it cannot use _r_tool's --db.
 r_stop_spread() {
   echo; echo "  Stop vs spread: refusals, near misses and ratios, flies + verticals."
@@ -600,6 +616,7 @@ MENU=(
   "ITEM|Exit replay          trail fit on real paths|r_exit_replay"
   "ITEM|Edge scan|r_edge_scan"
   "ITEM|STOP VS SPREAD       Saturday: stop vs bid-ask|r_stop_spread"
+  "ITEM|OPEN SCAN            today's 09:35 + 09:45 reports|r_open_scan"
 
   "SECTION|CLAUDE CODE (these items END the menu)"
   "ITEM|HAND OFF -> fresh Claude thread, bootstrapped|mi_claude_handoff"

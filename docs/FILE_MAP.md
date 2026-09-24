@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-329 Python modules across 12 local packages.
+331 Python modules across 12 local packages.
 
-**Reached by:** 116 imported · 10 declared entry points · 122 referenced from a script, unit or doc but never imported · **81 by nothing here**.
+**Reached by:** 116 imported · 11 declared entry points · 123 referenced from a script, unit or doc but never imported · **81 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -890,6 +890,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** `database/trade_logger.py`
 - **called by:** (not imported) — referenced in `docs/PLAN_SPEC.md`
 
+### `tests/check_open_scan.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
 ### `tests/check_option_symbol.py`
 - **calls:** `config.py`, `execution/entry_engine.py`
 - **called by:** (not imported) — referenced in `BACKLOG.md`, `docs/BACKLOG.md`
@@ -1310,6 +1314,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** (none)
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
+### `tools/open_scan.py`
+- **calls:** `utils/market_calendar.py`
+- **called by:** (entry point)
+
 ### `tools/plan_board.py`
 - **calls:** (none)
 - **called by:** (not imported) — referenced in `devtools.sh`, `docs/BACKLOG.md`
@@ -1344,7 +1352,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `utils/market_calendar.py`
 - **calls:** (none)
-- **called by:** `tests/check_holiday_aware.py`, `tests/check_market_calendar.py`, `utils/time_utils.py`
+- **called by:** `tests/check_holiday_aware.py`, `tests/check_market_calendar.py`, `tools/open_scan.py`, `utils/time_utils.py`
 
 ### `utils/math_utils.py`
 - **calls:** (none)

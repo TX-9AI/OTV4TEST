@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/gen_file_map.py  v4.9
+tests/gen_file_map.py  v4.10
+v4.10 2026-09-24  OTV4TEST r130 — `tools/open_scan.py` DECLARED. It is launched by the
+      two units deploy/install_open_scan_timer.sh writes (09:35 ready, 09:45 live);
+      undeclared, it would map as an orphan and check_map_accuracy E1 would go red.
 
 v4.9  2026-09-23  OTV4TEST r125 — `shadow/observer.py` and `shadow/trading_day.py`
       leave ENTRY_POINTS: shadow/ and its units are deleted (LVL.15 step 5).
@@ -146,6 +149,7 @@ ENTRY_POINTS = {
     # session in tmux at boot; nothing imports it, which is what an entry
     # point IS.
     "tools/claude_boot.py",
+    "tools/open_scan.py",          # r130 — launched by deploy/install_open_scan_timer.sh
     # CLI helpers, run by hand or by a script
     "analysis/get_orb_range.py",
     "utils/check_sdk.py",
