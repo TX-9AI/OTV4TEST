@@ -1,4 +1,4 @@
-FIRST BOOT — you are the Claude agent on a FRESHLY PROVISIONED OTV4TEST box. (docs/FIRST_BOOT.md v1.1 — 2026-09-24, OTV4TEST r134: introduce yourself to the peers, and the warm-up section; v1.0 — 2026-09-24, r132: first release)
+FIRST BOOT — you are the Claude agent on a FRESHLY PROVISIONED OTV4TEST box. (docs/FIRST_BOOT.md v1.2 — 2026-09-24, OTV4TEST r135: the hourly backfill is 45 days, so T7 is no longer a warm-up red; v1.1 — 2026-09-24, r134: introduce yourself to the peers, and the warm-up section; v1.0 — 2026-09-24, r132: first release)
 
 This box was built minutes ago by `bootstrap.sh` → `deploy/install.sh` → `setup_ec2.sh`. It has no history, no memories and no prior conversations — do NOT run `tools/last_session.py`; there is nothing to catch up on. The operator's own words for this session: *"Look over the services and the feed and the plans and just make sure that everything is comfortable writing to the new location and that there are no complaints."*
 
@@ -20,8 +20,8 @@ The operator: *"reach out to the other available agents it can find in the remot
 
 ## A new box is WARMING UP — expect these, do not report them as install defects
 The operator: *"We have to make sure that the new Claude knows the backfill is going to take a minute before it's all there."*
-- **History arrives in stages.** At start the feed backfills each interval only as deep as `BACKFILL_DAYS` in `data/candle_feed.py`: 1m today's session, 5m 4 days, 15m 6 days, **1h 16 days**, 1d 30 days. The first minutes after the feed starts are that backfill landing; a store that is still filling is not a broken one. Re-check before calling anything missing.
-- **The level book is SHALLOW** until the hourly tape accrues, and **`check_level_tape` T7 is RED** (it wants more than 30 days of hourly bars; 16 are backfilled). Expected on every fresh box for about two weeks. Report it as a warm-up effect with the day count you measured.
+- **History arrives in stages.** At start the feed backfills each interval only as deep as `BACKFILL_DAYS` in `data/candle_feed.py`: 1m today's session, 5m 4 days, 15m 6 days, **1h 45 days**, 1d 30 days. The first minutes after the feed starts are that backfill landing; a store that is still filling is not a broken one. Re-check before calling anything missing.
+- **The hourly tape is deep from the first backfill** (45 days, since r135), so `check_level_tape` T7 (more than 30 days) should be GREEN once the backfill has landed. If T7 is red after the feed has been up a few minutes, THAT is a finding: report the day count you measured. The 1m / 5m / 15m tapes are shallow by design and deepen as the box runs.
 - **Nothing that runs later has run yet:** the open-scan reports appear at 09:35 / 09:45 ET on the next trading day; the full checker sweep runs at the NEXT boot (run it by hand if you want it now); `trades.db` is empty.
 - **Outside RTH** the quote, greeks and prints streams are quiet by nature, and the noise floor is blind until about 09:40 ET.
 - **Always a defect, warm-up or not:** a unit not active or not enabled, a traceback, a store written outside `~/options-trader`, LIVE instead of PAPER, `git status` not clean.

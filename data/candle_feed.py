@@ -1,5 +1,21 @@
 """
-data/candle_feed.py  v4.15
+data/candle_feed.py  v4.16
+v4.16 2026-09-24  OTV4TEST r135 — A FRESH BOX BACKFILLS 45 DAYS OF HOURLY BARS, NOT 16.
+      The first fresh box's agent found check_level_tape T7 red (it needs more than
+      30 days of hourly tape; 16 were backfilled), so every new box ran a shallow
+      level book for about two weeks. The operator preferred fixing it with no
+      extra provisioning steps over seeding from the warehouse. MEASURED 2026-09-24
+      (/var/tmp/probe_1h_depth.py, its own stream): asked 90 days of QQQ{=1h} RTH,
+      TastyTrade returned 435 bars over 63 trading days, the full 90 calendar days.
+      45 because it clears T7's 30 with holiday margin and stays inside
+      RETENTION_DAYS['1h'] = 60 (warehouse/retention_purge.py), so the nightly
+      purge never deletes what the next restart would re-fetch. SIDE EFFECT, and a
+      correction: 16 calendar days is ~11 sessions x 7 = ~77 bars, UNDER the bot's
+      80-bar 1h frame (config.py TIMEFRAMES["1h"]; its comment's "~112" multiplied
+      calendar days by 7) - so a fresh box's 1h trend vote also started short.
+      45 days is ~220 bars. A box that already holds the history reads the same
+      last 80 bars as before; INSERT OR REPLACE rewrites held bars with the
+      vendor's own values.
 v4.15 2026-09-24  OTV4TEST r134 — THE JOURNAL WAS 97% SOMEONE ELSE'S DEBUG. The
       tastytrade SDK (13.2.3, tastytrade/__init__.py:13) hard-sets its own logger
       to DEBUG, so every websocket frame reached the journal past this file's
@@ -397,7 +413,7 @@ BACKFILL_DAYS = {
     "1m":  1,      # today's session (plus yesterday if pre-open)
     "5m":  4,      # 100 bars ≈ 1.3 sessions -> 4 cal days covers weekends
     "15m": 6,      # 50 bars ≈ 2 sessions
-    "1h":  16,     # 50 bars ≈ 8 sessions
+    "1h":  45,     # r135: ~31 sessions ≈ 220 bars; > T7's 30 days, < 60-day retention
     "1d":  30,     # 10 bars ≈ 2 weeks + margin
 }
 

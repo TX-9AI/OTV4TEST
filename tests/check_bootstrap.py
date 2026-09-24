@@ -1,4 +1,11 @@
-"""tests/check_bootstrap.py — v1.2
+"""tests/check_bootstrap.py — v1.3
+
+v1.3  2026-09-24 — OTV4TEST r135. G15: a fresh box's FIRST hourly backfill is
+      deep enough for everything that reads it, and no deeper than what is kept -
+      BACKFILL_DAYS['1h'] > 30 (check_level_tape T7), enough sessions for the
+      bot's 1h frame (config.py TIMEFRAMES["1h"]["candles"] at 7 RTH bars a
+      session, one holiday allowed), and <= RETENTION_DAYS['1h'] (the nightly
+      purge would delete the rest). TastyTrade serves 90 days (measured r135).
 
 v1.2  2026-09-24 — OTV4TEST r134. From the first fresh box's own report. G13:
       nothing setup_ec2.sh makes executable is tracked non-executable, so a fresh
@@ -714,6 +721,23 @@ guard("G14 the brief says introduce yourself to the peers, and that a peer is no
       lambda: "ListAgents" in _fb and "SendMessage" in _fb and "not the operator" in _fb)
 guard("G14 the committed permissions allow ListAgents and SendMessage",
       lambda: {"ListAgents", "SendMessage"} <= set(_perm.get("allow", [])))
+
+# ── G15 — the first hourly backfill is deep enough, and no deeper than kept ──
+_bf1h = int(_bf.group(1)) if _bf else 0
+_ret = re.search(r'RETENTION_DAYS = \{[^}]*"1h":\s*(\d+)', _read("warehouse/retention_purge.py"))
+_frame = re.search(r'"1h":\s*\{"candles":\s*(\d+)', _read("config.py"))
+_sessions = _bf1h * 5 // 7 - 1
+guard("G15 the hourly backfill clears check_level_tape T7 (> 30 days)", lambda: _bf1h > 30,
+      lambda: "%d days" % _bf1h)
+guard("G15 ...and fills the bot's 1h frame from the first backfill",
+      lambda: _frame and _sessions * 7 >= int(_frame.group(1)),
+      lambda: "%d sessions x 7 = %d bars vs %s" % (_sessions, _sessions * 7,
+                                                   _frame.group(1) if _frame else None))
+guard("G15 ...and is not deeper than the purge keeps",
+      lambda: _ret and _bf1h <= int(_ret.group(1)),
+      lambda: "backfill %d, retention %s" % (_bf1h, _ret.group(1) if _ret else None))
+guard("G15 the brief no longer calls a red T7 an expected warm-up",
+      lambda: "should be GREEN" in _fb and "for about two weeks" not in _fb)
 
 # ── G0 ────────────────────────────────────────────────────────────────────────
 for d in _TMP:
