@@ -1,5 +1,64 @@
 """
-analysis/orb_engine.py  v4.13
+analysis/orb_engine.py  v4.15
+v4.15  2026-09-24  OTV4TEST r131b — THE LINE IS OUTSIDE; THE BREAK BAR ONLY ARMS;
+      THE STOP MUST SIT IN THE RANGE. Operator rulings, same day:
+      (a) *"the candle that started inside the range and closed at the very
+      top of the range, but did not go past. It is the break"* — the break is
+      a close AT OR BEYOND the boundary (`>=`/`<=`). ONE CONVENTION FOR THE
+      FILE: at-or-beyond = OUTSIDE, strictly between = INSIDE, applied to the
+      break, the origin test (own open / previous close), `_closed_inside`
+      (runaway re-arm), `last_close_inside`, AWAITING_RANGE_REENTRY and the
+      session latches (`broke_high`/`broke_low` now latch on a close ON the
+      line — the sweep gate reads them). This SUPERSEDES v4.14's "a close at
+      the boundary is inside". The ARMED close-inside test (`close < orb_high`
+      / `close > orb_low`) already treated the line as outside; unchanged.
+      Bars before 09:34 ET are not judged (a restart replay walks 09:30-09:33,
+      which the live loop never reads; r95 parity).
+      (2) *"No, never. If this happens, we wait for a valid retest."* — the
+      break bar is NEVER its own retest, in every case (identity guard made
+      unconditional; HEAD's open-exactly-on-the-line allowance removed — 09-22
+      09:35 fired that way live).
+      (c) *"if the very next candle opens on the range and moves away that's
+      not a retest"* — the retest body must be STRICTLY outside (`>`/`<`);
+      the wick still touches or enters (`<=`/`>=`).
+      (b) *"The stop should be inside the opening range to be a valid set up,
+      and the sizing is based on the depth of that candles, extreme."* — the
+      stop stays the break candle's range-side extreme (long: its low); a
+      candle whose extreme is OUTSIDE the range (only possible via the
+      previous-close origin) is NOT an impulsive candle: nothing arms,
+      `break_refusal` names it, and the engine keeps waiting. On the line
+      counts as inside. `stop_level`/`stop_distance_px` formulas unchanged, so
+      the plan's provisional size and main.py's |fill - stop| sizing read the
+      same stop as before. Pinned by tests/check_orb_reentry.py V1-V4, S1-S3.
+v4.14  2026-09-24  OTV4TEST r131 — A RUNAWAY ENDS THIS BREAK, NOT THE SESSION;
+      "OPENS INSIDE" IS THE PREVIOUS CLOSE. Three operator rulings, 2026-09-24:
+      (1) *"A close back into the range is a new opportunity full stop."* A
+      runaway invalidation was TERMINAL for the session (v1.x "Do NOT re-arm
+      after an (a) runaway"), contrary to PLAN_SPEC §29.1 ("ORB is finished on
+      THIS break") and §29.6 ("No limit on qualifying setups per session").
+      `_advance_state` now re-arms a runaway exactly like a close-inside
+      invalidation — `_rearm(reentered=True)`, the impulsive candle is dead —
+      on the first closed 1m bar that CLOSES inside the range, under the same
+      cutoff (past it the engine is EXPIRED before this branch runs). Price
+      still out there keeps the runaway dormant.
+      (2) *"It obviously opened inside because the previous candle closed
+      inside."* `_check_for_break`'s origin gate now also accepts a bar whose
+      PREVIOUS 1m close (iloc[-3]) was inside the range (09-24 09:58 opened
+      736.06, 4c above 736.02, after 09:57 closed 735.97). The bar's own open
+      test is KEPT beside it (an OR), so nothing that armed before stops arming.
+      (3) *"keep it pegged to what the tape actually does"* — NO TOLERANCE.
+      `_closed_inside` is inclusive at both boundaries (the `last_close_inside`
+      / AWAITING_RANGE_REENTRY convention) and the break stays strict `>`/`<`,
+      so a close AT a boundary is inside and never beyond.
+      ⚠️ ONE CONSEQUENCE GUARDED: `_advance_state` reads the break and the
+      retest on the same closed bar, so a bar admitted ONLY by (2) — own open
+      outside, wick back in, body outside — would have confirmed itself on the
+      tick it broke (09-24 09:58 did, in the first cut's replay). That bar, by
+      identity (ts + frozen high/low/close), is not read as its own retest.
+      The own-open-AT-the-boundary self-confirm HEAD already allowed (09-22
+      09:35, a live trade) is deliberately left as it was — unruled.
+      The retest rule, the stop, sizing, targets and exits are otherwise
+      untouched. Pinned by tests/check_orb_reentry.py (born red on b1b6594).
 v4.13  2026-09-08  OTV4TEST r3 — THE RUNAWAY INVALIDATION IS A CLOSE, NOT A WICK.
       Operator: *"a wick isn't confirmation."* (a) in `_check_for_retest` read
       `high >= target_50pct` / `low <= target_50pct` — a WICK to the 50 ended
@@ -441,6 +500,9 @@ from datetime import datetime
 import pandas as pd
 
 from utils.time_utils import now_et
+from zoneinfo import ZoneInfo as _ZoneInfo
+_ET = _ZoneInfo("America/New_York")
+_RANGE_END_ET = __import__("datetime").time(9, 34)   # r131b: first bar the live loop reads
 from datetime import time as _dtime
 from config import ORB_NO_ENTRY_AFTER_ET as _ORB_CUT
 from utils.math_utils import orb_strike_selection
@@ -519,6 +581,10 @@ class ORBData:
     # the position. 0.0 means UNKNOWN, and the sizer's degenerate branch takes
     # it to a 1-lot loudly rather than guessing.
     stop_distance_px:   float = 0.0
+    # r131b — the last candidate break REFUSED because its range-side extreme
+    # printed outside the range ("<bar ts>: <reason>"). Record only; a fresh
+    # ORBData (`_rearm`) starts without it.
+    break_refusal:      str   = ""
     # 🔴 r221 — THE 50% HANDOFF, ON ACCEPTANCE NOT ON A TOUCH. Operator's
     # doctrine, 2026-09-03: "wicks are tests & closes are acceptance." The
     # runaway arms on a 1m CLOSE beyond target_50pct that still holds one tick
@@ -732,7 +798,7 @@ class ORBEngine:
             # flips the moment a closed bar is back inside the range.
             if df_1m is not None and len(df_1m) >= 2:
                 _c = float(df_1m.iloc[-2]["close"])
-                if d.orb_low <= _c <= d.orb_high:
+                if d.orb_low < _c < d.orb_high:     # r131b: strictly between
                     d.state = ORBState.WAITING_FOR_BREAK
                     logger.info("ORB: price back inside %.2f-%.2f — watching "
                                 "for the next break", d.orb_low, d.orb_high)
@@ -744,23 +810,54 @@ class ORBEngine:
             self._check_for_retest(df_1m, ms)
 
         if d.state == ORBState.INVALIDATED:
-            # Re-arm ONLY after a (b) close-inside invalidation. Past 11:00 the
+            # Re-arm after a (b) close-inside invalidation. Past the cutoff the
             # engine already EXPIRED above, so this branch is inherently
             # before-cutoff — i.e. the rule is exactly "1-min close back inside
-            # the range AND before 11:00". A runaway (a) NEVER re-arms (it hands
-            # off to sweep reversal). v3.8: 'timeout' no longer exists — the
-            # retest clock was removed per spec; armed persists until a market
-            # event resolves it.
+            # the range AND before the cutoff". v3.8: 'timeout' no longer
+            # exists — the retest clock was removed per spec; armed persists
+            # until a market event resolves it.
             if d.invalidation_reason == "close_inside":
                 # The bar CLOSED inside the range — re-entry is proven, not
                 # assumed, so this is the one re-arm that may claim
                 # WAITING_FOR_BREAK.
                 self._rearm(reentered=True)
+            elif (d.invalidation_reason == "runaway"
+                  and self._closed_inside(df_1m)):
+                # 🔴 r131 — A RUNAWAY ENDS THIS BREAK, NOT THE SESSION.
+                # Operator, 2026-09-24: "A close back into the range is a new
+                # opportunity full stop." (PLAN_SPEC §29.1 "ORB is finished on
+                # THIS break"; §29.6 "No limit on qualifying setups per
+                # session".) The runaway stays dormant while price is out
+                # there; the first 1m CLOSE back inside the range (inclusive,
+                # no tolerance) is the same re-entry the close-inside path
+                # proves, so it re-arms the same way and under the same
+                # cutoff: the impulsive candle is dead, a fresh one must print.
+                logger.info("ORB: 1m close back inside %.2f-%.2f after the "
+                            "runaway — a new opportunity; watching for a "
+                            "fresh impulsive candle", d.orb_low, d.orb_high)
+                self._rearm(reentered=True)
             else:
                 logger.debug(
                     f"ORB dormant after '{d.invalidation_reason}' invalidation "
-                    f"(ms={ms}) — deferring to sweep reversal"
+                    f"(ms={ms}) — price has not closed back inside the range"
                 )
+
+    def _closed_inside(self, df_1m: pd.DataFrame, back: int = 2) -> bool:
+        """r131 — did the closed 1m bar `iloc[-back]` CLOSE inside the range?
+
+        STRICTLY BETWEEN the boundaries, NO TOLERANCE. Operator, 2026-09-24:
+        "keep it pegged to what the tape actually does", and (r131b) a close
+        exactly ON the line is a BREAK, so it is never "back inside". The one
+        convention for this file: at-or-beyond = OUTSIDE, strictly between =
+        INSIDE — shared with `last_close_inside`, AWAITING_RANGE_REENTRY, the
+        session latches and the `>=`/`<=` break test.
+        """
+        d = self._data
+        if (df_1m is None or len(df_1m) < back
+                or d.orb_high <= 0 or d.orb_low <= 0):
+            return False
+        c = float(df_1m.iloc[-back]["close"])
+        return d.orb_low < c < d.orb_high
 
     # ── r103 — THE STATE FILE IS AUTHORITATIVE ───────────────────────────────
     def state_snapshot(self, price: float = 0.0) -> dict:
@@ -934,10 +1031,10 @@ class ORBEngine:
         The costs that survive that ruling are:
 
           1. **A FORGOTTEN RUNAWAY BECOMES A WRONG TRADE.** After a runaway
-             invalidation the engine is deliberately DORMANT — it never re-arms
-             and defers to sweep reversal. A restart forgets that, sits in
-             WAITING_FOR_BREAK, and will arm on a later break the design exists
-             to refuse. This is the reach-back earning its place: it REMOVES a
+             invalidation the engine is deliberately DORMANT until a 1m close
+             back inside the range (r131). A restart forgets that, sits in
+             WAITING_FOR_BREAK, and would arm on a bar that merely OPENS inside
+             while the continuous engine waits for a CLOSE inside. This is the reach-back earning its place: it REMOVES a
              trade, it does not add one.
           2. **THE SESSION BREAK LATCHES COME BACK FALSE.** `broke_high` /
              `broke_low` are session-level facts (v1.9) that the sweep gate
@@ -1080,10 +1177,10 @@ class ORBEngine:
             #       code that would have judged it anyway. That is not a chase.
             #   INVALIDATED (runaway)     → KEPT, and this is the case that
             #       prevents a WRONG trade rather than recovering a missed one.
-            #       A runaway NEVER re-arms; it defers to sweep reversal. A
+            #       A runaway is dormant until a 1m close back inside the range
+            #       (r131: that close re-arms, replayed here like any other). A
             #       restart that forgot the runaway would sit in
-            #       WAITING_FOR_BREAK and happily arm on a later break the
-            #       pre-restart engine was designed to refuse.
+            #       WAITING_FOR_BREAK and arm while the runaway owns the move.
             #   OPEN_LONG / OPEN_SHORT    → RECORDED, THEN CONSUMED. The
             #       trigger already fired while the process was down. Price has
             #       left the station. Entering now would be an ORB in name only:
@@ -1353,14 +1450,14 @@ class ORBEngine:
         # is deliberately CLOSE-ONLY and does NOT apply the opens_inside origin gate —
         # it records a session FACT ("a 1m candle closed beyond this boundary"), which
         # is what the sweep gate needs, not an ORB entry setup.
-        if close > d.orb_high:
+        if close >= d.orb_high:           # r131b: a close ON the line is a break
             if not self._broke_high:
                 self._broke_high = True
                 logger.info(
                     f"ORB latch: 1-min CLOSE {close:.2f} above high "
                     f"{d.orb_high:.2f} — broke_high armed (session-level)"
                 )
-        elif close < d.orb_low:
+        elif close <= d.orb_low:
             if not self._broke_low:
                 self._broke_low = True
                 logger.info(
@@ -1369,7 +1466,7 @@ class ORBEngine:
                 )
         # r228 — the same closed bar answers "is price still out there?"
         if d.orb_low > 0 and d.orb_high > 0:
-            d.last_close_inside = bool(d.orb_low <= close <= d.orb_high)
+            d.last_close_inside = bool(d.orb_low < close < d.orb_high)   # r131b: strict
         self._track_fifty_acceptance(df_1m)
 
     def _track_fifty_acceptance(self, df_1m):
@@ -1462,10 +1559,69 @@ class ORBEngine:
         # only cost real setups, and being a % of price it scaled into a hole
         # (0.05% = $0.49 on MU, ~$3.00 on SPX: price could close three points clear
         # of the range and not register).
-        opens_inside = d.orb_low <= open_ <= d.orb_high
+        # 🔴 r131 — "OPENS INSIDE" IS THE PREVIOUS 1m CLOSE. Operator,
+        # 2026-09-24, on 09:58 (open 736.06, 4c above the 736.02 high, after
+        # 09:57 closed 735.97 inside): "It obviously opened inside because the
+        # previous candle closed inside." A 1m bar's first print can sit a few
+        # cents from the prior close; the candle STARTED where the last one
+        # closed. No tolerance (`_closed_inside`, iloc[-3]; strict since r131b).
+        # ⚠️ THE OWN-OPEN TEST IS KEPT beside it (an OR), so nothing that armed
+        # before stops arming: with no previous bar in the frame the bar's own
+        # open is the only evidence, and while WAITING_FOR_BREAK the previous
+        # close is inside anyway on every path that reaches this state except
+        # a mid-session start with price already outside.
+        # r131b — "inside" is STRICTLY between (at-the-line = outside), both
+        # for the bar's own open and for the previous close.
+        opens_inside = (d.orb_low < open_ < d.orb_high
+                        or self._closed_inside(df_1m, back=3))
 
-        if opens_inside and close > d.orb_high:
+        # r131b — ONLY BARS THE LIVE LOOP CAN READ. With a close ON the line
+        # now a break, the range's 09:34 bar closing at the extreme it set is
+        # a break — the operator's own description, 2026-09-24: "the candle
+        # that started inside the range and closed at the very top of the
+        # range, but did not go past. It is the break" (09-22: 09:34 closed
+        # 743.45 = the high; 09:35 opened on it and moved away). The live
+        # engine first reads 09:34 (iloc[-2] on the 09:35 tick), but a
+        # restart's tape replay also walks 09:30-09:33, where a bar closing at
+        # the eventual 5m high would "break" a range that did not yet exist.
+        # Bars before 09:34 ET are therefore not judged, which keeps the
+        # replay equal to the live loop (r95). Untimed frames are not judged.
+        try:
+            _ts = df_1m.index[-2]
+            if getattr(_ts, "tzinfo", None) is not None:
+                _ts = _ts.tz_convert(_ET)
+            if hasattr(_ts, "time") and _ts.time() < _RANGE_END_ET:
+                return
+        except Exception:                                  # noqa: BLE001
+            pass
+
+        # 🔴 r131b — THE STOP MUST SIT INSIDE THE RANGE FOR A VALID SETUP.
+        # Operator, 2026-09-24: "The stop should be inside the opening range to
+        # be a valid set up, and the sizing is based on the depth of that
+        # candles, extreme." The stop is the break candle's range-side extreme
+        # (long: its low; short: its high) and it must lie within the range —
+        # ON the line counts, the range includes its own high/low. Only a bar
+        # admitted by the previous-close origin can print wholly beyond; it is
+        # NOT an impulsive candle: nothing arms, the reason is recorded, and
+        # the engine keeps waiting for a bar that starts inside again.
+        _refuse = None
+        if opens_inside and close >= d.orb_high and low_ > d.orb_high:
+            _refuse = (f"break candle's low {low_:.2f} is outside the range "
+                       f"(above {d.orb_high:.2f}) — not a valid setup")
+        elif opens_inside and close <= d.orb_low and high_ < d.orb_low:
+            _refuse = (f"break candle's high {high_:.2f} is outside the range "
+                       f"(below {d.orb_low:.2f}) — not a valid setup")
+        if _refuse:
+            d.break_refusal = f"{df_1m.index[-2]}: {_refuse}"
+            logger.info("ORB break REFUSED: %s", d.break_refusal)
+            return
+
+        # 🔴 r131b — A CLOSE ON THE LINE IS A BREAK. Operator, 2026-09-24: "the
+        # candle that started inside the range and closed at the very top of
+        # the range, but did not go past. It is the break". `>=` / `<=`.
+        if opens_inside and close >= d.orb_high:
             d.break_direction    = "long"
+            d.break_refusal      = ""          # r131b: a valid break supersedes it
             d.break_candle_close = close
             # Stop anchors to the IMPULSIVE candle's WICK, not its body: the low of
             # the candle that caused the breakout (v3.1). Using min(open,close)
@@ -1480,7 +1636,7 @@ class ORBEngine:
             d.stop_level         = d.break_candle_low
             # r207 — the sizing distance, measured from the boundary this
             # candle broke, frozen here and never recomputed downstream.
-            d.stop_distance_px   = abs(d.orb_high - d.break_candle_low)
+            d.stop_distance_px   = abs(d.orb_high - d.stop_level)
             d.target_strike      = orb_strike_selection(d.orb_high, d.orb_low, "long", STRIKE_INCREMENT)
             d.attempt_number    += 1
             d.state              = ORBState.ARMED_LONG
@@ -1490,8 +1646,9 @@ class ORBEngine:
                 f"ORB BREAK HIGH (attempt #{d.attempt_number}): close={close:.2f} "
                 f"above {d.orb_high:.2f} target={d.target_100pct:.2f} strike={d.target_strike}"
             )
-        elif opens_inside and close < d.orb_low:
+        elif opens_inside and close <= d.orb_low:
             d.break_direction    = "short"
+            d.break_refusal      = ""          # r131b: a valid break supersedes it
             d.break_candle_close = close
             # Stop anchors to the IMPULSIVE candle's WICK (its HIGH for a short) —
             # the high of the candle that caused the breakout (v3.1).
@@ -1504,7 +1661,7 @@ class ORBEngine:
             d.stop_level         = d.break_candle_high
             # r207 — the sizing distance, measured from the boundary this
             # candle broke, frozen here and never recomputed downstream.
-            d.stop_distance_px   = abs(d.break_candle_high - d.orb_low)
+            d.stop_distance_px   = abs(d.stop_level - d.orb_low)
             d.target_strike      = orb_strike_selection(d.orb_high, d.orb_low, "short", STRIKE_INCREMENT)
             d.attempt_number    += 1
             d.state              = ORBState.ARMED_SHORT
@@ -1567,6 +1724,21 @@ class ORBEngine:
             except Exception:
                 pass
 
+        # 🔴 r131b — THE BREAK BAR IS NEVER ITS OWN RETEST. Operator,
+        # 2026-09-24: "No, never. If this happens, we wait for a valid
+        # retest." PLAN_SPEC §29.1: the retest is a LATER 1m bar. `_advance_
+        # state` reads the break and then the retest on the SAME closed bar,
+        # and every 15s tick re-reads it until the next bar closes, so the
+        # break bar is recognised by IDENTITY (the ts the count excluded, the
+        # high/low/close frozen at the break) and only arms. This removes the
+        # allowance HEAD had for a break bar opening exactly on the line (09-22
+        # 09:35 fired that way).
+        if (d.bars_since_break == 0
+                and candle_ts == d.last_retest_bar_ts
+                and high == d.break_candle_high and low == d.break_candle_low
+                and close == d.break_candle_close):
+            return
+
         if d.break_direction == "long":
             # (a) Runaway breakout — ran to the 50% TP with no retest → invalidate.
             # This is the setup that most favors a sweep reversal instead.
@@ -1585,7 +1757,9 @@ class ORBEngine:
             # near-miss, and falls through to the (b) branch below.
             # r207 — a TOUCH of the boundary counts as the re-entry (`<=`).
             # The BODY test is unchanged: open AND close must stay outside.
-            if low <= d.orb_high and body_low >= d.orb_high:
+            # r131b — BODY STRICTLY OUTSIDE: a bar that opens ON the line and
+            # moves away is not a retest (operator: "We still have to wait").
+            if low <= d.orb_high and body_low > d.orb_high:
                 # phantom OPEN the dispatch will override — leave it awaiting
                 # retest so the engine can't get stuck OPEN with no position.
                 # sweep: confirm OPEN and let the dispatch fire it.
@@ -1615,7 +1789,8 @@ class ORBEngine:
             # (high > orb_low), body stays outside (body_high <= orb_low). No grace.
             # r207 — a TOUCH of the boundary counts as the re-entry (`>=`).
             # The BODY test is unchanged: open AND close must stay outside.
-            if high >= d.orb_low and body_high <= d.orb_low:
+            # r131b — mirror: body strictly below the low.
+            if high >= d.orb_low and body_high < d.orb_low:
                 # v4.1 — mirror of the long side; same deletion.
                 d.state           = ORBState.OPEN_SHORT
                 d.confirmed_at    = str(now_et())

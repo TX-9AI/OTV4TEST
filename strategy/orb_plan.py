@@ -1,5 +1,19 @@
 """
-strategy/orb_plan.py  v1.3
+strategy/orb_plan.py  v1.5
+v1.5  2026-09-24  OTV4TEST r131b — A REFUSED BREAK IS NAMED ON THE ROW. Operator,
+      2026-09-24: "The stop should be inside the opening range to be a valid
+      set up." analysis/orb_engine.py v4.15 refuses a break candle whose
+      range-side extreme printed outside the range and records why in
+      `break_refusal`; the WAITING HOLD row now carries it ("last candidate
+      REFUSED: ..."). No decision here changes. Pinned by check_orb_reentry V3.
+v1.4  2026-09-24  OTV4TEST r131 — THE RUNAWAY REFUSAL NAMES WHAT RE-OPENS IT.
+      Operator, 2026-09-24: *"A close back into the range is a new opportunity
+      full stop."* analysis/orb_engine.py v4.14 re-arms a runaway on the first
+      1m close back inside the range, so the `consequence` refusal ("ORB is
+      finished on THIS break") now lasts only while price is out there, and
+      its text says what ends it. The plan still reads the engine's answer and
+      decides nothing itself; after the re-arm it HOLDs on "impulsive candle"
+      like any WAITING_FOR_BREAK tick. Pinned by check_orb_reentry R5.
 v1.3  2026-09-23  OTV4TEST r118 — THE PITCHFORK LEAVES THE ORB TRADE. The operator,
       2026-09-23: "nothing about the pitchfork needs to be addressed inside the
       ORB trade." The three fork stamps on the prepared row are removed:
@@ -259,7 +273,8 @@ class ORBPlan:
             if why == "runaway":
                 t.refuse("consequence",
                          f"RUNAWAY — a close beyond the 50% {_n(getattr(orb, 'target_50pct', None))} "
-                         f"before any retest; ORB is finished on this break (hand-off)")
+                         f"before any retest; ORB is finished on THIS break (hand-off) — "
+                         f"a 1m close back inside {lo:.2f}-{hi:.2f} restarts the cycle")
             else:
                 t.refuse("consequence",
                          f"RE-ENTRY — a 1m close back inside {lo:.2f}-{hi:.2f}; the "
@@ -334,6 +349,11 @@ class ORBPlan:
                 return prep
             re = " (price is outside the range; a fresh candle needs to open inside)" \
                  if state == ORBState.AWAITING_RANGE_REENTRY else ""
+            # r131b — a candidate the engine REFUSED (its range-side extreme
+            # printed outside the range) is named on the row, not silent.
+            _rf = str(getattr(orb, "break_refusal", "") or "")
+            if _rf:
+                re += f" — last candidate REFUSED: {_rf}"
             prep.waiting_on = "impulsive candle"
             t.hold(f"range {lo:.2f}-{hi:.2f} (width {prep.width:.2f}) — long candidate "
                    f"{_n(cl.strike if cl else None, 'g')}C @ {_n(cl.mark if cl else None)}, "

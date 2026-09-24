@@ -1,6 +1,18 @@
 """
-strategy/breakout.py  v1.4
+strategy/breakout.py  v1.5
 THE SPECIFICATION. The plan searches; this declares what it must find.
+
+v1.5  2026-09-24  OTV4TEST r131 — `NEW_EXTREME`, THE RE-FIRE RULE, declared
+      FOUNDATIONAL. THE OPERATOR, 2026-09-24: *"A new reclaimed level has to
+      happen before it can fire again? A new high for a long, a new low for a
+      short."* The first entry per side per session is today's trigger (a
+      closed 1m bar's close beyond the range edge); every later entry on that
+      side must CLOSE above the highest high (long) / below the lowest low
+      (short) of every prior RTH bar since 09:30. Tape simulation, QQQ 38
+      sessions, +2R/-1R: +24.0R against -8.0R as built, trend days +44R vs
+      +22R, chop -9R vs -24R. It is his definition of when THIS trade fires
+      again, not a tuned band, so it has no knob (WA 36: "the best
+      FOUNDATIONAL gate has no knob at all") — the constant is the gate's name.
 
 v1.4  2026-09-21  OTV4TEST r84 — THE PLAN IS BUILT IN `__init__`, NOT ON
       FIRST USE. Lazily constructing it meant `BreakoutPlan()` only ever
@@ -104,7 +116,18 @@ GATES = {
     "FITTED_R_FLOOR":       "SELECTION",     # dial: "any" (the ORB has no R floor)
     "FITTED_RANGE_CLEAN_MAX": "SELECTION",   # dial: "any" — the ORB has no such rule
     "RESEARCH_UNTIL":       "FOUNDATIONAL",  # the acceptance-ALL window's expiry
+    "NEW_EXTREME":          "FOUNDATIONAL",  # r131: a re-fire on a side needs a new session extreme
 }
+
+# ── r131 — THE RE-FIRE RULE. Operator, 2026-09-24: *"A new reclaimed level has
+# to happen before it can fire again? A new high for a long, a new low for a
+# short."* The FIRST entry per side per session keeps the break trigger; every
+# LATER one on that side needs the last closed 1m bar to CLOSE strictly above
+# the highest HIGH (long) / below the lowest LOW (short) of every prior RTH bar
+# since 09:30. "Fired" is any Breakout entry that session on that side in
+# trades.db (DEC.1). No tolerance and no threshold, so nothing to relax: this
+# constant is only the gate's NAME, the one `breakout_plan` refuses under.
+NEW_EXTREME = "new_extreme"
 
 # ── the window (admission also carries it; this is the strategy's own claim) ──
 EARLIEST_ET = str(getattr(config, "BREAKOUT_EARLIEST_ET", "09:35"))
@@ -341,6 +364,7 @@ class Breakout:
         "flow_imbalance", "flow_tagged", "regime", "depth_ratio",
         "pool_price", "pool_name", "pool_dist_r", "reach_measured", "reach_pool",
         "verdict", "defer_to", "persist_ok",
+        NEW_EXTREME, "side_fired_today", "session_extreme",     # r131
     )
 
     # ⚠️ RECORDED, NEVER GATED. `vol_multiple` is here so the study that

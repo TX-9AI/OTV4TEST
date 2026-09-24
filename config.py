@@ -1,5 +1,11 @@
 """
-config.py  v4.33
+config.py  v4.34
+v4.34 2026-09-24  OTV4TEST r131 — the "VOLT SIZES OFF RISK_PER_TRADE_USD, NOT ORB_BUDGET_USD"
+      note is SUPERSEDED BY RULING and kept, struck, as history (r240 precedent).
+      Operator, 2026-09-24: *"VOLT needs to adopt the breakout sizing model"*,
+      then option 2, the 1-R curve. VOLT now sizes through RiskManager
+      _size_geometry off its signal candle (main._geometry_inputs); VOLT_BUDGET_USD
+      remains only as the plan's provisional feasibility size. No value changes here.
 v4.33 2026-09-23  OTV4TEST r108 — the declared retention policy's "1m" goes
       5 -> 60, equal to "1h". The level book builds levels from the hourly tape
       and judges the operator's BREACHED rule on 1m, so 1m must be kept as long
@@ -1750,7 +1756,11 @@ VOLT_EXT_STOCKLIKE      = float(os.environ.get("OT_VOLT_EXT_STOCKLIKE", "0.02"))
 VOLT_STOCKLIKE_ATR_MULT = float(os.environ.get("OT_VOLT_STOCKLIKE_ATR_MULT", "1.0"))
 VOLT_WINDOW_OPEN_ET     = (9, 35)
 VOLT_WINDOW_CLOSE_ET    = (11, 30)
-# 🔴 VOLT SIZES OFF RISK_PER_TRADE_USD, **NOT** ORB_BUDGET_USD, AND THE
+# ⬛ SUPERSEDED 2026-09-24 (OTV4TEST r131) — the operator ruled VOLT onto the Breakout
+# sizing model (1-R = the signal candle's extreme in premium, ORB_RISK_USD at risk,
+# capped at ORB_BUDGET_USD, r93 noise floor). The control-arm argument below was
+# measured and lost: VOLT is a participant now, not a control. Kept as history.
+# ~~🔴 VOLT SIZES OFF RISK_PER_TRADE_USD, **NOT** ORB_BUDGET_USD, AND THE
 # DIFFERENCE IS THE WHOLE COMPARISON. Live (configure.sh): OT_RISK_USD=1050 and
 # OT_ORB_BUDGET_USD=10000. VOLT uses ONLY the budget rule — it deliberately does
 # not import the ORB's `min(geometry, budget/cost)` clamp, because that clamp is
@@ -1761,7 +1771,7 @@ VOLT_WINDOW_CLOSE_ET    = (11, 30)
 # produces a P&L comparison that means nothing.
 # ⚠️ FOUND BY REPLAY, and only because the operator caught that the replay was
 # reading the $200 DEFAULT rather than the live environment (ENV.1's family: a
-# measurement taken outside the environment it describes).
+# measurement taken outside the environment it describes).~~
 VOLT_BUDGET_USD         = float(os.environ.get("OT_VOLT_BUDGET_USD",
                                                str(RISK_PER_TRADE_USD)))
 

@@ -1,5 +1,9 @@
 """
-strategy/orb_strategy.py  v4.8
+strategy/orb_strategy.py  v4.9
+v4.9  2026-09-24  OTV4TEST r131 — COMMENT ONLY. The GATES note described the retest body as
+      `body_low >= orb_high`; analysis/orb_engine.py v4.15 makes it STRICT (operator:
+      "if the very next candle opens on the range and moves away that's not a retest")
+      and never lets the break bar be its own retest. No code here changes.
 v4.8  2026-09-22  OTV4TEST r91 — the signal carries `entry_delta` from
       `contract.delta`, the sizing input the structural stop needs to convert
       |entry - impulsive candle extreme| into premium. Read from the contract,
@@ -164,8 +168,9 @@ logger = logging.getLogger(__name__)
 GATES = {
     # OTV4TEST r2 — no FEASIBILITY entry: the ATR floor is deleted (above).
     # FOUNDATIONAL, all tested inline with no knob:
-    #   the ORB engine armed (a break AND a retest: wick back inside the range,
-    #     body still outside - `low < orb_high and body_low >= orb_high`)
+    #   the ORB engine armed (a break AND a retest: a LATER bar's wick touches or
+    #     enters the range, body STRICTLY outside - `low <= orb_high and
+    #     body_low > orb_high` (r131); the break bar is never its own retest)
     #   direction from the ORB state
     #   this confirmation has not already produced an order (r207/r235)
     #   the liquidity path to target is a NOTE, not a gate (r193)

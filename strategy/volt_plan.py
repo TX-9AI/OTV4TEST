@@ -1,5 +1,11 @@
 """
-strategy/volt_plan.py  v1.1
+strategy/volt_plan.py  v1.2
+v1.2  2026-09-24  OTV4TEST r131 — DOCSTRING ONLY. The operator, 2026-09-24:
+      *"VOLT needs to adopt the breakout sizing model."* The ORDER is now sized
+      by RiskManager's geometry/risk rule (main._geometry_inputs, fed
+      `sizing_distance = risk_px` by volt_strategy). `provisional_size` below
+      is unchanged and is now only the plan's FEASIBILITY bar (does one
+      contract fit VOLT_BUDGET_USD), not the size that is placed.
 v1.1  2026-09-21  OTV4TEST r74 — THE ENTRY FRAME DROPS TO ONE MINUTE AND THE
       WARM-UP TO THREE BARS. v1.0 gated on COMPLETED 5-MINUTE bars and demanded
       eight of them — 40 minutes — so a window opening at 09:35 could not fire
@@ -169,9 +175,12 @@ def select_contract(chain, direction: str, target_strike: float, otm_from=None):
 
 
 def provisional_size(premium: float, budget_usd: float = BUDGET_USD) -> int:
-    """Budget / cost, min 1. VOLT does NOT size off geometry — the ORB's
-    `floor(width/distance)` rule is an ORB-specific prior and importing it
-    would smuggle a third gate into a two-gate control."""
+    """Budget / cost — the plan's FEASIBILITY bar and its recorded
+    `size_provisional`. ⚠️ r131: this is NO LONGER THE PLACED SIZE. By the
+    operator's 2026-09-24 ruling (*"VOLT needs to adopt the breakout sizing
+    model"*) the order is sized by RiskManager._size_geometry on the signal
+    range (`sizing_distance`); the r72 note that VOLT does not size off
+    geometry is superseded by that ruling."""
     cost = float(premium or 0.0) * CONTRACT_MULT
     if cost <= 0:
         return 0

@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_signal_numeric_tail.py  v1.2  (2026-09-13)
+tests/check_signal_numeric_tail.py  v1.3  (2026-09-24)
+v1.3  2026-09-24  OTV4TEST r131 — N5 RE-POINTED, NOT DROPPED: the stop_premium read moved into
+      main._sizing_stop_premium (VOLT's 1-R curve); the seam must call it and it must
+      read through _sig_num. Red in r131's full sweep until re-pointed; mutation-proven.
 v1.2  2026-09-13  OTV4TEST r25 — N6 PASSES A 1m FRAME. r24 requires the last closed bar to
       hold the 50; with no frame the runaway HOLDs, no signal exists, and N6 had
       nothing to resolve. RED SINCE r24 AND SHIPPED THAT WAY (not in r24's gate
@@ -71,9 +74,18 @@ def main():
     fn = next(n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.FunctionDef)
               and n.name == "_execute_entry_signal")
     body = ast.unparse(fn)
+    # r131 — RE-POINTED, NOT DROPPED (WA 38.4): the read moved into the sizing
+    # helper main._sizing_stop_premium (VOLT's 1-R curve). The seam must CALL the
+    # helper, and the helper must read through _sig_num with no bare getattr+float.
+    helper = next((n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.FunctionDef)
+                   and n.name == "_sizing_stop_premium"), None)
+    hbody = ast.unparse(helper) if helper is not None else ""
+    via_helper = "_sizing_stop_premium(signal)" in body and "_sig_num(signal, 'stop_premium')" in hbody
+    direct = "_sig_num(signal, 'stop_premium')" in body
     check("N5 the sizing seam reads stop_premium through _sig_num, not getattr+float",
-          "_sig_num(signal, 'stop_premium')" in body
-          and "float(getattr(signal, 'stop_premium'" not in body)
+          (via_helper or direct)
+          and "float(getattr(signal, 'stop_premium'" not in body
+          and "float(getattr(signal, 'stop_premium'" not in hbody)
 
     # N6 — the real runaway signal, end to end through the resolver
     import sqlite3

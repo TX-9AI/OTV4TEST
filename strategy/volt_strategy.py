@@ -1,5 +1,17 @@
 """
-strategy/volt_strategy.py  v1.0
+strategy/volt_strategy.py  v1.1
+v1.1  2026-09-24  OTV4TEST r131 — THE SIGNAL CARRIES `sizing_distance = risk_px`.
+      The operator, 2026-09-24: *"VOLT needs to adopt the breakout sizing
+      model."* main._geometry_inputs sizes any signal carrying it on
+      RiskManager._size_geometry (ORB_RISK_USD / ORB_BUDGET_USD, the r93 noise
+      floor on this distance) instead of the budget rule. NOT entry - stop:
+      VOLT's stop IS its entry, so that distance is 0 by design. NOT the
+      `sizes_on_geometry` flag: that is also sizes_on_structure(), which moves
+      the trail activation — an exit change nobody ruled. Trigger, stop,
+      ENT.1 opt-out and exits unchanged.
+      OPTION 2 (operator, same day): also carries `sizing_delta` (the chosen
+      contract's delta) so the sizer prices VOLT's 1-R as |delta| x range,
+      Breakout's curve, not the flat 25% floor. Sizing only.
 v1.0  2026-09-20  OTV4TEST r72 — VOLT, THE CONTROL ARM'S SPEC.
 
 THE SPEC IS FOUR BARS AND A FIRE. Everything that searches, selects or sizes
@@ -112,6 +124,26 @@ class VoltStrategy(BaseOptionsStrategy):
         # different statement from "the premium fell 25%", and the exit engine
         # reads this flag to tell them apart.
         signal.underlying_stop_is_thesis = True
+        # 🔑 r131 — THE BREAKOUT SIZING MODEL. Operator, 2026-09-24: *"VOLT
+        # needs to adopt the breakout sizing model."* main._geometry_inputs
+        # reads this and sizes on RiskManager's geometry/risk rule with it as
+        # the distance. ⚠️ WHY NOT |entry - stop|: the stop IS the entry (the
+        # 2026-09-21 ruling above), so that distance is 0 and the sizer would
+        # take its DEGENERATE -> 1 contract branch. The signal bar's range is
+        # VOLT's declared R — the number its trail already arms on — and the
+        # r93 noise floor judges it exactly as it judges a Breakout stop.
+        # ⚠️ NOT `sizes_on_geometry`: that flag is also sizes_on_structure(),
+        # which re-anchors the trail activation (an exit change).
+        signal.sizing_distance = float(prep.risk_px)
+        # 🔑 r131 OPTION 2 — THE 1-R CURVE NEEDS A DELTA. The operator ruled
+        # VOLT takes Breakout's curve: sizing stop = premium - |delta| x range
+        # (main._sizing_stop_premium). The selected contract's quoted delta,
+        # the same number the row later records as entry_delta. ⚠️ A SEPARATE
+        # FIELD, NOT `entry_delta`, so nothing that reads entry_delta off a
+        # signal can pick it up; None -> the sizer falls back to the flat floor
+        # and says so.
+        _d = getattr(contract, "delta", None)
+        signal.sizing_delta = float(_d) if _d is not None else None
 
         # notes describe; none of them authorises
         self._add_confluence(signal,

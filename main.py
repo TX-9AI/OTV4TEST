@@ -1,5 +1,21 @@
 """
-main.py  v4.68
+main.py  v4.69
+v4.69 2026-09-24  OTV4TEST r131 — VOLT SIZES ON THE BREAKOUT MODEL. The operator,
+      2026-09-24: *"VOLT needs to adopt the breakout sizing model."* The
+      geometry inputs of `_execute_entry_signal`'s sizing block are extracted
+      verbatim into `_geometry_inputs(signal)` (ORB/Breakout unchanged, pinned
+      by tests/check_volt_sizing.py V4), plus ONE addition: a signal carrying
+      `sizing_distance` is sized on geometry with THAT distance. VOLT supplies
+      its signal-bar range because its stop is its entry (entry - stop = 0 ->
+      the DEGENERATE 1-lot branch). Width is 0 (no opening range), so
+      `_size_geometry` takes its risk-sized WIDE STOP branch; the r93 noise
+      floor applies to the distance exactly as for Breakout.
+      OPTION 2 (operator, same day): VOLT takes Breakout's 1-R CURVE, not a
+      flat scale-up. `_sizing_stop_premium(signal)` feeds size_for
+      entry - |sizing_delta| x sizing_distance for a signal carrying
+      sizing_distance (flat floor + a WARNING if no delta); SIZING ONLY - the
+      recorded stop_premium and every exit are unchanged; every other signal
+      gets `_sig_num(signal, "stop_premium")` exactly as before.
 v4.68 2026-09-23  OTV4TEST r124 — `ctx["level_tape"]` IS NO LONGER BUILT. `_level_tape()`
       read every hourly bar the feed store holds (through derived/level_map's
       load_tape) once a minute, for two readers: the level engine's LEGACY path
@@ -4639,6 +4655,110 @@ def pin_proximity_verdict(ctx) -> tuple:
         return False, None, "", 0.0, f"{type(exc).__name__}: {exc}"
 
 
+def _geometry_inputs(signal):
+    """(orb_width, orb_stop_distance) for `size_for` — (0.0, 0.0) means the
+    signal takes the budget rule. Extracted from `_execute_entry_signal`'s
+    sizing block in r131 with its behaviour for every existing signal
+    unchanged (pinned by tests/check_volt_sizing.py V4 against HEAD numbers).
+
+    🔴 r131 — VOLT ADOPTS THE BREAKOUT SIZING MODEL. The operator, 2026-09-24:
+    *"VOLT needs to adopt the breakout sizing model."* A signal may carry an
+    explicit `sizing_distance`; when it does, it is SIZED ON GEOMETRY and that
+    number — not |underlying_entry - underlying_stop| — is the distance the
+    sizer (and its r93 noise floor) sees.
+    ⚠️ WHY VOLT CANNOT USE entry - stop: its stop IS its entry by the
+    operator's 2026-09-21 ruling (*"A close beyond where the trade opened is a
+    dead thesis"*, strategy/volt_plan.py), so the distance is 0 by design and
+    `_size_geometry` would take its DEGENERATE -> 1 contract branch on every
+    fire. VOLT's declared R is the signal bar's range (`prep.risk_px`), the
+    same number its trail arms on, so that is what it supplies.
+    ⚠️ WHY VOLT DOES NOT SET `sizes_on_geometry`: that flag is also
+    `OptionsSignal.sizes_on_structure()`, which re-anchors the entry-time
+    trail activation to the entry premium (base_strategy.py) — an EXIT
+    change the ruling did not ask for. `sizing_distance` opts into the sizing
+    rule and nothing else. ORB and Breakout, which carry no sizing_distance,
+    reach exactly the arithmetic they reached before.
+    """
+    _sd = getattr(signal, "sizing_distance", None)
+    if not (getattr(signal, "strategy_name", "") == "ORBStrategy"
+            or getattr(signal, "sizes_on_geometry", False)
+            or _sd is not None):
+        return 0.0, 0.0
+    # Geometry INPUTS only — the rule itself (floor, clamp, degenerate→1)
+    # lives in the sizer, so there is exactly one place it can be wrong.
+    _orb_w = abs(float(getattr(signal, "orb_range_high", 0) or 0)
+                 - float(getattr(signal, "orb_range_low", 0) or 0))
+    # 🔑 r207 — THE RISK IS ENTRY-TO-STOP, AND THAT IS NOT NEGOTIABLE.
+    # An intermediate cut of r207 sized on `orb_stop_distance_px`, the
+    # impulsive wick measured from the BOUNDARY, frozen at the break.
+    # Operator, 2026-09-01: *"The true risk is based on where we entered
+    # though, not the range boundary. That's arbitrary. The 2 factuals are
+    # the distance from entry to the stop."* He is right and the reasoning
+    # was mine: the stop is a PRICE LEVEL, so what is at stake is the gap
+    # between the fill and that level. The boundary is where the CANDLE
+    # started, and it stands in for the entry only while the two coincide.
+    # Freezing it bought determinism and paid for it in truth, which is
+    # backwards — r119 and r181 both already said actual risk.
+    # ⚠️ AND IT WAS SOLVING A PROBLEM THE LATCH HAD ALREADY REMOVED. The
+    # 2-then-24 on QQQ was an ILLEGITIMATE FIRE — a spent confirmation
+    # re-fired off a stale ORBData — not a mis-sized one. `order_placed`
+    # and the engine re-read below kill it; this arithmetic never had to
+    # change, and changing it was fixing the same defect twice in two
+    # places, which is how a repair becomes a second defect.
+    if _sd is not None:
+        # r131 — the signal's own declared R (VOLT: the signal bar's range).
+        # Its entry and stop coincide by design, so entry - stop is 0.
+        return _orb_w, float(_sd or 0.0)
+    _orb_d = abs(float(getattr(signal, "underlying_entry", 0) or 0)
+                 - float(getattr(signal, "underlying_stop", 0) or 0))
+    return _orb_w, _orb_d
+
+
+def _sizing_stop_premium(signal) -> float:
+    """The stop premium `size_for` sizes against. SIZING ONLY — never written
+    back to the signal, so the row's `stop_premium` and every exit that reads
+    it are unchanged.
+
+    🔴 r131 OPTION 2 — THE OPERATOR, 2026-09-24: VOLT adopts Breakout's 1-R
+    CURVE, not a flat scale-up. Breakout's 1-R is its structure stop in
+    premium (`structural_stop_premium`, r91): entry - |delta| x distance. For
+    VOLT the distance is the signal candle's range (`sizing_distance`), so
+    rpc = |delta| x range x 100 — tight range, big size; wide range, small.
+    ⚠️ WHY NOT signal.stop_premium(): VOLT's is the flat MAX_LOSS_PCT floor
+    (its stop is its entry, so the structural conversion returns None), and
+    `premium - 0.25 x premium` makes the count independent of the range —
+    measured 3.6-4.4x the old budget size on every trade, whatever the range.
+    ⚠️ NO DELTA -> THE FLAT FLOOR, LOUDLY (§0.5). Inventing a delta would size
+    real money on a number nobody measured.
+    ⚠️ A move at or beyond the premium -> 0.01, the same rule as
+    structural_stop_premium: the honest 1-R is then the whole premium.
+    Signals without `sizing_distance` (ORB, Breakout, everything else) get
+    `_sig_num(signal, "stop_premium")` exactly as before r131.
+    """
+    _flat = _sig_num(signal, "stop_premium")
+    _sd = getattr(signal, "sizing_distance", None)
+    if _sd is None:
+        return _flat
+    try:
+        _dl = abs(float(getattr(signal, "sizing_delta", None) or 0.0))
+        _pm = float(getattr(signal, "entry_premium", 0.0) or 0.0)
+        _dist = float(_sd or 0.0)
+    except (TypeError, ValueError):
+        _dl = _pm = _dist = 0.0
+    if not (_dl > 0 and _pm > 0 and _dist > 0):
+        logger.warning("[size] %s: no usable delta/premium/distance for the 1-R "
+                       "curve (delta=%s premium=%s distance=%s) — sizing on the "
+                       "FLAT stop premium %.4f instead",
+                       getattr(signal, "strategy_name", "?"),
+                       getattr(signal, "sizing_delta", None),
+                       getattr(signal, "entry_premium", None), _sd, _flat)
+        return _flat
+    _move = _dl * _dist
+    if _move >= _pm:
+        return 0.01
+    return _pm - _move
+
+
 def _execute_entry_signal(signal, ctx, ms, state, _sigj=None, *, additive: bool = False):
     """r161 — the execution tail of attempt_new_entry, factored so the
     butterfly can fire from main_loop while another position is open.
@@ -4745,7 +4865,6 @@ def _execute_entry_signal(signal, ctx, ms, state, _sigj=None, *, additive: bool 
     _struct = (getattr(signal, "structure", None)
                or _STRUCTURE_BY_NAME.get(getattr(signal, "strategy_name", ""))
                or "long_debit")          # fail closed, as the debit cutoff does
-    _orb_w = _orb_d = 0.0
     # 🔑 r55 — GEOMETRY IS SUPPLIED, NOT NAMED. `RiskManager.size_for` says so
     # itself: *"Geometry is a sub-rule of long_debit, selected by the caller
     # SUPPLYING orb_width / orb_stop_distance rather than by naming ORB. A
@@ -4758,31 +4877,12 @@ def _execute_entry_signal(signal, ctx, ms, state, _sigj=None, *, additive: bool 
     # it was not, and nothing said so because both paths return a SizingResult.
     # ⚠️ KEYED ON AN EXPLICIT FLAG, NOT ON orb_range_high: the hunt and the
     # runaway both carry that field and neither asked to be re-sized.
-    if (getattr(signal, "strategy_name", "") == "ORBStrategy"
-            or getattr(signal, "sizes_on_geometry", False)):
-        # Geometry INPUTS only — the rule itself (floor, clamp, degenerate→1)
-        # lives in the sizer, so there is exactly one place it can be wrong.
-        _orb_w = abs(float(getattr(signal, "orb_range_high", 0) or 0)
-                     - float(getattr(signal, "orb_range_low", 0) or 0))
-        # 🔑 r207 — THE RISK IS ENTRY-TO-STOP, AND THAT IS NOT NEGOTIABLE.
-        # An intermediate cut of r207 sized on `orb_stop_distance_px`, the
-        # impulsive wick measured from the BOUNDARY, frozen at the break.
-        # Operator, 2026-09-01: *"The true risk is based on where we entered
-        # though, not the range boundary. That's arbitrary. The 2 factuals are
-        # the distance from entry to the stop."* He is right and the reasoning
-        # was mine: the stop is a PRICE LEVEL, so what is at stake is the gap
-        # between the fill and that level. The boundary is where the CANDLE
-        # started, and it stands in for the entry only while the two coincide.
-        # Freezing it bought determinism and paid for it in truth, which is
-        # backwards — r119 and r181 both already said actual risk.
-        # ⚠️ AND IT WAS SOLVING A PROBLEM THE LATCH HAD ALREADY REMOVED. The
-        # 2-then-24 on QQQ was an ILLEGITIMATE FIRE — a spent confirmation
-        # re-fired off a stale ORBData — not a mis-sized one. `order_placed`
-        # and the engine re-read below kill it; this arithmetic never had to
-        # change, and changing it was fixing the same defect twice in two
-        # places, which is how a repair becomes a second defect.
-        _orb_d = abs(float(getattr(signal, "underlying_entry", 0) or 0)
-                     - float(getattr(signal, "underlying_stop", 0) or 0))
+    # 🔑 r131 — THE GEOMETRY INPUTS ARE BUILT BY `_geometry_inputs(signal)`,
+    # extracted VERBATIM from this block so tests/check_volt_sizing.py drives
+    # the real arithmetic rather than a copy of it (§21). The r55/r207 notes
+    # moved with the code. The one addition is VOLT's explicit
+    # `sizing_distance` — read the helper's docstring.
+    _orb_w, _orb_d = _geometry_inputs(signal)
     # ── r97 — PIN PROXIMITY: DO NOT FIRE A DIRECTIONAL ONTO THE PIN ──────
     # 🔑 The operator's hypothesis and his ruling that it ships as a
     # PARTICIPANT rather than an observer. Positive net GEX = dealers long
@@ -4851,7 +4951,11 @@ def _execute_entry_signal(signal, ctx, ms, state, _sigj=None, *, additive: bool 
     sizing = risk_mgr.size_for(
         _struct,
         premium             = signal.entry_premium,
-        stop_premium        = _sig_num(signal, "stop_premium"),
+        # r131 option 2 — SIZING-ONLY stop premium for a signal carrying
+        # `sizing_distance` (VOLT); every other signal gets exactly
+        # `_sig_num(signal, "stop_premium")`, as before. The signal's own
+        # stop_premium() — what the row records and exits read — is untouched.
+        stop_premium        = _sizing_stop_premium(signal),
         grade               = "UNGRADED",
         net_debit           = signal.net_debit if signal.is_butterfly else 0.0,
         butterfly_half_size = macro.butterfly_half_size if signal.is_butterfly else False,

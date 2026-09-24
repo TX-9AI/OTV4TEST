@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
-tests/check_orb_restart.py  v1.1
+tests/check_orb_restart.py  v1.2
+v1.2  2026-09-24  OTV4TEST r131 — comments only. Operator, 2026-09-24: "A close
+      back into the range is a new opportunity full stop." The runaway is
+      dormant until a 1m close back inside, no longer for the session; C8's
+      RUNAWAY_TAPE never closes back inside, so C8's property (a restart
+      REMEMBERS the runaway) is unchanged and no assertion moved. The re-arm
+      itself is pinned by check_orb_reentry R1/R1r.
 v1.1  2026-08-30  r195 — three cases asserted the literal
       WAITING_FOR_BREAK after a re-arm. r195 splits that into two honest
       states — AWAITING_RANGE_REENTRY when price is outside the range,
@@ -15,8 +21,9 @@ WAITING_FOR_BREAK with the session's history erased — no break latches, no
 attempt count, and no memory of a runaway invalidation.
 
 🔴 THE CASE THAT MATTERS MOST IS C8, AND IT REMOVES A TRADE RATHER THAN ADDING
-ONE. After a runaway the engine is deliberately dormant and never re-arms. A
-restart forgot that and would arm on a later break the design exists to refuse.
+ONE. After a runaway the engine is deliberately dormant until a 1m close back
+inside the range (r131). A restart forgot that and would arm while the runaway
+still owned the move.
 
 🔴 AND C2b IS THE OPERATOR'S RULING, 2026-08-24: **"DO NOT TAKE A MISSED ENTRY
 as permission to enter LATE... jumping in after it has left the station is not
@@ -101,8 +108,8 @@ QUIET_TAPE = [
 
 
 # 09:37 breaks; price then runs straight to target_50pct (703.00) with no
-# retest, which is the RUNAWAY invalidation. The engine goes dormant and by
-# design NEVER re-arms — it defers to sweep reversal.
+# retest, which is the RUNAWAY invalidation. The engine goes dormant; nothing
+# here closes back inside, so it stays dormant (r131: a close inside re-arms).
 RUNAWAY_TAPE = [
     _bar(9, 30, 700.5, 702.0, 700.0, 701.0),
     _bar(9, 31, 701.0, 701.8, 700.2, 700.6),
@@ -303,10 +310,10 @@ def main() -> int:
           "" if ok else detail)
 
     # ── C8: THE CASE THAT REMOVES A TRADE ────────────────────────────────────
-    # A runaway invalidation is DORMANT BY DESIGN — the engine never re-arms and
-    # defers to sweep reversal. A restart that forgets it sits in
-    # WAITING_FOR_BREAK and will arm on a later break the design exists to
-    # refuse. This is the reach-back preventing a WRONG trade, not recovering a
+    # A runaway invalidation is DORMANT BY DESIGN until a 1m close back inside
+    # the range (r131); this tape never closes back inside. A restart that
+    # forgets it sits in WAITING_FOR_BREAK and would arm while the runaway
+    # still owns the move. This is the reach-back preventing a WRONG trade, not recovering a
     # missed one, and it is the strongest reason the whole mechanism earns its
     # place.
     CLOCK["t"] = datetime(2026, 8, 24, 9, 45, 10)
