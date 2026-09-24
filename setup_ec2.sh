@@ -1,6 +1,12 @@
 #!/bin/bash
 # ==========================================================================
-# setup_ec2.sh  v4.4
+# setup_ec2.sh  v4.5
+# v4.5  2026-09-24  OTV4TEST r134 — EVERY FRESH BOX STARTED WITH A DIRTY TREE. The
+#       install chmod'ed analysis/get_orb_range.py, which git tracks as 100644, so
+#       `git status` read ` M analysis/get_orb_range.py` from minute one (found by
+#       the first fresh box's agent). The chmod was also dead: main.py runs the
+#       script as `sys.executable <script>`, so its exec bit is never used.
+#       Removed. Every *.sh is 100755 in the index, so the *.sh chmod stays clean.
 # v4.4  2026-09-24  OTV4TEST r133 — COSMETIC, FROM THE FIRST PROVING RUN'S SCREEN.
 #       The operator, on the banner: "can you also fix that little alignment thing".
 #       Banners are drawn by box(), which pads every line to one width (the right
@@ -498,7 +504,6 @@ fi
 # Set execute permissions on ALL shell scripts after git operations.
 # Must run after git reset --hard which can strip permissions set during rsync.
 find "$INSTALL_DIR" -name "*.sh" -exec chmod +x {} \;
-find "$INSTALL_DIR" -name "get_orb_range.py" -exec chmod +x {} \;
 
 # ── r132 — THE SUITE ────────────────────────────────────────────────────────
 # harden_hosts (needrestart shield + apt timers off-RTH) runs first, as before.

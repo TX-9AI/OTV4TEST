@@ -1,4 +1,12 @@
-"""tests/check_bootstrap.py — v1.1
+"""tests/check_bootstrap.py — v1.2
+
+v1.2  2026-09-24 — OTV4TEST r134. From the first fresh box's own report. G13:
+      nothing setup_ec2.sh makes executable is tracked non-executable, so a fresh
+      box starts with a CLEAN `git status` (analysis/get_orb_range.py, 100644, was
+      chmod'ed and every box began dirty). G14: FIRST_BOOT.md's warm-up section
+      states the hourly backfill as data/candle_feed.py actually sets it (the
+      brief cannot drift from the code), names T7, and tells the agent to
+      introduce itself to its peers - with ListAgents and SendMessage allowed.
 A FRESH BOX CAN BE BUILT FROM THIS REPO, HANDS-FREE, AND IT IS THIS REPO IT BUILDS.
 
 v1.1  2026-09-24 — OTV4TEST r133. G12: every banner the installers draw is
@@ -673,6 +681,39 @@ def _g9f():
 
 
 guard("G9f ~/.local/bin goes on PATH in ~/.bashrc exactly once across re-runs", _g9f)
+
+# ── G13 — a fresh box starts with a clean tree ──────────────────────────────
+def _chmodded_tracked():
+    names = re.findall(r'^find "\$INSTALL_DIR" -name "([^"]+)" -exec chmod \+x', _read("setup_ec2.sh"), re.M)
+    r = subprocess.run(["git", "-C", _root, "ls-files", "-s"], capture_output=True, text=True)
+    import fnmatch
+    hit = []
+    for ln in r.stdout.splitlines():
+        mode, _sha, _stage, path = ln.split(None, 3)
+        if any(fnmatch.fnmatch(os.path.basename(path), n) for n in names):
+            hit.append((mode, path))
+    return names, hit
+
+
+_names13, _hit13 = _chmodded_tracked()
+guard("G13 every tracked file setup_ec2.sh chmods is already 100755 in git",
+      lambda: _hit13 and all(m == "100755" for m, _p in _hit13),
+      lambda: "patterns %s; non-exec: %s" % (_names13, [p for m, p in _hit13 if m != "100755"]))
+guard("G13 get_orb_range.py is not chmod'ed (it runs via sys.executable)",
+      lambda: "get_orb_range" not in "\n".join(_code_lines(_read("setup_ec2.sh"))))
+
+# ── G14 — the first-boot brief: warm-up and peers ───────────────────────────
+_fb = _read("docs/FIRST_BOOT.md")
+_bf = re.search(r'"1h":\s*(\d+),', _read("data/candle_feed.py"))
+guard("G14 the brief's hourly backfill equals data/candle_feed.py BACKFILL_DAYS['1h']",
+      lambda: _bf and re.search(r"\*\*1h %s days\*\*" % _bf.group(1), _fb),
+      lambda: "code says %s" % (_bf.group(1) if _bf else None))
+guard("G14 the brief names the warm-up: BACKFILL_DAYS, T7, not a defect",
+      lambda: "WARMING UP" in _fb and "BACKFILL_DAYS" in _fb and "T7" in _fb)
+guard("G14 the brief says introduce yourself to the peers, and that a peer is not the operator",
+      lambda: "ListAgents" in _fb and "SendMessage" in _fb and "not the operator" in _fb)
+guard("G14 the committed permissions allow ListAgents and SendMessage",
+      lambda: {"ListAgents", "SendMessage"} <= set(_perm.get("allow", [])))
 
 # ── G0 ────────────────────────────────────────────────────────────────────────
 for d in _TMP:

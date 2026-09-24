@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-335 Python modules across 12 local packages.
+336 Python modules across 12 local packages.
 
-**Reached by:** 117 imported · 12 declared entry points · 126 referenced from a script, unit or doc but never imported · **80 by nothing here**.
+**Reached by:** 117 imported · 12 declared entry points · 126 referenced from a script, unit or doc but never imported · **81 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -176,7 +176,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `data/candle_feed.py`
 - **calls:** `config.py`, `data/tasty_client.py`
-- **called by:** `analysis/tape_at_level.py`, `data/candle_logger.py`, `data/market_data.py`, `derived/counterfactual.py`, `derived/levels.py`, `derived/surface.py`, `main.py`, `strategy/breakout_plan.py`, `tests/check_audit_20260823.py`, `tests/check_ext_polarity.py`, `tests/check_feed_always_on.py`
+- **called by:** `analysis/tape_at_level.py`, `data/candle_logger.py`, `data/market_data.py`, `derived/counterfactual.py`, `derived/levels.py`, `derived/surface.py`, `main.py`, `strategy/breakout_plan.py`, `tests/check_audit_20260823.py`, `tests/check_ext_polarity.py`, `tests/check_feed_always_on.py`, `tests/check_feed_log_noise.py`
 
 ### `data/candle_logger.py`
 - **calls:** `config.py`, `data/candle_feed.py`
@@ -722,6 +722,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** (none)
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
+### `tests/check_feed_log_noise.py`
+- **calls:** `data/candle_feed.py`
+- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+
 ### `tests/check_fees.py`
 - **calls:** (none)
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
@@ -816,7 +820,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_level_tape.py`
 - **calls:** `derived/__init__.py`, `derived/level_book.py`, `warehouse/__init__.py`, `warehouse/retention_purge.py`
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/FIRST_BOOT.md`
 
 ### `tests/check_levels_in_play.py`
 - **calls:** `data/derived_store.py`, `derived/__init__.py`, `derived/anchors.py`, `derived/levels.py`, `derived/registry.py`, `strategy/__init__.py`, `strategy/plan.py`, `strategy/sweep_credit_spread.py`, `strategy/sweep_plan.py`

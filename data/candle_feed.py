@@ -1,5 +1,16 @@
 """
-data/candle_feed.py  v4.14
+data/candle_feed.py  v4.15
+v4.15 2026-09-24  OTV4TEST r134 — THE JOURNAL WAS 97% SOMEONE ELSE'S DEBUG. The
+      tastytrade SDK (13.2.3, tastytrade/__init__.py:13) hard-sets its own logger
+      to DEBUG, so every websocket frame reached the journal past this file's
+      INFO basicConfig: MEASURED 2,895 of 2,988 candle-feed lines in five minutes,
+      ~600/min, found by the first fresh box's agent. `_tt_noise_filter` on the
+      root handlers drops the SDK's DEBUG records EXCEPT "Failed to parse event",
+      because those are DATA BEING DROPPED, not chatter: 173 in 30 minutes, every
+      one a TimeAndSale whose `size` was FRACTIONAL (0.27, 0.0013 shares) and the
+      SDK's model demands an integer - fractional-share prints never reach
+      `prints`. Kept visible; recorded as FEED.4, not fixed here. Our own
+      loggers are untouched; the SDK's INFO and above are untouched.
 v4.14 2026-09-18  OTV4TEST r52 — THE WAL HAD NO CEILING. `journal_size_limit`
       defaulted to -1 and SQLite reuses the WAL in place rather than shrinking
       it, so the file sits at its high-water mark forever: MEASURED
@@ -1868,9 +1879,29 @@ class CandleFeed:
                 backoff = min(backoff * 2, RECONNECT_MAX_S)
 
 
+class _TTNoiseFilter(logging.Filter):
+    """r134 — drop the tastytrade SDK's DEBUG chatter, keep its parse failures.
+    A HANDLER filter, not a logger level: the SDK logs from child loggers
+    (tastytrade.streamer), and a filter on the parent never sees their records."""
+
+    KEEP = ("Failed to parse event",)
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.levelno > logging.DEBUG or not record.name.startswith("tastytrade"):
+            return True
+        return record.getMessage().startswith(self.KEEP)
+
+
+def _install_tt_noise_filter() -> None:
+    for h in logging.getLogger().handlers:
+        if not any(isinstance(f, _TTNoiseFilter) for f in h.filters):
+            h.addFilter(_TTNoiseFilter())
+
+
 def main():
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s")
+    _install_tt_noise_filter()
     ap = argparse.ArgumentParser()
     ap.add_argument("--once", action="store_true",
                     help="backfill, flush, exit (smoke test)")
