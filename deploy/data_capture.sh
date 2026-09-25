@@ -1,5 +1,15 @@
 #!/usr/bin/env bash
-# deploy/data_capture.sh  v1.0
+# deploy/data_capture.sh  v1.1
+#
+# v1.1  2026-09-25  OTV4TEST r138 — THE BOT UNIT'S INSTRUMENT WINS, AND A MISMATCH
+#       REFUSES. v1.0 preferred $OT_INSTRUMENT over the unit. On the first SOFI
+#       box the operator ran this from the bootstrap's [deploy] tmux shell, which
+#       still exported OT_INSTRUMENT=QQQ after configure item 1 had moved the
+#       unit to SOFI, and it printed "managed: pushing as sym=QQQ" - a SOFI box
+#       about to push into the mainline QQQ partition. Measured: nothing reached
+#       S3 (0 objects from that host, any symbol). Now the unit is the source of
+#       truth; the environment is used ONLY when no unit exists yet, and when both
+#       are set and DISAGREE nothing is changed and the conflict is named.
 #
 # v1.0  2026-09-24  OTV4TEST r136 — ONE SWITCH: "managed" OR "standalone" DATA
 #       CAPTURE. The operator, 2026-09-24, on bringing up OTV4TEST boxes under
@@ -63,15 +73,22 @@ status() {
 }
 
 _instrument() {
-    # the bot unit's own OT_INSTRUMENT, the same read configure.sh's get_env does;
-    # an explicit OT_INSTRUMENT (setup_ec2.sh, before the unit exists) wins.
-    if [ -n "${OT_INSTRUMENT:-}" ]; then echo "$OT_INSTRUMENT"; return; fi
-    sudo grep -oP '(?<=^Environment=OT_INSTRUMENT=).*' "$UNIT_FILE" 2>/dev/null | tail -1
+    # r138 — the bot unit's OT_INSTRUMENT is the truth (configure.sh item 1 writes
+    # it). The environment is used only when there is no unit value, and a
+    # disagreement is refused: prints nothing and returns 1.
+    local unit_sym
+    unit_sym="$(sudo grep -oP '(?<=^Environment=OT_INSTRUMENT=).*' "$UNIT_FILE" 2>/dev/null | tail -1)"
+    if [ -n "$unit_sym" ] && [ -n "${OT_INSTRUMENT:-}" ] && [ "$unit_sym" != "$OT_INSTRUMENT" ]; then
+        echo "🔴 instrument CONFLICT: the bot unit says $unit_sym, this shell says OT_INSTRUMENT=$OT_INSTRUMENT." >&2
+        echo "   Nothing changed. Use a fresh shell, or: env -u OT_INSTRUMENT bash deploy/data_capture.sh managed" >&2
+        return 1
+    fi
+    echo "${unit_sym:-${OT_INSTRUMENT:-}}"
 }
 
 managed() {
     local sym rc=0
-    sym="$(_instrument)"
+    sym="$(_instrument)" || return 1
     if [ -z "$sym" ]; then
         echo "🔴 no OT_INSTRUMENT (not in the environment, not in $UNIT_FILE) - refusing:"
         echo "   a managed box must push under its own symbol."; return 1

@@ -1,4 +1,9 @@
-"""tests/check_data_capture.py — v1.0
+"""tests/check_data_capture.py — v1.1
+
+v1.1  2026-09-25 — OTV4TEST r138. D2c: when the shell's OT_INSTRUMENT and the bot
+      unit's DISAGREE, managed REFUSES and changes nothing (the SOFI box printed
+      "pushing as sym=QQQ" from a shell still carrying the bootstrap's QQQ);
+      when they agree it proceeds; the unit wins over an empty shell (D2).
 ONE SWITCH, "MANAGED" OR "STANDALONE" DATA CAPTURE, AND THE TWO MAINLINE FIXES
 A PUSHING BOX NEEDS.
 
@@ -174,6 +179,15 @@ r3, log3, dropin3 = _run("managed", STANDALONE_ST)
 guard("D2b managed with no instrument anywhere REFUSES and installs nothing",
       lambda: r3.returncode != 0 and "installer" not in log3 and "unmask" not in log3
       and dropin3 == "", lambda: "rc=%s %s" % (r3.returncode, r3.stdout[-160:]))
+
+r4, log4, drop4 = _run("managed", STANDALONE_ST, instrument_env="QQQ", instrument_in_unit="SOFI")
+guard("D2c shell QQQ vs unit SOFI: REFUSED, nothing installed, no drop-in, conflict named",
+      lambda: r4.returncode != 0 and "installer" not in log4 and "unmask" not in log4
+      and drop4 == "" and "CONFLICT" in r4.stderr + r4.stdout,
+      lambda: "rc=%s %s" % (r4.returncode, (r4.stderr or r4.stdout)[-160:]))
+r5, log5, drop5 = _run("managed", STANDALONE_ST, instrument_env="SOFI", instrument_in_unit="SOFI")
+guard("D2c shell and unit agree: proceeds, pushing as SOFI",
+      lambda: r5.returncode == 0 and "OT_INSTRUMENT=SOFI" in drop5)
 
 r, log, _d = _run("standalone", {**MANAGED_ST, "optbot-retention-purge.timer": "disabled"})
 guard("D3 standalone: s3-push disabled and MASKED",

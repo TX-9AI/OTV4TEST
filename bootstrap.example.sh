@@ -1,4 +1,8 @@
 #!/bin/bash
+# v4.1 — 2026-09-25 — OTV4TEST r138. Each sizing line names its configure.sh item
+#         ("ORB ramp TOP" etc.) - the operator looked for the ramps and could not
+#         find them under their variable names. OT_START_BOT added (default 0:
+#         the bot is installed, not started, until configure.sh's Done).
 # v4.0 — 2026-09-24 — OTV4TEST r132. REWRITTEN FOR THIS FORK, AND TRACKED AGAIN.
 #         The v3 template it replaces downloaded options_trader_v3's install.sh,
 #         so a box built from it ran v3; and a sorted .gitignore had silently
@@ -45,19 +49,20 @@ fi
 
 # ── Instrument and sizing (optional; these are the defaults) ──────────────────
 # Installs are ALWAYS paper. Switch to live later, deliberately, via configure.sh.
-export OT_INSTRUMENT="QQQ"
-export OT_RISK_USD="200"
-# export OT_ORB_RISK_USD="200"          # defaults to OT_RISK_USD
-# export OT_ORB_BUDGET_USD="200"        # defaults to OT_RISK_USD
-# export OT_DAILY_LOSS_LIMIT="200"      # defaults to OT_RISK_USD
-export OT_PIN_PROXIMITY_ACTIVE="0"      # PIN.1: off pending data (2026-09-24)
+export OT_INSTRUMENT="QQQ"              # configure.sh item 1  Instrument
+export OT_RISK_USD="200"               # configure.sh item 2  Risk per trade
+# export OT_ORB_RISK_USD="200"        # configure.sh item 9  ORB ramp START (defaults to OT_RISK_USD)
+# export OT_ORB_BUDGET_USD="200"      # configure.sh item 8  ORB ramp TOP   (defaults to OT_RISK_USD)
+# export OT_DAILY_LOSS_LIMIT="200"    # configure.sh item 6  Daily loss cap (defaults to OT_RISK_USD)
+export OT_PIN_PROXIMITY_ACTIVE="0"    # configure.sh item 7  Pin-proximity gate (PIN.1: off pending data)
 
 # ── Box ───────────────────────────────────────────────────────────────────────
 export OT_ROLE="control"        # full checkout: tests/ (the sweep) and docs/ (the agent's brief)
 export OT_SWAP_GB="2"           # /swapfile when the box has no swap; 0 = none
 export OT_GIT_REF="main"        # branch, tag or commit to install
 export OT_GIT_PUSH="0"          # 1 = this box may push (stores GITHUB_TOKEN); 0 = pull only
-export OT_DATA_CAPTURE="standalone"  # managed = the day_trader_pro conductor owns this box's data
+export OT_DATA_CAPTURE="standalone"  # configure.sh item 10 Data capture. managed = the day_trader_pro conductor owns this box's data
+export OT_START_BOT="0"             # 0 = bot installed, NOT started: ./configure.sh -> Done starts it. 1 = start at install
                                      # (S3 push on; tag the instance Name=<SYMBOL>, attach
                                      # role day-trader-box, launch with the fleet key pair)
 

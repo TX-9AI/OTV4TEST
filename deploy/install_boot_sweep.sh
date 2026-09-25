@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
-# deploy/install_boot_sweep.sh  v1.0
+# deploy/install_boot_sweep.sh  v1.1
+#
+# v1.1  2026-09-25  OTV4TEST r138 — NO `Wants=optionsbot.service`. In systemd, Wants=
+#       STARTS the wanted unit, so a boot sweep would pull a deliberately-disabled
+#       bot up at every boot - defeating setup_ec2.sh v4.7's "installed, not
+#       started". `After=` alone keeps the ordering. (The reference box's live
+#       unit, hand-written at r86, still carries Wants=; the bot there is enabled,
+#       so it changes nothing today - re-run this installer to align it.)
 #
 # v1.0  2026-09-24  OTV4TEST r132 — THE BOOT SWEEP GETS AN INSTALLER. The unit
 #       has run on the reference box since r86 (SWEEP.1) but was written there
@@ -46,7 +53,6 @@ sudo tee /etc/systemd/system/optbot-boot-sweep.service >/dev/null <<UNIT
 # competing.
 Description=OTV4TEST full checker sweep (boot only, never during a delivery)
 After=optionsbot.service candle-feed.service
-Wants=optionsbot.service
 
 [Service]
 Type=oneshot

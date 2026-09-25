@@ -1,4 +1,10 @@
-"""tests/check_bootstrap.py — v1.4
+"""tests/check_bootstrap.py — v1.5
+
+v1.5  2026-09-25 — OTV4TEST r138. G16: setup installs the bot but never ENABLES or
+      STARTS it unless OT_START_BOT=1 (the operator: "defaulted to not started");
+      G11's live-unit comparison drops Wants (the installer deliberately no longer
+      pulls the bot up) and asserts its absence instead; G17: every sizing line in
+      bootstrap.example.sh names its configure.sh item.
 
 v1.4  2026-09-24 — OTV4TEST r136. MOVED, NOT DROPPED (section 38.4): G3's
       "plan masked=s3-push..." is now "plan data_capture=standalone" - the mask
@@ -237,7 +243,7 @@ _WANT = {"unattended": "true", "tty": "0", "paper": "True", "instrument": "QQQ",
          "daily_loss_limit": "200", "pin_gate": "0", "swap_gb": "2",
          "requirements": "requirements.lock", "git_repo": "TX-9AI/OTV4TEST",
          "git_ref": "main", "git_push": "0", "claude_at_boot": "1",
-         "claude_login": "provided", "data_capture": "standalone"}
+         "claude_login": "provided", "data_capture": "standalone", "start_bot": "0"}
 guard("G3 --plan with no terminal exits 0", lambda: r.returncode == 0,
       lambda: "rc=%s %s" % (r.returncode, (r.stderr or r.stdout)[-200:]))
 for k, v in _WANT.items():
@@ -264,13 +270,13 @@ guard("G3b OT_CLAUDE_AT_BOOT=0 leaves the claude-boot installer out, keeps insta
 
 r1, plan1, _s1, _h1, _x1 = _setup(["--plan"], {"OT_RISK_USD": "500", "OT_PIN_PROXIMITY_ACTIVE": "1",
                                                "OT_SWAP_GB": "0", "OT_GIT_PUSH": "1",
-                                               "OT_GIT_REF": "abc1234", "OT_DATA_CAPTURE": "managed"})
+                                               "OT_GIT_REF": "abc1234", "OT_DATA_CAPTURE": "managed", "OT_START_BOT": "1"})
 guard("G3c the bootstrap's values win (risk 500 flows to ORB/loss; gate, swap, push, ref)",
       lambda: r1.returncode == 0 and plan1.get("orb_risk_usd") == "500"
       and plan1.get("orb_budget_usd") == "500" and plan1.get("daily_loss_limit") == "500"
       and plan1.get("pin_gate") == "1" and plan1.get("swap_gb") == "0"
       and plan1.get("git_push") == "1" and plan1.get("git_ref") == "abc1234"
-      and plan1.get("data_capture") == "managed",
+      and plan1.get("data_capture") == "managed" and plan1.get("start_bot") == "1",
       lambda: str(plan1))
 
 r4, _p4, _s4, home4, sudo4 = _setup([], creds=False)
@@ -614,7 +620,7 @@ def _g11():
 
 
 _rc11, _u11, _repo11 = _g11()
-_KEYS = ("Type", "After", "Wants", "Nice", "IOSchedulingClass", "SuccessExitStatus",
+_KEYS = ("Type", "After", "Nice", "IOSchedulingClass", "SuccessExitStatus",
          "TimeoutStartSec", "WantedBy")
 
 
@@ -744,6 +750,26 @@ guard("G15 ...and is not deeper than the purge keeps",
       lambda: "backfill %d, retention %s" % (_bf1h, _ret.group(1) if _ret else None))
 guard("G15 the brief no longer calls a red T7 an expected warm-up",
       lambda: "should be GREEN" in _fb and "for about two weeks" not in _fb)
+
+# ── G16 / G17 — r138 ─────────────────────────────────────────────────────────
+guard("G11 the boot-sweep unit ORDERS after the bot but never pulls it up (no Wants=)",
+      lambda: "Wants=optionsbot" not in _u11 and "After=optionsbot.service" in _u11)
+_s16 = _read("setup_ec2.sh")
+_code16 = [ln.strip() for ln in _code_lines(_s16)]
+guard("G16 setup never enables or starts the bot unless OT_START_BOT=1",
+      lambda: [l for l in _code16 if "systemctl enable ${SERVICE_NAME}" in l] ==
+              ['[ "$START_BOT" = 1 ] && sudo systemctl enable ${SERVICE_NAME}']
+      and _s16.count("sudo systemctl start ${SERVICE_NAME}") == 1
+      and re.search(r'if \[ "\$START_BOT" = 1 \]; then\n\s+print_info "Starting bot \(OT_START_BOT=1\)\.\.\."\n\s+sudo systemctl start \$\{SERVICE_NAME\}', _s16))
+guard("G16 the candle feed is still enabled and started at install",
+      lambda: "sudo systemctl enable candle-feed" in _s16 and "sudo systemctl start candle-feed" in _s16)
+_b17 = _read("bootstrap.example.sh")
+guard("G17 each sizing line names its configure.sh item",
+      lambda: all(re.search(r"%s=.*configure\.sh item %s\s+%s" % (v, n, lbl), _b17)
+                  for v, n, lbl in (("OT_RISK_USD", "2", "Risk per trade"),
+                                    ("OT_ORB_RISK_USD", "9", "ORB ramp START"),
+                                    ("OT_ORB_BUDGET_USD", "8", "ORB ramp TOP"),
+                                    ("OT_DAILY_LOSS_LIMIT", "6", "Daily loss cap"))))
 
 # ── G0 ────────────────────────────────────────────────────────────────────────
 for d in _TMP:

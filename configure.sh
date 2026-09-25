@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# configure.sh  v4.9
+# configure.sh  v4.10
+# v4.10 2026-09-25  OTV4TEST r138 — DONE STARTS THE BOT. Operator: the bot is "not
+#       started by default and then when I set all the variables in configure and
+#       exit out of the menu that resets everything and starts it". setup_ec2.sh
+#       v4.7 installs optionsbot NOT enabled and NOT started; `finish_session`
+#       (the Done path) now ENABLES it (so it survives reboots and wakes) and
+#       STARTS it when it is not running, or RESTARTS it when it is running and
+#       something changed. Running and unchanged: nothing happens, as before.
 # v4.9  2026-09-24  OTV4TEST r136 — ITEM 10 IS DATA CAPTURE: MANAGED OR STANDALONE.
 #       Operator: *"a toggle in configure.sh call it 'managed' or 'standalone'
 #       data capture"*. `change_data_capture` runs deploy/data_capture.sh - the
@@ -270,6 +277,8 @@ show_config() {
 
     if bot_is_running; then
         print_warn "Bot is currently running. Changes take effect on next start."
+    else
+        print_warn "Bot is NOT running - it starts (and is enabled at boot) when you choose Done."
     fi
 }
 
@@ -629,6 +638,27 @@ change_telegram() {
     fi
 }
 
+# ── r138 — THE DONE PATH: enable + start a stopped bot, restart a changed one ─
+finish_session() {
+    if ! bot_is_running; then
+        echo ""
+        echo "  Starting the bot (and enabling it at boot)..."
+        sudo systemctl enable "$SERVICE_NAME" >/dev/null 2>&1
+        sudo systemctl start "$SERVICE_NAME"
+        sleep 4
+        if bot_is_running; then
+            print_ok "Bot started with these settings."
+        else
+            print_warn "Bot failed to start — check: journalctl -u ${SERVICE_NAME} -n 20"
+        fi
+    elif [[ "$CHANGED" == "true" ]]; then
+        echo ""
+        show_config
+        sudo systemctl enable "$SERVICE_NAME" >/dev/null 2>&1
+        auto_restart
+    fi
+}
+
 auto_restart() {
     echo ""
     echo "  Applying changes and restarting bot..."
@@ -697,10 +727,6 @@ while true; do
     echo ""
 done
 
-if [[ "$CHANGED" == "true" ]]; then
-    echo ""
-    show_config
-    auto_restart
-fi
+finish_session
 
 echo ""

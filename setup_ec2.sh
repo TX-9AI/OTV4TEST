@@ -1,6 +1,16 @@
 #!/bin/bash
 # ==========================================================================
-# setup_ec2.sh  v4.6
+# setup_ec2.sh  v4.7
+# v4.7  2026-09-25  OTV4TEST r138 — THE BOT IS INSTALLED, NOT STARTED. Operator: "the
+#       options bot service should be defaulted to not started", "when I set all
+#       the variables in configure and exit out of the menu that resets everything
+#       and starts it". optionsbot is written and daemon-reloaded but neither
+#       ENABLED nor STARTED; configure.sh's Done enables and starts it. The candle
+#       feed still starts, so the tape warms up meanwhile. OT_START_BOT=1 restores
+#       the old start-at-install for a fully unattended box. Found the same night:
+#       the SOFI box went managed from a shell still carrying the bootstrap's
+#       OT_INSTRUMENT=QQQ after item 1 moved the unit to SOFI - the bot must not
+#       run on a box whose setup is not finished.
 # v4.6  2026-09-24  OTV4TEST r136 — DATA CAPTURE IS A MODE, NOT A HARD-CODED MASK.
 #       OT_DATA_CAPTURE=standalone (default, the reference box's shape) or
 #       managed (the day_trader_pro conductor owns the box's data), applied by
@@ -207,6 +217,7 @@ DAILY_LOSS_LIMIT="${OT_DAILY_LOSS_LIMIT:-$RISK_USD}"
 PIN_GATE="${OT_PIN_PROXIMITY_ACTIVE:-0}"
 SWAP_GB="${OT_SWAP_GB:-2}"
 CLAUDE_AT_BOOT="${OT_CLAUDE_AT_BOOT:-0}"
+START_BOT="${OT_START_BOT:-0}"
 DATA_CAPTURE="${OT_DATA_CAPTURE:-standalone}"
 case "$DATA_CAPTURE" in managed|standalone) ;; *)
     echo "  🔴 OT_DATA_CAPTURE must be 'managed' or 'standalone', got '$DATA_CAPTURE'."; exit 1 ;; esac
@@ -339,6 +350,7 @@ if [ "$PLAN" = 1 ]; then
     echo "PLAN git_ref=$GIT_REF"
     echo "PLAN git_push=$GIT_PUSH"
     echo "PLAN claude_at_boot=$CLAUDE_AT_BOOT"
+    echo "PLAN start_bot=$START_BOT"
     echo "PLAN claude_login=$([ -n "${CLAUDE_LOGIN_B64:-}" ] && echo provided || echo absent)"
     echo "PLAN units=candle-feed optionsbot"
     echo "PLAN data_capture=$DATA_CAPTURE"
@@ -480,7 +492,9 @@ SVCEOF
 sudo chmod 600 /etc/systemd/system/${SERVICE_NAME}.service
 sudo systemctl daemon-reload
 sudo systemctl enable candle-feed
-sudo systemctl enable ${SERVICE_NAME}
+# r138 — the bot is NOT enabled here (a disabled unit also stays off at the next
+# boot); configure.sh's Done enables and starts it once the operator is done.
+[ "$START_BOT" = 1 ] && sudo systemctl enable ${SERVICE_NAME}
 
 touch "$INSTALL_DIR/bot.log" "$INSTALL_DIR/trades.db"
 chown "${USER}:${USER}" "$INSTALL_DIR/bot.log" "$INSTALL_DIR/trades.db"
@@ -559,9 +573,13 @@ if [ "$(systemctl is-active candle-feed)" != "active" ]; then
     print_warn "candle-feed.service did not start — bot will fail loud (no data)."
     journalctl -u candle-feed -n 20 --no-pager
 fi
-print_info "Starting bot..."
-sudo systemctl start ${SERVICE_NAME}
-sleep 8
+if [ "$START_BOT" = 1 ]; then
+    print_info "Starting bot (OT_START_BOT=1)..."
+    sudo systemctl start ${SERVICE_NAME}
+    sleep 8
+else
+    print_info "Bot installed, NOT started (r138). Next: ./configure.sh, set it up, choose Done."
+fi
 if [ "$CLAUDE_AT_BOOT" = 1 ]; then
     print_info "Raising the Claude session (first boot)..."
     sudo systemctl start optbot-claude-boot.service || true
@@ -569,9 +587,14 @@ if [ "$CLAUDE_AT_BOOT" = 1 ]; then
 fi
 
 STATUS=$(systemctl is-active ${SERVICE_NAME})
-if [ "$STATUS" = "active" ]; then
+if [ "$START_BOT" != 1 ] || [ "$STATUS" = "active" ]; then
     echo ""
-    box "$GREEN" "          Setup Complete - Bot Running"
+    if [ "$START_BOT" = 1 ]; then
+        box "$GREEN" "          Setup Complete - Bot Running"
+    else
+        box "$GREEN" "   Setup Complete - Bot installed, NOT started" \
+                     "   Next: ./configure.sh -> set everything -> Done"
+    fi
     echo ""
     echo -e "  Instrument:  ${INSTRUMENT} 0DTE (TastyTrade)"
     echo -e "  Mode:        $([ "$PAPER_TRADING" = "True" ] && echo "📄 PAPER" || echo "🔴 LIVE")"
