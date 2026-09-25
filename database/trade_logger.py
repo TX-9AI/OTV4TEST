@@ -1,5 +1,15 @@
 """
-database/trade_logger.py  v4.17
+database/trade_logger.py  v4.18
+v4.18 2026-09-25  OTV4TEST r143 — EVERY CONNECTION IS CLOSED. `with self._connect() as conn:`
+      COMMITS but does NOT close a sqlite3 connection, and these sit in a
+      reference cycle, so each call left its file handle open until the cyclic
+      GC happened to run. MEASURED 2026-09-25: AAL 511 open handles on trades.db,
+      SOFI 219, this box 137, climbing ~8/min against a 1024 soft limit; at the
+      limit EVERY open fails ("unable to open database file") - on AAL three times,
+      ~23 minutes blind, and the first path to fail is update_current_premium
+      inside POSITION MANAGEMENT. Reproduced in isolation: 200 calls -> 200
+      handles, freed only by gc.collect(). All 22 sites now use `_db()`, which
+      commits/rolls back exactly as `with conn:` did and then CLOSES.
 v4.17 2026-09-25  OTV4TEST r140 — EVERY NEW TRADE ROW CARRIES `lineage = 'TEST'`.
       control's r426/OPS.50 keys every per-strategy rollup on (lineage, code),
       because six strategy names exist in BOTH engines as DIFFERENT code (md5
@@ -278,6 +288,7 @@ repo-wide v3.0 bump: Yahoo-Finance purge & data stream
 
 import logging
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
@@ -629,11 +640,25 @@ class TradeLogger:
         conn.row_factory = sqlite3.Row
         return conn
 
+    @contextmanager
+    def _db(self):
+        """A connection for ONE block: commit on success, rollback on error -
+        exactly what `with conn:` did - and then CLOSE it.
+        🔴 r143: `with self._connect() as conn:` never closed. The handles
+        leaked until the cyclic GC ran and, at 1024, every open on the box
+        failed. Callers of the bare `_connect()` must close it themselves."""
+        conn = self._connect()
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
+
     def _columns(self) -> set:
         """Real column names of `trades`, cached. PRAGMA once, not per insert."""
         if getattr(self, "_cols_cache", None) is None:
             try:
-                with self._connect() as conn:
+                with self._db() as conn:
                     self._cols_cache = {r[1] for r in
                                         conn.execute("PRAGMA table_info(trades)")}
             except Exception as exc:                           # noqa: BLE001
@@ -674,7 +699,7 @@ class TradeLogger:
             _et_mid = datetime.now(ET).replace(hour=0, minute=0, second=0,
                                                microsecond=0)
             _cut = _et_mid.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-            with self._connect() as conn:
+            with self._db() as conn:
                 row = conn.execute(
                     "SELECT COUNT(*) FROM trades WHERE strategy=? AND "
                     "entry_time >= ?", (strategy, _cut)).fetchone()
@@ -715,7 +740,7 @@ class TradeLogger:
         placeholders = ", ".join(["?"] * len(cols))
         col_names    = ", ".join(cols)
 
-        with self._connect() as conn:
+        with self._db() as conn:
             conn.execute(
                 f"INSERT OR REPLACE INTO trades ({col_names}) VALUES ({placeholders})",
                 values
@@ -728,7 +753,7 @@ class TradeLogger:
         entry_prem = self._get_field(trade_id, "entry_premium") or 0
         pnl_pct    = (exit_price - entry_prem) / entry_prem if entry_prem > 0 else 0
 
-        with self._connect() as conn:
+        with self._db() as conn:
             conn.execute("""
                 UPDATE trades SET
                     status       = 'closed',
@@ -829,7 +854,7 @@ class TradeLogger:
         five fields that follow from it; this method only persists them, so
         the arithmetic lives in one place and the DB never disagrees with the
         in-memory record. `entry_premium` here is the BLENDED credit."""
-        with self._connect() as conn:
+        with self._db() as conn:
             conn.execute(
                 "UPDATE trades SET contracts=?, entry_premium=?, max_loss=?, "
                 "total_cost=?, stop_premium=? WHERE trade_id=?",
@@ -845,7 +870,7 @@ class TradeLogger:
         engine's floor checks fire at the trail level and label every
         trail-armed exit 'hard_stop_25pct'/'stop_hit' — poisoning exit_reason
         distributions. Recovery seeds the in-memory trail from this column."""
-        with self._connect() as conn:
+        with self._db() as conn:
             conn.execute(
                 "UPDATE trades SET trail_stop=? WHERE trade_id=?",
                 (new_trail, trade_id)
@@ -868,7 +893,7 @@ class TradeLogger:
         ts is injectable for tests; production passes None and gets ts_for_db()
         — the same UTC base as entry_time, never a local or ET clock."""
         stamp = ts or ts_for_db()
-        with self._connect() as conn:
+        with self._db() as conn:
             conn.execute(
                 "UPDATE trades SET current_premium=?, "
                 "max_premium_seen_at=CASE WHEN max_premium_seen IS NULL "
@@ -896,7 +921,7 @@ class TradeLogger:
         if not trade_id or not payload:
             return False
         try:
-            with self._connect() as conn:
+            with self._db() as conn:
                 cur = conn.execute(
                     "UPDATE trades SET entry_snapshot=? WHERE trade_id=?",
                     (payload, trade_id))
@@ -933,7 +958,7 @@ class TradeLogger:
         if all(v is None for v in vals):
             return False
         try:
-            with self._connect() as conn:
+            with self._db() as conn:
                 cur = conn.execute(
                     "UPDATE trades SET "
                     + ", ".join(f"{k}=?" for k in cols)
@@ -966,7 +991,7 @@ class TradeLogger:
         if all(v is None for v in vals):
             return False
         try:
-            with self._connect() as conn:
+            with self._db() as conn:
                 cur = conn.execute(
                     "UPDATE trades SET "
                     + ", ".join(f"{k}=?" for k in cols)
@@ -996,7 +1021,7 @@ class TradeLogger:
         if not trade_id or not submit_ts or not fill_ts:
             return False
         try:
-            with self._connect() as conn:
+            with self._db() as conn:
                 cur = conn.execute(
                     "UPDATE trades SET exit_submit_ts=?, exit_fill_ts=?, "
                     "exit_latency_ms=?, exit_ladder_steps=?, exit_escalated=?, "
@@ -1017,12 +1042,12 @@ class TradeLogger:
             return
         sets = ", ".join(f"{k}=?" for k in fields)
         vals = list(fields.values()) + [trade_id]
-        with self._connect() as conn:
+        with self._db() as conn:
             conn.execute(f"UPDATE trades SET {sets} WHERE trade_id=?", vals)
 
     def get_open_trade(self) -> Optional[TradeRecord]:
         """Return the single open trade if any."""
-        with self._connect() as conn:
+        with self._db() as conn:
             row = conn.execute(
                 "SELECT * FROM trades WHERE status='open' "
                 "AND COALESCE(paper_trade,1)=? ORDER BY entry_time DESC LIMIT 1",
@@ -1035,7 +1060,7 @@ class TradeLogger:
     def get_open_trades(self) -> List[TradeRecord]:
         """Return ALL open trades (oldest first). Supports concurrent condor
         legs; every other strategy holds at most one at a time."""
-        with self._connect() as conn:
+        with self._db() as conn:
             rows = conn.execute(
                 "SELECT * FROM trades WHERE status='open' "
                 "AND COALESCE(paper_trade,1)=? ORDER BY entry_time ASC",
@@ -1059,7 +1084,7 @@ class TradeLogger:
         unreadable DB reports nothing rather than inventing a fill.
         """
         try:
-            with self._connect() as conn:
+            with self._db() as conn:
                 row = conn.execute(
                     "SELECT * FROM trades WHERE strategy='ORBStrategy' "
                     "AND COALESCE(paper_trade,1)=? AND entry_time >= ? "
@@ -1117,7 +1142,7 @@ class TradeLogger:
         it leaves 'open' and is never 'recovered' again. Returns the rows closed
         (for alerting)."""
         today_et = now_et().strftime("%Y-%m-%d")
-        with self._connect() as conn:
+        with self._db() as conn:
             rows = conn.execute(
                 "SELECT * FROM trades WHERE status='open' "
                 "AND COALESCE(paper_trade,1)=?", (self._mode_flag,)
@@ -1160,7 +1185,7 @@ class TradeLogger:
         the row books the TRUTH — realized P&L the DAILY_LOSS_LIMIT breaker can
         trust. Without them, pnl_usd is forced to 0.0 (the real fill is unknown —
         flag for review) with an explicit reason, as before."""
-        with self._connect() as conn:
+        with self._db() as conn:
             if pnl_usd is not None:
                 conn.execute(
                     "UPDATE trades SET status='closed', exit_reason=?, exit_time=?, "
@@ -1181,7 +1206,7 @@ class TradeLogger:
 
     def get_session_losses(self) -> int:
         today = now_utc().strftime("%Y-%m-%d")
-        with self._connect() as conn:
+        with self._db() as conn:
             row = conn.execute("""
                 SELECT COUNT(*) as n FROM trades
                 WHERE status='closed'
@@ -1192,7 +1217,7 @@ class TradeLogger:
         return row["n"] if row else 0
 
     def get_consecutive_losses(self) -> int:
-        with self._connect() as conn:
+        with self._db() as conn:
             rows = conn.execute("""
                 SELECT pnl_usd FROM trades
                 WHERE status='closed'
@@ -1209,7 +1234,7 @@ class TradeLogger:
         return count
 
     def log_circuit_breaker(self, reason: str, session_losses: int, notes: str = ""):
-        with self._connect() as conn:
+        with self._db() as conn:
             conn.execute("""
                 INSERT INTO circuit_breaker_events
                 (event_time, reason, session_losses, notes)
@@ -1217,7 +1242,7 @@ class TradeLogger:
             """, (ts_for_db(), reason, session_losses, notes))
 
     def _get_field(self, trade_id: str, field: str):
-        with self._connect() as conn:
+        with self._db() as conn:
             row = conn.execute(
                 f"SELECT {field} FROM trades WHERE trade_id=?", (trade_id,)
             ).fetchone()
@@ -1247,7 +1272,7 @@ class TradeLogger:
         keeps the scan tiny; the exact match is done by ET date in Python."""
         today_et = now_et().strftime("%Y-%m-%d")
         lower = (now_utc() - timedelta(days=1)).strftime("%Y-%m-%d")
-        with self._connect() as conn:
+        with self._db() as conn:
             rows = conn.execute("""
                 SELECT * FROM trades
                 WHERE status='closed' AND pnl_usd IS NOT NULL

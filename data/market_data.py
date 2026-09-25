@@ -1,5 +1,11 @@
 """
-data/market_data.py  v4.0
+data/market_data.py  v4.1
+v4.1  2026-09-25  OTV4TEST r143 — HEARTBEAT_STALE SAYS WHAT IT SAW. `_feed_alive` returned
+      False both for an old heartbeat AND for a read that RAISED, and the BLIND line
+      named only the threshold - so on 2026-09-25 "unable to open database file"
+      (the process out of file handles) was logged for a day as a stale feed while
+      the heartbeat was 0.4s old. It now records the reason - the age, "no heartbeat
+      row", or the exception text - and the BLIND detail carries it. Log-only.
 Frame accessors over the candle store, with staleness refusal.
 
 v4.0  2026-08-19  Ported from options_trader_v3 at the OTV4 split.
@@ -188,19 +194,29 @@ def _connect_ro() -> Optional[sqlite3.Connection]:
         return None
 
 
+_ALIVE_WHY = {"why": ""}     # r143: the reason the last _feed_alive() said False
+
+
 def _feed_alive(conn: sqlite3.Connection) -> bool:
     """True iff candle_feed's heartbeat is fresh. This is the dead-feed guard:
-    a crashed producer must surface as None, not stale numbers."""
+    a crashed producer must surface as None, not stale numbers.
+    🔴 r143 — a False now leaves its REASON in `_ALIVE_WHY` (the heartbeat's age,
+    no row, or the exception), because "stale" and "could not read" are
+    different faults and the second one hid a file-handle leak for a day."""
     try:
         cur = conn.execute(
             "SELECT last_write_epoch FROM feed_meta "
             "WHERE symbol='__feed__' AND interval='heartbeat'")
         row = cur.fetchone()
-    except Exception:
+    except Exception as exc:                                    # noqa: BLE001
+        _ALIVE_WHY["why"] = f"heartbeat READ FAILED ({type(exc).__name__}: {exc})"
         return False
     if not row:
+        _ALIVE_WHY["why"] = "no heartbeat row"
         return False
-    return (_time.time() - float(row[0])) <= FEED_STALE_S
+    age = _time.time() - float(row[0])
+    _ALIVE_WHY["why"] = "" if age <= FEED_STALE_S else f"heartbeat {age:.0f}s old"
+    return age <= FEED_STALE_S
 
 
 def fetch_candles(symbol: str, timeframe: str, count: int) -> Optional[pd.DataFrame]:
@@ -227,7 +243,8 @@ def fetch_candles(symbol: str, timeframe: str, count: int) -> Optional[pd.DataFr
     try:
         if not _feed_alive(conn):
             record_blindness("HEARTBEAT_STALE", symbol, timeframe,
-                             threshold_s=f"{FEED_STALE_S:.0f}")
+                             threshold_s=f"{FEED_STALE_S:.0f}",
+                             saw=_ALIVE_WHY["why"] or "unknown")
             return None
 
         fetch_n = max(count * 3, count + 10)   # margin for NaN drops / scoping
