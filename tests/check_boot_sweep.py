@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_boot_sweep.py  v1.1
+tests/check_boot_sweep.py  v1.2
+v1.2  2026-09-25  OTV4TEST r144 — B3/B3b REQUIRE THE SIGNAL JOURNAL IN SCRATCH TOO
+      (OT_SIGNAL_JOURNAL_DIR under the same bootsweep- mkdtemp). The sweep wrote
+      ~126 retest_check fixtures a day into the live journal; on SOFI/AAL they
+      reached sym=QQQ in the warehouse. Born red at 247facf.
 v1.1  2026-09-23  OTV4TEST r109 — B3 NAMES THE THIRD STORE, AND B3b DRIVES IT.
       The live `resting_orders.db` held 91 checker fixture rows because
       run_one isolated only the trades and derived stores. B3b calls the REAL
@@ -117,7 +121,7 @@ check("B2 it reads MemAvailable and has a floor to skip under",
 # the operator's standing rule is that a check once purged live data.
 check("B3 every checker runs against SCRATCH stores",
       ("OT_TRADES_DB" in _src) and ("OT_DERIVED_DB" in _src)
-      and ("OT_RESTING_DB" in _src)
+      and ("OT_RESTING_DB" in _src) and ("OT_SIGNAL_JOURNAL_DIR" in _src)
       and ("mkdtemp" in _src or "TemporaryDirectory" in _src),
       "checkers must never see the live trades/derived/resting stores")
 
@@ -146,7 +150,7 @@ def _b3b():
     finally:
         _m.subprocess.run = _orig
     env = seen.get("env") or {}
-    want = ("OT_TRADES_DB", "OT_DERIVED_DB", "OT_RESTING_DB")
+    want = ("OT_TRADES_DB", "OT_DERIVED_DB", "OT_RESTING_DB", "OT_SIGNAL_JOURNAL_DIR")
     paths = {k: env.get(k) for k in want}
     parents = {os.path.dirname(v) for v in paths.values() if v}
     ok = (all(paths.values()) and len(parents) == 1
@@ -158,7 +162,7 @@ try:
     _ok3b, _paths3b = _b3b()
 except Exception as _e3b:                                       # noqa: BLE001
     _ok3b, _paths3b = False, f"{type(_e3b).__name__}: {_e3b}"
-check("B3b DRIVEN: run_one hands a checker ONLY scratch stores (trades, derived, resting)",
+check("B3b DRIVEN: run_one hands a checker ONLY scratch stores (trades, derived, resting, journal)",
       _ok3b, str(_paths3b))
 
 # ── B4 — ENV.1. System python3 here is 3.14 with NO pandas, and a systemd unit

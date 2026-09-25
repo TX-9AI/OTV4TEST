@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-343 Python modules across 12 local packages.
+344 Python modules across 12 local packages.
 
-**Reached by:** 117 imported · 12 declared entry points · 129 referenced from a script, unit or doc but never imported · **85 by nothing here**.
+**Reached by:** 117 imported · 12 declared entry points · 130 referenced from a script, unit or doc but never imported · **85 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -784,6 +784,10 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_indicator_votes.py`
 - **calls:** `analysis/trend_engine.py`, `data/derived_store.py`, `derived/indicators.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
+### `tests/check_journal_isolation.py`
+- **calls:** (none)
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_ladder_wired.py`

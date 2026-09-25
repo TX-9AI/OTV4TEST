@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""tools/boot_sweep.py — v1.1
+"""tools/boot_sweep.py — v1.2
+
+v1.2 (2026-09-25) — OTV4TEST r144. THE SIGNAL JOURNAL IS SCRATCH TOO.
+      2026-09-25: the boot sweep's ORB checkers wrote 126 retest_check fixture events into the LIVE
+      data/signal_journal/<date>/QQQ.jsonl on this box every morning, and on SOFI and AAL the pusher
+      filed them under sym=QQQ in the warehouse - ~76 per box per BOOT, about 320 fabricated
+      events in QQQ's real partition (byte-identical 71,944-byte files on two boxes). r13 and r109
+      isolated the three stores; the journal was the fourth writer and nobody had redirected it.
+      run_one now sets OT_SIGNAL_JOURNAL_DIR under the run's mkdtemp; check_boot_sweep
+      B3/B3b require it.
 
 v1.1 (2026-09-23) — OTV4TEST r109. THE RESTING-ORDER STORE IS SCRATCH TOO. Every
       sweep wrote a `check_entry_gate` fixture offer (symbol X, strike 81) into
@@ -111,6 +120,7 @@ def run_one(name: str) -> bool:
     env["OT_TRADES_DB"] = os.path.join(d, "trades.db")
     env["OT_DERIVED_DB"] = os.path.join(d, "derived_store.db")
     env["OT_RESTING_DB"] = os.path.join(d, "resting_orders.db")     # r109
+    env["OT_SIGNAL_JOURNAL_DIR"] = os.path.join(d, "signal_journal")  # r144
     try:
         p = subprocess.run([PY, os.path.join(TESTS, name)],
                            cwd=_root, env=env, stdout=subprocess.DEVNULL,

@@ -1,5 +1,13 @@
 """
-analysis/signal_journal.py  v4.3
+analysis/signal_journal.py  v4.4
+v4.4  2026-09-25  OTV4TEST r144 — THE JOURNAL DIRECTORY IS OVERRIDABLE: OT_SIGNAL_JOURNAL_DIR.
+      2026-09-25: the boot sweep's ORB checkers wrote 126 retest_check fixture events into the LIVE
+      data/signal_journal/<date>/QQQ.jsonl on this box every morning, and on SOFI and AAL the pusher
+      filed them under sym=QQQ in the warehouse - ~76 per box per BOOT, about 320 fabricated
+      events in QQQ's real partition (byte-identical 71,944-byte files on two boxes). r13 and r109
+      isolated the three stores; the journal was the fourth writer and nobody had redirected it.
+      Unset, it is the repo's data/signal_journal exactly as before; the boot sweep
+      and the lander now point it at each checker's scratch.
 v4.3  2026-09-22  OTV4TEST r105 - the `sweep_age_bars` factor column is
       REMOVED. It was None on every strategy but the sweep and a hardcoded 0 on
       that one, so it was never a factor - which is exactly what the N.3 note
@@ -105,7 +113,9 @@ ET = ZoneInfo("America/New_York")
 
 # Self-locate: <repo>/analysis/signal_journal.py -> <repo>/data/signal_journal/
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_OUT_ROOT = os.path.join(_REPO_ROOT, "data", "signal_journal")
+# r144 — a checker run points this at its scratch (boot_sweep.run_one, land.sh CHECK).
+_OUT_ROOT = (os.environ.get("OT_SIGNAL_JOURNAL_DIR")
+             or os.path.join(_REPO_ROOT, "data", "signal_journal"))
 
 try:
     from config import INSTRUMENT as _SYMBOL

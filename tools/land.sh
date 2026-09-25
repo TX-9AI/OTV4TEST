@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# tools/land.sh — v1.15
+# tools/land.sh — v1.16
+# v1.16 (2026-09-25) — OTV4TEST r144. THE FOURTH WRITER. Every CHECK now also gets
+#   OT_SIGNAL_JOURNAL_DIR under $_scratch: checkers that drive the ORB engine wrote
+#   retest_check fixtures into the live data/signal_journal, and on a pushing box
+#   those reached the warehouse as another symbol's events. check_land_tooling T6.
 # v1.15 (2026-09-23) — OTV4TEST r109. THE THIRD STORE. r13 pointed the trades and
 #   derived stores at scratch for every CHECK, and left `resting_orders.db` live.
 #   91 of its 101 rows on 2026-09-23 were checker fixtures (symbol X, strike 81,
@@ -529,7 +533,7 @@ land_one() {
     # with the trades and derived stores pointed at scratch files, whatever it does.
     # r109 — AND THE RESTING-ORDER STORE, the third one r13 missed (v1.15 above).
     _scratch="$(mktemp -d /tmp/land-check.XXXXXX)"
-    if ( cd "$repo" && env -u LAND_ARCHIVE -u LAND_STAGE OT_TRADES_DB="$_scratch/trades.db" OT_DERIVED_DB="$_scratch/derived_store.db" OT_RESTING_DB="$_scratch/resting_orders.db" python3 "$chk" ) >/dev/null 2>&1; then
+    if ( cd "$repo" && env -u LAND_ARCHIVE -u LAND_STAGE OT_TRADES_DB="$_scratch/trades.db" OT_DERIVED_DB="$_scratch/derived_store.db" OT_RESTING_DB="$_scratch/resting_orders.db" OT_SIGNAL_JOURNAL_DIR="$_scratch/signal_journal" python3 "$chk" ) >/dev/null 2>&1; then
       pb_clear
       echo "  check: $chk PASS"
     else
