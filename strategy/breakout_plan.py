@@ -1,5 +1,17 @@
 """
-strategy/breakout_plan.py  v1.5
+strategy/breakout_plan.py  v1.6
+v1.6  2026-09-25  OTV4TEST r142 — A RE-FIRE IS JUDGED ON A BAR THAT CLOSED AFTER THE
+      LAST ENTRY. r131's gate compared the signal bar (df_1m[-2], the last CLOSED
+      bar) with every RTH bar BEFORE it - and the signal bar can be the SAME bar
+      that fired the previous entry. 2026-09-25: a long fired at 09:36:16 on the
+      09:35 close (743.87 over the 09:30-09:34 high 743.68) and stopped out 33s
+      later; at 09:36:51 the 09:35 bar was STILL the last closed bar, so the
+      re-fire passed the same test on the same close while the session high was
+      the 09:35 bar's own 744.10. -$1,250. Operator: "A new high for a long".
+      Now a re-fire also needs its signal bar to START at or after the minute of
+      the side's latest entry, so it closed after that entry; the session extreme
+      then includes the bar that fired before. `side_entries_today` is the one
+      trades.db read; `side_fired_today` is its count, unchanged for its callers.
 v1.5  2026-09-24  OTV4TEST r131 — A RE-FIRE NEEDS A NEW EXTREME (gate
       `new_extreme`, FOUNDATIONAL, declared in breakout.py GATES). THE
       OPERATOR, 2026-09-24: *"A new reclaimed level has to happen before it
@@ -147,6 +159,13 @@ def _bar_stamp(df, i):
 
 
 def side_fired_today(direction: str, day) -> Optional[int]:
+    """How many Breakout entries on this side today (see side_entries_today).
+    None = unreadable, and the caller FAILS CLOSED."""
+    ents = side_entries_today(direction, day)
+    return None if ents is None else len(ents)
+
+
+def side_entries_today(direction: str, day):
     """How many Breakout entries `trades.db` holds for `day` (ET) on this side.
     NEVER raises; None = unreadable, and the caller FAILS CLOSED.
 
@@ -180,10 +199,14 @@ def side_fired_today(direction: str, day) -> Optional[int]:
         logger.warning("[breakout] side history unreadable from trades.db (%s) — "
                        "failing closed", exc)
         return None
-    n = 0
+    out = []
     for et_, side, dirn in rows:
         try:
-            if datetime.fromisoformat(str(et_)).astimezone(_et).date() != day:
+            _t = datetime.fromisoformat(str(et_))
+            if _t.tzinfo is None:
+                _t = _t.replace(tzinfo=_utc)
+            _t = _t.astimezone(_et)
+            if _t.date() != day:
                 continue
         except (TypeError, ValueError):
             continue
@@ -193,10 +216,10 @@ def side_fired_today(direction: str, day) -> Optional[int]:
         if d not in ("long", "short"):
             logger.warning("[breakout] a Breakout row at %s has option_side=%r "
                            "direction=%r — counted as fired on BOTH sides", et_, side, dirn)
-            n += 1
+            out.append(_t)
         elif d == direction:
-            n += 1
-    return n
+            out.append(_t)
+    return sorted(out)
 
 
 def session_extreme(symbol: str, day, before_ms: int, direction: str):
@@ -532,7 +555,8 @@ class BreakoutPlan:
         gate = B.NEW_EXTREME
         sig_ts = _bar_stamp(df_1m, -2)
         day = sig_ts.date() if sig_ts is not None else _today_et()
-        fired = side_fired_today(direction, day)
+        ents = side_entries_today(direction, day)
+        fired = None if ents is None else len(ents)
         t.check("side_fired_today", None if fired is None else float(fired), None)
         if fired is None:
             t.refuse(gate, f"cannot tell whether {direction} already fired today — "
@@ -545,6 +569,18 @@ class BreakoutPlan:
         if sig_ts is None:
             t.refuse(gate, "the signal bar carries no timestamp, so the prior "
                            "session bars cannot be bounded — failing closed")
+            return False
+        # 🔴 r142 — THE SIGNAL BAR MUST HAVE CLOSED AFTER THE LAST ENTRY. The
+        # latest same-side entry's MINUTE is the earliest a fresh signal bar
+        # may start: a bar starting before it had already closed when that
+        # entry fired, so it cannot be "a new high" relative to it.
+        _last = ents[-1]
+        _fresh_from = _last.replace(second=0, microsecond=0)
+        if sig_ts < _fresh_from:
+            t.refuse(gate, f"no bar has closed since the last {direction} entry at "
+                           f"{_last.strftime('%H:%M:%S')} — the signal bar "
+                           f"{sig_ts.strftime('%H:%M')} already fired it "
+                           f"(fired {fired} on this side today)")
             return False
         ext = session_extreme(symbol or self._symbol(), day,
                               int(sig_ts.timestamp() * 1000), direction)

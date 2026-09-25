@@ -1,6 +1,17 @@
 #!/usr/bin/env python3
 """
-tests/check_breakout_new_extreme.py  v1.0
+tests/check_breakout_new_extreme.py  v1.1
+v1.1  2026-09-25  OTV4TEST r142 — N9: A RE-FIRE ON THE SAME SIGNAL BAR IS REFUSED. Live,
+      2026-09-25: a long fired at 09:36:16 on the 09:35 close; at 09:36:51 the
+      09:35 bar was still the last closed bar and the re-fire PASSED this gate on
+      the same close (-$1,250). N1-N8 never caught it: every re-fire they asked
+      was on a LATER bar. ⚠️ THE FIXTURE'S CLOCK IS FIXED WITH IT: `_log` stamped
+      entries at the REAL time, which the new "signal bar closed after the last
+      entry" rule reads, so a run in the afternoon would refuse every re-fire and
+      one at 08:00 would pass them - entries now carry the synthetic minute they
+      fired at. N4b moves from minute 30 to 31: at 30 it re-asked the SAME bar the
+      short had just fired on, which is now N9c's property; at 31 it still tests
+      "not below the session low", and asserts the same 97.50.
 A BREAKOUT RE-FIRE ON A SIDE NEEDS A NEW SESSION EXTREME (r131).
 
 v1.0  2026-09-24  OTV4TEST r131 — born red at r130 (b1b6594): the plan has no
@@ -176,14 +187,28 @@ def _why(prep):
             f"sess={(t.checks.get('session_extreme') or (None,))[0]}")
 
 
-def _log(side):
+def _log(side, minute, day):
+    """An entry filled 16s into `minute` (09:30 + minute) of `day` — on the
+    fixture's clock, because the r142 rule reads the entry TIME."""
     import uuid
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
     from database.trade_logger import get_trade_logger, make_record
-    get_trade_logger().log_entry(make_record(
-        trade_id=str(uuid.uuid4()), symbol="TST", strategy="Breakout",
+    tid = str(uuid.uuid4())
+    tl = get_trade_logger()
+    tl.log_entry(make_record(
+        trade_id=tid, symbol="TST", strategy="Breakout",
         setup_type=f"breakout_{'long' if side == 'call' else 'short'}",
         direction=("long" if side == "call" else "short"), option_side=side,
         orb_range_high=101.0, orb_range_low=100.0, paper_trade=1))
+    at = (datetime(day.year, day.month, day.day, 9, 30, tzinfo=ZoneInfo(ET))
+          + timedelta(minutes=minute, seconds=16)).astimezone(ZoneInfo("UTC")).isoformat()
+    conn = tl._connect()
+    try:
+        conn.execute("UPDATE trades SET entry_time=? WHERE trade_id=?", (at, tid))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 
@@ -203,7 +228,7 @@ def main():
         spec = Breakout()
         plan = spec._plan_()
     except Exception as exc:                                    # noqa: BLE001
-        for n in ("N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8"):
+        for n in ("N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8", "N9"):
             check(f"{n} setup", False, f"{type(exc).__name__}: {exc}")
         return _tail()
 
@@ -213,8 +238,19 @@ def main():
           lambda: (p1.ready and p1.direction == "long"
                    and "session_extreme" not in p1.tick.checks, _why(p1)))
 
+    # ── N9 — the long filled at 09:36:16; the 09:35 bar is STILL the last closed
+    # bar for the rest of that minute (2026-09-25, 09:36:51, -$1,250) ────────────
+    _log("call", 6, day)
+    p9, _ = _tick(plan, spec, "TST", day, 6)                 # signal 09:35 AGAIN
+    guard("N9 a re-fire on the SAME signal bar that fired the last entry is refused",
+          lambda: (_refused_at_gate(p9) and "no bar has closed since" in p9.tick.plan.last()[2],
+                   _why(p9)))
+    p9b, _ = _tick(plan, spec, "TST", day, 7)                # signal 09:36: close 101.60 > 09:35's 101.40
+    guard("N9b the NEXT bar re-fires when it really makes a new high — the side is not locked",
+          lambda: (p9b.ready and p9b.direction == "long"
+                   and abs(float(p9b.tick.checks["session_extreme"][0]) - 101.40) < 1e-9, _why(p9b)))
+
     # ── N2 — one long in the book; a close beyond the edge, no new high ─────
-    _log("call")
     p2, _ = _tick(plan, spec, "TST", day, 30)                # signal 09:59 close 101.60 < 102.50
     guard("N2 a second long beyond the edge but NOT above the session high is refused at 'new_extreme'",
           lambda: (_refused_at_gate(p2)
@@ -237,8 +273,12 @@ def main():
     guard("N4a the first SHORT fires on the break close although a long already fired — the latch is per side",
           lambda: (p4a.ready and p4a.direction == "short"
                    and "session_extreme" not in p4a.tick.checks, _why(p4a)))
-    _log("put")
-    p4b, _ = _tick(plan, spec, "TSS", day, 30)               # 98.40 not below 97.50
+    _log("put", 30, day)
+    p9c, _ = _tick(plan, spec, "TSS", day, 30)               # the SAME 09:59 bar the short fired on
+    guard("N9c the short side: the same signal bar cannot re-fire either",
+          lambda: (_refused_at_gate(p9c) and "no bar has closed since" in p9c.tick.plan.last()[2],
+                   _why(p9c)))
+    p4b, _ = _tick(plan, spec, "TSS", day, 31)               # 10:00 bar: 98.40 not below 97.50
     guard("N4b a second short below the edge but NOT below the session low is refused",
           lambda: (_refused_at_gate(p4b)
                    and abs(float(p4b.tick.checks["session_extreme"][0]) - 97.50) < 1e-9, _why(p4b)))
@@ -302,6 +342,16 @@ def main():
     guard("N8b an unreadable trades.db refuses at 'new_extreme' — it cannot know the side is fresh",
           lambda: (not p8b.ready and p8b.tick.verdict == "DECLINE"
                    and p8b.tick.plan.last()[2].startswith("new_extreme:"), _why(p8b)))
+    # (last on purpose: its second long entry would change what every later
+    # minute-91 re-ask is testing)
+    # N9d — freshness is judged against the LATEST entry, not the first: a second
+    # long fills at 11:01:16 on the 11:00 new-high close; asked again on that same
+    # bar it must refuse, although the 09:36 entry is long gone.
+    _log("call", 91, day)
+    p9d, _ = _tick(plan, spec, "TST", day, 91)
+    guard("N9d the LATEST same-side entry sets the fresh-bar bound, not the first",
+          lambda: (_refused_at_gate(p9d) and "no bar has closed since" in p9d.tick.plan.last()[2]
+                   and "11:01:16" in p9d.tick.plan.last()[2], _why(p9d)))
     return _tail()
 
 
