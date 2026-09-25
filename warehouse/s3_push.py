@@ -1,5 +1,18 @@
 """
-warehouse/s3_push.py  v4.8
+warehouse/s3_push.py  v4.9
+v4.9  2026-09-25  OTV4TEST r139 — A BOX PUSHES ONLY ITS OWN CANDLES, UNDER ITS OWN NAME.
+      Two guards, both from the first SOFI paper box, whose feed had streamed QQQ
+      after an instrument change (configure.sh v4.11 fixes the cause):
+      (1) push_candles uploads a symbol's candles only when its ROOT is this box's
+          instrument (SOFI, SOFI_EXT) - or the VIX family on the SPX box, as
+          before. Leftover rows of a previous instrument stay local instead of
+          landing in another box's partition. On a normal box the store holds
+          only its own family and VIX, so nothing it pushed before changes.
+      (2) own_symbol() takes OT_INSTRUMENT FIRST when it is set - the managed
+          drop-in sets it explicitly - and falls back to the newest OHLC file.
+          The file came first because the unit once carried no instrument; after
+          an instrument change the newest file is the OLD symbol's until the
+          next candle-logger run, which would have mislabelled every push.
 v4.8  2026-09-24  OTV4TEST r136 — THE VIX FAMILY IS SPX'S, MATCHED BY ROOT (mainline
       r350, ported). The exact match `in ("VIX","^VIX")` let every non-SPX box
       push `sym=VIX_EXT` - this fork's feed stores VIX_EXT rows - over the SPX
@@ -735,6 +748,11 @@ def own_symbol():
     process does not inherit the bot unit's environment, and over an EC2 tag
     lookup because the box role deliberately carries no ec2:Describe.
     """
+    # r139 — the explicit instrument wins (data_capture.sh's drop-in sets it);
+    # the newest OHLC file can still be a PREVIOUS instrument's after a change.
+    _env = os.environ.get("OT_INSTRUMENT", "").strip()
+    if _env:
+        return _env
     try:
         days = sorted(d for d in os.listdir(OHLC_ROOT)
                       if os.path.isdir(os.path.join(OHLC_ROOT, d)))
@@ -903,6 +921,11 @@ def push_candles(s3, bucket, db_path, ledger, me, counters=None):
         # VIX_W / VIX_9D cannot slip; VIXY does not match (a different product).
         if str(sym).upper().split("_")[0] in ("VIX", "^VIX") and me != "SPX":
             continue                                  # SPX owns the VIX family
+        # r139 — only this box's own family (and SPX's VIX): a previous
+        # instrument's rows are never pushed into another box's partition.
+        _root = str(sym).upper().split("_")[0]
+        if me and _root != str(me).upper() and _root not in ("VIX", "^VIX"):
+            continue
         lk = "%s|%s" % (sym, iv)
         hwm = int(ledger.get(lk, 0) or 0)
         try:

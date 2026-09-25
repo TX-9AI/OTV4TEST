@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# configure.sh  v4.10
+# configure.sh  v4.11
+# v4.11 2026-09-25  OTV4TEST r139 — ITEM 1 MOVES THE WHOLE BOX, NOT JUST THE BOT. The
+#       instrument lives in THREE places: optionsbot.service, candle-feed.service
+#       (its own Environment=OT_INSTRUMENT, written by setup_ec2.sh) and, on a
+#       managed box, the s3-push drop-in. change_instrument wrote only the first,
+#       so the first SOFI paper box traded SOFI while its FEED streamed QQQ
+#       (manifold: QQQ_EXT/1m 56s fresh, SOFI_EXT stale) and its store filled with
+#       QQQ candles the pusher would have sent to sym=QQQ. Now item 1 rewrites the
+#       feed's unit, restarts the feed, and on a managed box re-applies
+#       data_capture.sh so the push label follows. The operator: "a good lesson
+#       learned for when we migrate the fleet over".
 # v4.10 2026-09-25  OTV4TEST r138 — DONE STARTS THE BOT. Operator: the bot is "not
 #       started by default and then when I set all the variables in configure and
 #       exit out of the menu that resets everything and starts it". setup_ec2.sh
@@ -123,6 +133,7 @@
 SERVICE_NAME="optionsbot"
 BOT_DIR="$HOME/options-trader"
 UNIT_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
+FEED_UNIT_FILE="/etc/systemd/system/candle-feed.service"   # r139: the feed carries its own OT_INSTRUMENT
 
 # ── Colours ──────────────────────────────────────────────────
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'
@@ -318,7 +329,22 @@ change_instrument() {
     done
     set_env "OT_INSTRUMENT"  "$NEW_INST"
     set_env "OT_BOT_NAME"    "OptionsTrader-${NEW_INST}"
+    # r139 — the FEED has its own OT_INSTRUMENT; move it with the bot.
+    if sudo grep -q "^Environment=OT_INSTRUMENT=" "$FEED_UNIT_FILE" 2>/dev/null; then
+        sudo sed -i "s|^Environment=OT_INSTRUMENT=.*|Environment=OT_INSTRUMENT=${NEW_INST}|" "$FEED_UNIT_FILE"
+    else
+        print_warn "No OT_INSTRUMENT line in ${FEED_UNIT_FILE} - the feed was NOT moved; check it."
+    fi
     reload_daemon
+    if systemctl is-active --quiet candle-feed 2>/dev/null; then
+        sudo systemctl restart candle-feed
+        print_ok "Candle feed restarted on ${BOLD}${NEW_INST}${RESET}."
+    fi
+    # r139 — a MANAGED box's push label follows the instrument (data_capture.sh
+    # reads it from the bot unit just written; a stale shell value is dropped).
+    if bash "$BOT_DIR/deploy/data_capture.sh" status 2>/dev/null | head -1 | grep -q "managed$"; then
+        env -u OT_INSTRUMENT bash "$BOT_DIR/deploy/data_capture.sh" managed
+    fi
     print_ok "Instrument updated to ${BOLD}${NEW_INST}${RESET}."
     # Wipe trades.db in paper mode — old trades from a different instrument
     # are meaningless and pollute the P&L dashboard

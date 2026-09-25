@@ -1,4 +1,9 @@
-"""tests/check_data_capture.py — v1.1
+"""tests/check_data_capture.py — v1.2
+
+v1.2  2026-09-25 — OTV4TEST r139. D5b: a SOFI box whose store still holds a previous
+      instrument's candles (QQQ, QQQ_EXT - the first SOFI box's feed streamed QQQ)
+      pushes only SOFI/SOFI_EXT (and VIXY stays out now: not its family); D5c:
+      own_symbol() takes OT_INSTRUMENT over a stale OHLC file of the old symbol.
 
 v1.1  2026-09-25 — OTV4TEST r138. D2c: when the shell's OT_INSTRUMENT and the bot
       unit's DISAGREE, managed REFUSES and changes nothing (the SOFI box printed
@@ -203,9 +208,10 @@ _cfg = _read("configure.sh")
 guard("D4 item 10 runs change_data_capture and does NOT mark the bot for restart",
       lambda: re.search(r"^\s*10\)\s*change_data_capture\s*;;", _cfg, re.M)
       and not re.search(r"^\s*10\)[^\n]*CHANGED=true", _cfg, re.M))
-guard("D4 change_data_capture calls the ONE script for both answers",
-      lambda: _cfg.count('bash "$BOT_DIR/deploy/data_capture.sh" managed') == 1
-      and _cfg.count('bash "$BOT_DIR/deploy/data_capture.sh" standalone') == 1)
+_cdc = (re.search(r"^change_data_capture\(\) \{\n.*?^\}", _cfg, re.M | re.S) or re.match("", "")).group(0)
+guard("D4 change_data_capture calls the ONE script for both answers (scoped to its body - r139's item 1 also re-applies managed)",
+      lambda: _cdc.count('bash "$BOT_DIR/deploy/data_capture.sh" managed') == 1
+      and _cdc.count('bash "$BOT_DIR/deploy/data_capture.sh" standalone') == 1)
 guard("D4 Done is 11, the prompt names 1-11, and the summary shows the mode",
       lambda: re.search(r"^\s*11\)\s*break", _cfg, re.M) and "Select [1-11]" in _cfg
       and "Data capture:   ${BOLD}$(data_capture_label)" in _cfg)
@@ -217,7 +223,7 @@ def _d5(me):
     c = sqlite3.connect(db)
     c.execute("CREATE TABLE candles (symbol TEXT, interval TEXT, ts_epoch_ms INTEGER, open REAL,"
               " high REAL, low REAL, close REAL, volume REAL)")
-    for s in ("SOFI", "SOFI_EXT", "VIX", "VIX_EXT", "VIXY"):
+    for s in ("SOFI", "SOFI_EXT", "VIX", "VIX_EXT", "VIXY", "QQQ", "QQQ_EXT"):
         c.execute("INSERT INTO candles VALUES (?,?,?,?,?,?,?,?)", (s, "1m", 1790000000000, 1, 1, 1, 1, 1))
     c.commit(); c.close()
     import warehouse.s3_push as sp
@@ -235,10 +241,37 @@ try:
     _sofi, _spx = _d5("SOFI"), _d5("SPX")
 except Exception as exc:                                        # noqa: BLE001
     _sofi = _spx = ["ERR %s" % exc]
-guard("D5 a SOFI box uploads SOFI, SOFI_EXT, VIXY - never VIX or VIX_EXT",
-      lambda: _sofi == ["SOFI", "SOFI_EXT", "VIXY"], lambda: str(_sofi))
-guard("D5 the SPX box still uploads the VIX family", lambda: "VIX" in _spx and "VIX_EXT" in _spx,
-      lambda: str(_spx))
+guard("D5 a SOFI box uploads SOFI and SOFI_EXT only - never VIX/VIX_EXT",
+      lambda: _sofi == ["SOFI", "SOFI_EXT"], lambda: str(_sofi))
+guard("D5b ...and never a previous instrument's rows (QQQ, QQQ_EXT) or another root (VIXY)",
+      lambda: not ({"QQQ", "QQQ_EXT", "VIXY"} & set(_sofi)), lambda: str(_sofi))
+guard("D5 the SPX box still uploads the VIX family, and not QQQ",
+      lambda: "VIX" in _spx and "VIX_EXT" in _spx and "QQQ" not in _spx, lambda: str(_spx))
+
+
+def _d5c():
+    import warehouse.s3_push as sp
+    d = _mk("ohlc_")
+    os.makedirs(os.path.join(d, "2026-09-24"))
+    open(os.path.join(d, "2026-09-24", "QQQ.csv"), "w").write("x")
+    real_root, real_env = sp.OHLC_ROOT, os.environ.get("OT_INSTRUMENT")
+    try:
+        sp.OHLC_ROOT = d
+        os.environ["OT_INSTRUMENT"] = "SOFI"
+        with_env = sp.own_symbol()
+        os.environ.pop("OT_INSTRUMENT", None)
+        without_env = sp.own_symbol()
+    finally:
+        sp.OHLC_ROOT = real_root
+        if real_env is None:
+            os.environ.pop("OT_INSTRUMENT", None)
+        else:
+            os.environ["OT_INSTRUMENT"] = real_env
+    return with_env == "SOFI" and without_env == "QQQ", (with_env, without_env)
+
+
+guard("D5c own_symbol: OT_INSTRUMENT wins over a stale QQQ OHLC file; the file is the fallback",
+      lambda: _d5c()[0], lambda: str(_d5c()[1]))
 
 # ── D6 purge clamp ───────────────────────────────────────────────────────────
 _PROBE = r'''
