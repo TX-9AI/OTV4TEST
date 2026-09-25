@@ -1,7 +1,19 @@
-import math
 """
-utils/math_utils.py  v4.0
+utils/math_utils.py  v4.1
 Shared numeric helpers.
+
+v4.1  2026-09-25  OTV4TEST r137 — THE STRIKE HELPERS TRUNCATED A FRACTIONAL INCREMENT.
+      `int(round(price / increment) * increment)` is right for 1 and 5 and WRONG
+      for 0.5: SOFI at 16.70 rounds to the 16.5 strike and `int()` then made it
+      16 - a strike that exists, but not the one asked for, silently. Never hit,
+      because every increment was whole until SOFI/AAL (0.5) joined
+      STRIKE_INCREMENTS. Now the result is snapped to the increment and returned
+      as an INT when it is whole - so every existing symbol gets exactly what it
+      got before (int type included: no "736.0" can reach a label) - and as a
+      float otherwise. check_low_price_symbols pins both halves.
+      Also: a duplicate `import math` ABOVE this docstring is removed (the real
+      import is below) - it made the docstring not the module docstring and hid
+      this changelog from the lander's header check, which refused r137 once.
 
 v4.0  2026-08-19  Ported from options_trader_v3 at the OTV4 split.
 
@@ -28,19 +40,26 @@ import pandas as pd
 
 # ─── STRIKE UTILITIES ─────────────────────────────────────────────────────────
 
-def round_to_strike(price: float, increment: int) -> int:
+def _strike(v: float):
+    """r137 — an int when the strike is whole (unchanged for 1 / 5 increments),
+    otherwise the value on the cent grid (0.5 increments)."""
+    v = round(v, 4)
+    return int(v) if float(v).is_integer() else round(v, 2)
+
+
+def round_to_strike(price: float, increment: float):
     """Round price to nearest valid strike increment."""
-    return int(round(price / increment) * increment)
+    return _strike(round(price / increment) * increment)
 
 
-def floor_to_strike(price: float, increment: int) -> int:
+def floor_to_strike(price: float, increment: float):
     """Round DOWN to nearest valid strike (for OTM put selection)."""
-    return int(math.floor(price / increment) * increment)
+    return _strike(math.floor(price / increment) * increment)
 
 
-def ceil_to_strike(price: float, increment: int) -> int:
+def ceil_to_strike(price: float, increment: float):
     """Round UP to nearest valid strike (for OTM call selection)."""
-    return int(math.ceil(price / increment) * increment)
+    return _strike(math.ceil(price / increment) * increment)
 
 
 # ─── ORB MATH ─────────────────────────────────────────────────────────────────

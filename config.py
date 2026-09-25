@@ -1,5 +1,15 @@
 """
-config.py  v4.34
+config.py  v4.35
+v4.35 2026-09-25  OTV4TEST r137 — SOFI AND AAL ARE TRADEABLE SYMBOLS. Operator: "I need
+      AAL & SOFI to be selectable from configure.sh" - for the paper boxes that
+      will test live mechanics on cheap, weekly-option names (FLEET.1). Both join
+      STRIKE_INCREMENTS (configure.sh's tradeable list IS its keys) at 0.5 and
+      PENNY_CLASSES, each MEASURED from Cboe's public delayed chain 2026-09-24:
+      SOFI (16.67) and AAL (13.38) list $0.50 strikes on every strike within $3 of
+      spot on the 09-25 and 10-02 weeklies, and 81% / 74% of their option quotes
+      under $3 sit off the nickel grid (0.01, 0.02, 0.03 ...), i.e. penny class.
+      The FIRST fractional increment in this table - utils/math_utils.py v4.1
+      stops truncating it.
 v4.34 2026-09-24  OTV4TEST r131 — the "VOLT SIZES OFF RISK_PER_TRADE_USD, NOT ORB_BUDGET_USD"
       note is SUPERSEDED BY RULING and kept, struck, as history (r240 precedent).
       Operator, 2026-09-24: *"VOLT needs to adopt the breakout sizing model"*,
@@ -708,6 +718,7 @@ PENNY_CLASSES = {
     "AAPL", "AMD", "AMZN", "AVGO", "COST", "CRM", "CVX", "GOOGL", "GS",
     "JPM", "LLY", "META", "MSFT", "MU", "NFLX", "NVDA", "ORCL", "PLTR",
     "SMCI", "SMH", "TSLA", "UNH", "XOM",
+    "SOFI", "AAL",                                  # r137: measured penny-quoted
 }
 # SPX is DELIBERATELY ABSENT — index options are not in the penny program.
 PRICE_INCREMENT_BOUNDARY    = 3.00
@@ -722,6 +733,9 @@ STRIKE_INCREMENTS = {
     "NFLX": 1, "ORCL": 1, "SMCI": 1, "PLTR": 1, "AMD": 1, "AMZN": 1,
     "GOOGL": 1, "XOM": 1, "CVX": 1, "JPM": 5, "GS": 5, "LLY": 5,
     "UNH": 5, "AVGO": 5, "CRM": 5, "COST": 5,
+    # r137 — low-priced names for the live-mechanics paper boxes (FLEET.1).
+    # $0.50 strikes near the money, weeklies - measured on Cboe's chain 09-24.
+    "SOFI": 0.5, "AAL": 0.5,
 }
 STRIKE_INCREMENT    = STRIKE_INCREMENTS.get(INSTRUMENT, 1)
 
