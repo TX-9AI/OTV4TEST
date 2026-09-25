@@ -1,5 +1,17 @@
 """
-database/trade_logger.py  v4.16
+database/trade_logger.py  v4.17
+v4.17 2026-09-25  OTV4TEST r140 — EVERY NEW TRADE ROW CARRIES `lineage = 'TEST'`.
+      control's r426/OPS.50 keys every per-strategy rollup on (lineage, code),
+      because six strategy names exist in BOTH engines as DIFFERENT code (md5
+      differs on all six), so pooling them by name pools two designs. The
+      field name and the values MAIN/TEST are one contract across both repos
+      (operator, 2026-09-25: "Yes to the lineage question using test").
+      ⚠️ THE MIGRATION DOES NOT BACKFILL. The column has NO default: rows
+      that already exist stay NULL, and only `log_entry` stamps TEST. When this
+      tree supersedes mainline IN PLACE it inherits a trades.db of MAIN rows,
+      and a DEFAULT 'TEST' would relabel that whole history on the first boot
+      - and, because s3_push dedupes on a hash of the whole row, re-push it all
+      as TEST. NULL is what control's resolver already reads as "untagged".
 v4.16 2026-09-13  OTV4TEST r25 — the "[spent]" log line reads `is_breach_exit()`, the same
       label set the lock reads, so a management-plan `breach:` / `acceptance:`
       close is logged as spending its level (r24 logged only the engine labels).
@@ -276,6 +288,12 @@ from utils.time_utils import ts_for_db, now_utc, now_et, ET
 logger = logging.getLogger(__name__)
 _WARNED_UNKNOWN_COLS: set = set()   # TCS.4: warn once per unknown key
 _WARNED_SCHEMA_READ: set = set()    # SWALLOW T1: warn once if PRAGMA fails
+
+# r140 — the PRODUCER tag control's rollups key on. One field name and two
+# values across both repos: this tree writes "TEST", mainline writes "MAIN".
+# ⚠️ A cross-repo contract, not a label: renaming either one silently turns
+# every row this tree writes into UNKN in the fleet rollups.
+LINEAGE = "TEST"
 
 
 @dataclass
@@ -554,6 +572,10 @@ class TradeLogger:
             ("final_form_basis",       "REAL"),
             ("final_form_group",       "TEXT DEFAULT ''"),
             ("cumulative_credit",      "REAL"),
+            # OTV4TEST r140 — which ENGINE wrote the row (see LINEAGE). NO
+            # DEFAULT, on purpose: existing rows stay NULL rather than being
+            # relabelled, because on an in-place supersede they are MAIN's.
+            ("lineage",                "TEXT"),
         ]
         for col, definition in _MIGRATION_ADDS:
             try:
@@ -665,6 +687,7 @@ class TradeLogger:
         """Insert a new open trade into the database."""
         record["entry_time"] = ts_for_db()
         record["status"]     = "open"
+        record["lineage"]    = LINEAGE      # r140: the producer, stamped here and only here
 
         # ── TCS.4 (2026-08-17) — FILTER TO REAL COLUMNS, AND SAY SO ─────────
         # ⚠️ THIS FUNCTION CRASH-LOOPED A LIVE BOX. It INSERTed every key in the

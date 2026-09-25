@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-340 Python modules across 12 local packages.
+341 Python modules across 12 local packages.
 
-**Reached by:** 117 imported · 12 declared entry points · 126 referenced from a script, unit or doc but never imported · **85 by nothing here**.
+**Reached by:** 117 imported · 12 declared entry points · 127 referenced from a script, unit or doc but never imported · **85 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -55,8 +55,8 @@ Change these with the most care; a break here reaches everything downstream.
 | `strategy/__init__.py` | 51 | atp_butterfly_plan.py, breakout_plan.py, check_age_gate_gone.py, check_anchors.py |
 | `strategy/plan.py` | 47 | atp_butterfly_plan.py, breakout_plan.py, check_anchors.py, check_atp_butterfly.py |
 | `utils/time_utils.py` | 40 | alert_manager.py, broker_reconcile.py, check_bfly_vwap_band.py, check_butterfly_foundational.py |
+| `database/trade_logger.py` | 29 | breakout_plan.py, check_atp_butterfly.py, check_breakout_new_extreme.py, check_condor_mgmt.py |
 | `data/derived_store.py` | 28 | anchors.py, breakout_plan.py, check_bfly_vwap_band.py, check_derived_layer.py |
-| `database/trade_logger.py` | 28 | breakout_plan.py, check_atp_butterfly.py, check_breakout_new_extreme.py, check_condor_mgmt.py |
 | `derived/__init__.py` | 24 | atp_butterfly_plan.py, check_anchors.py, check_atp_butterfly.py, check_bfly_vwap_band.py |
 | `strategy/base_strategy.py` | 21 | atp_butterfly.py, breakout_plan.py, check_credit_remainder.py, check_entry_gate.py |
 | `utils/math_utils.py` | 20 | atp_butterfly_plan.py, check_low_price_symbols.py, credit_vertical.py, entry_ladder.py |
@@ -220,11 +220,11 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `database/__init__.py`
 - **calls:** (none)
-- **called by:** `tests/check_runaway_break_key.py`
+- **called by:** `tests/check_lineage.py`, `tests/check_runaway_break_key.py`
 
 ### `database/trade_logger.py`
 - **calls:** `config.py`, `derived/registry.py`, `strategy/sweep_credit_spread.py`, `utils/time_utils.py`
-- **called by:** `derived/counterfactual.py`, `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `main.py`, `risk/risk_manager.py`, `strategy/breakout_plan.py`, `strategy/condor_roll.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`, `tests/check_atp_butterfly.py`, `tests/check_breakout_new_extreme.py`, `tests/check_condor_mgmt.py`, `tests/check_condor_pairing.py`, `tests/check_condor_stop_suppression.py`, `tests/check_credit_remainder.py`, `tests/check_management_plan.py`, `tests/check_one_per_session.py`, `tests/check_orb_resume.py`, `tests/check_plan_prepares.py`, `tests/check_runaway_break_key.py`, `tests/check_runaway_plan.py`, `tests/check_standing_offer.py`, `tests/check_structure_viable.py`, `tests/check_sweep_plan.py`, `tests/check_sweep_stop.py`, `tests/check_trade_report.py`
+- **called by:** `derived/counterfactual.py`, `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `main.py`, `risk/risk_manager.py`, `strategy/breakout_plan.py`, `strategy/condor_roll.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`, `tests/check_atp_butterfly.py`, `tests/check_breakout_new_extreme.py`, `tests/check_condor_mgmt.py`, `tests/check_condor_pairing.py`, `tests/check_condor_stop_suppression.py`, `tests/check_credit_remainder.py`, `tests/check_lineage.py`, `tests/check_management_plan.py`, `tests/check_one_per_session.py`, `tests/check_orb_resume.py`, `tests/check_plan_prepares.py`, `tests/check_runaway_break_key.py`, `tests/check_runaway_plan.py`, `tests/check_standing_offer.py`, `tests/check_structure_viable.py`, `tests/check_sweep_plan.py`, `tests/check_sweep_stop.py`, `tests/check_trade_report.py`
 
 ### `derived/__init__.py`
 - **calls:** `derived/base.py`
@@ -838,6 +838,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** `data/derived_store.py`, `derived/__init__.py`, `derived/anchors.py`, `derived/levels.py`, `derived/registry.py`, `strategy/__init__.py`, `strategy/plan.py`, `strategy/sweep_credit_spread.py`, `strategy/sweep_plan.py`
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
+### `tests/check_lineage.py`
+- **calls:** `database/__init__.py`, `database/trade_logger.py`, `warehouse/__init__.py`, `warehouse/s3_push.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
 ### `tests/check_liquidity_hunt.py`
 - **calls:** `data/derived_store.py`, `execution/__init__.py`, `execution/exit_engine.py`, `execution/handoff.py`, `execution/position_manager.py`, `strategy/__init__.py`, `strategy/liquidity_hunt.py`, `strategy/plan.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/PLAN_SPEC.md`, `docs/PORT_MANIFEST.md`
@@ -1408,7 +1412,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `warehouse/__init__.py`
 - **calls:** (none)
-- **called by:** `tests/check_audit_20260823.py`, `tests/check_level_tape.py`, `tests/check_purge_lock.py`, `tests/check_purge_pushed.py`, `tests/check_purge_reclaim.py`, `tests/check_retention_armed.py`, `warehouse/self_close.py`
+- **called by:** `tests/check_audit_20260823.py`, `tests/check_level_tape.py`, `tests/check_lineage.py`, `tests/check_purge_lock.py`, `tests/check_purge_pushed.py`, `tests/check_purge_reclaim.py`, `tests/check_retention_armed.py`, `warehouse/self_close.py`
 
 ### `warehouse/midnight_halt.py`
 - **calls:** `utils/shutdown_cause.py`
@@ -1420,7 +1424,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `warehouse/s3_push.py`
 - **calls:** (none)
-- **called by:** `tests/check_data_capture.py`, `tests/check_purge_pushed.py`
+- **called by:** `tests/check_data_capture.py`, `tests/check_lineage.py`, `tests/check_purge_pushed.py`
 
 ### `warehouse/self_close.py`
 - **calls:** `config.py`, `notifications/alert_manager.py`, `warehouse/__init__.py`, `warehouse/retention_purge.py`
