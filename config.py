@@ -1,5 +1,10 @@
 """
-config.py  v4.35
+config.py  v4.36
+v4.36 2026-09-25  OTV4TEST r141 — NOISE_FLOOR_MIN_BARS = 3. The r93 floor needed 10
+      one-minute bars and the frame it reads is scoped to TODAY'S session, so it
+      stood down from 09:35 to ~09:40 EVERY day - the window ORB and Breakout fire in.
+      On 2026-09-25 it let 96-100 contracts ride stops of 0.14/0.21/0.31 against a
+      session floor of ~0.43 (-$3,170). Operator: "Yes" (2026-09-25).
 v4.35 2026-09-25  OTV4TEST r137 — SOFI AND AAL ARE TRADEABLE SYMBOLS. Operator: "I need
       AAL & SOFI to be selectable from configure.sh" - for the paper boxes that
       will test live mechanics on cheap, weekly-option names (FLEET.1). Both join
@@ -885,6 +890,11 @@ PIN_PROXIMITY_MIN_FRAC = float(os.environ.get("OT_PIN_PROXIMITY_MIN_FRAC", "0.32
 
 NOISE_FLOOR_BAR_MULT      = float(os.environ.get("OT_NOISE_FLOOR_BAR_MULT", "0.5"))
 NOISE_FLOOR_LOOKBACK_BARS = int(os.environ.get("OT_NOISE_FLOOR_LOOKBACK_BARS", "60"))
+# r141 — the fewest SESSION bars the floor is measured from. Was a hard 10 in
+# main.py, which disarmed the gate for the first ~5 minutes of every ORB window.
+# 3 bars (09:33) is the least a median means anything; below it the gate still
+# stands down loudly, exactly as r93 specified for "cannot measure".
+NOISE_FLOOR_MIN_BARS      = int(os.environ.get("OT_NOISE_FLOOR_MIN_BARS", "3"))
 
 # ── BREAKOUT RESEARCH POSTURE (OTV4TEST r55, operator 2026-09-19) ────────────
 # *"Have it trade every break that gets a 1-minute candle acceptance beyond the

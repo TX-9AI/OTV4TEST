@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_volt_sizing.py  v1.1
+tests/check_volt_sizing.py  v1.2
+v1.2  2026-09-25  OTV4TEST r141 — V7 RE-POINTED, NOT DROPPED (§38.4): the noise floor
+      moved into main._noise_floor_of(df_1m). V7 now requires the call site to
+      pass only ctx["df_1m"], and the helper to use NOISE_FLOOR_BAR_MULT and never
+      see a signal or strategy - the same "no VOLT exemption" property.
 
 v1.1  2026-09-24  OTV4TEST r131 OPTION 2 — the operator ruled VOLT takes
       Breakout's 1-R CURVE, not the flat scale-up: sizing stop premium =
@@ -321,12 +325,29 @@ if _fn is not None:
                 _nf_assign.append(_ast.unparse(n.value))
             if _names & {"_orb_w", "_orb_d"}:
                 _od_assign.append(_ast.unparse(n.value))
+# r141 — the measurement MOVED into main._noise_floor_of(df_1m). The property is
+# unchanged and re-pointed, not dropped (§38.4): the call site hands the helper
+# ONLY the tape frame from ctx, and the helper uses the multiplier and never
+# sees a signal or a strategy name.
+_nfdf_assign, _helper_ok = [], False
+if _fn is not None:
+    for n in _ast.walk(_fn):
+        if isinstance(n, _ast.Assign) and any(getattr(t, "id", None) == "_nf_df" for t in n.targets):
+            _nfdf_assign.append(_ast.unparse(n.value))
+_hf = next((n for n in _ast.walk(_ast.parse(_src))
+            if isinstance(n, _ast.FunctionDef) and n.name == "_noise_floor_of"), None)
+if _hf is not None:
+    _hsrc = "\n".join(_ast.unparse(x) for x in _hf.body[1:])     # body without the docstring
+    _helper_ok = ([a.arg for a in _hf.args.args] == ["df_1m"]
+                  and "NOISE_FLOOR_BAR_MULT" in _hsrc
+                  and "signal" not in _hsrc and "strategy" not in _hsrc)
 check("V7 main's size_for takes orb_width/_stop_distance/noise_floor from the helper and the tape",
       _kw.get("orb_width") == "_orb_w" and _kw.get("orb_stop_distance") == "_orb_d"
       and _kw.get("noise_floor") == "_noise_floor"
       and _od_assign == ["_geometry_inputs(signal)"]
       and len(_nf_assign) == 2 and _nf_assign[0] == "0.0"
-      and "NOISE_FLOOR_BAR_MULT" in _nf_assign[1] and "signal" not in _nf_assign[1],
+      and _nf_assign[1] == "_noise_floor_of(_nf_df)" and _nfdf_assign == ["ctx.get('df_1m')"]
+      and _helper_ok,
       f"kwargs={ {k: _kw.get(k) for k in ('orb_width', 'orb_stop_distance', 'noise_floor')} } "
       f"_orb_w/_orb_d <- {_od_assign} _noise_floor <- {_nf_assign}")
 

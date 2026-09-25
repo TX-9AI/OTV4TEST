@@ -1,5 +1,11 @@
 """
-main.py  v4.69
+main.py  v4.70
+v4.70 2026-09-25  OTV4TEST r141 — THE NOISE FLOOR ARMS AT THE OPEN. The r93 measurement
+      is extracted into `_noise_floor_of(df_1m)` and its hard `>= 10` bars becomes
+      config.NOISE_FLOOR_MIN_BARS (3). The 1m frame is session-scoped, so 10 bars
+      meant the gate stood down 09:35-~09:40 every day - measured on 2026-09-25,
+      three entries on 0.14/0.21/0.31 stops inside a ~0.43 floor, -$3,170, each
+      logging "UNMEASURABLE". Median, multiplier and 60-bar lookback unchanged.
 v4.69 2026-09-24  OTV4TEST r131 — VOLT SIZES ON THE BREAKOUT MODEL. The operator,
       2026-09-24: *"VOLT needs to adopt the breakout sizing model."* The
       geometry inputs of `_execute_entry_signal`'s sizing block are extracted
@@ -1252,7 +1258,7 @@ from config import (
     POLL_INTERVAL_SECONDS, LOG_LEVEL, LOG_FILE, LOG_ROTATION_MB,
     PAPER_TRADING, RISK_PER_TRADE_USD, DAILY_LOSS_LIMIT_USD,
     ORB_BUDGET_USD, ORB_BUDGET_IS_DEFAULT,
-    NOISE_FLOOR_BAR_MULT, NOISE_FLOOR_LOOKBACK_BARS,
+    NOISE_FLOOR_BAR_MULT, NOISE_FLOOR_LOOKBACK_BARS, NOISE_FLOOR_MIN_BARS,
     PIN_PROXIMITY_ACTIVE, PIN_PROXIMITY_MIN_FRAC,
     REASSESS_MINUTES, INSTRUMENT, SessionConfig, DIRECTIONAL_ONLY,
     DEBIT_BLOCKED_STRUCTURES,
@@ -4655,6 +4661,28 @@ def pin_proximity_verdict(ctx) -> tuple:
         return False, None, "", 0.0, f"{type(exc).__name__}: {exc}"
 
 
+def _noise_floor_of(df_1m) -> float:
+    """r93's stop-distance floor: NOISE_FLOOR_BAR_MULT x the median 1m bar RANGE
+    over the last NOISE_FLOOR_LOOKBACK_BARS bars. 0.0 means UNMEASURABLE and the
+    sizer's gate stands down (r93 N3) - the caller logs that.
+
+    🔴 r141 — EXTRACTED SO IT CAN BE DRIVEN, AND ITS MINIMUM MOVED TO CONFIG.
+    Inline it required 10 bars, and `df_1m` is scoped to TODAY'S session
+    (market_data.fetch_candles), so from 09:35 until ~09:40 - the ORB and
+    Breakout window's busiest minutes - it returned 0.0 every day and the gate
+    that exists to refuse a stop inside one bar's noise was OFF. 2026-09-25:
+    stops of 0.14, 0.21 and 0.31 against a ~0.43 floor, 96-100 contracts each,
+    -$3,170 in three minutes. NOISE_FLOOR_MIN_BARS (3) is the least a median
+    means; the rule, multiplier and lookback are r93's, unchanged.
+    """
+    if df_1m is None or len(df_1m) < NOISE_FLOOR_MIN_BARS:
+        return 0.0
+    _rng = (df_1m["high"] - df_1m["low"]).tail(NOISE_FLOOR_LOOKBACK_BARS).dropna()
+    if len(_rng) < NOISE_FLOOR_MIN_BARS:
+        return 0.0
+    return float(_rng.median()) * NOISE_FLOOR_BAR_MULT
+
+
 def _geometry_inputs(signal):
     """(orb_width, orb_stop_distance) for `size_for` — (0.0, 0.0) means the
     signal takes the budget rule. Extracted from `_execute_entry_signal`'s
@@ -4934,19 +4962,16 @@ def _execute_entry_signal(signal, ctx, ms, state, _sigj=None, *, additive: bool 
     # and this logs it — refusing every entry because the feed hiccuped would
     # be a far worse failure than the one being closed.
     _noise_floor = 0.0
+    _nf_df = ctx.get("df_1m")
     try:
-        _nf_df = ctx.get("df_1m")
-        if _nf_df is not None and len(_nf_df) >= 10:
-            _rng = (_nf_df["high"] - _nf_df["low"]).tail(
-                NOISE_FLOOR_LOOKBACK_BARS).dropna()
-            if len(_rng) >= 10:
-                _noise_floor = float(_rng.median()) * NOISE_FLOOR_BAR_MULT
+        _noise_floor = _noise_floor_of(_nf_df)      # r141: arms from 3 session bars
     except Exception as _nf_exc:                                # noqa: BLE001
         logger.warning("[size] noise floor UNMEASURABLE (%s) — the stop-distance "
                        "gate stands down for this entry", _nf_exc)
     if _orb_d and _noise_floor <= 0:
-        logger.warning("[size] noise floor UNMEASURABLE (no usable 1m frame) — "
-                       "the stop-distance gate stands down for this entry")
+        logger.warning("[size] noise floor UNMEASURABLE (%s 1m bar(s), need %d) — "
+                       "the stop-distance gate stands down for this entry",
+                       0 if _nf_df is None else len(_nf_df), NOISE_FLOOR_MIN_BARS)
 
     sizing = risk_mgr.size_for(
         _struct,
