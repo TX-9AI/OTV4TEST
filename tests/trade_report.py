@@ -1,4 +1,27 @@
-# tests/trade_report.py — v1.0
+# tests/trade_report.py — v1.19
+# v1.19 (2026-09-26) — OTV4TEST r155. (Numbered v1.19, not v1.1: this file carries dtp's own
+#   v1.1-v1.18 as inherited history below, and a reused number reads as that entry.) AN "EV R" COLUMN IN EVERY BREAKDOWN TABLE, SETUP TYPE
+#   INCLUDED. The operator, 2026-09-26: "Can you express the returns by setup type on EV
+#   multiple and add that to our report 35?" — asked after dollars had made Breakout look
+#   like the book's engine when it deploys ~8x Runaway's capital per trade at the SAME 43%
+#   win rate. EV R = the bucket's EXPECTANCY IN R: the mean, over its trades, of each trade's
+#   P&L as a multiple of the dollars its STOP put at risk (`modified_r`, the report's own
+#   headline R basis), so a bucket is judged per unit risked, not per dollar of size. It is
+#   the MEAN PER TRADE ("what one more trade of this kind is worth, in risk units"), which
+#   is deliberately NOT the header's aggregate R (sum P&L / sum risk), where a few large-risk
+#   trades carry the total. Trades whose risk cannot be priced are left out of the mean and
+#   the value is flagged `~`; none priceable reads `-`. Placed before FEES $ so FEES stays the
+#   last field (check_trade_report T5). NET $ and every existing column are unchanged.
+#   🔑 THE BY TABLES NOW SORT BY EV R, best first (operator: "report 35 does not sort by EV");
+#   NET breaks ties, and the HEADLINE's best/worst still rank by NET — its footer says so.
+#   🔴 AND R ITSELF WAS WRONG FOR MOST TRADES, FOUND BUILDING THIS: `_STOP_PCT_RE` matched ANY
+#   "NN%", so `orb_trail_stop pnl=30%` read as a 30% STOP — a winner's risk became its own profit
+#   and it scored EXACTLY +1.00R (36 of this box's winners since 09-21), and a loser whose reason
+#   carried `pnl=-12%` scored -1.00R. The header R, the per-trade R column and any EV on them were
+#   close to a win/loss count. The pattern is now anchored to a stop token (`stop_N%`; this box's
+#   reasons since 09-01 name stops only as hard_stop_N%, premium_stop_N%, stop_N%); a winner falls
+#   back to its entry-time floor, as the docstring always said it should. Inherited from dtp's
+#   trade_report v1.18 — reported to the mainline agent, not changed there by this tree.
 # v1.0 (2026-09-23) — OTV4TEST r119. MAINLINE'S TRADE REPORT, READING THIS BOX'S
 #   OWN trades.db. The operator, 2026-09-23, comparing our devtools item 35 with
 #   mainline's reports 47/48: "Can we repurpose that code to display our
@@ -540,7 +563,17 @@ def stats_of(rows: List[dict]) -> dict:
         # its rows the model could not price. Both travel together; a total
         # that hides its unpriced count understates itself.
         **dict(zip(("fees", "fees_unpriced"), bucket_fees(rows))),
+        # r155 — EXPECTANCY IN R, the mean of each trade's R on the stop it took.
+        **_ev_r(rows),
     }
+
+
+def _ev_r(rows: List[dict]) -> dict:
+    """r155 — {'ev_r': mean modified R per trade or None, 'ev_r_unpriced': count}."""
+    rs = [modified_r(r) for r in rows if _f(r.get("pnl_usd")) is not None]
+    priced = [x for x in rs if x is not None]
+    return {"ev_r": round(sum(priced) / len(priced), 3) if priced else None,
+            "ev_r_unpriced": len(rs) - len(priced)}
 
 
 def cross(trades: List[dict], k1: str, k2: str) -> Dict[str, dict]:
@@ -663,9 +696,12 @@ def show(title: str, d: Dict[str, dict], min_n: int, width: int = 26) -> None:
     if not d:
         return
     print(f"\n{title}")
-    print(f"  {'':<{width}}{'N':>5}{'WIN%':>7}{'NET $':>11}{'AVG $':>9}"
+    print(f"  {'':<{width}}{'N':>5}{'WIN%':>7}{'NET $':>11}{'AVG $':>9}{'EV R':>7}"
           f"{'HOLD m':>7}{'FEES $':>10}")
-    for k, a in sorted(d.items(), key=lambda kv: -kv[1]["net"]):
+    # r155 — SORTED BY EV R, best first (operator: "report 35 does not sort by EV"); a bucket with no
+    # priceable R sorts last, and NET breaks ties so the order is stable.
+    for k, a in sorted(d.items(), key=lambda kv: (kv[1].get("ev_r") is None,
+                                                   -(kv[1].get("ev_r") or 0.0), -kv[1]["net"])):
         h = f"{a['median_hold_min']:>7.1f}" if a["median_hold_min"] is not None else "      -"
         # 🔴 r294 — THE `<- thin` MARKER IS GONE AND THE FEES COLUMN TAKES ITS
         # PLACE. Operator, 2026-09-07: *"the thin remark is useless. No shit
@@ -687,8 +723,11 @@ def show(title: str, d: Dict[str, dict], min_n: int, width: int = 26) -> None:
             # header would make this delivery's before/after incomparable.
             fee_s = f"{-f:>10.2f}"
         star = "*" if a.get("fees_unpriced") else " "
+        # r155 — EV R: expectancy in R per trade; `~` = some trades' risk unpriced.
+        ev = a.get("ev_r")
+        ev_s = f"{'-':>7}" if ev is None else (f"{ev:>+6.2f}" + ("~" if a.get("ev_r_unpriced") else " "))
         print(f"  {k[:width]:<{width}}{a['n']:>5}{a['win_rate']:>7.0%}"
-              f"{a['net']:>11.2f}{a['avg']:>9.2f}{h}{fee_s}{star}")
+              f"{a['net']:>11.2f}{a['avg']:>9.2f}{ev_s}{h}{fee_s}{star}")
 
 
 # ── r202 — THE TRADES THEMSELVES ──────────────────────────────────────────
@@ -786,7 +825,11 @@ def capital_at_risk(t) -> Optional[float]:
     return prem * n * 100.0                      # debit
 
 
-_STOP_PCT_RE = re.compile(r"(\d{1,2}(?:\.\d+)?)\s*%")
+# r155 — ANCHORED TO A STOP TOKEN. The bare `(\d+)%` also matched `pnl=30%`, so a winner closed as
+# `orb_trail_stop pnl=30%` was read as a 30% STOP: its risk became its own profit and it scored
+# exactly +1.00R (36 of this box's winners since 09-21 did), and a loser with `pnl=-12%` scored -1.00R.
+# The tokens that DO name a stop, measured on this box since 09-01: hard_stop_N%, premium_stop_N%, stop_N%.
+_STOP_PCT_RE = re.compile(r"stop_(\d{1,2}(?:\.\d+)?)\s*%")
 
 
 def stop_pct_from_exit(t) -> Optional[float]:
@@ -1169,8 +1212,10 @@ def main(argv: List[str]) -> int:
         os.replace(tmp, out)
         print(f"\nwrote {out}")
 
-    print(f"\nSorted by NET. '<- thin' = fewer than {args.min_n} trades (noise, "
-          f"not signal).\nBest/worst above ignore buckets under that floor.")
+    print(f"\nBY tables sorted by EV R: expectancy in R per trade, on the stop taken "
+          f"(NET breaks ties; `~` = some risk unpriced).\nHEADLINE best/worst still rank by NET. "
+          f"'<- thin' = fewer than {args.min_n} trades (noise, not signal);\n"
+          f"best/worst above ignore buckets under that floor.")
     return 0
 
 

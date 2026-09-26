@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_trade_report.py  v1.0
+tests/check_trade_report.py  v1.1
+v1.1  2026-09-26  OTV4TEST r155 — T8 ADDED: every breakdown table carries EV R, the bucket's
+      expectancy in R (mean of each trade's P&L over the risk its stop took). Operator: "Can you
+      express the returns by setup type on EV multiple and add that to our report 35?"
+      T9 ADDED: `pnl=NN%` in an exit reason is never read as a stop (the defect that scored most
+      winners exactly +1.00R), a named `hard_stop_NN%` still is, and the tables sort by EV R.
 MAINLINE'S TRADE REPORTS ON THIS BOX'S trades.db — driven as the menu runs them.
 
 v1.0  2026-09-23  OTV4TEST r119. Born with tests/trade_report.py (absent at r118).
@@ -109,6 +114,49 @@ def main():
     frow = next((l for l in out.splitlines() if l.strip().startswith("Breakout")), "")
     check("T5 the FEES column is priced, not n/a", frow != "" and "n/a" not in frow
           and re.search(r"-\d+\.\d\d", frow.split()[-1] if frow.split() else "") is not None, frow.strip())
+    # T8 (r155) — EV R: the fixture's Breakout risks (1.00-0.86)x10x100 = $140 and makes $300
+    # (+2.14R); the VOLT loss is its 14% hard stop on $1,000 = $140, losing $140 (-1.00R). And the
+    # column is the MEAN per trade, not sum(P&L)/sum(risk): driven in-process on two trades.
+    try:
+        setup = out[out.index("BY SETUP TYPE"):]
+        setup = setup[:setup.index("\n\n", 1)] if "\n\n" in setup[1:] else setup
+        brk = next((l for l in setup.splitlines() if l.strip().startswith("breakout_short")), "")
+        vol = next((l for l in setup.splitlines() if l.strip().startswith("VOLT Long")), "")
+        sys.path.insert(0, os.path.dirname(REPORT))
+        import importlib
+        TR = importlib.import_module("trade_report")
+        two = [dict(pnl_usd=300.0, entry_premium=1.00, stop_premium=0.86, contracts=10, exit_reason="trail_stop_hit"),
+               dict(pnl_usd=-100.0, entry_premium=1.00, stop_premium=0.90, contracts=100, exit_reason="trail_stop_hit")]
+        ev = TR._ev_r(two)
+        want = round((300 / 140 + -100 / 1000) / 2, 3)
+        check("T8 EV R: header, breakout_short +2.14, VOLT Long -1.00, and the MEAN per trade (not sum/sum)",
+              " EV R " in setup and "+2.14" in brk and "-1.00" in vol and ev["ev_r"] == want
+              and ev["ev_r_unpriced"] == 0, f"brk={brk.strip()!r} volt={vol.strip()!r} ev={ev} want {want}")
+    except Exception as exc:                                    # noqa: BLE001
+        check("T8 (did not run)", False, f"raised {type(exc).__name__}: {exc}")
+    # T9 (r155) — the stop percentage comes only from a STOP token; tables sort by EV R.
+    try:
+        TR = sys.modules.get("trade_report") or __import__("trade_report")
+        w = dict(exit_reason="orb_trail_stop pnl=30.0%", pnl_usd=300.0, entry_premium=1.00,
+                 stop_premium=0.86, contracts=10)
+        l = dict(exit_reason="hard_stop_14% pnl=-14%", pnl_usd=-140.0, entry_premium=2.00,
+                 stop_premium=1.72, contracts=5)
+        import io, contextlib
+        buf = io.StringIO()
+        d = {"big_dollars_low_ev": {**TR.stats_of([dict(w, pnl_usd=900.0, contracts=100)]), "net": 900.0},
+             "small_dollars_high_ev": TR.stats_of([w])}
+        d["big_dollars_low_ev"]["ev_r"] = 0.10
+        with contextlib.redirect_stdout(buf):
+            TR.show("T", d, 8)
+        order = [x.split()[0] for x in buf.getvalue().splitlines() if x.strip() and x.split()[0] in d]
+        check("T9 pnl=30% is not a stop (winner +2.14R on its floor), hard_stop_14% is (-1.00R), tables sort by EV R",
+              TR.stop_pct_from_exit(w) is None and TR.stop_pct_from_exit(l) == 0.14
+              and round(TR.modified_r(w), 2) == 2.14 and round(TR.modified_r(l), 2) == -1.00
+              and order == ["small_dollars_high_ev", "big_dollars_low_ev"],
+              f"w_pct={TR.stop_pct_from_exit(w)} l_pct={TR.stop_pct_from_exit(l)} "
+              f"rW={TR.modified_r(w)} rL={TR.modified_r(l)} order={order}")
+    except Exception as exc:                                    # noqa: BLE001
+        check("T9 (did not run)", False, f"raised {type(exc).__name__}: {exc}")
     rc6, out6 = run("--db", os.path.join(WORK, "nope.db"), "--no-json")
     check("T6 a missing database is rc 1 and says PATH DOES NOT EXIST",
           rc6 == 1 and "PATH DOES NOT EXIST" in out6, f"rc {rc6}")
