@@ -1,4 +1,13 @@
-# tests/trade_report.py — v1.19
+# tests/trade_report.py — v1.20
+# v1.20 (2026-09-26) — OTV4TEST r156. EVERY LINE FITS THE PHONE: 76 CHARACTERS OR FEWER. The
+#   operator, reading r155 on his phone: "That report spends too many lines. It's too wide. You
+#   need to get it to fit single lines." r155's EV R column took the BY rows to 85 characters and
+#   every one wrapped onto two lines; the R headers (92, 94), the sentiment note (100), the headline's
+#   worst rows (96, 102), the single-session note and r155's own footer (115) wrapped too. The BY
+#   tables keep every column and every decimal: the name column is 21 (the longest name on the
+#   book, `sweep_breach_accepted`, is 21) and the numeric columns are tightened, 75 wide; EV R gets
+#   room for two integer digits (`4835.00+19.64` had run together). The other lines are reworded,
+#   not wrapped. check_trade_report T10 renders every mode and fails on any line over 76.
 # v1.19 (2026-09-26) — OTV4TEST r155. (Numbered v1.19, not v1.1: this file carries dtp's own
 #   v1.1-v1.18 as inherited history below, and a reused number reads as that entry.) AN "EV R" COLUMN IN EVERY BREAKDOWN TABLE, SETUP TYPE
 #   INCLUDED. The operator, 2026-09-26: "Can you express the returns by setup type on EV
@@ -692,17 +701,18 @@ def exit_concentration(trades: List[dict], min_n: int) -> Dict[str, dict]:
 
 
 # ── display ──────────────────────────────────────────────────────────────────
-def show(title: str, d: Dict[str, dict], min_n: int, width: int = 26) -> None:
+def show(title: str, d: Dict[str, dict], min_n: int, width: int = 21) -> None:
     if not d:
         return
     print(f"\n{title}")
-    print(f"  {'':<{width}}{'N':>5}{'WIN%':>7}{'NET $':>11}{'AVG $':>9}{'EV R':>7}"
-          f"{'HOLD m':>7}{'FEES $':>10}")
+    # r156 — 75 wide (2 + 21 + 4 + 5 + 10 + 9 + 8 + 6 + 9 + 1): the phone shows 76.
+    print(f"  {'':<{width}}{'N':>4}{'WIN%':>5}{'NET $':>10}{'AVG $':>9}{'EV R':>8}"
+          f"{'HOLD':>6}{'FEES $':>9}")
     # r155 — SORTED BY EV R, best first (operator: "report 35 does not sort by EV"); a bucket with no
     # priceable R sorts last, and NET breaks ties so the order is stable.
     for k, a in sorted(d.items(), key=lambda kv: (kv[1].get("ev_r") is None,
                                                    -(kv[1].get("ev_r") or 0.0), -kv[1]["net"])):
-        h = f"{a['median_hold_min']:>7.1f}" if a["median_hold_min"] is not None else "      -"
+        h = f"{a['median_hold_min']:>6.1f}" if a["median_hold_min"] is not None else "     -"
         # 🔴 r294 — THE `<- thin` MARKER IS GONE AND THE FEES COLUMN TAKES ITS
         # PLACE. Operator, 2026-09-07: *"the thin remark is useless. No shit
         # it's thin — it's a week of trades."* He is right: at this sample size
@@ -715,19 +725,19 @@ def show(title: str, d: Dict[str, dict], min_n: int, width: int = 26) -> None:
         # gate disappears inside a cosmetic change.
         f = a.get("fees")
         if f is None:
-            fee_s = f"{'n/a':>10}"
+            fee_s = f"{'n/a':>9}"
         else:
             # NEGATIVE, because it is a deduction. NET $ stays GROSS on
             # purpose: it is the number every prior screenshot and every
             # banked report carries, and changing its meaning under the same
             # header would make this delivery's before/after incomparable.
-            fee_s = f"{-f:>10.2f}"
+            fee_s = f"{-f:>9.2f}"
         star = "*" if a.get("fees_unpriced") else " "
         # r155 — EV R: expectancy in R per trade; `~` = some trades' risk unpriced.
         ev = a.get("ev_r")
-        ev_s = f"{'-':>7}" if ev is None else (f"{ev:>+6.2f}" + ("~" if a.get("ev_r_unpriced") else " "))
-        print(f"  {k[:width]:<{width}}{a['n']:>5}{a['win_rate']:>7.0%}"
-              f"{a['net']:>11.2f}{a['avg']:>9.2f}{ev_s}{h}{fee_s}{star}")
+        ev_s = f"{'-':>8}" if ev is None else (f"{ev:>+7.2f}" + ("~" if a.get("ev_r_unpriced") else " "))
+        print(f"  {k[:width]:<{width}}{a['n']:>4}{a['win_rate']:>5.0%}"
+              f"{a['net']:>10.2f}{a['avg']:>9.2f}{ev_s}{h}{fee_s}{star}")
 
 
 # ── r202 — THE TRADES THEMSELVES ──────────────────────────────────────────
@@ -979,7 +989,7 @@ def main(argv: List[str]) -> int:
         # 🔴 SAY IT EVERY RUN. A filter you cannot see is how you end up
         # arguing about a number that was never in the sample.
         print(f"        {dropped} closed trade(s) EXCLUDED as pre-epoch "
-              f"(--all-history to include them)")
+              f"(--all-history adds them)")
     if not trades:
         if _all:
             print(f"No closed trades on/after {since} in {src_dir} — but "
@@ -1035,8 +1045,8 @@ def main(argv: List[str]) -> int:
     # before 2026-07-30, so for weeks the honest answer is "not measured yet" and
     # a ranked table over a handful of trades would read as a finding.
     if not sentiment:
-        print("\nSENTIMENT: not archived on this box (no morning reports) — "
-              "an absent measurement, not a null result.")
+        print("\nSENTIMENT: not archived here (no morning reports) — "
+              "absent, not null.")
     else:
         pct = 100.0 * n_scored / max(len(trades), 1)
         print(f"\nSENTIMENT: {len(sentiment)} archived report(s); "
@@ -1065,8 +1075,8 @@ def main(argv: List[str]) -> int:
     print("\n" + "=" * 74)
     print(f"TRADE BREAKDOWN — {overall['n']} closed trades [{mode.upper()}]")
     print("=" * 74)
-    print(f"  net {overall['net']:+.2f}   win rate {overall['win_rate']:.0%}   "
-          f"avg {overall['avg']:+.2f}   best {overall['best']:+.2f}   "
+    print(f"  net {overall['net']:+.2f}  win {overall['win_rate']:.0%}  "
+          f"avg {overall['avg']:+.2f}  best {overall['best']:+.2f}  "
           f"worst {overall['worst']:+.2f}")
     if overall["median_hold_min"] is not None:
         print(f"  median hold {overall['median_hold_min']} min")
@@ -1093,21 +1103,19 @@ def main(argv: List[str]) -> int:
         _bas = {}
         for _t in trades:
             _bas[_r_basis(_t)] = _bas.get(_r_basis(_t), 0) + 1
-        print(f"  R {_pnl/sum(_rt):+.3f} aggregate on the stop actually taken   "
-              f"median trade {statistics.median(_mrs):+.3f}   "
-              f"risked {_money(sum(_rt)).strip()}   n={len(_mrs)}")
+        print(f"  R {_pnl/sum(_rt):+.3f} on the stop taken · median "
+              f"{statistics.median(_mrs):+.3f} · risked {_money(sum(_rt)).strip()} · n={len(_mrs)}")
         # ⚠️ THE BASIS MIX IS PART OF THE NUMBER. An aggregate built mostly on
         # max-loss fallbacks is not the same measurement as one built on real
         # stops, and printing it without saying so is how the last version of
         # this line misled.
         print(f"    basis: {_bas.get('x',0)} exit stop / {_bas.get('s',0)} entry "
-              f"floor / {_bas.get('m',0)} max loss (no stop recorded)")
+              f"floor / {_bas.get('m',0)} max loss (no stop)")
     _rs = [r for r in (r_value(t) for t in trades) if r is not None]
     _car = [c for c in (capital_at_risk(t) for t in trades) if c]
     if _rs and _car:
-        print(f"  R {_pnl/sum(_car):+.3f} against MAX LOSS   "
-              f"median trade {statistics.median(_rs):+.3f}   "
-              f"risked {_money(sum(_car)).strip()}   (worst case, not the stop)")
+        print(f"  R {_pnl/sum(_car):+.3f} vs MAX LOSS · median "
+              f"{statistics.median(_rs):+.3f} · risked {_money(sum(_car)).strip()} (worst case)")
 
     # r202 — the rows come FIRST. The aggregates answer "how did the
     # strategies do"; the list answers "what did it actually take", which is
@@ -1130,15 +1138,14 @@ def main(argv: List[str]) -> int:
 
     conc = exit_concentration(trades, args.min_n)
     print("\nEXIT REASON x SESSION SPREAD")
-    print(f"  {'':<26}{'N':>5}{'SESS':>6}{'TOP DATE':>13}{'SHARE':>7}")
+    print(f"  {'':<21}{'N':>5}{'SESS':>6}{'TOP DATE':>13}{'SHARE':>7}")
     for reason, c in sorted(conc.items(), key=lambda kv: -kv[1]["n"]):
         flag = "  <- SINGLE-SESSION" if c["single_session"] else (
             "  <- thin" if c["n"] < args.min_n else "")
-        print(f"  {reason[:26]:<26}{c['n']:>5}{c['sessions']:>6}"
+        print(f"  {reason[:21]:<21}{c['n']:>5}{c['sessions']:>6}"
               f"{c['top_date']:>13}{c['top_share']:>7.0%}{flag}")
-    print(f"  SINGLE-SESSION = >=80% of that exit's trades on one date "
-          f"(and n >= {args.min_n}).\n  Such a reason is a one-day event, not a "
-          f"standing pattern — do not read it as a rate.")
+    print(f"  SINGLE-SESSION = >=80% of an exit's trades on one date (n >= {args.min_n}):"
+          f"\n  a one-day event, not a standing pattern — not a rate.")
 
     eb = exit_behaviour(trades)
     print("\nEXIT BEHAVIOUR")
@@ -1165,7 +1172,7 @@ def main(argv: List[str]) -> int:
     for lab in ("strategy", "symbol", "session_phase", "day_of_week"):
         b, w = findings.get(f"best_{lab}"), findings.get(f"worst_{lab}")
         if b:
-            print(f"  best {lab:<14} {b['key'][:30]:<30} net {b['net']:>+10.2f} (n={b['n']})")
+            print(f"  best {lab:<14} {b['key'][:20]:<20}{b['net']:>+10.2f} (n={b['n']})")
         # v1.5 — "worst" is only a word worth printing when there is something
         # to be worst THAN, and when it is not simply the lowest of several
         # winners. One eligible bucket prints itself as both; all-positive
@@ -1173,13 +1180,12 @@ def main(argv: List[str]) -> int:
         if w:
             n_elig = w.get("n_elig", 2)
             if n_elig < 2:
-                print(f"  worst {lab:<13} — only 1 bucket cleared the n>={args.min_n} "
-                      f"floor, so best and worst are the same one")
+                print(f"  worst {lab:<13} — 1 bucket cleared n>={args.min_n}: same as best")
             else:
                 lowest = w["net"] < 0
-                tag = "" if lowest else f"  <- LOWEST of {n_elig}, not a loss"
-                print(f"  worst {lab:<13} {w['key'][:30]:<30} "
-                      f"net {w['net']:>+10.2f} (n={w['n']}){tag}")
+                tag = "" if lowest else f" of {n_elig}, no loss"
+                print(f"  worst {lab:<13} {w['key'][:20]:<20}"
+                      f"{w['net']:>+10.2f} (n={w['n']}){tag}")
 
     if not args.no_json:
         payload = {
@@ -1212,10 +1218,9 @@ def main(argv: List[str]) -> int:
         os.replace(tmp, out)
         print(f"\nwrote {out}")
 
-    print(f"\nBY tables sorted by EV R: expectancy in R per trade, on the stop taken "
-          f"(NET breaks ties; `~` = some risk unpriced).\nHEADLINE best/worst still rank by NET. "
-          f"'<- thin' = fewer than {args.min_n} trades (noise, not signal);\n"
-          f"best/worst above ignore buckets under that floor.")
+    print(f"\nBY tables sort by EV R: R per trade on the stop taken (NET breaks ties;"
+          f"\n`~` = some risk unpriced). HEADLINE ranks by NET, ignoring buckets"
+          f"\nunder {args.min_n} trades; '<- thin' marks those (noise, not signal).")
     return 0
 
 

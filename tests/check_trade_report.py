@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_trade_report.py  v1.1
+tests/check_trade_report.py  v1.2
+v1.2  2026-09-26  OTV4TEST r156 — T10 ADDED: every line the report prints, in every menu mode, is
+      76 characters or fewer. Operator, on r155 read on his phone: "That report spends too many
+      lines. It's too wide. You need to get it to fit single lines."
 v1.1  2026-09-26  OTV4TEST r155 — T8 ADDED: every breakdown table carries EV R, the bucket's
       expectancy in R (mean of each trade's P&L over the risk its stop took). Operator: "Can you
       express the returns by setup type on EV multiple and add that to our report 35?"
@@ -157,6 +160,13 @@ def main():
               f"rW={TR.modified_r(w)} rL={TR.modified_r(l)} order={order}")
     except Exception as exc:                                    # noqa: BLE001
         check("T9 (did not run)", False, f"raised {type(exc).__name__}: {exc}")
+    # T10 (r156) — the phone shows 76 columns; nothing the report prints may wrap.
+    long_lines = []
+    for mode in ([], ["--rows"], ["--rows-only"], ["--all-history"], ["--since", "2026-09-01"]):
+        _rc, _o = run("--db", db, "--no-json", *mode)
+        long_lines += [f"{' '.join(mode) or 'default'}:{len(l)}:{l.strip()[:40]}"
+                       for l in _o.splitlines() if len(l) > 76]
+    check("T10 every line in every mode fits 76 characters", not long_lines, "; ".join(long_lines[:4]))
     rc6, out6 = run("--db", os.path.join(WORK, "nope.db"), "--no-json")
     check("T6 a missing database is rc 1 and says PATH DOES NOT EXIST",
           rc6 == 1 and "PATH DOES NOT EXIST" in out6, f"rc {rc6}")
