@@ -1,5 +1,15 @@
 """
-query.py  v4.16
+query.py  v4.17
+v4.17 2026-09-26  OTV4TEST r152 — THIS FILE READS ITS OWN TREE, AND A FAILED CONFIG IMPORT SAYS SO. SHARED
+      with otv4 (WA section 38.2: this tree authors, 1-REPORTER mirrors the same code and gate). Three sites,
+      found when a WIN.1 worktree checker went red on the LIVE config (Q1-Q3, 2026-09-26): (1) INSTALL_DIR was
+      the expanded "~/options-trader" and went FIRST on sys.path at import, so a checker importing query from
+      any other tree loaded the live config.py — it is now this file's own directory, identical on a box;
+      (2) get_live_price() re-inserted it on EVERY call behind an except that returns None, growing sys.path
+      and turning a wrong-module bind into a silent missing price — removed; (3) the DB_PATH fallback swallowed
+      a failed `from config import` and resolved to "~/options-trader/trades.db" — on control a stray directory
+      whose only row is a checker fixture (orb-T1, NVDA) — it now resolves inside this tree AND prints what it
+      caught to stderr. Gate tests/check_query_paths.py Q1-Q4. Operator: "Send it".
 v4.16 2026-09-26  OTV4TEST r146 — the last-resort fallback is UNSET, not QQQ: the unit's own OT_INSTRUMENT is still read first.
 v4.15  2026-09-21  OTV4TEST r84 — ONE WORD PER GATE: QUOTA HIT, AT CAP, HALTED,
       NO CHAIN, RETIRED, POSITION OPEN, AWAITING AUTH, WINDOW CLOSED. Operator
@@ -191,15 +201,22 @@ import subprocess
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-INSTALL_DIR = os.path.expanduser("~/options-trader")
-sys.path.insert(0, INSTALL_DIR)
+# r152 — THIS FILE'S OWN TREE, never an assumed "~/options-trader": on a box the two are
+# the same directory; from a worktree or clone the old path loaded the LIVE config.
+INSTALL_DIR = os.path.dirname(os.path.abspath(__file__))
+if INSTALL_DIR not in sys.path:
+    sys.path.insert(0, INSTALL_DIR)
 
 try:
     from config import DB_PATH
     SERVICE_NAME = "optionsbot"
-except Exception:
+except Exception as _cfg_exc:                                   # noqa: BLE001
+    # r152 — NAMED, NOT SWALLOWED: a silent fallback bound readers to whatever trades.db sat at
+    # the assumed path (on control: a checker fixture) with no sign anything had failed.
     DB_PATH            = os.path.join(INSTALL_DIR, "trades.db")
     SERVICE_NAME       = "optionsbot"
+    print(f"query.py: config did not load ({type(_cfg_exc).__name__}: {_cfg_exc}) "
+          f"- falling back to {DB_PATH}", file=sys.stderr)
 
 ET  = ZoneInfo("US/Eastern")
 UTC = timezone.utc
@@ -401,8 +418,7 @@ def get_service_status() -> str:
 
 def get_live_price() -> float | None:
     try:
-        sys.path.insert(0, INSTALL_DIR)
-        from data.market_data import fetch_quote
+        from data.market_data import fetch_quote          # r152: no per-call sys.path insert
         return fetch_quote(INSTRUMENT)
     except Exception:
         return None

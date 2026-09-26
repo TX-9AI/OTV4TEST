@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-352 Python modules across 12 local packages.
+353 Python modules across 12 local packages.
 
-**Reached by:** 118 imported · 12 declared entry points · 139 referenced from a script, unit or doc but never imported · **83 by nothing here**.
+**Reached by:** 118 imported · 12 declared entry points · 140 referenced from a script, unit or doc but never imported · **83 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -1060,6 +1060,10 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_purge_reclaim.py`
 - **calls:** `warehouse/__init__.py`, `warehouse/retention_purge.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
+### `tests/check_query_paths.py`
+- **calls:** (none)
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_query_sections.py`
