@@ -1,5 +1,6 @@
 """
-execution/position_manager.py  v5.6
+execution/position_manager.py  v5.7
+v5.7  2026-09-26  OTV4TEST r148 (WIN.1) — THE TABLE'S WINDOWS COME FROM config.ENTRY_WINDOWS, the one entry-window table; `config.ADMISSION_RULES` can still override caps and tries but NO LONGER a window (a second window source is WIN.1's defect). TrendCreditSpread's row reads 11:31, the minute its plan actually opened (it said 11:30).
 v5.6  2026-09-21  OTV4TEST r78 — ONE OF EACH AT A TIME. r76 read the ruling as
       removing the per-type cap; it was about BLOCKING (strategy vs strategy,
       out by r42/r50) and not CAPPING (a strategy stacking on itself). Live
@@ -314,9 +315,9 @@ _DEFAULT_RULES = {
     # have two."* A second simultaneous copy of the same strategy is not a
     # second observation, it is the SAME observation charged twice: all 20
     # spawned Breakouts read one opening range, one break, one signal.
-    ORB:     AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
-    RUNAWAY: AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
-    HUNT:    AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
+    ORB:     AdmissionRule(config.ENTRY_WINDOWS[ORB], max_open_of_type=1),
+    RUNAWAY: AdmissionRule(config.ENTRY_WINDOWS[RUNAWAY], max_open_of_type=1),
+    HUNT:    AdmissionRule(config.ENTRY_WINDOWS[HUNT], max_open_of_type=1),
     # r51 (BRK.1) — the 5-minute opening-range break taken WITHOUT a retest.
     # Same window as the ORB it is born from and the hunt it competes with,
     # because all three read the same opening range. ⚠️ NOTHING BLOCKS IT AND IT
@@ -326,7 +327,7 @@ _DEFAULT_RULES = {
     # opposite of an existing open trade."* The head-to-head against ORB and the
     # hunt is the POINT, and hierarchy would destroy the counterfactual that
     # makes it readable.
-    BREAKOUT: AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
+    BREAKOUT: AdmissionRule(config.ENTRY_WINDOWS[BREAKOUT], max_open_of_type=1),
     # the credit window was widened to 15:00 by the operator on 2026-09-17
     # 🔴 r71 — AND TO 15:40 ON 2026-09-20, FOR THE LATE-DAY MOVE. Operator:
     # *"I've seen multiple end of day moves now that I'm convinced smart money
@@ -353,20 +354,20 @@ _DEFAULT_RULES = {
     # yardstick measured over a different period measures the period.
     # blocks/blocked_by are EMPTY by construction (r51's ruling: under a
     # cascade the losing arm's outcome is unobservable).
-    VOLT:    AdmissionRule(((9, 35), (11, 30)), max_open_of_type=1),
-    SWEEP:   AdmissionRule(((9, 35), (15, 40)), max_open_of_type=2),  # 2: it forms a condor
+    VOLT:    AdmissionRule(config.ENTRY_WINDOWS[VOLT], max_open_of_type=1),
+    SWEEP:   AdmissionRule(config.ENTRY_WINDOWS[SWEEP], max_open_of_type=2),  # 2: it forms a condor
     # ══ EXCEPTION 1 of 2 — VERTICAL SPREADS ════════════════════════════════
     # A condor IS two credit verticals, so the number is the STRUCTURE and not
     # a risk limit. The pairs are sweep-sweep or TCS-sweep, never TCS-TCS, which
     # is why the sweep may hold two of its own and the TCS may not.
-    TCS:     AdmissionRule(((11, 30), (15, 40)), max_open_of_type=1), # 1: TCS+TCS is in conflict; pairs only with a sweep
+    TCS:     AdmissionRule(config.ENTRY_WINDOWS[TCS], max_open_of_type=1), # 1: TCS+TCS is in conflict; pairs only with a sweep
     # the GEX fly's cutoff was raised from 14:00 to 15:00 by the operator
     # ══ EXCEPTION 2 of 2 — THE BUTTERFLIES, ONE PER SESSION ════════════════
     # r178: on 2026-08-28 at 15:00 a stack of FIVE BUTTERFLIES fired in NINETY
     # SECONDS on the same pin. `max_tries_per_session=1` is the admission half
     # of that guard; `mark_pin_played` is the other.
-    GEXFLY:  AdmissionRule(((12, 0), (15, 0)), max_open_of_type=1, max_tries_per_session=1),
-    ATPFLY:  AdmissionRule(((11, 30), (15, 0)), max_open_of_type=1, max_tries_per_session=1),
+    GEXFLY:  AdmissionRule(config.ENTRY_WINDOWS[GEXFLY], max_open_of_type=1, max_tries_per_session=1),
+    ATPFLY:  AdmissionRule(config.ENTRY_WINDOWS[ATPFLY], max_open_of_type=1, max_tries_per_session=1),
 }
 
 
@@ -385,7 +386,7 @@ def rules() -> dict:
         if base is None or not isinstance(patch, dict):
             continue
         out[name] = AdmissionRule(
-            window=tuple(patch.get("window", base.window)),
+            window=base.window,   # r148: windows come ONLY from config.ENTRY_WINDOWS
             max_open_of_type=(None if patch.get("max_open_of_type", base.max_open_of_type) is None
                               else int(patch["max_open_of_type"])
                               if "max_open_of_type" in patch else base.max_open_of_type),

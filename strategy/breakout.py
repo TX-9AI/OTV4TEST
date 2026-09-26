@@ -1,7 +1,8 @@
 """
-strategy/breakout.py  v1.5
+strategy/breakout.py  v1.6
 THE SPECIFICATION. The plan searches; this declares what it must find.
 
+v1.6  2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged. BREAKOUT_LATEST_ET never existed in config; the 11:30 lived here.
 v1.5  2026-09-24  OTV4TEST r131 — `NEW_EXTREME`, THE RE-FIRE RULE, declared
       FOUNDATIONAL. THE OPERATOR, 2026-09-24: *"A new reclaimed level has to
       happen before it can fire again? A new high for a long, a new low for a
@@ -130,8 +131,8 @@ GATES = {
 NEW_EXTREME = "new_extreme"
 
 # ── the window (admission also carries it; this is the strategy's own claim) ──
-EARLIEST_ET = str(getattr(config, "BREAKOUT_EARLIEST_ET", "09:35"))
-LATEST_ET = str(getattr(config, "BREAKOUT_LATEST_ET", "11:30"))
+EARLIEST_ET = str(config.BREAKOUT_EARLIEST_ET)   # r148: the name now exists; no literal fallback
+LATEST_ET = str(config.BREAKOUT_LATEST_ET)     # r148: the name now exists; no literal fallback
 
 # ── the bars, as priors ──────────────────────────────────────────────────────
 # ⚠️ UNMEASURED. The study that gives these numbers separates breaks that RAN

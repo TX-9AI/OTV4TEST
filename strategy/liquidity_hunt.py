@@ -1,5 +1,6 @@
 """
-strategy/liquidity_hunt.py  v1.4
+strategy/liquidity_hunt.py  v1.5
+v1.5  2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged.
 v1.4  2026-09-22  OTV4TEST r104 - THE RAILS NO LONGER OUTRANK A HELD
       EXTREME. `sorted(b["above"] + tines_up)` was one merged list and
       `na = above[0]` took whatever sat nearest, so a rail inside the nearest
@@ -92,8 +93,8 @@ GATES = {
     "CUTOFF_ET":       "FOUNDATIONAL",
 }
 
-WINDOW_OPEN_ET = getattr(config, "ENTRY_OPEN_ET", (9, 35))
-CUTOFF_ET      = getattr(config, "HUNT_CUTOFF_ET", (11, 30))
+WINDOW_OPEN_ET = config.ENTRY_OPEN_ET   # r148: no literal fallback
+CUTOFF_ET      = config.HUNT_CUTOFF_ET          # r148: no literal fallback
 MAX_LOSS_PCT   = float(getattr(config, "HUNT_MAX_LOSS_PCT", getattr(config, "RUNAWAY_MAX_LOSS_PCT", 0.20)))
 
 FINISHED: set = set()          # (direction, boundary) — one hunt per break

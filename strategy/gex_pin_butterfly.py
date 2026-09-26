@@ -1,5 +1,6 @@
 """
-strategy/gex_pin_butterfly.py  v5.5
+strategy/gex_pin_butterfly.py  v5.6
+v5.6  2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged. GEX_BFLY_LATEST_ET never existed in config; the 15:00 lived here.
 v5.5  2026-09-17  OTV4TEST r31 (BFLY.7) — THE PINNING REGIME IS RECORDED, AT ZERO WEIGHT.
       This fly reads the pin STRIKE and the CONCENTRATION at it and has never read
       whether the regime that does the pinning EXISTS or is collapsing. They are
@@ -359,8 +360,8 @@ PIN_CONC_MIN = getattr(config, "GEX_BFLY_PIN_CONC_MIN", 0.25)
 VWAP_BAND_EM_FRAC = float(getattr(config, "GEX_BFLY_VWAP_BAND_EM_FRAC", 0.10))
 EM_MIN_FRAC = getattr(config, "GEX_BFLY_EM_MIN_FRAC", 0.30)
 EM_MAX_FRAC = getattr(config, "GEX_BFLY_EM_MAX_FRAC", 1.00)
-EARLIEST_ET = getattr(config, "GEX_BFLY_EARLIEST_ET", "11:00")
-LATEST_ET = getattr(config, "GEX_BFLY_LATEST_ET", "15:00")
+EARLIEST_ET = config.GEX_BFLY_EARLIEST_ET       # r148: no literal fallback
+LATEST_ET = config.GEX_BFLY_LATEST_ET           # r148: the name now exists; no literal fallback
 # OTV4TEST r6 — persistence with smoothing (operator 2026-09-09). PRIORS,
 # recorded on every row; the first real pins say what they should be.
 SMOOTH_WINDOW = int(getattr(config, "GEX_BFLY_SMOOTH_WINDOW", 12))    # ticks (~3 min)

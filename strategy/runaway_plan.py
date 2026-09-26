@@ -1,5 +1,6 @@
 """
-strategy/runaway_plan.py  v1.2
+strategy/runaway_plan.py  v1.3
+v1.3  2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged.
 v1.2  2026-09-13  OTV4TEST r24 — THE RUNAWAY CANNOT ENTER BELOW ITS OWN 50, AND ITS BREAK
       STATE IS READ FROM THE BOOKS. (1) `runaway_confirmed` — last closed close
       AND live price beyond the 50 — existed with no caller; wired, so the
@@ -82,7 +83,7 @@ GATES = {
     "BAND_RIP":      "SELECTION",
 }
 
-WINDOW_OPEN_ET   = getattr(config, "ENTRY_OPEN_ET", (9, 35))
+WINDOW_OPEN_ET   = config.ENTRY_OPEN_ET   # r148: no literal fallback
 MAX_LOSS_PCT     = float(getattr(config, "RUNAWAY_MAX_LOSS_PCT", 0.20))
 # the strength → band prior (category 1: a baseline, recorded, unfitted)
 STRENGTH_GRIND   = float(getattr(config, "RUNAWAY_STRENGTH_GRIND", 0.40))
@@ -116,7 +117,7 @@ def _cutoff_hm():
         h, m = str(CUTOFF_ET).split(":")[:2]
         return int(h), int(m)
     except (ValueError, AttributeError):
-        return (11, 30)
+        return tuple(config.ENTRY_WINDOWS["RunawayContinuation"][1])   # r148: the table, not a literal
 
 
 class RunawayPreparation:

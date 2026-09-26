@@ -1,5 +1,6 @@
 """
-strategy/sweep_credit_spread.py  v6.5
+strategy/sweep_credit_spread.py  v6.6
+v6.6  2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged.
 v6.5  2026-09-22  OTV4TEST r105 - `sig.sweep_age_bars` REMOVED, not repaired.
       A hardcoded 0 that nothing decided on: its ONLY consumer was
       signal_journal's factor column, and that file's own note calls a constant
@@ -426,7 +427,7 @@ MIN_REJECTION_PCT = getattr(config, "SWEEP_CS_MIN_REJECTION_PCT", 0.0002)
 # "after 13:00" and "fewer than 150 bars left" select largely the same events;
 # less session remaining means less time for the boundary to be tested. Treating
 # them as independent confirmation would be double-counting one effect.
-EARLIEST_ET = getattr(config, "SWEEP_CS_EARLIEST_ET", "13:00")
+EARLIEST_ET = config.SWEEP_CS_EARLIEST_ET       # r148: no literal fallback
 # 🔴 r98 (2026-08-24) — 15:00 WAS TOO LATE AND RELAXED MADE IT 15:30.
 # Operator: "Close the window on sweep to 1400 also. That entry is way too
 # late." A credit vertical opened at 15:00 has 45 minutes to the 15:45 hard
@@ -435,7 +436,7 @@ EARLIEST_ET = getattr(config, "SWEEP_CS_EARLIEST_ET", "13:00")
 # the late side to 15:30, which is worse still — 15:30 collides with the 15:40
 # flatten ladder, so a relaxed sweep could open a position that is closed ten
 # minutes later by the clock rather than by its thesis.
-LATEST_ET = getattr(config, "SWEEP_CS_LATEST_ET", "14:00")
+LATEST_ET = config.SWEEP_CS_LATEST_ET           # r148: no literal fallback
 
 # ── AND A CEILING ON THE PIERCE DEPTH ──────────────────────────────────────
 #   BY REJECTION DEPTH            n     survived   p50 adverse

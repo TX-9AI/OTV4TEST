@@ -1,5 +1,6 @@
 """
-strategy/orb_plan.py  v1.5
+strategy/orb_plan.py  v1.6
+v1.6  2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged.
 v1.5  2026-09-24  OTV4TEST r131b — A REFUSED BREAK IS NAMED ON THE ROW. Operator,
       2026-09-24: "The stop should be inside the opening range to be a valid
       set up." analysis/orb_engine.py v4.15 refuses a break candle whose
@@ -102,8 +103,8 @@ GATES = {
 }
 
 # ── declared values the search reads (PLAN_SPEC §29.3) ─────────────────────
-CUTOFF_ET          = getattr(config, "ORB_NO_ENTRY_AFTER_ET", (11, 30))
-WINDOW_OPEN_ET     = getattr(config, "ENTRY_OPEN_ET", (9, 35))      # the range exists from here
+CUTOFF_ET          = config.ORB_NO_ENTRY_AFTER_ET     # r148: no literal fallback
+WINDOW_OPEN_ET     = config.ENTRY_OPEN_ET   # r148: no literal fallback      # the range exists from here
 MAX_LOSS_PCT       = float(getattr(config, "MAX_LOSS_PCT", 0.25))       # the 25% floor
 STRIKE_INCREMENT   = getattr(config, "STRIKE_INCREMENT", 1)
 QUOTE_FLOOR        = 0.05          # carried from select_orb_strike — NOT RULED

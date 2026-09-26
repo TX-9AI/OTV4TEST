@@ -1,5 +1,6 @@
 """
-strategy/volt_plan.py  v1.2
+strategy/volt_plan.py  v1.3
+v1.3  2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged.
 v1.2  2026-09-24  OTV4TEST r131 — DOCSTRING ONLY. The operator, 2026-09-24:
       *"VOLT needs to adopt the breakout sizing model."* The ORDER is now sized
       by RiskManager's geometry/risk rule (main._geometry_inputs, fed
@@ -119,8 +120,8 @@ VOL_LOOKBACK_BARS  = int(getattr(config, "VOLT_VOL_LOOKBACK_BARS", 5))
 MIN_BARS           = int(getattr(config, "VOLT_MIN_BARS", 3))
 TRAIL_ARM_R        = float(getattr(config, "VOLT_TRAIL_ARM_R", 0.50))
 TRAIL_LOCK_FRAC    = float(getattr(config, "VOLT_TRAIL_LOCK_FRAC", 0.50))
-WINDOW_OPEN_ET     = tuple(getattr(config, "VOLT_WINDOW_OPEN_ET", (9, 35)))
-WINDOW_CLOSE_ET    = tuple(getattr(config, "VOLT_WINDOW_CLOSE_ET", (11, 30)))
+WINDOW_OPEN_ET     = tuple(config.VOLT_WINDOW_OPEN_ET)     # r148: no literal fallback
+WINDOW_CLOSE_ET    = tuple(config.VOLT_WINDOW_CLOSE_ET)    # r148: no literal fallback
 
 QUOTE_FLOOR   = 0.05
 DELTA_BIAS    = getattr(config, "ORB_STRIKE_DELTA_BIAS", "lower")

@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
-tests/check_admission.py  v1.5
+tests/check_admission.py  v1.6
 THE ADMISSION TABLE, DRIVEN EXHAUSTIVELY (OTV4TEST r35).
 
+v1.6  2026-09-26  OTV4TEST r148 (WIN.1) — A and A8 RE-POINTED, not loosened. The TCS row is 11:31 because its PLAN has
+        refused 11:30 all along ("before TCS_START_ET 11:31 — dormant"): the admitted-but-dormant minute made A8's
+        'no gap' untrue in effect while the table said otherwise. A8 now pins the handover as it really runs: the
+        morning three and the TCS are all OUT at 11:30 (the ATP fly is IN), and the TCS is IN at 11:31.
 v1.5  2026-09-21  OTV4TEST r78 — the caps come BACK: the restated SPEC returns
       ORB/RUNAWAY/HUNT/BREAKOUT/VOLT to 1 and B8 is RE-POINTED A SECOND TIME,
       never loosened, to the operator's own sentence — every strategy capped,
@@ -107,7 +111,7 @@ def main():
         # equality from the other side.
         VOLT:    (((9, 35), (11, 30)), 1, None),
         SWEEP:   (((9, 35), (15, 40)), 2, None),
-        TCS:     (((11, 30), (15, 40)), 1, None),
+        TCS:     (((11, 31), (15, 40)), 1, None),   # r148: the minute its plan opens (AFD.1)
         GEXFLY:  (((12, 0), (15, 0)), 1, 1),
         ATPFLY:  (((11, 30), (15, 0)), 1, 1),
     }
@@ -136,10 +140,10 @@ def main():
               f"{before}={bool(ok(s,before))} {at_start}={bool(ok(s,at_start))} "
               f"{before_end}={bool(ok(s,before_end))} {at_end}={bool(ok(s,at_end))}")
 
-    check("A8 11:30 is the handover: the morning three are OUT and the TCS is IN, same minute",
+    check("A8 the handover as it runs: at 11:30 the morning three and the TCS are OUT and the ATP fly IN; the TCS is IN at 11:31",
           not ok(ORB, (11, 30)) and not ok(RUNAWAY, (11, 30)) and not ok(HUNT, (11, 30))
-          and bool(ok(TCS, (11, 30))) and bool(ok(ATPFLY, (11, 30))),
-          "no overlap, no gap")
+          and not ok(TCS, (11, 30)) and bool(ok(TCS, (11, 31))) and bool(ok(ATPFLY, (11, 30))),
+          "no overlap; the TCS's one-minute gap is its plan's own (AFD.1), now stated by the table")
 
     check("A9 the GEX fly runs to 15:00 (its 14:00 cutoff was raised by ruling)",
           bool(ok(GEXFLY, (14, 30))) and bool(ok(GEXFLY, (14, 59))) and not ok(GEXFLY, (15, 0)),

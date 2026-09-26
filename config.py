@@ -1,5 +1,6 @@
 """
-config.py  v4.37
+config.py  v4.38
+v4.38 2026-09-26  OTV4TEST r148 (WIN.1) — ONE ENTRY-WINDOW TABLE. `ENTRY_WINDOWS` is the single source of every strategy's entry window; the admission table and every plan read it, and each older name (ORB_NO_ENTRY_AFTER_ET, RUNAWAY_CUTOFF_ET, VOLT_WINDOW_*, TCS_*, CREDIT_*, CONDOR_ENTRY_CUTOFF_ET, SWEEP_CS_*_FORK, BUTTERFLY_ENTRY_START_ET) is DERIVED from it. HUNT_CUTOFF_ET, BREAKOUT_LATEST_ET and GEX_BFLY_LATEST_ET are added: three strategies read those names with a literal fallback and the names never existed. Every value is UNCHANGED (tests/check_one_window_table.py pins all 47 resolved values).
 v4.37 2026-09-26  OTV4TEST r146 — OT_INSTRUMENT HAS NO "QQQ" FALLBACK: unset reads "UNSET".
       The operator: "defaulting the QQQ is not the answer" (2026-09-26). A process without the variable
       was silently QQQ - right on this box by luck, wrong on every other (r144's
@@ -661,7 +662,34 @@ TREND_CREDIT_ACTIVE         = os.environ.get("OT_TCS_ACTIVE", "1") == "1"
 # colliding with runaway (same trigger)."
 # ⚠️ THE WINDOW IS NOW 11:31 -> TCS_ENTRY_END_ET (14:00). The debit owns the
 # runaway until 11:30; the credit owns it after.
-TCS_START_ET                = (11, 31)    # afternoon only; 11:31 clears AFD.1
+# ══ r148 (WIN.1) — ONE ENTRY-WINDOW TABLE ═══════════════════════════════════
+# Operator, 2026-09-22: *"Why are there multiple places for the trade windows? Why
+# isn't there 1 universal table?"* — and 2026-09-26: *"I agree to all of that."*
+# ONE (start, end) per strategy, ET. The admission table (execution/position_manager)
+# and every plan read THIS; every older name below derives from it. A plan that
+# needs a window reads a config name with NO literal fallback, so a missing name
+# fails at import instead of silently becoming 14:00 (r81's defect, which sat
+# pre-armed in tcs_plan and sweep_plan until this revision).
+# ⚠️ Values are the EFFECTIVE windows measured 2026-09-26. TrendCreditSpread
+# starts 11:31 (its plan refused 11:30 while the admission row said 11:30).
+ENTRY_WINDOWS = {
+    "ORBStrategy":          ((9, 35),  (11, 30)),
+    "RunawayContinuation":  ((9, 35),  (11, 30)),
+    "LiquidityHunt":        ((9, 35),  (11, 30)),
+    "Breakout":             ((9, 35),  (11, 30)),
+    "VOLT":                 ((9, 35),  (11, 30)),
+    "SweepCreditSpread":    ((9, 35),  (15, 40)),
+    "TrendCreditSpread":    ((11, 31), (15, 40)),
+    "GEXPinButterfly":      ((12, 0),  (15, 0)),
+    "ATPButterfly":         ((11, 30), (15, 0)),
+}
+
+
+def _hhmm(t) -> str:
+    return f"{t[0]}:{t[1]:02d}"
+
+
+TCS_START_ET                = ENTRY_WINDOWS["TrendCreditSpread"][0]    # afternoon only; 11:31 clears AFD.1
 # ⚠️ r141 — kept as a literal because CREDIT_ENTRY_START_ET is defined further
 # down this file; the two MUST stay equal and check_entry_windows pins it.
 # Credit must clear BOTH floors. Width-relative keeps risk/reward sane;
@@ -1116,7 +1144,7 @@ HARD_CLOSE_ET               = (15, 45)
 # it crosses unconditionally. An unfilled 0DTE at the bell is an expiry (and an
 # assignment on a short leg), not an overnight hold — so the cross is absolute.
 FLATTEN_WINDOW_OPEN_ET      = (15, 40)
-ORB_NO_ENTRY_AFTER_ET       = (11, 30)  # ORB-SCOPED: ORB entries valid until 11:30 ET.
+ORB_NO_ENTRY_AFTER_ET       = ENTRY_WINDOWS["ORBStrategy"][1]  # ORB-SCOPED: ORB entries valid until 11:30 ET.
                                         #   Also the ARM condition for sweep reversal.
 # 🔴 r193 — 11:00 -> 11:30, operator 2026-08-30: "1130 is the cutoff for new
 # orb entries or a single attempt runaway that has not yet fired during the
@@ -1279,7 +1307,7 @@ BUTTERFLY_ENTRY_CUTOFF_ET   = (14, 0)   # was 15:00 and unreachable (see v3.1 he
 # opened a full HOUR before the rule the operator just stated. Same shape as
 # SWEEP_CS_EARLIEST_ET: a default is the only source, and the config value
 # everyone reads is decorative.
-BUTTERFLY_ENTRY_START_ET    = (12, 0)   # No butterfly entries before noon
+BUTTERFLY_ENTRY_START_ET    = ENTRY_WINDOWS["GEXPinButterfly"][0]   # No butterfly entries before noon
 GEX_BFLY_EARLIEST_ET        = f"{BUTTERFLY_ENTRY_START_ET[0]}:{BUTTERFLY_ENTRY_START_ET[1]:02d}"
 # r147 — UNPARKED. Operator, 2026-08-26: "I want it active. It already has to
 # clear a high bar to fire." OT_GEX_BUTTERFLY=0 parks it again.
@@ -1288,7 +1316,11 @@ GEX_BFLY_WING_EM_FRAC       = float(os.environ.get("OT_GEX_BFLY_WING_EM_FRAC", "
 # ⚠️ THE DEBIT CUTOFF, ALSO A DEFAULT-ONLY VALUE UNTIL NOW. 11:30 is correct
 # and load-bearing: the credit start is 11:31, so this is the one minute of
 # daylight between the two. Defined here so the pair cannot drift apart.
-RUNAWAY_CUTOFF_ET           = "11:30"
+RUNAWAY_CUTOFF_ET           = _hhmm(ENTRY_WINDOWS["RunawayContinuation"][1])
+HUNT_CUTOFF_ET              = ENTRY_WINDOWS["LiquidityHunt"][1]        # r148: read by liquidity_hunt; never existed before
+BREAKOUT_LATEST_ET          = _hhmm(ENTRY_WINDOWS["Breakout"][1])      # r148: read by breakout; never existed before
+BREAKOUT_EARLIEST_ET        = "%02d:%02d" % ENTRY_WINDOWS["Breakout"][0]  # r148: never existed; zero-padded "09:35" exactly as the literal was
+GEX_BFLY_LATEST_ET          = _hhmm(ENTRY_WINDOWS["GEXPinButterfly"][1])  # r148: read by gex_pin_butterfly; never existed before
 ORB_WINDOW_MINUTES          = 5
 
 # ─── ORB STRATEGY ─────────────────────────────────────────────────────────────
@@ -1786,8 +1818,8 @@ VOLT_EXT_STOCKLIKE      = float(os.environ.get("OT_VOLT_EXT_STOCKLIKE", "0.02"))
 # (§31) — arm E of PREREG_TRAIL.md measures it; until then it is a PRIOR and
 # the header says so rather than letting it read as evidence.
 VOLT_STOCKLIKE_ATR_MULT = float(os.environ.get("OT_VOLT_STOCKLIKE_ATR_MULT", "1.0"))
-VOLT_WINDOW_OPEN_ET     = (9, 35)
-VOLT_WINDOW_CLOSE_ET    = (11, 30)
+VOLT_WINDOW_OPEN_ET     = ENTRY_WINDOWS["VOLT"][0]
+VOLT_WINDOW_CLOSE_ET    = ENTRY_WINDOWS["VOLT"][1]
 # ⬛ SUPERSEDED 2026-09-24 (OTV4TEST r131) — the operator ruled VOLT onto the Breakout
 # sizing model (1-R = the signal candle's extreme in premium, ORB_RISK_USD at risk,
 # capped at ORB_BUDGET_USD, r93 noise floor). The control-arm argument below was
@@ -1829,7 +1861,7 @@ CONDOR_POP_BAR_MIN          = float(os.environ.get("OT_CONDOR_POP_BAR_MIN", "5")
 # otv3 and was an ADX-ramp argument for waiting LONGER after the opening gap,
 # so 11:31 is consistent with its intent. It costs the condor window 20
 # minutes against the 14:00 cutoff: 169 -> 149.
-CREDIT_ENTRY_START_ET       = (11, 31)  # every credit spread, one number
+CREDIT_ENTRY_START_ET       = ENTRY_WINDOWS["TrendCreditSpread"][0]  # every credit spread, one number
 CONDOR_ENTRY_START_ET       = CREDIT_ENTRY_START_ET   # was (11, 11)
 # ⚠️ THE FOURTH CREDIT PATH, AND IT WAS NOT IN THIS FILE AT ALL.
 # `sweep_credit_spread.py` read `getattr(config, "SWEEP_CS_EARLIEST_ET",
@@ -1846,7 +1878,7 @@ SWEEP_CS_EARLIEST_ET        = f"{CREDIT_ENTRY_START_ET[0]}:{CREDIT_ENTRY_START_E
 # (15,40) at the same instant. The r317 block BELOW PREDICTED THIS EXACT
 # FAILURE and it still happened, which is why r81 derives every credit END
 # from this one constant rather than repeating the number.
-CONDOR_ENTRY_CUTOFF_ET      = (15, 40)  # r81: was (14,0); r71's ruling
+CONDOR_ENTRY_CUTOFF_ET      = ENTRY_WINDOWS["TrendCreditSpread"][1]  # r81: was (14,0); r71's ruling
 # 🔴 r317 — THE END SIDE, WHICH THE TWO EARLIER FIXES BOTH MISSED.
 # `sweep_credit_spread.LATEST_ET` read `getattr(config, "SWEEP_CS_LATEST_ET",
 # "14:00")` and THE KEY DID NOT EXIST, so the default was the only source —
@@ -1872,8 +1904,8 @@ SWEEP_CS_LATEST_ET          = f"{CREDIT_ENTRY_END_ET[0]}:{CREDIT_ENTRY_END_ET[1]
 # `SWEEP_CS_EARLIEST_ET_FORK` and that key has never existed either; its
 # (9, 35) default merely HAPPENS to match the admission table today, which is
 # r317's warning word for word — invisible until someone moves the number.
-SWEEP_CS_EARLIEST_ET_FORK   = (9, 35)   # r81: matches admission SWEEP start
-SWEEP_CS_LATEST_ET_FORK     = CREDIT_ENTRY_END_ET
+SWEEP_CS_EARLIEST_ET_FORK   = ENTRY_WINDOWS["SweepCreditSpread"][0]   # r81: matches admission SWEEP start
+SWEEP_CS_LATEST_ET_FORK     = ENTRY_WINDOWS["SweepCreditSpread"][1]
 # 🔑 THE ONE CREDIT END. Every credit path resolves to this single constant and
 # none of them carries its own number: the sweep (both key spellings), the TCS,
 # and the condor that forms from two of their legs. r71's ruling moved the

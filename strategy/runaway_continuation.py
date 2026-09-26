@@ -1,5 +1,6 @@
 """
-strategy/runaway_continuation.py  v5.1
+strategy/runaway_continuation.py  v5.2
+v5.2  2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged.
 v5.1  2026-09-13  OTV4TEST r24 — ONE PER BREAK IS READ FROM trades.db. `FINISHED_BREAKS`
       and `finish_break` are DELETED: a per-process set that a restart wiped,
       which is how 2026-09-09's 11:28 bake let the runaway re-buy a spent break
@@ -222,7 +223,7 @@ logger = logging.getLogger(__name__)
 ATR_FLOOR_PCT = getattr(config, "RUNAWAY_ATR_FLOOR_PCT", 0.08)
 ATR_HARD_VETO_PCT = getattr(config, "RUNAWAY_ATR_VETO_PCT", 0.05)
 ATR_DEEP_PCT = getattr(config, "RUNAWAY_ATR_DEEP_PCT", 0.20)
-CUTOFF_ET = getattr(config, "RUNAWAY_CUTOFF_ET", "11:30")
+CUTOFF_ET = config.RUNAWAY_CUTOFF_ET          # r148: no literal fallback
 
 # ATR -> target delta. From the reachability table above: at 0.12%+ the tape
 # reaches 0.20-0.35 on 60% of bars; at 0.20%+ it reaches 0.35-0.50 on 85%.

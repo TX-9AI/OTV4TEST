@@ -1,5 +1,6 @@
 """
-strategy/tcs_plan.py  v1.6
+strategy/tcs_plan.py  v1.7
+v1.7  2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged. 🔴 Its fallback END was (14, 0) against a live 15:40 — r81 pre-armed.
 v1.6  2026-09-24  OTV4TEST r129 - "stop_vs_spread" RECORDS THE RATIO THE RULE TESTS.
       It recorded `stop_dist` (DOLLARS) under the ratio's name, and only on a pass,
       so no report could say how close a wing came. `criteria.stop_survivable`
@@ -121,8 +122,8 @@ GATES = {
     "TCS_ENTRY_END_ET":     "SELECTION",
 }
 
-TCS_START_ET        = getattr(config, "TCS_START_ET", (11, 31))
-TCS_ENTRY_END_ET    = getattr(config, "TCS_ENTRY_END_ET", (14, 0))
+TCS_START_ET        = config.TCS_START_ET        # r148: no literal fallback
+TCS_ENTRY_END_ET    = config.TCS_ENTRY_END_ET    # r148: was a (14, 0) fallback against a live 15:40
 TCS_MIN_POP         = float(getattr(config, "TCS_MIN_POP", 0.70))
 TCS_MIN_CREDIT_PCT  = float(getattr(config, "TCS_MIN_CREDIT_PCT_WIDTH", 0.10))
 TCS_R_FLOOR_EXPIRY  = float(getattr(config, "TCS_R_FLOOR_EXPIRY", 1.00))
