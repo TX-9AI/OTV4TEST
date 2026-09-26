@@ -1,4 +1,14 @@
-# tests/trade_report.py — v1.21
+# tests/trade_report.py — v1.22
+# v1.22 (2026-09-26) — OTV4TEST r158. THE EXIT-REASON TABLE GAINS MFE% / MAE%, AND THE "thin" LABELS
+#   GO. The operator, 2026-09-26: "Exit reason does not have any MFE/MAE — I don't need the report
+#   pointing out that a sample size of 1 is 'thin' — no shit." EXIT REASON x SESSION SPREAD now shows,
+#   per exit reason, the MEDIAN MFE% (best premium seen vs entry, `max_premium_seen`) and MAE% (worst,
+#   `min_premium_seen`) over ALL its trades — the same fields and formula EXIT BEHAVIOUR uses, so the
+#   two agree. `<- thin` is removed from that table (r294's reasoning again: at this sample nearly
+#   every row tripped it, so it marked the ordinary case), and the per-row `thin` in the outliers
+#   section goes too; the RULE stays (a bucket under --min-n is kept whole, stated once below the
+#   section), because the flag was display and the rule is a guard. To fit 76 columns the
+#   `<- SINGLE-SESSION` flag is `1-DAY`, defined in the note under the table.
 # v1.21 (2026-09-26) — OTV4TEST r157. ONE MORE EV SECTION: BY SETUP TYPE, OUTLIERS REMOVED, BOTH
 #   TAILS. Operator: "Can you add one more EV section to that report that removes statistical
 #   outliers? Good & bad?" — asked after one +19.63R VOLT trade turned out to carry VOLT's whole
@@ -565,9 +575,8 @@ def show_ev_trimmed(trades: List[dict], min_n: int = 8, key: str = "setup_type",
     rows.sort(key=lambda x: (x[5] is None, -(x[5] or 0.0), -x[4]))
     for k, n, oh, ol, ea, ee, ne, thin in rows:
         ee_s = f"{'-':>8}" if ee is None else f"{ee:>+8.2f}"
-        print(f"  {k[:width]:<{width}}{n:>4}{oh:>5}{ol:>5}{ea:>+8.2f}{ee_s}{ne:>11.2f}"
-              + (" thin" if thin else ""))
-    print(f"  thin = under {min_n} trades: kept whole, nothing trimmed.")
+        print(f"  {k[:width]:<{width}}{n:>4}{oh:>5}{ol:>5}{ea:>+8.2f}{ee_s}{ne:>11.2f}")
+    print(f"  Setups under {min_n} trades are kept whole: nothing trimmed.")
     if big and n_lo == 0:
         print("  No LOW outliers: stops cap losses, so only big winners are trimmed.")
 
@@ -748,8 +757,21 @@ def exit_concentration(trades: List[dict], min_n: int) -> Dict[str, dict]:
     landed on its heaviest one? A reason that is 100% one date is a single-day
     event wearing a cumulative label."""
     by_reason: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    # r158 — per reason, the median MFE / MAE as a fraction of entry premium (EXIT BEHAVIOUR's fields).
+    mfe: Dict[str, list] = defaultdict(list)
+    mae: Dict[str, list] = defaultdict(list)
     for t in trades:
-        by_reason[norm_reason(t.get("exit_reason"))][t.get("_date") or "(none)"] += 1
+        reason = norm_reason(t.get("exit_reason"))
+        by_reason[reason][t.get("_date") or "(none)"] += 1
+        e = _f(t.get("entry_premium"))
+        mx, mn = _f(t.get("max_premium_seen")), _f(t.get("min_premium_seen"))
+        if e and mx:
+            mfe[reason].append((mx - e) / e)
+        if e and mn:
+            mae[reason].append((mn - e) / e)
+    excursions = {r: {"mfe_med": round(statistics.median(mfe[r]), 4) if mfe[r] else None,
+                      "mae_med": round(statistics.median(mae[r]), 4) if mae[r] else None}
+                  for r in set(mfe) | set(mae)}
     out = {}
     for reason, dates in by_reason.items():
         total = sum(dates.values())
@@ -758,6 +780,7 @@ def exit_concentration(trades: List[dict], min_n: int) -> Dict[str, dict]:
             "n": total, "sessions": len(dates), "top_date": top_date,
             "top_n": top_n, "top_share": round(top_n / total, 3),
             "single_session": (top_n / total) >= 0.80 and total >= min_n,
+            **excursions.get(reason, {"mfe_med": None, "mae_med": None}),
         }
     return out
 
@@ -1201,14 +1224,16 @@ def main(argv: List[str]) -> int:
 
     conc = exit_concentration(trades, args.min_n)
     print("\nEXIT REASON x SESSION SPREAD")
-    print(f"  {'':<21}{'N':>5}{'SESS':>6}{'TOP DATE':>13}{'SHARE':>7}")
+    # r158 — MFE% / MAE% per reason; no `<- thin` flag; 68 wide with the 1-DAY flag.
+    print(f"  {'':<21}{'N':>4}{'SESS':>5}{'TOP DATE':>11}{'SHARE':>6}{'MFE%':>6}{'MAE%':>6}")
+    _pct = lambda v: f"{'-':>6}" if v is None else f"{v:>+6.0%}"      # noqa: E731
     for reason, c in sorted(conc.items(), key=lambda kv: -kv[1]["n"]):
-        flag = "  <- SINGLE-SESSION" if c["single_session"] else (
-            "  <- thin" if c["n"] < args.min_n else "")
-        print(f"  {reason[:21]:<21}{c['n']:>5}{c['sessions']:>6}"
-              f"{c['top_date']:>13}{c['top_share']:>7.0%}{flag}")
-    print(f"  SINGLE-SESSION = >=80% of an exit's trades on one date (n >= {args.min_n}):"
-          f"\n  a one-day event, not a standing pattern — not a rate.")
+        flag = "  1-DAY" if c["single_session"] else ""
+        print(f"  {reason[:21]:<21}{c['n']:>4}{c['sessions']:>5}"
+              f"{c['top_date']:>11}{c['top_share']:>6.0%}"
+              f"{_pct(c.get('mfe_med'))}{_pct(c.get('mae_med'))}{flag}")
+    print(f"  MFE% / MAE% = median best / worst premium vs entry, per exit reason.\n"
+          f"  1-DAY = >=80% of an exit's trades on one date (n >= {args.min_n}): not a rate.")
 
     eb = exit_behaviour(trades)
     print("\nEXIT BEHAVIOUR")
@@ -1283,7 +1308,7 @@ def main(argv: List[str]) -> int:
 
     print(f"\nBY tables sort by EV R: R per trade on the stop taken (NET breaks ties;"
           f"\n`~` = some risk unpriced). HEADLINE ranks by NET, ignoring buckets"
-          f"\nunder {args.min_n} trades; '<- thin' marks those (noise, not signal).")
+          f"\nunder {args.min_n} trades.")
     return 0
 
 

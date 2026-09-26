@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_trade_report.py  v1.3
+tests/check_trade_report.py  v1.4
+v1.4  2026-09-26  OTV4TEST r158 — T11 no longer expects a per-row `thin` (the label is gone; the kept-whole
+      RULE is still pinned by the values). T12 ADDED: the exit-reason table carries median MFE% / MAE%
+      per reason (EXIT BEHAVIOUR's fields) and the report prints no `thin` label anywhere. Operator:
+      "Exit reason does not have any MFE/MAE — I don't need the report pointing out that a sample
+      size of 1 is 'thin'".
 v1.3  2026-09-26  OTV4TEST r157 — T11 ADDED: the outliers-removed EV section trims BOTH tails by
       Tukey's fences over the whole book (a +20R winner and a -10R loser are both cut, a +1R and a
       -1R are kept), reports each tail's count, and its trimmed EV is the mean of the rest; and a
@@ -195,12 +200,30 @@ def main():
         check("T11 outliers cut on BOTH tails (+20R, -10R) in full buckets; THIN buckets keep every trade",
               lo > -10 and hi < 20 and "1 high, 1 low out" in o
               and a[1:6] == ["5", "1", "0", "+4.00", "+0.00"] and b[1:6] == ["4", "0", "1", "-2.38", "+0.17"]
-              and a8[1:6] == ["5", "0", "0", "+4.00", "+4.00"] and a8[-1] == "thin"
+              and a8[1:6] == ["5", "0", "0", "+4.00", "+4.00"] and a8[-1] != "thin"
               and b8[1:6] == ["4", "0", "0", "-2.38", "-2.38"] and "0 high, 0 low out" in o8
               and all(len(l) <= 76 for l in (o + o8).splitlines()),
               f"fences {lo:+.2f}..{hi:+.2f}; A4={a} B4={b}; A8={a8}")
     except Exception as exc:                                    # noqa: BLE001
         check("T11 (did not run)", False, f"raised {type(exc).__name__}: {exc}")
+    # T12 (r158) — MFE% / MAE% per exit reason; no `thin` label anywhere in the report.
+    try:
+        TR = sys.modules.get("trade_report") or __import__("trade_report")
+        rows = [dict(exit_reason="trail_stop_hit pnl=30%", entry_premium=1.00, max_premium_seen=1.40,
+                     min_premium_seen=0.95, _date="2026-09-22"),
+                dict(exit_reason="trail_stop_hit pnl=10%", entry_premium=2.00, max_premium_seen=2.40,
+                     min_premium_seen=1.80, _date="2026-09-23"),
+                dict(exit_reason="hard_stop_20%", entry_premium=1.00, max_premium_seen=None,
+                     min_premium_seen=0.78, _date="2026-09-23")]
+        cz = TR.exit_concentration(rows, 8)
+        tsh, hs = cz.get("trail_stop_hit", {}), cz.get("hard_stop_20%", {})
+        thin_hits = [l.strip() for l in out.splitlines() if l.rstrip().endswith("thin") or "<- thin" in l]
+        check("T12 exit reasons carry median MFE%/MAE% (+30%/-7.5%; none -> None) and no 'thin' label is printed",
+              tsh.get("mfe_med") == 0.3 and tsh.get("mae_med") == -0.075 and hs.get("mfe_med") is None
+              and hs.get("mae_med") == -0.22 and "MFE%" in out and "MAE%" in out and not thin_hits,
+              f"tsh={tsh} hs={hs} thin={thin_hits[:3]}")
+    except Exception as exc:                                    # noqa: BLE001
+        check("T12 (did not run)", False, f"raised {type(exc).__name__}: {exc}")
     rc6, out6 = run("--db", os.path.join(WORK, "nope.db"), "--no-json")
     check("T6 a missing database is rc 1 and says PATH DOES NOT EXIST",
           rc6 == 1 and "PATH DOES NOT EXIST" in out6, f"rc {rc6}")
