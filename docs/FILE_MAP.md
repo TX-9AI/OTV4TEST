@@ -672,7 +672,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_db_handles.py`
 - **calls:** `data/__init__.py`, `data/market_data.py`, `database/trade_logger.py`, `execution/__init__.py`, `execution/resting_orders.py`
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/WORKING_AGREEMENT.md`
 
 ### `tests/check_decisions_today.py`
 - **calls:** (none)

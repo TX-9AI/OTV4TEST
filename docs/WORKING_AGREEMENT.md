@@ -1,6 +1,6 @@
 # WORKING_AGREEMENT.md — how we operate (read this first, every new thread)
 
-**`WORKING_AGREEMENT.md` v4.19 · 2026-09-23 — §0 through §40, plus §15a, §18a, §36a and §40.1. See the CHANGELOG at the foot.**
+**`WORKING_AGREEMENT.md` v4.20 · 2026-09-26 — §0 through §40, plus §15a, §18a, §36a and §40.1. See the CHANGELOG at the foot.**
 
 > 🔴 **§0 IS THE FLOOR — AN ATTESTATION, NOT A TIP. Read it first, every thread.**
 > The operator ordered it once before and was told it existed. It did not.
@@ -1437,6 +1437,30 @@ with `^C` because it looked hung. A study that widens its date window says so
   ACK, and an unacked message by the next turn is reported to the operator as
   undelivered rather than assumed read.
 
+- 🔴 **A DEFECT BOTH TREES CARRY GETS THE IDENTICAL FIX IN BOTH (added
+  2026-09-26, OTV4TEST r145).** The operator, relayed by the mainline agent on
+  2026-09-25: *"If there's a change that affects both you take it, but have the
+  test implement the same fix. And if it affects the test repo only have the
+  agent there take it."* And in his own words on 2026-09-26: *"fixes that affect
+  both forks are applied the exact same way to preserve the integrity of the
+  file system and not to break something on either side."*
+  · **SHARED** — the mainline agent authors the otv4 fix; this tree implements
+    THE SAME FIX: the same helper names and signatures, the same site
+    conversions, and **the same gate run in both trees**, first against each
+    tree's UNFIXED code as a must-fail control.
+  · **TEST-ONLY** — entirely this tree's. **MAINLINE-ONLY** — entirely theirs.
+  · **WHICH ONE IT IS IS MEASURED AT THE OTHER TREE'S HEAD, never assumed**
+    (§40): the mainline agent grepped for the files and patterns before
+    classifying each of r141-r143. A landing that touches a file both trees
+    carry is announced to the other agent BEFORE it lands, with the exact code.
+  · **THE MODEL, 2026-09-25:** the file-handle leak (OTV4TEST r143 / otv4 r430)
+    - `_db()` and `_session()` copied verbatim, and `check_db_handles` run on
+    each of mainline's 15 boxes on its own venv, after reproducing the same
+    2 -> 902 leak on the unfixed tree.
+  🔑 **WHY:** this tree is meant to supersede mainline IN PLACE. A shared
+  defect fixed two ways is two lineages, and the next merge inherits whichever
+  one it happens to read.
+
 ⚠️ **WHAT THIS BOX DOES NOT HAVE.** The source document grants cloud-storage
 reads "from the control machine" and fleet fan-out. ~~**Neither exists here**:
 this box is segregated from control (§3, §13) and is masked from S3.~~
@@ -1743,6 +1767,17 @@ joins the table above.
 ---
 
 ## CHANGELOG
+
+**v4.20 — 2026-09-26 — OTV4TEST r145 — §38.2: A SHARED DEFECT GETS THE
+IDENTICAL FIX IN BOTH TREES.** The operator's ruling of 2026-09-25 (relayed by
+the mainline agent) and his own words of 2026-09-26, written down because a
+rule that lives in a thread is §0.6's failure. It records who authors what
+(shared: mainline authors, this tree mirrors; test-only: this tree; mainline-
+only: theirs), that "identical" means the same helpers, sites AND gate with a
+must-fail control on each tree, that the classification is MEASURED at the
+other tree's HEAD, and the r143/r430 file-handle fix as the worked example.
+🔑 **THE ONE RULE CHANGE IS THE OPERATOR'S; the rest is the record of how it
+was carried out the first time.**
 
 **v4.19 — 2026-09-23 — OTV4TEST r108 — FACTS ONLY, NO RULE CHANGED: §30's
 RETENTION WINDOW FOR 1m.** §30 named "1m candles 5 days" as the purge's policy.

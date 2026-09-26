@@ -6,10 +6,15 @@ You have direct ownership of https://github.com/TX-9AI/OTV4TEST
 
 FIRST, CATCH UP ON WHERE WE LEFT OFF — run `python3 tools/last_session.py`. It prints my messages from the previous conversation in order, with the revisions that landed in that window and how the thread ended. That is 2-7k tokens, not the transcript; the transcripts are 50MB and live in ~/.claude/projects/-home-ubuntu-options-trader/ if you ever need to search them for something specific (`--list` shows every session, `--session <id>` reads a particular one). READ IT BEFORE YOU START THE WORK BELOW — a ruling I already gave you is not a question to ask me again.
 
-THEN READ THE OVERNIGHT SWEEP — `python3 tools/boot_sweep.py --show`. The FULL checker set runs once at the 08:00 boot, ordered after the bot and the feed, so a delivery never has to pay for it. It reports NEW and FIXED against the previous run, not a bare count — this tree carries 11 standing reds, so "134 of 145" says nothing and a TWELFTH is the signal. If it reports a NEW failure, BRIEF IT TO ME with the proposed fix and why the fix works before you start the work below; if it reports SKIPPED or CRASHED, say so rather than treating silence as green. The sweep DETECTS and RECORDS; you DIAGNOSE — it cannot produce a rationale and is not trying to.
+THEN READ THE OVERNIGHT SWEEP — `python3 tools/boot_sweep.py --show`. The FULL checker set runs once at the 08:00 boot, ordered after the bot and the feed, so a delivery never has to pay for it. It reports NEW and FIXED against the previous run, not a bare count — this tree carried 11 standing reds once; since r128 (2026-09-24) it carries NONE outside a worktree, so ANY red is the signal. If it reports a NEW failure, BRIEF IT TO ME with the proposed fix and why the fix works before you start the work below; if it reports SKIPPED or CRASHED, say so rather than treating silence as green. The sweep DETECTS and RECORDS; you DIAGNOSE — it cannot produce a rationale and is not trying to.
 
-🔴 **THEN, ONCE THE MARKET IS OPEN (this one needs a live streamer and must run
-during RTH): RUN `venv/bin/python tools/probe_aux_streams.py` AND TELL ME THE ANSWER.**
+🔴 **THE PROBE BELOW RUNS ONLY ON A TRADING DAY, BETWEEN 15:30 AND 16:00 ET, WITH NO OPEN
+POSITIONS** (the operator's ruling, 2026-09-25: *"Don't run it unless we have no open positions
+on a Trading day between 1530 and 1600."* — it opens its own streamer, and on 2026-09-22 he ruled
+*"I don't want that probe interfering with trading behavior."*). ⚠️ OTV4TEST r100 already answered
+most of it from the server's own FEED_CONFIG replies (BACKLOG FEED.3): the probe CONFIRMS, it is
+not the first measurement. Inside that window: RUN `venv/bin/python tools/probe_aux_streams.py`
+AND TELL ME THE ANSWER.
 I need to know whether the dxFeed `Underlying` event is CARRIED ON OUR PLAN for QQQ.
 `underlying_series` has **0 rows** and it is the one stream that publishes
 `front_volatility`, `back_volatility` and `put_call_ratio` — term structure and flow
