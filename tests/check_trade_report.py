@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_trade_report.py  v1.2
+tests/check_trade_report.py  v1.3
+v1.3  2026-09-26  OTV4TEST r157 — T11 ADDED: the outliers-removed EV section trims BOTH tails by
+      Tukey's fences over the whole book (a +20R winner and a -10R loser are both cut, a +1R and a
+      -1R are kept), reports each tail's count, and its trimmed EV is the mean of the rest; and a
+      THIN bucket (under min_n) keeps every trade (operator: "In thin samples consider them all
+      within the sample").
 v1.2  2026-09-26  OTV4TEST r156 — T10 ADDED: every line the report prints, in every menu mode, is
       76 characters or fewer. Operator, on r155 read on his phone: "That report spends too many
       lines. It's too wide. You need to get it to fit single lines."
@@ -167,6 +172,35 @@ def main():
         long_lines += [f"{' '.join(mode) or 'default'}:{len(l)}:{l.strip()[:40]}"
                        for l in _o.splitlines() if len(l) > 76]
     check("T10 every line in every mode fits 76 characters", not long_lines, "; ".join(long_lines[:4]))
+    # T11 (r157) — outliers removed, both tails, fixed rule.
+    try:
+        TR = sys.modules.get("trade_report") or __import__("trade_report")
+        import io, contextlib
+        def mk(setup, r):   # risk $100 on the entry floor: P&L = r x 100
+            return dict(setup_type=setup, exit_reason="trail_stop_hit", entry_premium=1.00,
+                        stop_premium=0.90, contracts=10, pnl_usd=100.0 * r)
+        book = ([mk("A", x) for x in (1.0, -1.0, 0.5, -0.5, 20.0)]
+                + [mk("B", x) for x in (1.0, -1.0, 0.5, -10.0)])
+        lo, hi = TR.r_fences(book)
+        def render(min_n):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                TR.show_ev_trimmed(book, min_n)
+            o = buf.getvalue()
+            ra = next((l for l in o.splitlines() if l.strip().startswith("A ")), "")
+            rb = next((l for l in o.splitlines() if l.strip().startswith("B ")), "")
+            return o, ra.split(), rb.split()
+        o, a, b = render(4)             # both buckets >= 4: trimmed
+        o8, a8, b8 = render(8)          # both buckets < 8: thin, kept whole
+        check("T11 outliers cut on BOTH tails (+20R, -10R) in full buckets; THIN buckets keep every trade",
+              lo > -10 and hi < 20 and "1 high, 1 low out" in o
+              and a[1:6] == ["5", "1", "0", "+4.00", "+0.00"] and b[1:6] == ["4", "0", "1", "-2.38", "+0.17"]
+              and a8[1:6] == ["5", "0", "0", "+4.00", "+4.00"] and a8[-1] == "thin"
+              and b8[1:6] == ["4", "0", "0", "-2.38", "-2.38"] and "0 high, 0 low out" in o8
+              and all(len(l) <= 76 for l in (o + o8).splitlines()),
+              f"fences {lo:+.2f}..{hi:+.2f}; A4={a} B4={b}; A8={a8}")
+    except Exception as exc:                                    # noqa: BLE001
+        check("T11 (did not run)", False, f"raised {type(exc).__name__}: {exc}")
     rc6, out6 = run("--db", os.path.join(WORK, "nope.db"), "--no-json")
     check("T6 a missing database is rc 1 and says PATH DOES NOT EXIST",
           rc6 == 1 and "PATH DOES NOT EXIST" in out6, f"rc {rc6}")

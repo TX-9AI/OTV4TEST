@@ -1,4 +1,17 @@
-# tests/trade_report.py — v1.20
+# tests/trade_report.py — v1.21
+# v1.21 (2026-09-26) — OTV4TEST r157. ONE MORE EV SECTION: BY SETUP TYPE, OUTLIERS REMOVED, BOTH
+#   TAILS. Operator: "Can you add one more EV section to that report that removes statistical
+#   outliers? Good & bad?" — asked after one +19.63R VOLT trade turned out to carry VOLT's whole
+#   +0.59 EV (without it, -0.14). THE RULE IS FIXED, NOT TUNED: Tukey's fences, 1.5 x IQR beyond the
+#   quartiles of R, computed ONCE over the whole book in the window (a bucket of 4 has no quartiles
+#   of its own), applied to both tails. Each row shows how many trades each tail lost (OUT+ / OUT-),
+#   EV R on all trades, EV R on the rest, and the rest's net. ⚠️ On this book the LOW fence removes
+#   nothing — stops cap losses near -1R to -2R, so no loser is a statistical outlier; the section
+#   says which tails actually lost trades rather than implying symmetry. Sorted by the trimmed EV.
+#   🔑 THIN BUCKETS ARE NOT TRIMMED. Operator: "In thin samples consider them all within the
+#   sample." A bucket under --min-n trades (8) keeps every trade — its EV ex equals its EV R and
+#   the row says `thin` — because cutting one trade from three is not removing an outlier, it is
+#   deleting a third of the evidence. The fence counts in the header cover trimmed buckets only.
 # v1.20 (2026-09-26) — OTV4TEST r156. EVERY LINE FITS THE PHONE: 76 CHARACTERS OR FEWER. The
 #   operator, reading r155 on his phone: "That report spends too many lines. It's too wide. You
 #   need to get it to fit single lines." r155's EV R column took the BY rows to 85 characters and
@@ -510,6 +523,55 @@ def load_trades(since, mode, db=None):
 
 
 # ── aggregation ──────────────────────────────────────────────────────────────
+def r_fences(trades: List[dict]):
+    """r157 — Tukey fences on modified R over the WHOLE book: (lo, hi) or None if < 4 priced."""
+    rs = [x for x in (modified_r(t) for t in trades) if x is not None]
+    if len(rs) < 4:
+        return None
+    q1, _q2, q3 = statistics.quantiles(rs, n=4, method="inclusive")
+    iqr = q3 - q1
+    return q1 - 1.5 * iqr, q3 + 1.5 * iqr
+
+
+def show_ev_trimmed(trades: List[dict], min_n: int = 8, key: str = "setup_type",
+                    width: int = 21) -> None:
+    """r157 — BY SETUP TYPE, EV R with statistical outliers (both tails) removed; a bucket under
+    min_n keeps every trade (operator: thin samples are all within the sample). <= 76 wide."""
+    fz = r_fences(trades)
+    if fz is None:
+        return
+    lo, hi = fz
+    groups: Dict[str, list] = defaultdict(list)
+    for t in trades:
+        r = modified_r(t)
+        if r is not None:
+            groups[str(t.get(key) or "(none)")].append((r, _f(t.get("pnl_usd")) or 0.0))
+    big = [g for g in groups.values() if len(g) >= min_n]
+    n_hi = sum(1 for g in big for r, _p in g if r > hi)
+    n_lo = sum(1 for g in big for r, _p in g if r < lo)
+    print("\nBY SETUP TYPE — EV R, OUTLIERS REMOVED (both tails)")
+    print(f"  fences R {lo:+.2f} .. {hi:+.2f} (1.5 IQR, whole book): "
+          f"{n_hi} high, {n_lo} low out")
+    print(f"  {'':<{width}}{'N':>4}{'OUT+':>5}{'OUT-':>5}{'EV R':>8}{'EV ex':>8}{'NET ex $':>11}")
+    rows = []
+    for k, g in groups.items():
+        thin = len(g) < min_n
+        kept = g if thin else [(r, p) for r, p in g if lo <= r <= hi]
+        ev_all = sum(r for r, _p in g) / len(g)
+        ev_ex = (sum(r for r, _p in kept) / len(kept)) if kept else None
+        oh = 0 if thin else sum(1 for r, _p in g if r > hi)
+        ol = 0 if thin else sum(1 for r, _p in g if r < lo)
+        rows.append((k, len(g), oh, ol, ev_all, ev_ex, sum(p for _r, p in kept), thin))
+    rows.sort(key=lambda x: (x[5] is None, -(x[5] or 0.0), -x[4]))
+    for k, n, oh, ol, ea, ee, ne, thin in rows:
+        ee_s = f"{'-':>8}" if ee is None else f"{ee:>+8.2f}"
+        print(f"  {k[:width]:<{width}}{n:>4}{oh:>5}{ol:>5}{ea:>+8.2f}{ee_s}{ne:>11.2f}"
+              + (" thin" if thin else ""))
+    print(f"  thin = under {min_n} trades: kept whole, nothing trimmed.")
+    if big and n_lo == 0:
+        print("  No LOW outliers: stops cap losses, so only big winners are trimmed.")
+
+
 def bucket(trades: List[dict], key: str) -> Dict[str, dict]:
     agg: Dict[str, list] = defaultdict(list)
     for t in trades:
@@ -1128,6 +1190,7 @@ def main(argv: List[str]) -> int:
     show("BY STRATEGY", dims["by_strategy"], args.min_n)
     show("BY SYMBOL", dims["by_symbol"], args.min_n)
     show("BY SETUP TYPE", dims["by_setup_type"], args.min_n)
+    show_ev_trimmed(trades, args.min_n)        # r157 — the same setups, outliers removed
     # v1.9 — the dimension is gone; the FACT is stated once. An absent
     # section with no explanation reads as an oversight and gets re-added.
     print("\n  (no BY SETUP GRADE section: every v4 row is UNGRADED by\n   construction — r152 deleted the scorer, which had selected losers.)")
