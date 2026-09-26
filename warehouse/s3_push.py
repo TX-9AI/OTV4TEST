@@ -1,5 +1,11 @@
 """
-warehouse/s3_push.py  v4.9
+warehouse/s3_push.py  v4.10
+v4.10 2026-09-26  OTV4TEST r150 — COMMENT ONLY, MIRRORING otv4 r444 (5800e81) UNDER WA section 38.2.
+      The classifier's "a gap of 3+ STILL HOLDS THE BOX" predated r180 and was read by both
+      agents as the specification; it now states what r180 ruled (heal any short prefix with
+      objects on a clean drain, no gap bound; got=0 and failed>0 still hold) and the residual
+      trade. Adapted, not copied: the heal's line distance is dropped (it differs per tree and
+      moves with this very comment), S3.25 is this tree's S3.15. Operator: "Approve on all".
 v4.9  2026-09-25  OTV4TEST r139 — A BOX PUSHES ONLY ITS OWN CANDLES, UNDER ITS OWN NAME.
       Two guards, both from the first SOFI paper box, whose feed had streamed QQQ
       after an instrument change (configure.sh v4.11 fixes the cause):
@@ -1356,10 +1362,40 @@ def main(argv=None) -> int:
             # PUTs inflate a counter by a SMALL amount wherever they land;
             # genuine loss scatters and is larger. A 1-object gap on one prefix
             # is the same fencepost as a 1-object gap on ten.
-            # ⚠️ THE OTHER HALF MUST NOT REGRESS: a gap of 3+ on ANY prefix
-            # still reads as possible loss and STILL HOLDS THE BOX. A stopped
-            # box's local store is the only copy left, and a stopped box cannot
-            # be asked anything.
+            # 🔴 r444 (otv4; mirrored as OTV4TEST r150) — THIS COMMENT USED TO
+            # PROMISE SOMETHING THE CODE HAS NOT DONE SINCE r180, AND TWO
+            # SESSIONS READ IT AS THE SPECIFICATION.
+            # It said: "a gap of 3+ on ANY prefix still reads as possible loss
+            # and STILL HOLDS THE BOX." That is PRE-r180 behaviour. The r180
+            # heal runs ABOVE this classifier (the `if _got > 0:` block) and
+            # repairs any short prefix where S3 holds objects, whatever the gap
+            # size — so a 3+ gap on a NON-EMPTY prefix never reaches this line.
+            # ⚠️ AND THAT IS THE RULING, NOT A REGRESSION. r180, 2026-08-28:
+            # the per-prefix ledger counts PUTs while S3 counts KEYS, and the
+            # dedupe set is per-run DELIBERATELY, so any key re-pushed by the
+            # timer, a harvest or a restart inflates the ledger PERMANENTLY.
+            # Its row: "the drift diagnosis only forgave gaps <=2 and TWO
+            # MONTHS OF ACCUMULATION EXCEEDED IT." Operator: "there's never
+            # been a time that the data actually didn't go to the bucket …
+            # it's actually costing me money … we have to solve it tonight."
+            # 🔑 WHAT STILL HOLDS THE BOX, AND IT IS NOT GAP SIZE:
+            #   · a prefix S3 knows NOTHING about (got=0). The heal is gated on
+            #     `_got > 0`, so an EMPTIED prefix never heals and stays SHORT
+            #     permanently — that is the counter-orphan case (otv4 r436;
+            #     OTV4TEST S3.15).
+            #   · ANY drain with failed>0, which the heal requires to be zero.
+            # ⚠️ THE RESIDUAL RISK IS DELIBERATE AND IS r180's TRADE: on a
+            # CLEAN drain a genuine PARTIAL loss IS healed and LOGGED, and is
+            # neither held nor alerted. Measured on this tree with a 10 -> 6
+            # loss: healed, box halted normally. That trade was made with the
+            # operator's reasoning attached and is HIS to revisit.
+            # ⚠️ DO NOT "FIX" THE CODE TO MATCH A COMMENT. On 2026-09-26 both
+            # the otv4 session and this one read the old text as a live
+            # invariant, called the code self-contradictory, and proposed
+            # bounding the heal at gaps <=2 — which would have REINSTATED the
+            # exact nightly outage r180 was written in one evening to end. A
+            # comment is not a specification until you know which ruling
+            # wrote it (§0.7).
             if _gaps and max(_gaps) <= 2:
                 print("  ⚠️ SMALL, CONSISTENT SHORTFALL ON {} PREFIXES (max {}). "
                       "That is the signature of COUNTER DRIFT, not data loss — "
