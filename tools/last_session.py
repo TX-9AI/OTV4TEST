@@ -1,6 +1,18 @@
 #!/usr/bin/env python3
 """
-tools/last_session.py  v1.0 — WHAT THE OPERATOR SAID LAST TIME.
+tools/last_session.py  v1.1 — WHAT THE OPERATOR SAID LAST TIME.
+
+v1.1  2026-09-26  OTV4TEST r151 — THIS SESSION IS KNOWN BY ITS ID, NOT GUESSED BY ITS CLOCK.
+      The default pick was "the most recent transcript NOT written in the last 90s", on
+      the belief that a file touched that recently is THIS session. On a HANDOFF that is
+      false: the new session starts seconds after the old one's last write, so the thread
+      that JUST ENDED is inside the window, gets skipped as "this session", and the digest
+      hands over the one BEFORE it — the exact misfire mainline's dtp transcript_text.py
+      suffered on 2026-09-26 (1-REPORTER, dtp r446, which sent the mechanism). The harness
+      exports CLAUDE_CODE_SESSION_ID, measured equal to this session's transcript id; it is
+      now read first (then CLAUDE_SESSION_ID), and the 90s guess runs ONLY when no id is
+      known. `--list` marks THIS SESSION the same way. Gate: tests/check_last_session.py.
+      Operator: "Send it".
 
 v1.0  2026-09-18  OTV4TEST r41. Operator: *"is it possible to include in our
       handoff script to have you read the last conversation so you're caught
@@ -41,7 +53,21 @@ import sys
 
 DIR = os.path.expanduser("~/.claude/projects/-home-ubuntu-options-trader")
 ET = dt.timezone(dt.timedelta(hours=-4))
-LIVE_WINDOW_S = 90          # a file touched this recently is THIS session
+LIVE_WINDOW_S = 90          # the FALLBACK only: a file touched this recently is THIS session
+
+
+def _self_id() -> str:
+    """r151 — this session's transcript id, from the harness, or '' when unknown."""
+    return (os.environ.get("CLAUDE_CODE_SESSION_ID")
+            or os.environ.get("CLAUDE_SESSION_ID") or "").strip()
+
+
+def _is_self(path: str, now: float, sid: str) -> bool:
+    """THIS session: by id when the harness gives one — never guessed then — else by
+    the 90s write window (which misfires on a handoff; see v1.1)."""
+    if sid:
+        return os.path.basename(path).startswith(sid)
+    return (now - os.path.getmtime(path)) < LIVE_WINDOW_S
 
 
 def _et(ts: str) -> dt.datetime | None:
@@ -129,11 +155,12 @@ def main() -> int:
 
     if a.list:
         now = dt.datetime.now().timestamp()
+        sid = _self_id()
         print(f"{'session':10s} {'span (ET)':34s} {'msgs':>5s}  state")
         print("-" * 72)
         for f in files:
             s = scan(f)
-            live = (now - os.path.getmtime(f)) < LIVE_WINDOW_S
+            live = _is_self(f, now, sid)
             span = (f"{s['first']:%m-%d %H:%M} → {s['last']:%m-%d %H:%M}"
                     if s["first"] and s["last"] else "?")
             print(f"{os.path.basename(f)[:8]:10s} {span:34s} {len(s['users']):5d}  "
@@ -148,12 +175,16 @@ def main() -> int:
         pick, rule = cand[0], f"--session {a.session}"
     else:
         now = dt.datetime.now().timestamp()
-        older = [f for f in files if (now - os.path.getmtime(f)) >= LIVE_WINDOW_S]
+        sid = _self_id()
+        older = [f for f in files if not _is_self(f, now, sid)]
         if not older:
             print("only the live session exists — nothing previous to read")
             return 1
-        pick, rule = older[0], ("most recent transcript not written in the last "
-                                f"{LIVE_WINDOW_S}s (i.e. not this session)")
+        pick = older[0]
+        rule = (f"most recent transcript that is not this session (id {sid[:8]}, "
+                "from the harness)" if sid else
+                f"most recent transcript not written in the last {LIVE_WINDOW_S}s "
+                "(NO session id in the environment — a guess that misfires on a handoff)")
 
     s = scan(pick)
     print("=" * 78)
