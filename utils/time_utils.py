@@ -1,5 +1,6 @@
 """
-utils/time_utils.py  v4.4
+utils/time_utils.py  v4.5
+v4.5  2026-09-26  OTV4TEST r149 (EOD.1): HARD_CLOSE reads config.HARD_CLOSE_ET (was a literal 15:45 beside the config value); is_hard_close_time() opens at the first EOD action (15:45); eod_close_due() says when a given position's close begins — assignment risk 15:45, everything else 15:50.
 v4.4  2026-09-07  r304 / DEP.9 - is_rth consults utils/market_calendar; a market holiday is no longer RTH. It failed toward TRADING on holidays, and entries_open wraps it.
 v4.3  2026-08-24  r102: entries_open() defers to is_orb_complete() — the floor
       session_guard has enforced since v3 — instead of carrying a rival
@@ -51,7 +52,8 @@ ET = pytz.timezone("US/Eastern")
 # RTH boundaries (ET)
 RTH_OPEN    = dtime(9, 30)
 RTH_CLOSE   = dtime(16, 0)
-HARD_CLOSE  = dtime(15, 45)
+from config import HARD_CLOSE_ET as _HCE, EOD_RESTING_AT_ET as _EOD_REST, EOD_LADDER_AT_ET as _EOD_LAD
+HARD_CLOSE  = dtime(*_HCE)      # r149: the final cross, from config (was a literal 15:45)
 ORB_END     = dtime(9, 35)   # ORB defined by 9:30–9:35 candle
 
 
@@ -156,6 +158,14 @@ def entries_open(now: Optional[datetime] = None) -> bool:
         return is_orb_complete(n)
     except Exception:                                          # noqa: BLE001
         return False
+
+
+def eod_close_due(assignment_risk: bool, now: Optional[datetime] = None) -> bool:
+    """r149 (EOD.1) — has THIS position's end-of-day close begun? Assignment
+    risk (a short leg) from 15:45, on a resting best-case limit; everything
+    else from 15:50, on the ladder. Both cross at 15:55 (HARD_CLOSE)."""
+    t = (now or now_et()).time()
+    return t >= dtime(*(_EOD_REST if assignment_risk else _EOD_LAD))
 
 
 def is_hard_close_time() -> bool:

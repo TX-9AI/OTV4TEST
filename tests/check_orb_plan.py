@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_orb_plan.py  v1.3
+tests/check_orb_plan.py  v1.4
+v1.4  2026-09-26  OTV4TEST r149 (EOD.1) — P7 and P16b RE-POINTED to the cutoff READ FROM CONFIG
+      (ORB_NO_ENTRY_AFTER_ET, 15:40 by the operator's "extend the debit window to all day" /
+      "Stop entries at 1540"), not a typed 11:30; the behaviour pinned is unchanged: AT the
+      cutoff DORMANT, past it one dormant row then silence.
 v1.3  2026-09-23  OTV4TEST r118 — P17: the prepared ORB row carries NO pitchfork
       anchor (operator: "nothing about the pitchfork needs to be addressed
       inside the ORB trade") while VWAP distance and the boundary's aggressor
@@ -30,7 +34,7 @@ acceptance test, docs/FORK_BRIEF.md §5).
                                       the same chain (mechanism parity with e955020)
   P5   confirmation spent          -> DECLINE at `order_already_placed`, chain never read
   P6   no strike with a live quote -> DECLINE at `contract`: "NONE AVAILABLE"
-  P7   past 11:30                  -> DORMANT `entry_window`
+  P7   at the cutoff (config; 15:40 since r149) -> DORMANT `entry_window`
   P8   the short mirror of P3/P4   -> stop = candle HIGH, put at -width
   P9   provisional size == RiskManager._size_geometry for the same inputs (C.23)
   P10  runaway invalidation        -> DECLINE `consequence` naming the hand-off
@@ -39,7 +43,7 @@ acceptance test, docs/FORK_BRIEF.md §5).
   P13  🔴 NO VELOCITY STALL ON ORB: stall forced to fire; ORB holds, the runaway exits
   P14  the strategy fires with the plan's variables, not its own
   P15  🔴 NO ATR FLOOR: a 0.01% ATR vol_state still fires
-  P16  outside 09:35–11:30 the plan OBSERVES and does not write: one DORMANT
+  P16  outside 09:35–15:40 (r149) the plan OBSERVES and does not write: one DORMANT
        row on the transition, silence after (operator 2026-09-08)
   P17  🔴 no pitchfork anchor on the prepared row (operator 2026-09-23, r118)
 
@@ -319,10 +323,14 @@ def main():
           f"{v}: {why[:100]}")
 
     # ── P7 past the cutoff ───────────────────────────────────────────────
+    import config as _c7
+    _co = tuple(_c7.ORB_NO_ENTRY_AFTER_ET)
+    _hm = lambda m: f"{m // 60:02d}:{m % 60:02d}"
+    _com = _co[0] * 60 + _co[1]
     e6 = _break(_engine_with_range(), "long")
-    p7 = prep_for(e6, _chain(), now="11:30")
+    p7 = prep_for(e6, _chain(), now=_hm(_com))
     v, why = _last_row(st)
-    check("P7 11:30 -> DORMANT entry_window, nothing prepared",
+    check(f"P7 {_hm(_com)} (the cutoff) -> DORMANT entry_window, nothing prepared",
           v == "DORMANT" and "entry_window" in why and p7.contract is None,
           f"{v}: {why[:80]}")
 
@@ -442,12 +450,12 @@ def main():
           f"rows {n0}->{n1}->{n2} last={_last_row(st)}")
     prep_for(e13, _chain(), now="09:36")             # inside: it speaks
     n3 = rows()
-    prep_for(e13, _chain(), now="11:31")             # past the cutoff
+    prep_for(e13, _chain(), now=_hm(_com + 1))       # past the cutoff (r149: read from config)
     n4 = rows()
-    prep_for(e13, _chain(), now="11:32")
-    prep_for(e13, _chain(), now="13:00")
+    prep_for(e13, _chain(), now=_hm(_com + 2))
+    prep_for(e13, _chain(), now=_hm(_com + 10))
     n5 = rows()
-    check("P16b inside the window it writes; past 11:30 one dormant row, then silence",
+    check(f"P16b inside the window it writes; past {_hm(_com)} one dormant row, then silence",
           n3 == n2 + 1 and n4 == n3 + 1 and n5 == n4,
           f"rows {n2}->{n3}->{n4}->{n5}")
 

@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_orb_restart.py  v1.2
+tests/check_orb_restart.py  v1.3
+v1.3  2026-09-26  OTV4TEST r149 (EOD.1) — C11 RE-POINTED: the clock is set just past the ORB cutoff
+      READ FROM CONFIG (ORB_NO_ENTRY_AFTER_ET, now 15:40 by the operator's all-day debit window)
+      instead of a typed 11:30. Same behaviour pinned: past the cutoff a miss EXPIRES.
 v1.2  2026-09-24  OTV4TEST r131 — comments only. Operator, 2026-09-24: "A close
       back into the range is a new opportunity full stop." The runaway is
       dormant until a 1m close back inside, no longer for the session; C8's
@@ -392,10 +395,12 @@ def main() -> int:
     # "not time gated" is the operator's qualifier and it must keep meaning
     # something. Past ORB's own 11:00 cutoff the missed setup EXPIRES rather
     # than re-arming — the same state a healthy engine reaches at 11:00.
-    CLOCK["t"] = datetime(2026, 8, 24, 11, 30, 0)
+    import config as _cC
+    _co = tuple(_cC.ORB_NO_ENTRY_AFTER_ET)             # r149: read, not typed
+    CLOCK["t"] = datetime(2026, 8, 24, _co[0], _co[1], 0)
     late = _armed(oe.ORBEngine())
     late.rebuild_from_tape(_frame(CONFIRM_TAPE))
-    check("C11 past the 11:00 cutoff a miss EXPIRES, it does not re-arm",
+    check(f"C11 at/past the {_co[0]}:{_co[1]:02d} cutoff a miss EXPIRES, it does not re-arm",
           late.data.state == oe.ORBState.EXPIRED,
           f"state={late.data.state}")
     CLOCK["t"] = datetime(2026, 8, 24, 9, 45, 10)

@@ -1,5 +1,6 @@
 """
-strategy/structure.py  v4.2
+strategy/structure.py  v4.3
+v4.3  2026-09-26  OTV4TEST r149 (EOD.1): has_assignment_risk() — a position with a SHORT leg (credit verticals, condor/trend legs, the tent, butterflies, an adopted short). The end-of-day schedule closes these first, at 15:45, on a resting best-case limit. It FAILS TOWARD RISK: a short leg (short_symbol), a fly body (center_symbol) or a condor-leg flag is assignment risk whatever the strategy string says — of() alone would call an unknown strategy DIRECTIONAL and ladder a short leg at 15:50.
 v4.2  2026-08-24  r106: Structure.TENT — the post-roll hedge (short + its wing +
       an opposite-type long equidistant on the breached side). Tested FIRST
       because it keeps the vertical's strategy string and every other test would
@@ -136,6 +137,27 @@ def of(record: Optional[Mapping[str, Any]]) -> Structure:
     # ⚠️ FAIL CLOSED. Unknown means ordinary directional management — the most
     # restrictive reading. Never hand a position a looser exit than it earned.
     return Structure.DIRECTIONAL
+
+
+def has_assignment_risk(record: Optional[Mapping[str, Any]]) -> bool:
+    """r149 (EOD.1) — True when the position carries a SHORT option leg, so an
+    unclosed finish can be ASSIGNED. The end of day closes these first (15:45,
+    resting best-case limit); everything else ladders from 15:50.
+
+    Reads only real columns. A long butterfly IS assignment risk: its body is
+    two short options.
+    ⚠️ FAILS TOWARD RISK, NOT AWAY FROM IT. `of()` fails closed to DIRECTIONAL
+    on an unknown strategy string — right for management, WRONG here: a short
+    leg the classifier does not recognise would ladder at 15:50 instead of
+    resting at 15:45. So the STRUCTURAL columns decide first — a short leg
+    (`short_symbol`), a butterfly body (`center_symbol`), a condor leg
+    (`is_condor_leg`), an adopted short — and `of()` only adds to them."""
+    if not record:
+        return False
+    if (record.get("is_short_position") or record.get("short_symbol")
+            or record.get("center_symbol") or record.get("is_condor_leg")):
+        return True
+    return of(record) in (CREDIT_STRUCTURES | {Structure.BUTTERFLY})
 
 
 def is_credit_vertical(record: Optional[Mapping[str, Any]]) -> bool:

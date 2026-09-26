@@ -1,5 +1,6 @@
 """
-main.py  v4.71
+main.py  v4.72
+v4.72 2026-09-26  OTV4TEST r149 (EOD.1) — handle_hard_close runs the operator's end of day: it passes the tick's spot (the analysis price cache) so a resting close can be priced at its best case; flatten_all labels each close itself; it pages ONLY for a position still open PAST the 15:55 cross (a resting or laddering close before then is expected, and paging on it would cry wolf every afternoon, WA section 17); it no longer logs 'complete — all positions flat' while positions are held or resting. The held-position manage pass runs until 15:50 (the ladder), for the positions without assignment risk. The intraday broker reconcile's wind-down sweeps follow EOD_SCHEDULE — 15:45, 15:50, 15:55 (NEW: before the cross, so a short the broker liquidated since 15:50 is found and its surviving long adopted before the cross fires) and 15:57 (operator: "Agree").
 v4.71 2026-09-26  OTV4TEST r146 — main() REFUSES TO START WITH OT_INSTRUMENT UNSET (exit 78,
       EX_CONFIG), as its FIRST act - before logging, the broker login or any
       alert, so a misconfigured unit (Restart=always) crash-loops into the
@@ -1273,7 +1274,8 @@ from config import (
     CONDOR_TRIGGER_APPROACH,                    # v4.3 trigger map (module-level)
     ENTRY_OPEN_ET,                              # r101 — nothing opens before 09:35
     RTH_OPEN_ET, ORB_WINDOW_MINUTES,            # TC.6 v2.1 — range from tape
-    BROKER_RECONCILE_INTERVAL_MIN
+    BROKER_RECONCILE_INTERVAL_MIN,
+    EOD_RESTING_AT_ET, EOD_LADDER_AT_ET, EOD_CROSS_AT_ET,   # r149 — the broker check follows the schedule
 )
 
 
@@ -5176,10 +5178,20 @@ def handle_hard_close(state: BotState):
     except Exception as e:
         logger.warning(f"Hard close: chain fetch failed ({e}); "
                        f"paper marks may be unavailable this pass — will retry")
-    failed = pos_mgr.flatten_all("hard_close_15:45_ET", chain=chain)
+    # r149 (EOD.1) — the tick's spot, for the resting best-case price.
+    _spot = None
+    try:
+        _spot = get_cache().get_price()
+    except Exception as e:                                        # noqa: BLE001
+        logger.warning(f"Hard close: spot unreadable ({e}) — resting closes price at the mark this pass")
+    failed = pos_mgr.flatten_all(chain=chain, spot=_spot)
 
     if not failed:
-        logger.info("HARD CLOSE complete — all positions flat.")
+        if pos_mgr.has_open_position():
+            logger.info("EOD in progress — %d open (held to the ladder, resting, or laddering) until the cross",
+                        len(pos_mgr.get_open_records()))
+        else:
+            logger.info("HARD CLOSE complete — all positions flat.")
         state.hard_close_alerted = False
         return
 
@@ -5471,7 +5483,8 @@ def main_loop(state: BotState):
                 # now holds the verticals until 15:45; this block keeps them
                 # MANAGED in between — the lone 15% floor still applies to a
                 # vertical at 15:41.
-                if pos_mgr.has_open_position() and not _vertical_close_due():
+                from utils.time_utils import eod_close_due as _ecd     # r149
+                if pos_mgr.has_open_position() and not _ecd(False):  # held debits managed until 15:50
                     try:
                         _hc_ctx = run_analysis(state)
                         pos_mgr.manage_open_position(
@@ -5860,8 +5873,8 @@ def _intraday_reconcile_slot(now):
     """Intraday reconcile slot key, or None outside the window. v3.6: interval
     slots every BROKER_RECONCILE_INTERVAL_MIN minutes (default 10, was a
     hardcoded 30) from 09:30 to 15:45, PLUS dedicated wind-down sweeps at
-    15:45 (as the flatten starts — clears phantoms the flatten would otherwise
-    fight), 15:50 (mid-window), and 15:57 (the post-flatten truth pass; the
+    r149's EOD_SCHEDULE: 15:45 (resting starts), 15:50 (the ladder), 15:55 (the
+    cross — found and adopted before it fires), and 15:57 (the post-cross truth pass; the
     reconcile block runs before the hard-close branch each tick, and the loop
     goes dormant at 16:00, so this is the last guaranteed look of the day)."""
     if now.weekday() >= 5:
@@ -5869,13 +5882,16 @@ def _intraday_reconcile_slot(now):
     t = now.time()
     if t < dtime(9, 30) or t >= dtime(16, 0):
         return None
-    if t >= dtime(15, 45):
-        if t >= dtime(15, 57):
-            hh, mm = 15, 57
-        elif t >= dtime(15, 50):
-            hh, mm = 15, 50
-        else:
-            hh, mm = 15, 45
+    # r149 (EOD.1) — THE WIND-DOWN SWEEPS FOLLOW THE OPERATOR'S SCHEDULE: one as
+    # assignment risk starts resting, one as the debit ladder opens, one AS THE
+    # CROSS FIRES (this block runs before the hard-close branch in the same tick,
+    # so a short the broker liquidated since 15:50 is found and its surviving long
+    # ADOPTED before the cross sends a two-leg order against a leg that no longer
+    # exists), and the 15:57 post-cross truth pass. Operator, 2026-09-26: "Agree"
+    # (was fixed at 15:45 / 15:50 / 15:57, blind from 15:50 to the cross).
+    _eod = sorted({tuple(EOD_RESTING_AT_ET), tuple(EOD_LADDER_AT_ET), tuple(EOD_CROSS_AT_ET), (15, 57)})
+    if (t.hour, t.minute) >= _eod[0]:
+        hh, mm = max(x for x in _eod if (t.hour, t.minute) >= x)
         return f"{now:%Y-%m-%d} {hh:02d}:{mm:02d}"
     interval = max(1, int(BROKER_RECONCILE_INTERVAL_MIN))
     mins_since_open = (now.hour - 9) * 60 + now.minute - 30

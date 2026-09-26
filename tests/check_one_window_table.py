@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
-"""tests/check_one_window_table.py — v1.0
+"""tests/check_one_window_table.py — v1.1
 ONE ENTRY-WINDOW TABLE, AND NOTHING READS A WINDOW FROM ANYWHERE ELSE.
 
+v1.1  2026-09-26 — OTV4TEST r149 (EOD.1) — W5's pins UPDATED BY RULING, as W5 itself provides. The
+      operator: "I wanna extend the debit window to all day", "1. Stop entries at 1540 / 2. Resting limit
+      orders at 1545, ladder exits at 1550". EIGHTEEN pins move (each marked "# r149"): the five
+      directional admission rows, their ten derived names, 11:30 -> 15:40; FLATTEN_WINDOW_OPEN_ET
+      15:40 -> 15:45 and VERTICAL_HOLD_TO_ET 15:50 -> 15:45 (the resting minute); HARD_CLOSE_ET
+      15:45 -> 15:55 (the cross). The other 33 are unchanged, measured on the r149 build.
 v1.0  2026-09-26 — OTV4TEST r148 (WIN.1). The operator, 2026-09-22: "Why are there
       multiple places for the trade windows? Why isn't there 1 universal table?";
       2026-09-26: "I agree to all of that." Windows lived in FOUR layers - the admission
@@ -52,55 +58,55 @@ def hhmm(t) -> str:
 
 PIN = {   # measured on the r148 build; identical to r147 except the TrendCreditSpread admission row
     "admission.ATPButterfly.window": ((11, 30), (15, 0)),
-    "admission.Breakout.window": ((9, 35), (11, 30)),
+    "admission.Breakout.window": ((9, 35), (15, 40)),   # r149
     "admission.GEXPinButterfly.window": ((12, 0), (15, 0)),
-    "admission.LiquidityHunt.window": ((9, 35), (11, 30)),
-    "admission.ORBStrategy.window": ((9, 35), (11, 30)),
-    "admission.RunawayContinuation.window": ((9, 35), (11, 30)),
+    "admission.LiquidityHunt.window": ((9, 35), (15, 40)),   # r149
+    "admission.ORBStrategy.window": ((9, 35), (15, 40)),   # r149
+    "admission.RunawayContinuation.window": ((9, 35), (15, 40)),   # r149
     "admission.SweepCreditSpread.window": ((9, 35), (15, 40)),
     "admission.TrendCreditSpread.window": ((11, 31), (15, 40)),
-    "admission.VOLT.window": ((9, 35), (11, 30)),
+    "admission.VOLT.window": ((9, 35), (15, 40)),   # r149
     "config.BUTTERFLY_ENTRY_CUTOFF_ET": (14, 0),
     "config.BUTTERFLY_ENTRY_START_ET": (12, 0),
     "config.CONDOR_ENTRY_CUTOFF_ET": (15, 40),
     "config.CONDOR_ENTRY_START_ET": (11, 31),
     "config.CREDIT_ENTRY_END_ET": (15, 40),
     "config.CREDIT_ENTRY_START_ET": (11, 31),
-    "config.DEBIT_DIRECTIONAL_CUTOFF_ET": (11, 30),
+    "config.DEBIT_DIRECTIONAL_CUTOFF_ET": (15, 40),   # r149
     "config.ENTRY_OPEN_ET": (9, 35),
-    "config.FLATTEN_WINDOW_OPEN_ET": (15, 40),
+    "config.FLATTEN_WINDOW_OPEN_ET": (15, 45),   # r149
     "config.GEX_BFLY_EARLIEST_ET": "12:00",
-    "config.HARD_CLOSE_ET": (15, 45),
-    "config.ORB_NO_ENTRY_AFTER_ET": (11, 30),
-    "config.RUNAWAY_CUTOFF_ET": "11:30",
+    "config.HARD_CLOSE_ET": (15, 55),   # r149
+    "config.ORB_NO_ENTRY_AFTER_ET": (15, 40),   # r149
+    "config.RUNAWAY_CUTOFF_ET": "15:40",   # r149
     "config.SWEEP_CS_EARLIEST_ET": "11:31",
     "config.SWEEP_CS_EARLIEST_ET_FORK": (9, 35),
     "config.SWEEP_CS_LATEST_ET": "15:40",
     "config.SWEEP_CS_LATEST_ET_FORK": (15, 40),
     "config.TCS_ENTRY_END_ET": (15, 40),
     "config.TCS_START_ET": (11, 31),
-    "config.VERTICAL_HOLD_TO_ET": (15, 50),
-    "config.VOLT_WINDOW_CLOSE_ET": (11, 30),
+    "config.VERTICAL_HOLD_TO_ET": (15, 45),   # r149
+    "config.VOLT_WINDOW_CLOSE_ET": (15, 40),   # r149
     "config.VOLT_WINDOW_OPEN_ET": (9, 35),
     "strategy.breakout.EARLIEST_ET": "09:35",
-    "strategy.breakout.LATEST_ET": "11:30",
+    "strategy.breakout.LATEST_ET": "15:40",   # r149
     "strategy.liquidity_hunt.WINDOW_OPEN_ET": (9, 35),
     "strategy.orb_plan.WINDOW_OPEN_ET": (9, 35),
     "strategy.runaway_plan.WINDOW_OPEN_ET": (9, 35),
     "risk.session_guard._BUTTERFLY_CUTOFF": "14:00",
     "strategy.gex_pin_butterfly.EARLIEST_ET": "12:00",
     "strategy.gex_pin_butterfly.LATEST_ET": "15:00",
-    "strategy.liquidity_hunt.CUTOFF_ET": (11, 30),
-    "strategy.orb_plan.CUTOFF_ET": (11, 30),
-    "strategy.runaway_continuation.CUTOFF_ET": "11:30",
-    "strategy.runaway_plan._cutoff_hm()": (11, 30),
+    "strategy.liquidity_hunt.CUTOFF_ET": (15, 40),   # r149
+    "strategy.orb_plan.CUTOFF_ET": (15, 40),   # r149
+    "strategy.runaway_continuation.CUTOFF_ET": "15:40",   # r149
+    "strategy.runaway_plan._cutoff_hm()": (15, 40),   # r149
     "strategy.sweep_credit_spread.EARLIEST_ET": "11:31",
     "strategy.sweep_credit_spread.LATEST_ET": "15:40",
     "strategy.sweep_plan.EARLIEST_ET": (9, 35),
     "strategy.sweep_plan.LATEST_ET": (15, 40),
     "strategy.tcs_plan.TCS_ENTRY_END_ET": (15, 40),
     "strategy.tcs_plan.TCS_START_ET": (11, 31),
-    "strategy.volt_plan.WINDOW_CLOSE_ET": (11, 30),
+    "strategy.volt_plan.WINDOW_CLOSE_ET": (15, 40),   # r149
     "strategy.volt_plan.WINDOW_OPEN_ET": (9, 35),
 }
 
@@ -208,7 +214,7 @@ def main() -> int:
 
     got = resolved()
     diff = [f"{k}: {got.get(k)!r} != pinned {v!r}" for k, v in PIN.items() if got.get(k) != v]
-    check(f"W5 all {len(PIN)} resolved window values match the r148 pins", not diff, "; ".join(diff[:6]))
+    check(f"W5 all {len(PIN)} resolved window values match the r149 pins", not diff, "; ".join(diff[:6]))
     print("GREEN" if not PROBLEMS else f"RED — {len(PROBLEMS)} failed: {', '.join(PROBLEMS)}")
     return 1 if PROBLEMS else 0
 

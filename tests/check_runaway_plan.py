@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_runaway_plan.py  v1.1
+tests/check_runaway_plan.py  v1.2
+v1.2  2026-09-26  OTV4TEST r149 (EOD.1) — R9 RE-POINTED: "past the cutoff" is read from the plan's
+      own _cutoff_hm() (15:40 by the operator's all-day debit window), not a typed 11:31/11:32/13:00.
 v1.1  2026-09-13  OTV4TEST r24 — R7/R8 RE-DERIVED ON THE BOOKS, R14-R18 ADDED. One-per-break
       and re-validation are read from trades.db and the closed bars since that
       exit, so R7 writes a REAL closed runaway row instead of calling the deleted
@@ -24,7 +26,7 @@ v1.0  2026-09-08  OTV4TEST r3 — THE RUNAWAY PLAN AND ITS EXITS, ON HYPOTHETICA
        state does NOT re-fire
   R8   re-validation on actual: the 50 lost on a close, then accepted on two
        closes -> the break trades again with a FRESH measurement
-  R9   past 11:30 -> DORMANT; before 09:35 -> DORMANT; one row each, then silence
+  R9   past the cutoff (15:40 since r149) -> DORMANT; before 09:35 -> DORMANT; one row each, then silence
   X1   🔴 REJECTED handoff: a pool above the entry rejected on close -> exit,
        for a RUNAWAY record and for an ORB record
   X2   🔴 runaway: premium at the old 20% floor with price still beyond the 50
@@ -313,11 +315,14 @@ def main():
         return st.conn.execute("SELECT COUNT(*) FROM plan_tick WHERE strategy='RunawayContinuation' "
                                "AND verdict='DORMANT'").fetchone()[0]
     P.clear_dormant("RunawayContinuation")
-    n0 = rows(); prep_for(plan, er._data, _rip_frame(), now="11:31"); n1 = rows()
-    prep_for(plan, er._data, _rip_frame(), now="11:32"); prep_for(plan, er._data, _rip_frame(), now="13:00"); n2 = rows()
+    from strategy import runaway_plan as _rpm
+    _c9 = _rpm._cutoff_hm(); _m9 = _c9[0] * 60 + _c9[1]      # r149: read, not typed
+    _f9 = lambda m: f"{m // 60:02d}:{m % 60:02d}"
+    n0 = rows(); prep_for(plan, er._data, _rip_frame(), now=_f9(_m9 + 1)); n1 = rows()
+    prep_for(plan, er._data, _rip_frame(), now=_f9(_m9 + 2)); prep_for(plan, er._data, _rip_frame(), now=_f9(_m9 + 10)); n2 = rows()
     prep_for(plan, er._data, _rip_frame(), now="09:31"); n3 = rows()
     prep_for(plan, er._data, _rip_frame(), now="09:32"); n4 = rows()
-    check("R9 outside 09:35–11:30: one DORMANT row per transition, then silence",
+    check(f"R9 outside 09:35–{_f9(_m9)}: one DORMANT row per transition, then silence",
           n1 == n0 + 1 and n2 == n1 and n3 == n2 + 1 and n4 == n3, f"{n0}->{n1}->{n2}->{n3}->{n4}")
 
     # ── the exits ────────────────────────────────────────────────────────

@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""tests/check_standing_offer.py  v1.2
+"""tests/check_standing_offer.py  v1.3
+v1.3  2026-09-26  OTV4TEST r149 — S7 RE-POINTED, NOT LOOSENED: it searched the WHOLE of main.py
+      for the first 'if pos_mgr.has_open_position():', and r149's handle_hard_close (which
+      runs before main_loop in the file) now carries one, so S7 compared the supervisor against
+      the wrong function. It now reads main_loop only; still red if the loop's split moves
+      above the supervisor (mutant-checked on r149).
 v1.2  2026-09-10  OTV4TEST r13 — S5 adopts its fixture fill into a TEMP trade logger, never
       the box's. Predecessor defect #12.
 THE ORB STANDING OFFER: one order, supervised from both branches, and the
@@ -286,6 +291,8 @@ def main():
 
     # ── S7: the supervisor runs before the position branch splits ──────────
     src = open(os.path.join(_root, "main.py"), encoding="utf-8").read()
+    _ml = src.find("\ndef main_loop(")
+    src = src[_ml:] if _ml != -1 else ""
     i_sup = src.find("_supervise_offers(ctx, state)")
     i_branch = src.find("if pos_mgr.has_open_position():")
     check("S7 supervision runs BEFORE has_open_position() splits the loop",

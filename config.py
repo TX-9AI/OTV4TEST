@@ -1,5 +1,6 @@
 """
-config.py  v4.38
+config.py  v4.39
+v4.39 2026-09-26  OTV4TEST r149 (EOD.1) — THE END OF DAY IS ONE TABLE, AND THE OPERATOR RESET IT. `EOD_SCHEDULE`: entries stop 15:40; positions with ASSIGNMENT RISK (a short leg) post RESTING best-case closes at 15:45; everything else LADDERS from 15:50; anything unfilled CROSSES at 15:55. Directional debit entries run ALL DAY to 15:40 (ORB, Runaway, Hunt, Breakout, VOLT; was 11:30). HARD_CLOSE_ET, FLATTEN_WINDOW_OPEN_ET, VERTICAL_HOLD_TO_ET and DEBIT_DIRECTIONAL_CUTOFF_ET now DERIVE from it; the debit cutoff's OT_DEBIT_CUTOFF_ET override is REMOVED (a second window source).
 v4.38 2026-09-26  OTV4TEST r148 (WIN.1) — ONE ENTRY-WINDOW TABLE. `ENTRY_WINDOWS` is the single source of every strategy's entry window; the admission table and every plan read it, and each older name (ORB_NO_ENTRY_AFTER_ET, RUNAWAY_CUTOFF_ET, VOLT_WINDOW_*, TCS_*, CREDIT_*, CONDOR_ENTRY_CUTOFF_ET, SWEEP_CS_*_FORK, BUTTERFLY_ENTRY_START_ET) is DERIVED from it. HUNT_CUTOFF_ET, BREAKOUT_LATEST_ET and GEX_BFLY_LATEST_ET are added: three strategies read those names with a literal fallback and the names never existed. Every value is UNCHANGED (tests/check_one_window_table.py pins all 47 resolved values).
 v4.37 2026-09-26  OTV4TEST r146 — OT_INSTRUMENT HAS NO "QQQ" FALLBACK: unset reads "UNSET".
       The operator: "defaulting the QQQ is not the answer" (2026-09-26). A process without the variable
@@ -672,14 +673,31 @@ TREND_CREDIT_ACTIVE         = os.environ.get("OT_TCS_ACTIVE", "1") == "1"
 # pre-armed in tcs_plan and sweep_plan until this revision).
 # ⚠️ Values are the EFFECTIVE windows measured 2026-09-26. TrendCreditSpread
 # starts 11:31 (its plan refused 11:30 while the admission row said 11:30).
+# ══ r149 (EOD.1) — THE END-OF-DAY SCHEDULE ══════════════════════════════════
+# Operator, 2026-09-26: *"Stop entries at 1540"*; *"Resting limit orders at 1545,
+# ladder exits at 1550 if they're not the assignment risk type"*; unfilled cross
+# at 15:55 (*"Agree"*); resting price *"Best case on the trajectory (nickel close,
+# 1 delta, etc)"*. ASSIGNMENT RISK = a short leg (credit verticals, condor/trend
+# legs, the tent, butterflies, an adopted short). Every EOD time reads THIS table.
+# 🔴 SUPERSEDES r105's "a credit at the hard close takes the nickel or takes
+# assignment and NEVER crosses": an unfilled resting close now crosses at 15:55.
+EOD_SCHEDULE = {
+    "entries_stop": (15, 40),   # no new entries at or after
+    "resting_at":   (15, 45),   # assignment-risk: resting best-case close
+    "ladder_at":    (15, 50),   # everything else: the mark ladder
+    "cross_at":     (15, 55),   # anything still open crosses
+}
+
 ENTRY_WINDOWS = {
-    "ORBStrategy":          ((9, 35),  (11, 30)),
-    "RunawayContinuation":  ((9, 35),  (11, 30)),
-    "LiquidityHunt":        ((9, 35),  (11, 30)),
-    "Breakout":             ((9, 35),  (11, 30)),
-    "VOLT":                 ((9, 35),  (11, 30)),
-    "SweepCreditSpread":    ((9, 35),  (15, 40)),
-    "TrendCreditSpread":    ((11, 31), (15, 40)),
+    # r149: directional debits run ALL DAY to the entries stop (operator: "A").
+    # Supersedes criteria.py's 2026-08-29 "Debit entries are finished at 1130".
+    "ORBStrategy":          ((9, 35),  EOD_SCHEDULE["entries_stop"]),
+    "RunawayContinuation":  ((9, 35),  EOD_SCHEDULE["entries_stop"]),
+    "LiquidityHunt":        ((9, 35),  EOD_SCHEDULE["entries_stop"]),
+    "Breakout":             ((9, 35),  EOD_SCHEDULE["entries_stop"]),
+    "VOLT":                 ((9, 35),  EOD_SCHEDULE["entries_stop"]),
+    "SweepCreditSpread":    ((9, 35),  EOD_SCHEDULE["entries_stop"]),
+    "TrendCreditSpread":    ((11, 31), EOD_SCHEDULE["entries_stop"]),
     "GEXPinButterfly":      ((12, 0),  (15, 0)),
     "ATPButterfly":         ((11, 30), (15, 0)),
 }
@@ -1138,12 +1156,15 @@ IV_RANK_HIGH                = 50
 TIMEZONE                    = "US/Eastern"
 RTH_OPEN_ET                 = (9, 30)
 RTH_CLOSE_ET                = (16, 0)
-HARD_CLOSE_ET               = (15, 45)
+HARD_CLOSE_ET               = EOD_SCHEDULE["cross_at"]      # r149: the final cross (was 15:45)
 # v3.8: the end-of-day flatten OPENS here and posts mark-limits (re-priced each
 # ~15s tick) so positions can close without paying the spread; at HARD_CLOSE_ET
 # it crosses unconditionally. An unfilled 0DTE at the bell is an expiry (and an
 # assignment on a short leg), not an overnight hold — so the cross is absolute.
-FLATTEN_WINDOW_OPEN_ET      = (15, 40)
+FLATTEN_WINDOW_OPEN_ET      = EOD_SCHEDULE["resting_at"]    # r149: the first EOD action (was 15:40)
+EOD_RESTING_AT_ET           = EOD_SCHEDULE["resting_at"]
+EOD_LADDER_AT_ET            = EOD_SCHEDULE["ladder_at"]
+EOD_CROSS_AT_ET             = EOD_SCHEDULE["cross_at"]
 ORB_NO_ENTRY_AFTER_ET       = ENTRY_WINDOWS["ORBStrategy"][1]  # ORB-SCOPED: ORB entries valid until 11:30 ET.
                                         #   Also the ARM condition for sweep reversal.
 # 🔴 r193 — 11:00 -> 11:30, operator 2026-08-30: "1130 is the cutoff for new
@@ -1188,8 +1209,7 @@ ORB_NO_ENTRY_AFTER_ET       = ENTRY_WINDOWS["ORBStrategy"][1]  # ORB-SCOPED: ORB
 # 11:00 while RunawayContinuation - which fires on ORB's OWN state - ran to
 # 11:30, so the engine stopped producing the state half an hour before the
 # trade depending on it stopped firing.
-DEBIT_DIRECTIONAL_CUTOFF_ET = tuple(int(x) for x in
-    os.environ.get("OT_DEBIT_CUTOFF_ET", "11:30").split(":"))
+DEBIT_DIRECTIONAL_CUTOFF_ET = EOD_SCHEDULE["entries_stop"]   # r149: all day; the OT_DEBIT_CUTOFF_ET override is removed
 
 # ⚠️ KEYED ON STRUCTURE, NOT ON A NAME LIST. The v3 version held
 # {"ORBStrategy", "ContinuationStrategy", "SweepReversal"} - and by 2026-08-20
@@ -1713,7 +1733,7 @@ CONDOR_RATCHET_STANDALONE_ONLY = os.environ.get(
 # ⚠️ AND PAPER CANNOT FALSIFY IT. This engine has NO assignment model, so the
 # result will look clean on this box whether the reasoning holds or not. Stated
 # on the record rather than discovered live.
-VERTICAL_HOLD_TO_ET         = (15, 50)
+VERTICAL_HOLD_TO_ET         = EOD_SCHEDULE["resting_at"]   # r149: assignment-risk closes start at 15:45 (was 15:50)
 
 # ══ VOLT (VOLume Trade) — THE CONTROL ARM, OTV4TEST r72 ════════════════════
 # 🔑 EVERY ONE OF THESE IS A DECLARED PRIOR (WA §31) AND NONE IS PROVEN ON A

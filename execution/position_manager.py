@@ -1,5 +1,6 @@
 """
-execution/position_manager.py  v5.7
+execution/position_manager.py  v5.8
+v5.8  2026-09-26  OTV4TEST r149 (EOD.1) — flatten_all runs the operator's end of day: an ASSIGNMENT-RISK position (a short leg) closes from 15:45, everything else is HELD (and managed) until 15:50; each close carries its own derived label; the tick's spot is stamped on the record as _eod_spot for the resting best-case price; a close still resting or laddering before 15:55 is not a failure (INFO, not ERROR). The admission hard-close refusal text derives from HARD_CLOSE_ET. it also stamps each leg's chain IV (`_eod_iv`) and the chain's ATM IV (`_eod_iv_atm`) beside `_eod_spot`, so the resting price is the position's ESTIMATED VALUE BY 15:55 (operator: "Can we instead estimate their assumed BY 1555 & rest that?").
 v5.7  2026-09-26  OTV4TEST r148 (WIN.1) — THE TABLE'S WINDOWS COME FROM config.ENTRY_WINDOWS, the one entry-window table; `config.ADMISSION_RULES` can still override caps and tries but NO LONGER a window (a second window source is WIN.1's defect). TrendCreditSpread's row reads 11:31, the minute its plan actually opened (it said 11:30).
 v5.6  2026-09-21  OTV4TEST r78 — ONE OF EACH AT A TIME. r76 read the ruling as
       removing the per-type cap; it was about BLOCKING (strategy vs strategy,
@@ -213,7 +214,8 @@ import pandas as pd
 
 from database.trade_logger import TradeRecord, get_trade_logger
 from strategy.structure import (is_credit_vertical as _is_credit_vertical,
-                                is_tent as _is_tent)
+                                is_tent as _is_tent,
+                                has_assignment_risk as _has_assignment_risk)   # r149
 from execution.exit_engine import get_exit_engine, ExitDecision
 from data.tasty_client import get_client, TastyClientError
 from risk.risk_manager import get_risk_manager
@@ -452,7 +454,8 @@ def decide(f: Facts, table: Optional[dict] = None) -> Verdict:
     if not f.cap_intact:
         return Verdict(False, "catastrophic_cap", "catastrophic cap reached — no new entries")
     if f.past_hard_close:
-        return Verdict(False, "hard_close", "past the 15:45 ET hard close")
+        from config import HARD_CLOSE_ET as _HCE
+        return Verdict(False, "hard_close", "past the %02d:%02d ET hard close" % tuple(_HCE))
 
     rule = table.get(f.strategy)
     if rule is None:
@@ -698,7 +701,7 @@ class PositionManager:
         survived stale-orphan reconciliation — without dropping a condor leg."""
         self._open_records = list(records)
 
-    def flatten_all(self, reason: str, chain=None) -> List[str]:
+    def flatten_all(self, reason: str = "", chain=None, spot: Optional[float] = None) -> List[str]:
         """Force-close EVERY open record through the full exit accounting.
 
         Unlike a bare exit_engine.place_exit_order() (which submits/simulates an
@@ -715,8 +718,16 @@ class PositionManager:
         if not self._open_records:
             self._open_records = self._trade_logger.get_open_trades()
 
+        # r149 (EOD.1) — the operator's schedule: assignment risk closes from
+        # 15:45 (resting best case), everything else is HELD (and managed) until
+        # 15:50 (ladder); before 15:55 an unfilled close is RESTING, not failed.
+        from utils.time_utils import eod_close_due, now_et as _now_et
+        from execution.exit_engine import _eod_label
+        from execution.limit_ladder import hard_close_order_mode
+        _crossing = hard_close_order_mode(_now_et()) == "market"
         failed: List[str] = []
         held: List[str] = []
+        resting: List[str] = []
         for record in list(self._open_records):
             trade_id = record.get("trade_id", "")
             # 🔴 r99 — CREDIT VERTICALS HOLD TO VERTICAL_HOLD_TO_ET (15:45).
@@ -727,9 +738,26 @@ class PositionManager:
             # MANAGED in that window (main.py runs a manage pass); it is not
             # flattened. Fail direction: a bad clock read -> flatten (the
             # pre-r99 behaviour), never an overnight orphan.
-            if _is_credit_vertical(record) and not _vertical_close_due():
+            # r149 — the r99 hold, generalised: WHICH positions are held is now
+            # the operator's assignment-risk split, not "credit verticals".
+            if not eod_close_due(_has_assignment_risk(record)):
                 held.append(trade_id)
                 continue
+            if spot:
+                record["_eod_spot"] = float(spot)
+            # r149 — each leg's chain IV (and the chain's ATM IV as the fallback),
+            # for the resting price's estimate of the position's value BY 15:55.
+            if chain is not None:
+                try:
+                    _ivs = {c.symbol: float(c.iv or 0.0) for c in (list(chain.calls or []) + list(chain.puts or []))
+                            if getattr(c, "symbol", "")}
+                    _legs = [record.get(k) for k in ("option_symbol", "short_symbol", "long_symbol",
+                                                     "lower_symbol", "center_symbol", "upper_symbol")]
+                    record["_eod_iv"] = {s: _ivs[s] for s in _legs if s and _ivs.get(s)}
+                    record["_eod_iv_atm"] = float(chain.atm_iv() or 0.0)
+                except Exception as _ive:                          # noqa: BLE001
+                    logger.warning(f"EOD: chain IV unreadable for {trade_id[:8]} ({_ive}) — expiry value")
+            reason = _eod_label(record)
             premium = self._fetch_current_premium(record, chain=chain)
             if premium is None:
                 premium = float(record.get("entry_premium", 0.0) or 0.0)
@@ -741,13 +769,15 @@ class PositionManager:
             if self._execute_exit(record, decision, premium):
                 self._open_records = [r for r in self._open_records
                                       if r.get("trade_id") != trade_id]
+            elif not _crossing:
+                resting.append(trade_id)
+                logger.info(f"EOD close {trade_id[:8]} resting/laddering ({reason}) — re-priced next tick")
             else:
                 failed.append(trade_id)
-                logger.error(f"Flatten FAILED for {trade_id[:8]} — will retry")
+                logger.error(f"Flatten FAILED for {trade_id[:8]} past the cross — will retry")
         if held:
-            logger.info("Flatten: %d credit vertical(s) HELD to 15:45 per "
-                        "VERTICAL_HOLD_TO_ET (%s)", len(held),
-                        ",".join(t[:8] for t in held))
+            logger.info("EOD: %d position(s) without assignment risk HELD to the 15:50 ladder (%s)",
+                        len(held), ",".join(t[:8] for t in held))
         return failed
 
     def add_condor_leg(self, record: TradeRecord):

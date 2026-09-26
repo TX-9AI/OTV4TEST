@@ -1,5 +1,6 @@
 """
-strategy/criteria.py  v1.5
+strategy/criteria.py  v1.6
+v1.6  2026-09-26  OTV4TEST r149 (EOD.1) — runaway_cutoff_et marked SUPERSEDED: the operator ruled directional debits run all day to 15:40 ("A"). The pair is unread by any code; config.ENTRY_WINDOWS governs.
 v1.5  2026-09-08  r321 — `sweep_max_age_bars` REMOVED, the residue r241 meant
       to take. r241 deleted the age gate from the strategy and shipped a
       checker for it, but that checker reads ONE module and this file was never
@@ -304,7 +305,9 @@ CRITERIA = {
     "sweep_pierce_ceiling":   (0.25,           0.75),    # SELECTION
     # r176 — operator 2026-08-29: "Debit entries are finished at 1130,
     # period. Do not extend it for relaxed. We are burning theta."
-    "runaway_cutoff_et":      ("11:30",        "11:30"), # SELECTION — does not relax
+    # 🔴 r149 — SUPERSEDED 2026-09-26: the operator ruled directional debits run ALL
+    # DAY to 15:40 ("A"). This pair is read by no code; config.ENTRY_WINDOWS governs.
+    "runaway_cutoff_et":      ("15:40",        "15:40"), # SELECTION — does not relax
     # 🔴 r208 — REMOVED. The butterfly relaxes nothing now: reach, strength and
     # both window bounds are strict, and the wing is SEARCHED rather than
     # widened. Operator, 2026-09-01: "reachability and pin strength are

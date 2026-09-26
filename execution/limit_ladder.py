@@ -1,5 +1,6 @@
 """
-execution/limit_ladder.py  v4.0
+execution/limit_ladder.py  v4.1
+v4.1  2026-09-26  OTV4TEST r149 (EOD.1): the ladder's two times come from config.EOD_SCHEDULE — limit from 15:50 (EOD_LADDER_AT_ET), market from 15:55 (EOD_CROSS_AT_ET). Were literals 15:40 / 15:45. Assignment-risk positions rest from 15:45 on a best-case price (exit_engine); this function governs the ladder they share at the cross.
 Escalating limit ladder for fills.
 
 v4.0  2026-08-19  Ported from options_trader_v3 at the OTV4 split.
@@ -71,8 +72,9 @@ from typing import Optional
 #
 # NB this MOVES the start of the flatten sweep earlier (it was a single 15:45
 # market sweep). The extra five minutes is what buys the chance of a mark fill.
-HARD_CLOSE_LIMIT_START_ET = _time(15, 40)
-HARD_CLOSE_MARKET_AT_ET   = _time(15, 45)
+from config import EOD_LADDER_AT_ET as _LAD, EOD_CROSS_AT_ET as _XAT   # r149: the one EOD table
+HARD_CLOSE_LIMIT_START_ET = _time(*_LAD)     # 15:50
+HARD_CLOSE_MARKET_AT_ET   = _time(*_XAT)     # 15:55
 
 
 def hard_close_order_mode(now_et) -> str:

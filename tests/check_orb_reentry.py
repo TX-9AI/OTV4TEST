@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_orb_reentry.py  v1.1
+tests/check_orb_reentry.py  v1.2
+v1.2  2026-09-26  OTV4TEST r149 (EOD.1) — R1c RE-POINTED: the flat tape now runs to the ORB cutoff
+      READ FROM CONFIG (ORB_NO_ENTRY_AFTER_ET, 15:40 by the operator's all-day debit window) and the
+      close inside lands AT it, instead of a typed 11:30. The pinned behaviour is unchanged.
 v1.1  2026-09-24  OTV4TEST r131b — THE LINE IS OUTSIDE; THE BREAK BAR ONLY ARMS;
       THE STOP MUST SIT IN THE RANGE. Operator, same day: "No, never. If this
       happens, we wait for a valid retest." / "the candle that started inside
@@ -191,13 +194,11 @@ def main() -> int:
           r1s0 == "INVALIDATED/runaway" and rs.d.state == S.WAITING_FOR_BREAK,
           f"{r1s0} -> {rs.st()}")
     late = runaway_long()
-    for mm in range(39, 60):
-        late.bar(9, mm, 703.4, 703.6, 703.2, 703.4)
-    for hh, mm in ((10, m) for m in range(0, 60)):
-        late.bar(hh, mm, 703.4, 703.6, 703.2, 703.4)
-    for mm in range(0, 30):
-        late.bar(11, mm, 703.4, 703.6, 703.2, 703.4)
-    late.bar(11, 30, 703.4, 703.5, 701.5, 701.6)  # inside, read at 11:31:10
+    import config as _cR
+    _co = tuple(_cR.ORB_NO_ENTRY_AFTER_ET)             # r149: read, not typed
+    for t in range(9 * 60 + 39, _co[0] * 60 + _co[1]):
+        late.bar(t // 60, t % 60, 703.4, 703.6, 703.2, 703.4)
+    late.bar(_co[0], _co[1], 703.4, 703.5, 701.5, 701.6)  # inside, read a minute after the cutoff
     check("R1c the same window as the close-inside path: a close inside after the "
           "cutoff re-arms nothing (EXPIRED)", late.d.state == S.EXPIRED, late.st())
 

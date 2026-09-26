@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""tests/check_late_credit_window.py — v1.0
+"""tests/check_late_credit_window.py — v1.1
+v1.1  2026-09-26 — OTV4TEST r149 (EOD.1) — W4 and W7 RE-POINTED to the operator's end of day
+      ("Resting limit orders at 1545, ladder exits at 1550 if they're not the assignment risk
+      type"; the cross at 15:55). W4: the vertical hold is 15:45 (EOD resting_at) and sits
+      BEFORE the debit ladder (15:50) and the cross (15:55) — a credit rests first, it is no
+      longer exempted from a ladder that opens earlier. W7: r71's scope pin (five literal
+      hard_close_15:45_ET sites) is superseded — every site now derives its label, so W7 pins
+      ZERO literal sites and HARD_CLOSE_ET at the 15:55 cross.
 A CREDIT ENTRY ALWAYS HAS LIFE, AND A DEBIT NEVER OPENS INTO ITS OWN FLATTEN.
 
 v1.0  2026-09-20 — OTV4TEST r71. The operator widened the CREDIT entry windows
@@ -20,17 +27,14 @@ sweep — the strategy whose entire job is trading swept levels — was DORMANT 
       ladder opens, so a debit can never be widened into its own flatten
   W3  🔑 STRUCTURAL: every CREDIT strategy closes STRICTLY BEFORE the vertical
       hold, so a credit entry always has at least a minute of life
-  W4  the vertical hold is 15:50, and sits AFTER the ladder opens (which is
-      what makes the credit exemption meaningful)
+  W4  (r149) the vertical hold is 15:45 (resting) and sits BEFORE the debit
+      ladder (15:50) and the cross (15:55)
   W5  the vertical hold lands before the final 15:57 reconcile sweep and
       before the 16:00 expiry — assignment requires a FAILED FLATTEN, not a
       held position
   W6  the vertical exit label is DERIVED from the constant, never a literal
-  W7  SCOPE PIN: exactly ONE site moved. Five genuine HARD_CLOSE_ET sites
-      remain and the constant is still 15:45 — so this change cannot have
-      quietly moved the general hard close along with the vertical one.
-      ⚠️ NOT a control: it is born red at base (six sites), and calling it one
-      would teach the reader that a red here is expected.
+  W7  (r149) no literal hard-close label remains; HARD_CLOSE_ET is the 15:55
+      cross. (r71's five-site scope pin is superseded — see v1.1.)
 
 ⚠️ W2 AND W3 ARE THE POINT. W1 pins today's numbers and will need editing the
 next time the operator rules; W2 and W3 encode the RELATIONSHIP and would catch
@@ -123,9 +127,10 @@ def _w3():
 guard("W3 every CREDIT strategy closes strictly before the vertical hold",
       _w3, lambda: "vhold=%s bad=%s" % (VHOLD, getattr(_w3, "bad", [])))
 
-guard("W4 the vertical hold is 15:50 and sits after the ladder opens",
-      lambda: VHOLD == (15, 50) and VHOLD > LADDER,
-      lambda: "vhold=%s ladder=%s" % (VHOLD, LADDER))
+guard("W4 r149: the vertical hold is 15:45 and precedes the debit ladder (15:50) and the cross (15:55)",
+      lambda: VHOLD == (15, 45) == tuple(config.EOD_RESTING_AT_ET)
+      and VHOLD < tuple(config.EOD_LADDER_AT_ET) < tuple(config.EOD_CROSS_AT_ET),
+      lambda: "vhold=%s ladder=%s cross=%s" % (VHOLD, tuple(config.EOD_LADDER_AT_ET), tuple(config.EOD_CROSS_AT_ET)))
 
 guard("W5 the vertical hold precedes the final 15:57 sweep and the 16:00 expiry",
       lambda: VHOLD < (15, 57) < tuple(config.RTH_CLOSE_ET),
@@ -157,12 +162,13 @@ guard("W6 the vertical exit label is derived from the constant, not a literal", 
 def _w7():
     src = open(os.path.join(_root, "execution", "exit_engine.py"),
                encoding="utf-8").read()
-    n = src.count('exit_reason = "hard_close_15:45_ET"')
+    import re
+    n = len(re.findall(r'exit_reason = "hard_close[\w:]*_ET"', src))
     _w7.n = n
-    return n == 5 and tuple(config.HARD_CLOSE_ET) == (15, 45)
+    return n == 0 and tuple(config.HARD_CLOSE_ET) == (15, 55)
 
 
-guard("W7 SCOPE: exactly one site moved — the other five still read 15:45",
+guard("W7 r149: no literal hard-close label remains, and HARD_CLOSE_ET is the 15:55 cross",
       _w7, lambda: "%d site(s), HARD_CLOSE_ET=%s" % (getattr(_w7, "n", -1),
                                                      tuple(config.HARD_CLOSE_ET)))
 

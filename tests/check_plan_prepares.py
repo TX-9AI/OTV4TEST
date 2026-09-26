@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_prepares.py  v1.21
+tests/check_plan_prepares.py  v1.22
+v1.22 2026-09-26  OTV4TEST r149 (EOD.1) — R8 and R14 RE-POINTED: "past the cutoff" is now five
+      minutes past the cutoff READ FROM CONFIG (RUNAWAY_CUTOFF_ET, 15:40), not a typed 11:45. The
+      operator's 2026-08-29 "Debit entries are finished at 1130, period" is superseded by his
+      2026-09-26 "I wanna extend the debit window to all day" / "Stop entries at 1540"; what r176
+      pinned — the debit cutoff does not relax — still holds and is still pinned.
 v1.21 2026-09-23  OTV4TEST r126 — T1-T3 RETIRED with analysis/liquidity_mapper (deleted):
       T1/T2's property MOVED to check_rails_book R8/R9; T1b went with the map
       object; T3 was reversed by r116 (a fork lives while its builder builds it).
@@ -854,12 +859,15 @@ def main():
           isinstance(rwmod.break_last_exit("long", 102.25), float))
     _bind_book()
 
+    import config as _cP
+    _rc = tuple(int(x) for x in str(_cP.RUNAWAY_CUTOFF_ET).split(":"))   # r149: read, not typed
+    _past = f"{_rc[0]:02d}:{_rc[1] + 5:02d}" if _rc[1] + 5 < 60 else f"{_rc[0] + 1:02d}:{_rc[1] - 55:02d}"
     os.environ["OT_RELAXED_ENTRY"] = "0"
     P.begin_tick(56.0)
     sig = RW.generate_signal(orb=_ORB(accepted=True), atr_pct=0.14, price_now=101.9,
-                             now_et="11:45", chain=_Chain([], calls_rw))
+                             now_et=_past, chain=_Chain([], calls_rw))
     r56 = _row(st, "RunawayContinuation", 56.0)
-    check("R8 past the 11:30 cutoff (strict) -> DORMANT", sig is None and r56 and r56[0] == "DORMANT", str(r56))
+    check(f"R8 {_past}, past the {_cP.RUNAWAY_CUTOFF_ET} cutoff (strict) -> DORMANT", sig is None and r56 and r56[0] == "DORMANT", str(r56))
     # ── r176 — THE DEBIT CUTOFF DOES NOT RELAX (operator, 2026-08-29:
     # "Debit entries are finished at 1130, period … We are burning theta").
     # Dormant rows DEDUPE, so the pin is behavioural: relaxed at 11:45
@@ -867,9 +875,9 @@ def main():
     os.environ["OT_RELAXED_ENTRY"] = "1"
     P.begin_tick(56.5)
     sig = RW.generate_signal(orb=_ORB(accepted=True), atr_pct=0.14, price_now=101.9,
-                             now_et="11:45", chain=_Chain([], [_G(102, 0.95, 0.46, 0.050)]))
+                             now_et=_past, chain=_Chain([], [_G(102, 0.95, 0.46, 0.050)]))
     r565 = _row(st, "RunawayContinuation", 56.5)
-    check("R14 (r176) 11:45 UNDER RELAXED -> still dormant: no signal, no TAKE/HOLD row",
+    check(f"R14 (r176) {_past} UNDER RELAXED -> still dormant: no signal, no TAKE/HOLD row",
           sig is None and (r565 is None or r565[0] == "DORMANT"), str(r565))
     src_rw = open(os.path.join(_root, "strategy", "runaway_plan.py"), encoding="utf-8").read()
     check("R14b (r176) the relaxed 14:00 extension is gone from the source (now the plan's)",

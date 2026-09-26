@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """
-tests/check_admission.py  v1.6
+tests/check_admission.py  v1.7
 THE ADMISSION TABLE, DRIVEN EXHAUSTIVELY (OTV4TEST r35).
+
+v1.7  2026-09-26  OTV4TEST r149 (EOD.1) — the SPEC and A8 RE-POINTED to the operator's ruling, restated from
+        his words: "I wanna extend the debit window to all day" and "1. Stop entries at 1540". ORB, RUNAWAY,
+        HUNT, BREAKOUT and VOLT now run 09:35-15:40 (VOLT keeps the ORB's window, as r72 requires). A8's 11:30
+        handover no longer exists: at 11:30 the directional five are IN, the TCS is OUT until 11:31, and the ATP
+        fly is IN; at 15:40 every directional and credit entry is OUT.
 
 v1.6  2026-09-26  OTV4TEST r148 (WIN.1) — A and A8 RE-POINTED, not loosened. The TCS row is 11:31 because its PLAN has
         refused 11:30 all along ("before TCS_START_ET 11:31 — dormant"): the admitted-but-dormant minute made A8's
@@ -88,13 +94,13 @@ def main():
     #    same dict the code reads. §0.4: a fixture built from the belief under
     #    test cannot fail. These numbers come from his message, not from rules().
     SPEC = {
-        ORB:     (((9, 35), (11, 30)), 1, None),
-        RUNAWAY: (((9, 35), (11, 30)), 1, None),
-        HUNT:    (((9, 35), (11, 30)), 1, None),
+        ORB:     (((9, 35), (15, 40)), 1, None),   # r149 EOD.1: all day, entries stop 15:40
+        RUNAWAY: (((9, 35), (15, 40)), 1, None),   # r149 EOD.1: all day, entries stop 15:40
+        HUNT:    (((9, 35), (15, 40)), 1, None),   # r149 EOD.1: all day, entries stop 15:40
         # r51 (BRK.1) — the operator's 2026-09-18 ruling, restated from his own
         # words: *"I want the orb, hunt, breakout & sweep all able to fire &
         # non-competing"*, same opening range, nothing blocking anything.
-        BREAKOUT: (((9, 35), (11, 30)), 1, None),
+        BREAKOUT: (((9, 35), (15, 40)), 1, None),   # r149 EOD.1: all day, entries stop 15:40
         # r71 (LATE.1) — the operator's 2026-09-20 ruling, restated from his own
         # words: *"let's just widen the credit trade window to 1540 for entries
         # & make the credit window flatten at 1550"*, because the late
@@ -109,7 +115,7 @@ def main():
         # ⚠️ ITS WINDOW MUST EQUAL THE ORB'S — a control measured over a
         # different period measures the period. check_volt_plan V1b pins that
         # equality from the other side.
-        VOLT:    (((9, 35), (11, 30)), 1, None),
+        VOLT:    (((9, 35), (15, 40)), 1, None),   # r149 EOD.1: all day, entries stop 15:40
         SWEEP:   (((9, 35), (15, 40)), 2, None),
         TCS:     (((11, 31), (15, 40)), 1, None),   # r148: the minute its plan opens (AFD.1)
         GEXFLY:  (((12, 0), (15, 0)), 1, 1),
@@ -140,10 +146,11 @@ def main():
               f"{before}={bool(ok(s,before))} {at_start}={bool(ok(s,at_start))} "
               f"{before_end}={bool(ok(s,before_end))} {at_end}={bool(ok(s,at_end))}")
 
-    check("A8 the handover as it runs: at 11:30 the morning three and the TCS are OUT and the ATP fly IN; the TCS is IN at 11:31",
-          not ok(ORB, (11, 30)) and not ok(RUNAWAY, (11, 30)) and not ok(HUNT, (11, 30))
-          and not ok(TCS, (11, 30)) and bool(ok(TCS, (11, 31))) and bool(ok(ATPFLY, (11, 30))),
-          "no overlap; the TCS's one-minute gap is its plan's own (AFD.1), now stated by the table")
+    check("A8 r149: at 11:30 the directional five are IN, the TCS OUT until 11:31, the ATP fly IN; at 15:40 every directional and credit entry is OUT",
+          all(bool(ok(x, (11, 30))) for x in (ORB, RUNAWAY, HUNT, BREAKOUT, VOLT))
+          and not ok(TCS, (11, 30)) and bool(ok(TCS, (11, 31))) and bool(ok(ATPFLY, (11, 30)))
+          and not any(ok(x, (15, 40)) for x in (ORB, RUNAWAY, HUNT, BREAKOUT, VOLT, SWEEP, TCS)),
+          "the debit window runs all day (operator 2026-09-26); the TCS's one-minute gap is its plan's own (AFD.1)")
 
     check("A9 the GEX fly runs to 15:00 (its 14:00 cutoff was raised by ruling)",
           bool(ok(GEXFLY, (14, 30))) and bool(ok(GEXFLY, (14, 59))) and not ok(GEXFLY, (15, 0)),

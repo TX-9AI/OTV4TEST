@@ -1,5 +1,6 @@
 """
-execution/exit_engine.py  v4.26
+execution/exit_engine.py  v4.27
+v4.27 2026-09-26  OTV4TEST r149 (EOD.1) — THE OPERATOR'S END OF DAY. Every hard-close decision now reads ONE clock per position: ASSIGNMENT RISK (a short leg: verticals, condor/trend legs, the tent, butterflies, an adopted short) closes from 15:45 on a RESTING BEST-CASE limit — the structure's ESTIMATED VALUE AT 15:55 if spot holds (each leg priced with the 5 minutes then left to expiry at its own chain IV; no IV -> expiry value), a nickel floor on a buy-back, one tick under on a sale (operator: "Best case on the trajectory (nickel close, 1 delta, etc)", then "Can we instead estimate their assumed BY 1555 & rest that?"), re-priced each tick; everything else LADDERS from 15:50 (a long single never below parity - tick); at 15:55 EVERY structure crosses, credits included. 🔴 r105's "credit hard close takes the nickel or takes assignment and never crosses" is SUPERSEDED by the operator's 2026-09-26 ruling. Labels derive from the schedule: hard_close_resting_15:45_ET / hard_close_ladder_15:50_ET (the "hard_close" substring every reader keys on is kept). PAPER (operator: "use latest possible close allowed by code ... or best-case available when deep ITM (par, nickel)"; "I want to be accustomed to seeing late closing orders"): EVERY end-of-day close books at the 15:55 cross — at the mark (the ladder's last rung), or at its best case (nickel / parity less a tick) when the outcome is already SETTLED (_eod_determined: with IV, the 15:55 estimate prices to the same tick as the expiry value). Other paper exits are unchanged.
 v4.26 2026-09-23  OTV4TEST r120 — THE SWEEP'S BREACH EXIT RUNS ON THE OPERATOR'S
       BREACHED (LVL.15 step 4). *"Price was accepted beyond the level ... as
       evidenced by the closure of a 1-min candle beyond the level [and the]
@@ -681,7 +682,7 @@ repo-wide v3.0 bump: Yahoo-Finance purge & data stream
         change in this file.
 Exit triggers by strategy:
   ORB
-    1. HARD CLOSE: 15:45 ET
+    1. HARD CLOSE: EOD_SCHEDULE (r149) — assignment risk rests 15:45, others ladder 15:50, all cross 15:55
     2. STRUCTURE STOP: 1-min close beyond the impulsive candle's origin
        (close < impulsive low for longs, close > impulsive high for shorts).
        Closing back inside the range alone does NOT stop — only a close past
@@ -690,18 +691,18 @@ Exit triggers by strategy:
     4. TRAIL (at/past 100% TP): tightens to track the nearest unfilled 1m FVG
        in the trade\'s favor — no hard exit at target, position can keep running
   SWEEP REVERSAL
-    1. HARD CLOSE: 15:45 ET
+    1. HARD CLOSE: EOD_SCHEDULE (r149) — assignment risk rests 15:45, others ladder 15:50, all cross 15:55
     2. HARD STOP: current premium <= 25% loss
     3. TARGET HIT: 100% TP
     4. BOS EXIT: 1-min break of structure against position
     5. TRAIL: activates at 50% TP
   BUTTERFLY
-    1. HARD CLOSE: 15:45 ET
+    1. HARD CLOSE: EOD_SCHEDULE (r149) — assignment risk rests 15:45, others ladder 15:50, all cross 15:55
     2. MAX HOLD: 2.5 hours
     3. HARD STOP: net value <= 25% loss
     4. TARGET HIT: 25% of max profit
   ADOPTED (broker-discovered, no DB plan)
-    1. HARD CLOSE: 15:45 ET
+    1. HARD CLOSE: EOD_SCHEDULE (r149) — assignment risk rests 15:45, others ladder 15:50, all cross 15:55
     2. MAX-LOSS STOP: sign-correct (long: premium <= stop; short: premium >= stop)
     3. LONG PROFIT TRAIL: standard trail to lock gains; short rides to hard close
 """
@@ -746,7 +747,33 @@ from execution.limit_ladder import limit_at_mark, hard_close_order_mode
 # leg evaluation. `is_credit_vertical` routes the dispatch (F2).
 from config import TCS_STOP_PCT_OF_CREDIT                    # r238
 from strategy.structure import (is_trend_participation, is_credit_vertical,
-                                is_tent)
+                                is_tent, has_assignment_risk)
+from utils.time_utils import eod_close_due                      # r149 (EOD.1)
+from config import EOD_RESTING_AT_ET, EOD_LADDER_AT_ET          # r149 (EOD.1)
+
+
+def _eod_due(record) -> bool:
+    """r149 — has THIS position's end-of-day close begun (15:45 assignment risk, else 15:50)?
+
+    ⚠️ GATED THROUGH is_hard_close_time() FIRST, deliberately. That function is
+    the ONE seam every checker pins the clock through (`XE.is_hard_close_time =
+    lambda: False`); an evaluator that asks the wall clock another way makes
+    eleven checkers pass before 15:45 and fail after it — measured on the r149
+    build at 15:55 ET. It opens at FLATTEN_WINDOW_OPEN_ET = EOD resting_at, the
+    earliest end-of-day minute, so in production the conjunction is exactly
+    eod_close_due(). ⚠️ AND THE MINUTE COMES FROM THIS MODULE'S `datetime`,
+    the SECOND seam: the condor-leg branch read `datetime.now(ET)` here before
+    r149, and three checkers freeze `XE.datetime` to pin it."""
+    from utils.time_utils import ET as _ET
+    return bool(is_hard_close_time()) and eod_close_due(has_assignment_risk(record),
+                                                        now=datetime.now(_ET))
+
+
+def _eod_label(record) -> str:
+    """r149 — the reason string, DERIVED from the schedule (r71: a label never names a time that did not fire)."""
+    if has_assignment_risk(record):
+        return "hard_close_resting_%02d:%02d_ET" % tuple(EOD_RESTING_AT_ET)
+    return "hard_close_ladder_%02d:%02d_ET" % tuple(EOD_LADDER_AT_ET)
 
 logger = logging.getLogger(__name__)
 
@@ -1203,9 +1230,9 @@ class ExitEngine:
         # FALSE RECORD of what happened. The five pre-existing literals are the
         # older sites check_late_credit_window W7 pins; a NEW one would make
         # six and would go stale the day that constant moves.
-        if is_hard_close_time():
+        if _eod_due(record):                                   # r149: per-position EOD clock
             decision.should_exit = True
-            decision.exit_reason = "hard_close_%02d:%02d_ET" % tuple(HARD_CLOSE_ET)
+            decision.exit_reason = _eod_label(record)
             return decision
 
         # 2 ── CATASTROPHIC FLOOR (universal, never a VOLT decision)
@@ -1393,9 +1420,9 @@ class ExitEngine:
         decision.current_pnl_usd = pnl_usd
 
         # 1. HARD CLOSE
-        if is_hard_close_time():
+        if _eod_due(record):                                   # r149: per-position EOD clock
             decision.should_exit = True
-            decision.exit_reason = "hard_close_15:45_ET"
+            decision.exit_reason = _eod_label(record)
             return decision
 
         # 1b. HARD STOP — unconditional -25% dollar floor (v1.6). Mirrors the
@@ -2096,9 +2123,9 @@ class ExitEngine:
         decision.current_pnl_usd = pnl_usd
 
         # 1. HARD CLOSE
-        if is_hard_close_time():
+        if _eod_due(record):                                   # r149: per-position EOD clock
             decision.should_exit = True
-            decision.exit_reason = "hard_close_15:45_ET"
+            decision.exit_reason = _eod_label(record)
             return decision
 
         # 2. HARD STOP
@@ -2190,9 +2217,9 @@ class ExitEngine:
         decision.current_pnl_usd = pnl_usd
 
         # 1. HARD CLOSE
-        if is_hard_close_time():
+        if _eod_due(record):                                   # r149: per-position EOD clock
             decision.should_exit = True
-            decision.exit_reason = "hard_close_15:45_ET"
+            decision.exit_reason = _eod_label(record)
             return decision
 
         # "BREAKOUT_VOLATILE"}`. v4 hardcodes the label to UNKNOWN, so this
@@ -2374,6 +2401,8 @@ class ExitEngine:
         # force every EOD exit marketable, the exact failure time_utils v3.8
         # fixed. A SHORT VERTICAL HAS THE OPPOSITE SIGN. It decays TOWARD the
         # holder, so 15:40-15:45 is the steepest part of its curve.
+        # 🔴 r149 — SUPERSEDED BY EOD.1: a credit vertical is assignment risk, so it
+        # RESTS at its best case from 15:45 and crosses at 15:55 (_eod_due).
         # 🔴 r71 — THIS BOUND MOVED TO 15:50 BY THE OPERATOR'S RULING, and the
         # original reasoning is STRUCK RATHER THAN DELETED (r240: a line a later
         # ruling contradicts is a wrong answer, not history).
@@ -2394,8 +2423,7 @@ class ExitEngine:
         # the final reconcile sweep is 15:57, so 7 minutes after the close
         # attempt instead of 12, in the thinnest liquidity of the day.
         _vnow = datetime.now(ET)
-        _vert_close = ((_vnow.hour, _vnow.minute) >= VERTICAL_HOLD_TO_ET
-                       if VERTICAL_HOLD_TO_CLOSE else is_hard_close_time())
+        _vert_close = _eod_due(record)                         # r149: 15:45, resting best case
         if _vert_close:
             decision.should_exit = True
             # 🔴 r71 — THE LABEL IS DERIVED FROM THE CONSTANT, NEVER TYPED. It
@@ -2404,11 +2432,9 @@ class ExitEngine:
             # string would have named a time that did not fire. That is what
             # r44 paid for when a hunt exit carried the runaway's label and
             # cost a wrong diagnosis inside the same session.
-            # ⚠️ THE OTHER FIVE `hard_close_15:45_ET` SITES IN THIS FILE ARE
-            # LEFT ALONE ON PURPOSE — they are the genuine HARD_CLOSE_ET path,
-            # which is still 15:45. Only the vertical branch moved.
-            decision.exit_reason = ("vertical_hold_close_%02d:%02d_ET"
-                                    % VERTICAL_HOLD_TO_ET)
+            # r149 — EVERY end-of-day label in this file now derives from the
+            # EOD schedule via _eod_label(); none is typed any more.
+            decision.exit_reason = _eod_label(record)          # r149: hard_close_resting_15:45_ET
             return decision
 
         # ── TC.6 TREND CREDIT SPREAD — BREACH OR NICKEL, NOTHING ELSE ────
@@ -2716,10 +2742,9 @@ class ExitEngine:
                                     * record["contracts"] * CONTRACT_MULTIPLIER)
 
         _n = datetime.now(_ET)
-        if ((_n.hour, _n.minute) >= VERTICAL_HOLD_TO_ET
-                if VERTICAL_HOLD_TO_CLOSE else is_hard_close_time()):
+        if _eod_due(record):                                   # r149: 15:45, resting best case
             decision.should_exit = True
-            decision.exit_reason = "hard_close_15:45_ET"
+            decision.exit_reason = _eod_label(record)
             return decision
 
         if entry_prem > 0 and current_premium >= entry_prem * (1 + TENT_FLOOR_PCT):
@@ -2767,9 +2792,9 @@ class ExitEngine:
         decision.current_pnl_usd = pnl_usd
 
         # 1. HARD CLOSE (also enforced by the 15:45 flatten — belt & suspenders)
-        if is_hard_close_time():
+        if _eod_due(record):                                   # r149: per-position EOD clock
             decision.should_exit = True
-            decision.exit_reason = "hard_close_15:45_ET"
+            decision.exit_reason = _eod_label(record)
             return decision
 
         # 2. MAX-LOSS STOP (sign-correct)
@@ -3046,6 +3071,26 @@ class ExitEngine:
                 logger.warning(f"[PAPER] {trade_id[:8]}: no mark available — "
                                f"cannot simulate a fill this pass, will retry")
                 return FillResult(confirmed=False, detail="paper: no mark yet")
+            # r149 (EOD.1) — THE OPERATOR'S PAPER RULE, 2026-09-26: "On paper exits,
+            # use latest possible close allowed by code. Ie, the 'end of the ladder'
+            # when we walk it (worst-case) or best-case available when deep ITM
+            # (par, nickel)", and "I want to be accustomed to seeing late closing
+            # orders". Paper cannot see whether a resting or laddered order would
+            # have filled, so EVERY end-of-day close is booked as late as the code
+            # allows — the 15:55 cross. The PRICE there is the mark (the ladder's
+            # last rung), unless the outcome is already settled (_eod_determined),
+            # which books its best case (nickel / parity - tick). Other exits are
+            # unchanged: their walk already ends at the mark, where paper fills them.
+            if "hard_close" in (reason or "").lower():
+                if hard_close_order_mode(now_et()) != "market":
+                    return FillResult(confirmed=False,
+                                      detail="paper: EOD close held to the 15:55 cross (latest possible close)")
+                det = self._eod_determined(record)
+                if det is not None:
+                    lim, side, _w = det
+                    logger.info(f"[PAPER] EOD settled close {trade_id[:8]} @ {lim:.2f} at the cross ({_w})")
+                    return self._stamp_exit_latency(record, FillResult(
+                        confirmed=True, fill_price=float(lim), detail="paper eod settled best case"))
             logger.info(f"[PAPER] Simulated fill {trade_id[:8]} @ {mark_price:.2f}")
             return self._stamp_exit_latency(
                 record,
@@ -3357,12 +3402,16 @@ class ExitEngine:
     #
     #   structural / profit-side close   FULL WALK
     #   15% floor stop                   STRAIGHT TO MARK, re-priced at mark
-    #   debit hard close (15:40)         the existing flatten ladder (crosses)
-    #   credit hard close (15:45)        NICKEL, else ASSIGNMENT — never cross
+    #   debit hard close (15:50)         the flatten ladder, crosses at 15:55   (r149)
+    #   assignment-risk close (15:45)    RESTS at its best case, crosses at 15:55 (r149)
+    #   ~~credit hard close (15:45)      NICKEL, else ASSIGNMENT — never cross~~  (r105, superseded)
     #
     # ⚠️ THE FLOOR DOES NOT WALK, AND THAT IS A RISK RULING NOT AN OPTIMISATION.
     # Operator: a thesis-invalidated stop that spends six ticks hunting a better
     # fill has turned a floor into a negotiation.
+    # 🔴 r149 — THE PARAGRAPH BELOW IS SUPERSEDED BY THE OPERATOR'S END OF DAY
+    # (2026-09-26): assignment risk rests at its best case from 15:45 and
+    # CROSSES at 15:55 like everything else. Kept as the record of r105.
     # ⚠️ AND THE CREDIT CROSS IS REVERSED. `hard_close_order_mode` returns
     # 'market' from 15:45 — "the position MUST close; cross and be done". For a
     # CREDIT vertical the operator's ruling replaces that: "I'll take assignment
@@ -3375,14 +3424,114 @@ class ExitEngine:
 
     @classmethod
     def _exit_policy(cls, record: TradeRecord, reason: str) -> str:
-        """'floor' | 'credit_hard_close' | 'debit_hard_close' | 'walk'."""
+        """'floor' | 'eod_resting' | 'eod_cross' | 'debit_hard_close' | 'walk'.
+
+        r149: an assignment-risk close RESTS at its best case until 15:55, then
+        CROSSES like everything else (r105's never-cross is superseded)."""
         r = (reason or "").lower()
         if "hard_close" in r:
-            return ("credit_hard_close" if is_credit_vertical(record)
-                    else "debit_hard_close")
+            if has_assignment_risk(record):
+                return ("eod_cross" if hard_close_order_mode(now_et()) == "market"
+                        else "eod_resting")
+            return "debit_hard_close"
         if any(k in r for k in cls._FLOOR_REASONS):
             return "floor"
         return "walk"
+
+    @classmethod
+    def _eod_legs(cls, record: TradeRecord):
+        """r149 — [(occ_symbol, signed qty per unit)], +1 long / -1 short, or None."""
+        g = record.get
+        if record.get("is_butterfly"):
+            return [(g("lower_symbol"), 1), (g("center_symbol"), -2), (g("upper_symbol"), 1)]
+        if is_tent(record):
+            return [(g("short_symbol"), -1), (g("long_symbol"), 1), (g("lower_symbol"), 1)]
+        if g("short_symbol") and g("long_symbol"):
+            return [(g("short_symbol"), -1), (g("long_symbol"), 1)]
+        if g("option_symbol"):
+            return [(g("option_symbol"), -1 if g("is_short_position") else 1)]
+        return None
+
+    @classmethod
+    def _eod_best_case(cls, record: TradeRecord):
+        """r149 (EOD.1) — the operator's "best case on the trajectory", estimated
+        BY 15:55 (his refinement): what the position should be worth at the cross
+        if spot holds where it is now — each leg priced by Black-Scholes (r = 0)
+        with the minutes then left to the 16:00 expiry, at its own chain IV
+        (`_eod_iv`, stamped by position_manager; the chain's ATM IV when a leg has
+        none). No IV at all -> the leg's intrinsic value (the expiry value), so
+        the estimate degrades toward the old rule, never toward an invented
+        number. -> (limit, side, why) or None.
+
+        A structure we are SHORT (credit vertical, tent, short single) is bought
+        back: limit = max(expiry cost, a nickel) — the nickel close when it is
+        worthless. A structure we are LONG (butterfly, long single) is sold:
+        limit = max(expiry value - one tick, one tick) — at a pin a fly rests
+        near its width; deep ITM (~1 delta) a single rests at parity. Spot is
+        the `_eod_spot` position_manager stamps each EOD tick; absent -> None,
+        and the caller falls back to the mark rather than invent a price."""
+        try:
+            spot = float(record.get("_eod_spot") or 0.0)
+            legs = cls._eod_legs(record)
+            if spot <= 0 or not legs:
+                return None
+            from execution.broker_reconcile import parse_occ
+            from config import EOD_CROSS_AT_ET as _X
+            import math
+            mins_left = max(0.0, 16 * 60 - (_X[0] * 60 + _X[1]))          # 5 at 15:55
+            t_yrs = mins_left / (365.0 * 24 * 60)
+            ivs = record.get("_eod_iv") or {}
+            iv_default = float(record.get("_eod_iv_atm") or 0.0)
+            def _n(x):
+                return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+            def _px(k, call, iv):
+                intrinsic = max(spot - k, 0.0) if call else max(k - spot, 0.0)
+                if iv <= 0 or t_yrs <= 0:
+                    return intrinsic
+                sd = iv * math.sqrt(t_yrs)
+                d1 = (math.log(spot / k) + 0.5 * sd * sd) / sd
+                d2 = d1 - sd
+                c = spot * _n(d1) - k * _n(d2)
+                return max(c if call else c - spot + k, intrinsic)
+            val = 0.0; used_iv = []
+            for sym, q in legs:
+                o = parse_occ(sym or "")
+                if not o:
+                    return None
+                iv = float(ivs.get(sym, 0.0) or 0.0) or iv_default
+                used_iv.append(iv)
+                val += q * _px(float(o["strike"]), o["option_side"] == "call", iv)
+            tick = cls._tick_for(record)
+            if val <= 0:          # we are net SHORT: buy it back
+                cost = -val
+                limit = cls._round_to_tick(max(cost, 0.05), record)
+                return limit, "buy", f"15:55 cost {cost:.2f} at spot {spot:.2f} (iv {max(used_iv):.2f}), nickel floor"
+            limit = cls._round_to_tick(max(val - tick, tick), record)
+            return limit, "sell", f"15:55 value {val:.2f} at spot {spot:.2f} (iv {max(used_iv):.2f}), less a tick"
+        except Exception as exc:                               # noqa: BLE001
+            logger.warning("[eod] best-case price failed for %s (%s) — mark",
+                           str(record.get("trade_id", ""))[:8], exc)
+            return None
+
+    @classmethod
+    def _eod_determined(cls, record: TradeRecord):
+        """r149 (EOD.1) — the operator's paper rule: "best-case available when deep
+        ITM (par, nickel)". A position whose outcome is already SETTLED — its
+        15:55 estimate (with IV) prices to the same tick as its expiry value, so
+        no time value is left to lose — gets its best case: a worthless short at
+        the nickel, a deep-ITM long at parity less a tick. -> (limit, side, why)
+        or None. WITHOUT IV nothing can show the outcome is settled (the estimate
+        IS the expiry value), so None: the position waits for the cross."""
+        if not ((record.get("_eod_iv") or {}) or float(record.get("_eod_iv_atm") or 0.0) > 0):
+            return None
+        est = cls._eod_best_case(record)
+        if est is None:
+            return None
+        bare = dict(record); bare["_eod_iv"] = {}; bare["_eod_iv_atm"] = 0.0
+        exp = cls._eod_best_case(bare)
+        if exp is None or (exp[0], exp[1]) != (est[0], est[1]):
+            return None
+        return est[0], est[1], f"settled — {est[2]}"
 
     @staticmethod
     def _exit_quote(record: TradeRecord) -> Tuple[float, float]:
@@ -3401,6 +3550,11 @@ class ExitEngine:
         or a long single is a 'buy' of it back / a 'sell' of it out.
         """
         policy = self._exit_policy(record, reason)
+        if policy == "eod_resting":
+            best = self._eod_best_case(record)
+            if best is not None:
+                return best[0], f"eod resting — best case {best[0]:.2f} ({best[2]})"
+            return limit_at_mark(mark, floor=self._tick_for(record)), "eod resting — no spot/legs, mark"
         bid, ask = self._exit_quote(record)
         if policy == "floor" or ask <= 0:
             # No walk: mark, re-priced at mark every tick until it fills.
@@ -3452,15 +3606,15 @@ class ExitEngine:
         """
         # v3.8: MARK-LIMIT policy. Closes post AT THE MARK and are re-priced to
         # a fresh mark on every retry tick — we never pay the spread. The ONE
-        # exception is the end-of-day flatten: from 15:45 ET the position MUST
-        # close (an unfilled 0DTE at the bell is an expiry / assignment, not an
-        # overnight hold), so force_market crosses. 15:40-15:44 still tries the
-        # mark. See execution/limit_ladder.py.
-        # r105 — THE CROSS IS FOR DEBITS ONLY. A credit vertical at 15:45 takes
-        # the nickel or takes assignment; it never crosses. See _exit_policy.
+        # exception is the end-of-day close: from the 15:55 cross (config
+        # EOD_SCHEDULE) the position MUST close (an unfilled 0DTE at the bell is
+        # an expiry / assignment, not an overnight hold), so force_market crosses.
+        # Before it, assignment risk RESTS at its best case (from 15:45) and
+        # debits ladder (from 15:50). See execution/limit_ladder.py.
+        # r149 — r105's "the cross is for debits only" is SUPERSEDED: every
+        # structure crosses at 15:55. See _exit_policy.
         force_market = ("hard_close" in (reason or "").lower()
-                        and hard_close_order_mode(now_et()) == "market"
-                        and not is_credit_vertical(record))
+                        and hard_close_order_mode(now_et()) == "market")   # r149: credits cross too
         try:
             session = get_session()
             account = get_account()
@@ -3469,7 +3623,8 @@ class ExitEngine:
                                         mark_price, reason=reason)
             if bool(record.get("is_butterfly", False)):
                 return self._close_butterfly(session, account, record,
-                                             contracts, mark_price, force_market)
+                                             contracts, mark_price, force_market,
+                                             reason=reason)
             is_vertical = (bool(record.get("is_condor_leg"))
                            or record.get("strategy") == "IronCondorStrategy"
                            or (record.get("short_symbol") and record.get("long_symbol")))
@@ -3516,7 +3671,7 @@ class ExitEngine:
         0DTE with a $0.05 spread, larger than the edge being traded. We now post
         at the mark and let the retry loop re-price against a fresh mark each
         tick, which chases a falling contract instead of parking at a stale
-        price. force_market crosses, and is set ONLY by the 15:45 flatten."""
+        price. force_market crosses, and is set ONLY by the end-of-day cross (15:55)."""
         symbol = record.get("option_symbol", "")
         if not symbol:
             logger.error("Cannot close: no option_symbol in record")
@@ -3587,15 +3742,15 @@ class ExitEngine:
         # exceed — guaranteed to fill, bounded, and safe.
         _policy = self._exit_policy(record, reason)
         _why = _policy
-        if _policy == "credit_hard_close":
-            # 🔴 NICKEL, ELSE ASSIGNMENT. Operator: "I'll take assignment over a
-            # shitty market order fill." This REPLACES the width-bounded
-            # marketable limit that guaranteed a fill at any price. If the
-            # nickel is not taken the spread expires and the short assigns —
-            # deliberate, with the overnight/margin cost known.
-            from config import CONDOR_NICKEL_CLOSE as _NICKEL
-            limit = float(_NICKEL)
-            _why = "credit hard close — nickel, else assignment (never cross)"
+        if _policy == "eod_resting":
+            # r149 (EOD.1) — RESTING BEST CASE, re-priced each tick, until 15:55
+            # crosses (force_market). Supersedes r105's nickel-or-assignment.
+            limit, _why = self._exit_limit(record, reason, float(mark_price or 0.0), "buy", "vertical")
+            if width > 0:
+                limit = min(limit, width)
+        # r149 — r105's credit branch ("nickel, else assignment, never cross") is
+        # SUPERSEDED by the operator's 2026-09-26 schedule: rest at the best case
+        # (above) until 15:55, then cross like every structure (below).
         elif force_market:
             if width <= 0:
                 logger.error("Hard-close vertical: no spread_width to bound the "
@@ -3686,7 +3841,7 @@ class ExitEngine:
 
     def _close_butterfly(self, session, account, record, contracts,
                          mark_price: Optional[float],
-                         force_market: bool = False):
+                         force_market: bool = False, reason: str = ""):
         """Close a long butterfly (sell wings, buy back the 2x short body) as
         one 3-leg order. v3.5: MARKET → marketable LIMIT (tastytrade rejects
         MARKET on spreads — the old market order would have failed every tick).
@@ -3707,6 +3862,10 @@ class ExitEngine:
         # marketable for a sale.
         if force_market:
             limit = self._round_to_tick(tick, record)
+        elif self._exit_policy(record, reason) == "eod_resting":
+            # r149 (EOD.1) — rest at the fly's value at expiry at current spot, less a tick.
+            limit, _why = self._exit_limit(record, reason, float(mark_price or 0.0), "sell", "butterfly")
+            limit = self._round_to_tick(limit, record)
         elif mark_price is None or mark_price < 0:
             logger.warning("Butterfly close: no mark to price the limit — "
                            "declining this pass, will retry with a fresh mark")

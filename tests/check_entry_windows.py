@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""check_entry_windows.py — v1.4
+"""check_entry_windows.py — v1.5
+v1.5  2026-09-26  OTV4TEST r149 (EOD.1) — W6 RE-POINTED. The 08-24 one-minute daylight between the
+      debit cutoff and the credit start is SUPERSEDED by the operator's ruling, 2026-09-26: "I wanna
+      extend the debit window to all day" and "Stop entries at 1540". W6 now pins that the debit
+      cutoff, the credit END and EOD_SCHEDULE["entries_stop"] are ONE minute: 15:40.
 v1.4  2026-09-24  OTV4TEST r128: FOUR STALE ASSERTIONS AND TWO HOLLOW GREENS
       RE-POINTED AT WHERE THE CODE LIVES NOW. Every property is MOVED, NOT
       DROPPED (section 38.4). Fork r5 (8a36b6f) moved the sweep's logic into
@@ -161,13 +165,14 @@ def main():
           _hm(_sp_mod.EARLIEST_ET) == tuple(C.SWEEP_CS_EARLIEST_ET_FORK),
           f"sweep_plan {_sp_mod.EARLIEST_ET} vs config {C.SWEEP_CS_EARLIEST_ET_FORK}")
 
-    # 🔴 THE DAYLIGHT, MEASURED FROM BOTH SIDES. The debit cutoff and the
-    # credit start must be exactly one minute apart — the operator's 08-24
-    # collision fix, expressed as arithmetic instead of a comment.
+    # 🔴 r149 — ONE STOP FOR EVERY ENTRY. The 08-24 daylight (debit cutoff one
+    # minute before the credit start) is superseded: debits run all day, and
+    # every entry — debit and credit — stops at EOD_SCHEDULE["entries_stop"].
     _dc = _hm(_rc.CUTOFF_ET)
-    check("W6 debit cutoff and credit start are exactly one minute apart",
-          (start[0]*60 + start[1]) - (_dc[0]*60 + _dc[1]) == 1,
-          f"debit cutoff {_dc} -> credit start {start}")
+    _es = tuple(C.EOD_SCHEDULE["entries_stop"])
+    check("W6 debit cutoff = credit end = EOD entries_stop (15:40)",
+          _dc == _es == tuple(C.CREDIT_ENTRY_END_ET) == (15, 40),
+          f"debit cutoff {_dc}, credit end {tuple(C.CREDIT_ENTRY_END_ET)}, entries_stop {_es}")
 
     # ── 🔴 W8 — ONE CREDIT END, THE MIRROR OF W1 ─────────────────────────
     # The sweep's END was `getattr(config, "SWEEP_CS_LATEST_ET", "14:00")` with

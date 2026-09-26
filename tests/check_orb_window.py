@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""tests/check_orb_window.py  v1.1
+"""tests/check_orb_window.py  v1.2
+v1.2  2026-09-26  OTV4TEST r149 (EOD.1) — W1 RE-POINTED: the ORB window closes at 15:40, the operator's
+      "extend the debit window to all day" and "Stop entries at 1540" (was 11:30). W2's single boundary holds.
 v1.1  2026-09-13  OTV4TEST r20 — W5 RE-DERIVED and W6 WIDENED to "no level
       surface reaches this file at all"; W7/W7b ADDED (the contract comes from
       the plan, no strike re-derived, and the conviction bump is gone).
@@ -60,7 +62,7 @@ def main():
     orb = tuple(config.ORB_NO_ENTRY_AFTER_ET)
     debit = tuple(config.DEBIT_DIRECTIONAL_CUTOFF_ET)
 
-    check("W1 the ORB entry window closes at 11:30", orb == (11, 30), str(orb))
+    check("W1 the ORB entry window closes at 15:40 (r149: all day, entries stop 15:40)", orb == (15, 40), str(orb))
 
     check("W2 the ORB window and the long-debit block are the SAME boundary",
           orb == debit, f"orb={orb} debit={debit}")

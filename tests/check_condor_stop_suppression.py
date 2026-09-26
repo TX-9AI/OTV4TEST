@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_condor_stop_suppression.py  v1.1
+tests/check_condor_stop_suppression.py  v1.2
+v1.2  2026-09-26  OTV4TEST r149 (EOD.1) — THE CLOCK PIN RE-POINTED, NOT LOOSENED. It pinned the hard close
+      shut by setting config.VERTICAL_HOLD_TO_ET = (23, 59); since r149 the vertical's end-of-day clock is
+      config.EOD_SCHEDULE through exit_engine.is_hard_close_time, so run after 15:45 ET the hard close fired
+      and S1-S3 read 'hard_close_...'. It now stubs exit_engine.is_hard_close_time (the seam every other
+      exit checker pins), keeping its stated intent: the hard close cannot fire, whatever the wall clock.
 v1.1  2026-09-04  r238 — S7 RE-DERIVED. A trend credit now
       HAS a premium stop; the invariant is that it is the TCS one, never the
       condor ladder's 25%.
@@ -96,6 +101,7 @@ def main() -> int:
     tlmod.get_trade_logger = lambda: fake
     xe.get_trade_logger = lambda: fake
     engine = xe.ExitEngine(paper_trading=True)
+    xe.is_hard_close_time = lambda: False      # r149: the clock seam (see v1.2)
 
     # ⚠️ r155 — RE-DERIVED FOR THE RISK-ANCHORED STOP. Was 1.30, chosen to clear
     # the old `entry * 1.15` = 1.15 floor. The lone stop is now

@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_volt_plan.py  v1.5
+tests/check_volt_plan.py  v1.6
+v1.6  2026-09-26  OTV4TEST r149 (EOD.1) — V1 and V3 RE-POINTED: VOLT keeps the ORB's window (V1b, r72's
+      control property), and the ORB's window is now 09:35-15:40 by the operator's "extend the debit
+      window to all day" / "Stop entries at 1540". V1 pins 09:35-15:40 at both edges; V3's "outside"
+      tick is one minute past 15:40.
 
 v1.5  2026-09-21  OTV4TEST r82 — V19c and V19e RE-POINTED, not deleted
       (r33/r43/r64). Both asserted the extrinsic proxy; measurement killed it
@@ -31,7 +35,7 @@ Drives the REAL plan, the REAL admission table and the REAL exit engine against
 fixtures (WA §21 — a test that reads source text proves nothing about runtime).
 
   V0  the modules import and VOLT is registered
-  V1  window 09:35-11:30, half-open at BOTH edges, driven through decide()
+  V1  window 09:35-15:40 (r149), half-open at BOTH edges, driven through decide()
   V2  it blocks nothing and is blocked by nothing — the control property
   V3  outside the window the plan is DORMANT and prepares nothing
   V4  the volume gate REFUSES below the prior and PASSES at/above it
@@ -78,11 +82,11 @@ check("V0b VOLT is in the admission table", VOLT in T, f"keys={sorted(T)}")
 def admits(hhmm, **kw):
     return bool(decide(Facts(strategy=VOLT, now_et=hhmm, orb_established=True, **kw)))
 w = T[VOLT].window
-check("V1 window is 09:35-11:30, half-open at BOTH edges",
-      w == ((9, 35), (11, 30)) and not admits((9, 34)) and admits((9, 35))
-      and admits((11, 29)) and not admits((11, 30)),
+check("V1 window is 09:35-15:40, half-open at BOTH edges (r149)",
+      w == ((9, 35), (15, 40)) and not admits((9, 34)) and admits((9, 35))
+      and admits((15, 39)) and not admits((15, 40)),
       f"window={w} 09:34={admits((9,34))} 09:35={admits((9,35))} "
-      f"11:29={admits((11,29))} 11:30={admits((11,30))}")
+      f"15:39={admits((15,39))} 15:40={admits((15,40))}")
 check("V1b VOLT's window is IDENTICAL to the ORB's — or it is not a control",
       T[VOLT].window == T[ORB].window, f"volt={T[VOLT].window} orb={T[ORB].window}")
 
@@ -130,7 +134,7 @@ def prep(last_close, last_vol, now="10:00", session_open=100.0, spot=None):
     return plan.prepare(chain=_Chain(px), price_now=px, df_1m=df, now_hhmm=now)
 
 # ── V3 — dormant outside the window ────────────────────────────────────────
-p_out = prep(101.0, 5000.0, now="11:31")
+p_out = prep(101.0, 5000.0, now="15:41")   # r149: past 15:40
 check("V3 outside the window the plan prepares NOTHING",
       not p_out.ready and p_out.contract is None,
       f"ready={p_out.ready}")

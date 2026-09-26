@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
-tests/check_ladder_wired.py  v1.1
+tests/check_ladder_wired.py  v1.3
+v1.3  2026-09-26  OTV4TEST r149 (EOD.1) — L7's hard-close rows and L8b/L8c RE-POINTED to the operator's
+      end of day ("Resting limit orders at 1545, ladder exits at 1550 if they're not the assignment
+      risk type"; "Best case on the trajectory"): a credit hard close RESTS at its best case before
+      15:55 and CROSSES at 15:55, so r105's never-cross (L8b) and nickel-only (L8c) are superseded.
+      L7 now pins the clock (15:46 and 15:55) instead of reading the wall clock. The behaviour is
+      driven in tests/check_eod_schedule.py E5/E7/E10; these stay as the text-level pins.
 v1.2  2026-08-27  r160: L10 re-pinned again — authorize() + the sweep; the
       condor's one-level plan is deleted.
 v1.1  2026-08-26  r147: L10 re-pinned — the second-leg window routes through
@@ -111,9 +117,21 @@ _ee = ExitEngine.__new__(ExitEngine)
 _credit = {"strategy": "IronCondorStrategy", "setup_type": "1h_fork_call_credit_spread",
            "is_condor_leg": 1}
 _debit  = {"strategy": "ORBStrategy", "setup_type": "orb_long"}
+import datetime as _dt
+from zoneinfo import ZoneInfo as _Z
+import execution.exit_engine as _EEm
+_real_now = _EEm.now_et
+from config import EOD_RESTING_AT_ET as _RA, EOD_LADDER_AT_ET as _LA
+_RL, _LL = f"hard_close_resting_{_RA[0]:02d}:{_RA[1]:02d}_ET", f"hard_close_ladder_{_LA[0]:02d}:{_LA[1]:02d}_ET"
+for _hm, _want in (((15, 46), "eod_resting"), ((15, 55), "eod_cross")):
+    _EEm.now_et = (lambda h=_hm: _dt.datetime(2026, 9, 28, h[0], h[1], 5, tzinfo=_Z("America/New_York")))
+    try:
+        _got = ExitEngine._exit_policy(_credit, _RL)
+    finally:
+        _EEm.now_et = _real_now
+    check(f"L7 {_want:<18} <- {_RL} at {_hm[0]}:{_hm[1]:02d}", _got == _want, f"got {_got}")
 cases = [
-    (_credit, "hard_close_15:45_ET", "credit_hard_close"),
-    (_debit,  "hard_close_15:45_ET", "debit_hard_close"),
+    (_debit,  _LL, "debit_hard_close"),
     (_credit, "condor_stop pnl=-15.2% (lone 15%)", "floor"),
     (_debit,  "hard_stop_25% pnl=-25.0%", "floor"),
     (_debit,  "orb_structure_stop: 1m close 99.10 below 99.50", "floor"),
@@ -132,10 +150,10 @@ tx = ast.parse(src_x)
 fx = {n.name: ast.unparse(n) for n in ast.walk(tx) if isinstance(n, ast.FunctionDef)}
 check("L8a the floor goes to mark, no walk",
       "no walk" in fx.get("_exit_limit", ""))
-check("L8b force_market is refused for a credit vertical",
-      "is_credit_vertical(record)" in fx.get("_submit_live_close", ""))
-check("L8c the credit hard close posts the NICKEL, not the width",
-      "CONDOR_NICKEL_CLOSE" in fx.get("_close_vertical", ""))
+check("L8b r149: the cross is no longer refused for a credit vertical (r105's never-cross superseded)",
+      "is_credit_vertical(record)" not in fx.get("_submit_live_close", ""))
+check("L8c r149: the credit hard close RESTS at its best case (_eod_best_case), not the width",
+      "eod_resting" in fx.get("_close_vertical", "") and "_eod_best_case" in fx.get("_exit_limit", ""))
 check("L8d a booked exit clears its walk",
       "_exit_walk_done" in fx.get("_book_from_fills", ""))
 

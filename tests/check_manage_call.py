@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """
-tests/check_manage_call.py  v1.1
+tests/check_manage_call.py  v1.2
+
+v1.2  2026-09-26  OTV4TEST r149 (EOD.1) — M3 and M4 RE-POINTED; the ORDER REVERSES. The operator:
+      "Resting limit orders at 1545, ladder exits at 1550 if they're not the assignment risk type."
+      The credit vertical (assignment risk) now goes FIRST, at EOD_RESTING_AT_ET (15:45), and the
+      debit is HELD until EOD_LADDER_AT_ET (15:50). M3a/M3b at 15:46: vertical closed, debit held and
+      still open, nothing failed. M3c at the resting minute: the same. M3d at the ladder minute: both.
+      Both minutes still DERIVED from config, and the assert now pins resting BEFORE ladder. M4: the
+      manage pass is gated on eod_close_due(False) — held debits stay managed until 15:50.
 
 v1.1  2026-09-20  OTV4TEST r71 (LATE.1) — M3c RE-POINTED, M3d ADDED, BOTH
       MINUTES DERIVED. Until r71 the hard close and the vertical hold were THE
@@ -98,33 +106,25 @@ real_now = pm.now_et if hasattr(pm, "now_et") else None
 import utils.time_utils as tu
 _orig = tu.now_et
 try:
-    tu.now_et = lambda: datetime(2026, 8, 24, 15, 41, tzinfo=ET)
+    rest_h, rest_m = config.EOD_RESTING_AT_ET
+    lad_h, lad_m = config.EOD_LADDER_AT_ET
+    assert (rest_h, rest_m) < (lad_h, lad_m), "assignment risk must rest BEFORE the debit ladder"
+    tu.now_et = lambda: datetime(2026, 8, 24, 15, 46, tzinfo=ET)
     p = _PM(); p._open_records = [dict(vert), dict(deb)]; booked.clear()
-    failed = p.flatten_all("hard_close_15:45_ET")
-    check("M3a 15:41 — debit flattened, vertical HELD", booked == ["DEBT0001"] and not failed, f"booked={booked} failed={failed}")
-    check("M3b 15:41 — held vertical stays in open records", any(r["trade_id"] == "VERT0001" for r in p._open_records))
-    # 🔴 r71 (LATE.1) — M3c USED TO READ "15:45 — both flattened", AND IT WENT
-    # RED ON THE CREDIT-WINDOW DELIVERY. That is the gate working: until r71 the
-    # hard close and the vertical hold were THE SAME MINUTE, so a check written
-    # against 15:45 could not tell which of the two it was actually pinning.
-    # The operator's 2026-09-20 ruling separates them — credits hold to 15:50 —
-    # so the check is RE-POINTED AT THE NEW CONTRACT rather than loosened
-    # (r33/r43/r64): 15:45 now asserts the debit goes and the credit STAYS, and
-    # a new M3d asserts the credit goes at the hold time. Both minutes are
-    # DERIVED from config so the same ambiguity cannot come back.
-    hold_h, hold_m = config.VERTICAL_HOLD_TO_ET
-    hard_h, hard_m = config.HARD_CLOSE_ET
-    assert (hard_h, hard_m) < (hold_h, hold_m), "the hold must be AFTER the hard close"
-    tu.now_et = lambda: datetime(2026, 8, 24, hard_h, hard_m, tzinfo=ET)
+    failed = p.flatten_all("hard_close")
+    check("M3a 15:46 — vertical closed (assignment risk), debit HELD", booked == ["VERT0001"] and not failed,
+          f"booked={booked} failed={failed}")
+    check("M3b 15:46 — held debit stays in open records", any(r["trade_id"] == "DEBT0001" for r in p._open_records))
+    tu.now_et = lambda: datetime(2026, 8, 24, rest_h, rest_m, tzinfo=ET)
     p = _PM(); p._open_records = [dict(vert), dict(deb)]; booked.clear()
-    p.flatten_all("hard_close_15:45_ET")
-    check(f"M3c {hard_h:02d}:{hard_m:02d} hard close — debit flattened, credit STILL HELD",
-          booked == ["DEBT0001"] and any(r["trade_id"] == "VERT0001" for r in p._open_records),
+    p.flatten_all("hard_close")
+    check(f"M3c {rest_h:02d}:{rest_m:02d} resting — vertical closed, debit STILL HELD",
+          booked == ["VERT0001"] and any(r["trade_id"] == "DEBT0001" for r in p._open_records),
           f"booked={booked}")
-    tu.now_et = lambda: datetime(2026, 8, 24, hold_h, hold_m, tzinfo=ET)
+    tu.now_et = lambda: datetime(2026, 8, 24, lad_h, lad_m, tzinfo=ET)
     p = _PM(); p._open_records = [dict(vert), dict(deb)]; booked.clear()
-    p.flatten_all("hard_close_15:45_ET")
-    check(f"M3d {hold_h:02d}:{hold_m:02d} vertical hold — both flattened",
+    p.flatten_all("hard_close")
+    check(f"M3d {lad_h:02d}:{lad_m:02d} ladder — both flattened",
           sorted(booked) == ["DEBT0001", "VERT0001"], f"booked={booked}")
 finally:
     tu.now_et = _orig
@@ -135,8 +135,8 @@ hc = None
 for n in ast.walk(loop):
     if isinstance(n, ast.If) and "is_hard_close_time" in ast.unparse(n.test):
         hc = ast.unparse(n); break
-check("M4 hard-close branch manages held verticals before 15:45",
-      hc is not None and "manage_open_position" in hc and "_vertical_close_due" in hc)
+check("M4 r149: hard-close branch manages held debits until they are due (eod_close_due(False))",
+      hc is not None and "manage_open_position" in hc and "eod_close_due" in hc and "_ecd(False)" in hc)
 
 print(f"\n{'PASS' if not FAILURES else 'FAIL'}: {len(FAILURES)} problem(s) {FAILURES}")
 sys.exit(1 if FAILURES else 0)
