@@ -1,4 +1,11 @@
-# tests/trade_report.py — v1.22
+# tests/trade_report.py — v1.23
+# v1.23 (2026-09-26) — OTV4TEST r159. THE EXIT-REASON TABLE IS IN DOLLARS. The operator: "I don't
+#   know what that share column is for or what I would do with that information. I'd rather see the
+#   dollar amounts of the actual exits. And I would rather see the MFE/MAE in dollar amounts." SESS,
+#   TOP DATE and SHARE are gone; per exit reason the table now shows N, NET $ (total P&L of the trades
+#   that exited that way), AVG $ (mean exit P&L per trade), and MFE $ / MAE $ (mean best / worst OPEN
+#   P&L per trade: (max|min_premium_seen - entry) x contracts x 100). Whole dollars, to fit 76. The
+#   1-DAY flag (>=80% of a reason's trades on one date, n >= --min-n) stays as a tag. Sorted by N.
 # v1.22 (2026-09-26) — OTV4TEST r158. THE EXIT-REASON TABLE GAINS MFE% / MAE%, AND THE "thin" LABELS
 #   GO. The operator, 2026-09-26: "Exit reason does not have any MFE/MAE — I don't need the report
 #   pointing out that a sample size of 1 is 'thin' — no shit." EXIT REASON x SESSION SPREAD now shows,
@@ -760,18 +767,32 @@ def exit_concentration(trades: List[dict], min_n: int) -> Dict[str, dict]:
     # r158 — per reason, the median MFE / MAE as a fraction of entry premium (EXIT BEHAVIOUR's fields).
     mfe: Dict[str, list] = defaultdict(list)
     mae: Dict[str, list] = defaultdict(list)
+    pnl: Dict[str, list] = defaultdict(list)
+    mfe_d: Dict[str, list] = defaultdict(list)
+    mae_d: Dict[str, list] = defaultdict(list)
     for t in trades:
         reason = norm_reason(t.get("exit_reason"))
         by_reason[reason][t.get("_date") or "(none)"] += 1
         e = _f(t.get("entry_premium"))
         mx, mn = _f(t.get("max_premium_seen")), _f(t.get("min_premium_seen"))
+        n = _f(t.get("contracts")) or 0
+        p = _f(t.get("pnl_usd"))
+        if p is not None:
+            pnl[reason].append(p)
         if e and mx:
             mfe[reason].append((mx - e) / e)
+            if n > 0:
+                mfe_d[reason].append((mx - e) * n * 100.0)     # r159 — dollars of open P&L
         if e and mn:
             mae[reason].append((mn - e) / e)
+            if n > 0:
+                mae_d[reason].append((mn - e) * n * 100.0)
+    _mean = lambda v: round(sum(v) / len(v), 2) if v else None          # noqa: E731
     excursions = {r: {"mfe_med": round(statistics.median(mfe[r]), 4) if mfe[r] else None,
-                      "mae_med": round(statistics.median(mae[r]), 4) if mae[r] else None}
-                  for r in set(mfe) | set(mae)}
+                      "mae_med": round(statistics.median(mae[r]), 4) if mae[r] else None,
+                      "net": round(sum(pnl[r]), 2) if pnl[r] else None, "avg": _mean(pnl[r]),
+                      "mfe_usd": _mean(mfe_d[r]), "mae_usd": _mean(mae_d[r])}
+                  for r in set(mfe) | set(mae) | set(pnl)}
     out = {}
     for reason, dates in by_reason.items():
         total = sum(dates.values())
@@ -780,7 +801,8 @@ def exit_concentration(trades: List[dict], min_n: int) -> Dict[str, dict]:
             "n": total, "sessions": len(dates), "top_date": top_date,
             "top_n": top_n, "top_share": round(top_n / total, 3),
             "single_session": (top_n / total) >= 0.80 and total >= min_n,
-            **excursions.get(reason, {"mfe_med": None, "mae_med": None}),
+            **excursions.get(reason, {"mfe_med": None, "mae_med": None, "net": None,
+                                      "avg": None, "mfe_usd": None, "mae_usd": None}),
         }
     return out
 
@@ -1223,17 +1245,16 @@ def main(argv: List[str]) -> int:
     show("BY DAY OF WEEK", dims["by_day_of_week"], args.min_n)
 
     conc = exit_concentration(trades, args.min_n)
-    print("\nEXIT REASON x SESSION SPREAD")
-    # r158 — MFE% / MAE% per reason; no `<- thin` flag; 68 wide with the 1-DAY flag.
-    print(f"  {'':<21}{'N':>4}{'SESS':>5}{'TOP DATE':>11}{'SHARE':>6}{'MFE%':>6}{'MAE%':>6}")
-    _pct = lambda v: f"{'-':>6}" if v is None else f"{v:>+6.0%}"      # noqa: E731
+    print("\nEXIT REASON — DOLLARS")
+    # r159 — dollars: NET / AVG exit P&L and mean MFE / MAE open P&L per trade. 67 wide + 1-DAY.
+    print(f"  {'':<21}{'N':>4}{'NET $':>9}{'AVG $':>8}{'MFE $':>8}{'MAE $':>8}")
+    _usd = lambda v, w: f"{'-':>{w}}" if v is None else f"{v:>+{w}.0f}"   # noqa: E731
     for reason, c in sorted(conc.items(), key=lambda kv: -kv[1]["n"]):
         flag = "  1-DAY" if c["single_session"] else ""
-        print(f"  {reason[:21]:<21}{c['n']:>4}{c['sessions']:>5}"
-              f"{c['top_date']:>11}{c['top_share']:>6.0%}"
-              f"{_pct(c.get('mfe_med'))}{_pct(c.get('mae_med'))}{flag}")
-    print(f"  MFE% / MAE% = median best / worst premium vs entry, per exit reason.\n"
-          f"  1-DAY = >=80% of an exit's trades on one date (n >= {args.min_n}): not a rate.")
+        print(f"  {reason[:21]:<21}{c['n']:>4}{_usd(c.get('net'), 9)}{_usd(c.get('avg'), 8)}"
+              f"{_usd(c.get('mfe_usd'), 8)}{_usd(c.get('mae_usd'), 8)}{flag}")
+    print(f"  AVG $ = mean exit P&L per trade; MFE $ / MAE $ = mean best / worst\n"
+          f"  open P&L per trade. 1-DAY = >=80% of its trades on one date.")
 
     eb = exit_behaviour(trades)
     print("\nEXIT BEHAVIOUR")

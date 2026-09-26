@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_trade_report.py  v1.4
+tests/check_trade_report.py  v1.5
+v1.5  2026-09-26  OTV4TEST r159 — T12 RE-POINTED to the dollar table: per exit reason NET $, AVG $ and mean
+      MFE $ / MAE $ of open P&L (operator: "I'd rather see the dollar amounts of the actual exits ...
+      MFE/MAE in dollar amounts"); SHARE is gone.
 v1.4  2026-09-26  OTV4TEST r158 — T11 no longer expects a per-row `thin` (the label is gone; the kept-whole
       RULE is still pinned by the values). T12 ADDED: the exit-reason table carries median MFE% / MAE%
       per reason (EXIT BEHAVIOUR's fields) and the report prints no `thin` label anywhere. Operator:
@@ -210,17 +213,19 @@ def main():
     try:
         TR = sys.modules.get("trade_report") or __import__("trade_report")
         rows = [dict(exit_reason="trail_stop_hit pnl=30%", entry_premium=1.00, max_premium_seen=1.40,
-                     min_premium_seen=0.95, _date="2026-09-22"),
+                     min_premium_seen=0.95, contracts=10, pnl_usd=300.0, _date="2026-09-22"),
                 dict(exit_reason="trail_stop_hit pnl=10%", entry_premium=2.00, max_premium_seen=2.40,
-                     min_premium_seen=1.80, _date="2026-09-23"),
+                     min_premium_seen=1.80, contracts=5, pnl_usd=100.0, _date="2026-09-23"),
                 dict(exit_reason="hard_stop_20%", entry_premium=1.00, max_premium_seen=None,
-                     min_premium_seen=0.78, _date="2026-09-23")]
+                     min_premium_seen=0.78, contracts=10, pnl_usd=-220.0, _date="2026-09-23")]
         cz = TR.exit_concentration(rows, 8)
         tsh, hs = cz.get("trail_stop_hit", {}), cz.get("hard_stop_20%", {})
+        # trail: MFE $ = mean(0.40x10x100, 0.40x5x100) = 300; MAE $ = mean(-50, -100) = -75
         thin_hits = [l.strip() for l in out.splitlines() if l.rstrip().endswith("thin") or "<- thin" in l]
-        check("T12 exit reasons carry median MFE%/MAE% (+30%/-7.5%; none -> None) and no 'thin' label is printed",
-              tsh.get("mfe_med") == 0.3 and tsh.get("mae_med") == -0.075 and hs.get("mfe_med") is None
-              and hs.get("mae_med") == -0.22 and "MFE%" in out and "MAE%" in out and not thin_hits,
+        check("T12 exit reasons in DOLLARS: NET/AVG exit P&L, mean MFE $/MAE $; no SHARE; no 'thin' label",
+              tsh.get("net") == 400.0 and tsh.get("avg") == 200.0 and tsh.get("mfe_usd") == 300.0
+              and tsh.get("mae_usd") == -75.0 and hs.get("mfe_usd") is None and hs.get("mae_usd") == -220.0
+              and "MFE $" in out and "MAE $" in out and "SHARE" not in out and not thin_hits,
               f"tsh={tsh} hs={hs} thin={thin_hits[:3]}")
     except Exception as exc:                                    # noqa: BLE001
         check("T12 (did not run)", False, f"raised {type(exc).__name__}: {exc}")
