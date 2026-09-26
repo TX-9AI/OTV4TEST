@@ -1,5 +1,9 @@
 """
-main.py  v4.70
+main.py  v4.71
+v4.71 2026-09-26  OTV4TEST r146 — main() REFUSES TO START WITH OT_INSTRUMENT UNSET (exit 78,
+      EX_CONFIG), as its FIRST act - before logging, the broker login or any
+      alert, so a misconfigured unit (Restart=always) crash-loops into the
+      journal instead of paging every 10s. The operator: "defaulting the QQQ is not the answer" (2026-09-26).
 v4.70 2026-09-25  OTV4TEST r141 — THE NOISE FLOOR ARMS AT THE OPEN. The r93 measurement
       is extracted into `_noise_floor_of(df_1m)` and its hard `>= 10` bars becomes
       config.NOISE_FLOOR_MIN_BARS (3). The 1m frame is session-scoped, so 10 bars
@@ -1260,7 +1264,7 @@ from config import (
     ORB_BUDGET_USD, ORB_BUDGET_IS_DEFAULT,
     NOISE_FLOOR_BAR_MULT, NOISE_FLOOR_LOOKBACK_BARS, NOISE_FLOOR_MIN_BARS,
     PIN_PROXIMITY_ACTIVE, PIN_PROXIMITY_MIN_FRAC,
-    REASSESS_MINUTES, INSTRUMENT, SessionConfig, DIRECTIONAL_ONLY,
+    REASSESS_MINUTES, INSTRUMENT, INSTRUMENT_UNSET, SessionConfig, DIRECTIONAL_ONLY,
     DEBIT_BLOCKED_STRUCTURES,
     ORB_NO_ENTRY_AFTER_ET, BROKER_RECONCILE_ENABLED,
     ORB_REBUILD_1M_BARS,                        # r95 restart tape reach-back
@@ -6225,6 +6229,14 @@ def _fetch_orb_range(instrument: str = "") -> bool:
 
 
 def main():
+    # 🔴 r146 — NO GUESSED SYMBOL. config.INSTRUMENT is "UNSET" when OT_INSTRUMENT is
+    # absent; trading a made-up symbol - or quietly QQQ, as before - is refused
+    # here, FIRST, before any login or alert (Restart=always must not page).
+    if INSTRUMENT == INSTRUMENT_UNSET:
+        sys.stderr.write("CRITICAL: OT_INSTRUMENT is not set for this process - refusing to "
+                         "start. Set Environment=OT_INSTRUMENT=<SYMBOL> on the unit "
+                         "(configure.sh item 1).\n")
+        sys.exit(78)
     service_mode = "--service" in sys.argv
 
     if service_mode:

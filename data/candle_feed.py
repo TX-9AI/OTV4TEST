@@ -1,5 +1,7 @@
 """
-data/candle_feed.py  v4.16
+data/candle_feed.py  v4.17
+v4.17 2026-09-26  OTV4TEST r146 — main() refuses to start with OT_INSTRUMENT unset (exit 78), first,
+      before logging: the feed would otherwise subscribe a symbol named UNSET.
 v4.16 2026-09-24  OTV4TEST r135 — A FRESH BOX BACKFILLS 45 DAYS OF HOURLY BARS, NOT 16.
       The first fresh box's agent found check_level_tape T7 red (it needs more than
       30 days of hourly tape; 16 were backfilled), so every new box ran a shallow
@@ -1915,6 +1917,12 @@ def _install_tt_noise_filter() -> None:
 
 
 def main():
+    # r146 — never stream a guessed symbol (see config.INSTRUMENT_UNSET).
+    import sys
+    from config import INSTRUMENT_UNSET
+    if INSTRUMENT == INSTRUMENT_UNSET:
+        sys.stderr.write("CRITICAL: OT_INSTRUMENT is not set - candle feed refusing to start.\n")
+        sys.exit(78)
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s")
     _install_tt_noise_filter()

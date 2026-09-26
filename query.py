@@ -1,5 +1,6 @@
 """
-query.py  v4.15
+query.py  v4.16
+v4.16 2026-09-26  OTV4TEST r146 — the last-resort fallback is UNSET, not QQQ: the unit's own OT_INSTRUMENT is still read first.
 v4.15  2026-09-21  OTV4TEST r84 — ONE WORD PER GATE: QUOTA HIT, AT CAP, HALTED,
       NO CHAIN, RETIRED, POSITION OPEN, AWAITING AUTH, WINDOW CLOSED. Operator
       on the butterflies reading a bare HELD: *"shouldn't the plan say
@@ -220,7 +221,7 @@ def get_runtime_env(key: str, default: str = "") -> str:
 
 
 # Always read instrument and mode from live systemd environment — same as status.py
-INSTRUMENT    = get_runtime_env("OT_INSTRUMENT",   "QQQ")
+INSTRUMENT    = get_runtime_env("OT_INSTRUMENT",   "UNSET")  # r146: never QQQ by default
 PAPER_TRADING = get_runtime_env("OT_PAPER_TRADING", "True") != "False"
 BOT_NAME      = get_runtime_env("OT_BOT_NAME",      "OptionsTrader")
 

@@ -1,4 +1,5 @@
-"""tests/check_feed_log_noise.py — v1.0
+"""tests/check_feed_log_noise.py — v1.1
+v1.1  2026-09-26  OTV4TEST r146 — L7 re-pointed to adjacency: main() now opens with the UNSET guard, so basicConfig is no longer the first call; the property - the filter installed on the very next statement, before anything logs - is pinned unchanged.
 THE FEED'S JOURNAL CARRIES THE FEED, NOT THE SDK'S WEBSOCKET FRAMES — AND
 DROPPED DATA STAYS VISIBLE.
 
@@ -120,9 +121,16 @@ def _l7():
     fn = next((n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "main"), None)
     if fn is None:
         return False
-    calls = [n for n in fn.body[:3] if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)]
-    names = [getattr(c.value.func, "attr", getattr(c.value.func, "id", "")) for c in calls]
-    return names[:2] == ["basicConfig", "_install_tt_noise_filter"]
+    # r146 — RE-POINTED, NOT DROPPED (§38.4): main() now opens with the UNSET-instrument
+    # guard, so the pin is on ADJACENCY, not position - basicConfig, and the very
+    # next statement installs the filter, before anything can log.
+    def _name(n):
+        if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call):
+            return getattr(n.value.func, "attr", getattr(n.value.func, "id", ""))
+        return ""
+    names = [_name(n) for n in fn.body[:8]]
+    return ("basicConfig" in names and names.index("basicConfig") + 1 < len(names)
+            and names[names.index("basicConfig") + 1] == "_install_tt_noise_filter")
 
 
 check("L7 main() installs the filter immediately after basicConfig", _l7())

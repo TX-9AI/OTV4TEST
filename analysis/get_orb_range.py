@@ -1,5 +1,6 @@
 """
-analysis/get_orb_range.py  v4.0
+analysis/get_orb_range.py  v4.1
+v4.1 2026-09-26  OTV4TEST r146 — no QQQ fallback: argv, then utils.instrument.box_instrument() (this process, the bot unit, else UNSET).
 Opening-range accessor with the date filter.
 
 v4.0  2026-08-19  Ported from options_trader_v3 at the OTV4 split.
@@ -79,10 +80,11 @@ ORB_CANDLE_LOOKBACK = 200
 
 
 def resolve_symbol() -> str:
-    """argv[1] -> OT_INSTRUMENT env -> QQQ."""
+    """argv[1] -> OT_INSTRUMENT -> the bot unit's OT_INSTRUMENT -> UNSET (r146: never QQQ by default)."""
     if len(sys.argv) > 1 and sys.argv[1].strip():
         return sys.argv[1].strip()
-    return os.environ.get("OT_INSTRUMENT", "QQQ")
+    from utils.instrument import box_instrument
+    return box_instrument()
 
 
 def _candle_to_range(ts, row, status: str, symbol: str, now: datetime) -> dict:

@@ -1,5 +1,6 @@
 """
-status.py  v4.7
+status.py  v4.8
+v4.8 2026-09-26  OTV4TEST r146 — the last-resort fallback is UNSET, not QQQ: the unit's own OT_INSTRUMENT is still read first.
 v4.7  2026-09-17  OTV4TEST r34 — MOVED BACK TO THE REPO ROOT. Operator's ruling,
       2026-09-17. r14 sorted the root by FILE TYPE rather than by ROLE: every
       operator reader written in Python went to tools/ and every shell script to
@@ -159,7 +160,7 @@ except Exception:
     DB_PATH            = os.path.join(INSTALL_DIR, "trades.db")
     BOT_NAME           = "OptionsTrader"
 
-INSTRUMENT    = get_runtime_env("OT_INSTRUMENT", "QQQ")
+INSTRUMENT    = get_runtime_env("OT_INSTRUMENT", "UNSET")  # r146: never QQQ by default
 PAPER_TRADING = get_runtime_env("OT_PAPER_TRADING", "True") != "False"
 RISK_PER_TRADE = get_runtime_env("OT_RISK_USD", "200")
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tools/manifold_health.py  v4.2
+tools/manifold_health.py  v4.3
+v4.3 2026-09-26  OTV4TEST r146 — {SYM} resolves through box_instrument(): devtools runs this from a shell without OT_INSTRUMENT, so the board read QQQ's rows on every box.
 
 One bulb per stream. All green = manifold green.
 
@@ -250,7 +251,8 @@ def collect(feed_db: str, derived_db: str, in_rth: bool,
     for tbl, tscol, budget, label, critical, after_hours, where in STREAMS:
         pred = ""
         if where:
-            pred = " WHERE " + where.replace("{SYM}", os.environ.get("OT_INSTRUMENT", "QQQ"))
+            from utils.instrument import box_instrument     # r146: never QQQ by default
+            pred = " WHERE " + where.replace("{SYM}", box_instrument())
         # capped count (see ROW_CAP) + an indexed MAX: two cheap queries instead
         # of one 56-second scan.
         r = _q1(fc, f"SELECT COUNT(*) FROM (SELECT 1 FROM {tbl}{pred} LIMIT {ROW_CAP})")

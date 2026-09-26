@@ -1,5 +1,6 @@
 """
-tools/debug_status.py  v4.1
+tools/debug_status.py  v4.2
+v4.2  2026-09-26  OTV4TEST r146 — the OT_INSTRUMENT fallback is UNSET, not QQQ (the unit is still read first).
 v4.1  2026-09-11  OTV4TEST r14 — moved from the repo root to tools/ (root cleanup); no behaviour change.
 Verbose diagnostic status dump.
 
@@ -51,7 +52,7 @@ def get_runtime_env(key, default=""):
         print(f"Exception: {e}")
     return os.environ.get(key, default)
 
-val = get_runtime_env("OT_INSTRUMENT", "QQQ")
+val = get_runtime_env("OT_INSTRUMENT", "UNSET")
 print("get_runtime_env result:", val)
 print()
 
@@ -65,5 +66,5 @@ except Exception as e:
 print()
 
 print("=== STEP 5: INSTRUMENT after config import ===")
-INSTRUMENT = get_runtime_env("OT_INSTRUMENT", "QQQ")
+INSTRUMENT = get_runtime_env("OT_INSTRUMENT", "UNSET")
 print("INSTRUMENT:", INSTRUMENT)

@@ -1,5 +1,12 @@
 """
-config.py  v4.36
+config.py  v4.37
+v4.37 2026-09-26  OTV4TEST r146 — OT_INSTRUMENT HAS NO "QQQ" FALLBACK: unset reads "UNSET".
+      The operator: "defaulting the QQQ is not the answer" (2026-09-26). A process without the variable
+      was silently QQQ - right on this box by luck, wrong on every other (r144's
+      fixture events, SOFI's self-close labels). The bot and the feed now REFUSE
+      to start on UNSET; standalone tools resolve the box's instrument through
+      utils/instrument.box_instrument(). Both of this box's units carry
+      OT_INSTRUMENT=QQQ (the operator's read, 2026-09-26).
 v4.36 2026-09-25  OTV4TEST r141 — NOISE_FLOOR_MIN_BARS = 3. The r93 floor needed 10
       one-minute bars and the frame it reads is scoped to TODAY'S session, so it
       stood down from 09:35 to ~09:40 EVERY day - the window ORB and Breakout fire in.
@@ -549,7 +556,8 @@ def telegram_configured() -> bool:
 
 # ─── INSTRUMENT SELECTION ─────────────────────────────────────────────────────
 
-INSTRUMENT          = os.environ.get("OT_INSTRUMENT", "QQQ")
+INSTRUMENT_UNSET    = "UNSET"      # r146: never a guessed symbol
+INSTRUMENT          = (os.environ.get("OT_INSTRUMENT") or "").strip() or INSTRUMENT_UNSET
 
 # Tradeable universe. Strike increments are a per-price-band starting point;
 # the options chain resolves to the nearest liquid strike, so a slightly-off
@@ -2293,10 +2301,18 @@ LIVE_ENTRY_DEADLINE_SECONDS = float(os.environ.get("OT_LIVE_ENTRY_DEADLINE_SECON
 class SessionConfig:
     """Runtime session config — populated at startup."""
     paper_trading:      bool    = True
-    instrument:         str     = "QQQ"
+    # r146 — no guessed symbol. The field cannot be REQUIRED (it follows a
+    # defaulted field), so its default is UNSET and __post_init__ REFUSES it:
+    # a SessionConfig built without instrument= fails loudly, never trades QQQ.
+    instrument:         str     = INSTRUMENT_UNSET
     risk_per_trade_usd: float   = 200.0
     notes:              str     = ""
     confirmed_at:       Optional[str] = None
+
+    def __post_init__(self):
+        if not self.instrument or self.instrument == INSTRUMENT_UNSET:
+            raise ValueError("SessionConfig built without an instrument - OT_INSTRUMENT "
+                             "is not set; refusing to guess a symbol (r146)")
 
 # ─── CONTINUATION (trend-pullback) exhaustion exit ────────────────────────────
 # Exhaustion detection for the trend-continuation runner. Extension tightens the

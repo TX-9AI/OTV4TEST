@@ -1,4 +1,9 @@
-"""tests/check_journal_isolation.py — v1.0
+"""tests/check_journal_isolation.py — v1.1
+
+v1.1  2026-09-26 — OTV4TEST r146. J1b looks only for the child's own ISOCHECK.jsonl in the live
+      journal, not for ANY change: the live bot appends there all session, so the
+      directory comparison would fail a mid-session land at random - the flaw r146's
+      first land exposed in U3b.
 A CHECKER'S SIGNAL-JOURNAL WRITES LAND IN ITS SCRATCH, NEVER IN THE LIVE JOURNAL.
 
 v1.0  2026-09-25 — OTV4TEST r144. analysis/signal_journal.py wrote to the repo's
@@ -13,7 +18,8 @@ v1.0  2026-09-25 — OTV4TEST r144. analysis/signal_journal.py wrote to the repo
 
   J1  with OT_SIGNAL_JOURNAL_DIR set, a REAL journal() call writes its line under
       that directory
-  J1b ...and the repo's live data/signal_journal is byte-for-byte unchanged
+  J1b ...and nothing the child wrote reached the live data/signal_journal (its own
+      ISOCHECK.jsonl - the bot's own appends are not this check's business)
   J2  with the variable UNSET the journal still writes to the repo's
       data/signal_journal (the live bot's behaviour is unchanged) - read from
       the module, nothing is written
@@ -88,15 +94,17 @@ check("J1 with OT_SIGNAL_JOURNAL_DIR set, a real journal() call writes under it"
       r.returncode == 0 and len(probe) == 1,
       f"rc={r.returncode} lines_in_scratch={len(written)} {r.stderr.strip()[-160:]}")
 
-changed = sorted(p for p in set(before) | set(after) if before.get(p) != after.get(p))
-check("J1b ...and the live data/signal_journal is unchanged", not changed,
-      ", ".join(os.path.relpath(p, _root) for p in changed[:4]))
-for p in changed:                                   # clean up a regressed build's stray write
-    if os.path.basename(p) == f"{SYM}.jsonl" and p not in before:
-        try:
-            os.remove(p)
-        except OSError:
-            pass
+# J1b looks ONLY for the child's own file. The live bot appends to its journal
+# all session, so comparing the whole directory would fail a mid-session land at
+# random - the r146 land found that shape in U3b the hard way (§40.1).
+stray = sorted(p for p in after if os.path.basename(p) == f"{SYM}.jsonl")
+check("J1b ...and nothing the child wrote reached the live data/signal_journal", not stray,
+      ", ".join(os.path.relpath(p, _root) for p in stray[:4]))
+for p in stray:                                     # clean up a regressed build's stray write
+    try:
+        os.remove(p)
+    except OSError:
+        pass
 
 r2 = child(READ, {}, drop=("OT_SIGNAL_JOURNAL_DIR",))
 out = next((l.split("=", 1)[1] for l in r2.stdout.splitlines() if l.startswith("OUT_ROOT=")), "")

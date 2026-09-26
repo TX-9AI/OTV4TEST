@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# tools/land.sh — v1.16
+# tools/land.sh — v1.17
+# v1.17 (2026-09-26) — OTV4TEST r146. Every CHECK gets OT_INSTRUMENT explicitly (QQQ when the
+#   shell has none): config no longer guesses QQQ, and the checkers were written against it.
 # v1.16 (2026-09-25) — OTV4TEST r144. THE FOURTH WRITER. Every CHECK now also gets
 #   OT_SIGNAL_JOURNAL_DIR under $_scratch: checkers that drive the ORB engine wrote
 #   retest_check fixtures into the live data/signal_journal, and on a pushing box
@@ -533,7 +535,7 @@ land_one() {
     # with the trades and derived stores pointed at scratch files, whatever it does.
     # r109 — AND THE RESTING-ORDER STORE, the third one r13 missed (v1.15 above).
     _scratch="$(mktemp -d /tmp/land-check.XXXXXX)"
-    if ( cd "$repo" && env -u LAND_ARCHIVE -u LAND_STAGE OT_TRADES_DB="$_scratch/trades.db" OT_DERIVED_DB="$_scratch/derived_store.db" OT_RESTING_DB="$_scratch/resting_orders.db" OT_SIGNAL_JOURNAL_DIR="$_scratch/signal_journal" python3 "$chk" ) >/dev/null 2>&1; then
+    if ( cd "$repo" && env -u LAND_ARCHIVE -u LAND_STAGE OT_TRADES_DB="$_scratch/trades.db" OT_DERIVED_DB="$_scratch/derived_store.db" OT_RESTING_DB="$_scratch/resting_orders.db" OT_SIGNAL_JOURNAL_DIR="$_scratch/signal_journal" OT_INSTRUMENT="${OT_INSTRUMENT:-QQQ}" python3 "$chk" ) >/dev/null 2>&1; then
       pb_clear
       echo "  check: $chk PASS"
     else

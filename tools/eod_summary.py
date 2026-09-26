@@ -1,5 +1,6 @@
 """
-tools/eod_summary.py  v4.3
+tools/eod_summary.py  v4.4
+v4.4 2026-09-26  OTV4TEST r146 — the instrument comes from box_instrument() - its timer unit carries no OT_INSTRUMENT, so it was QQQ by default on every box.
 v4.3  2026-09-17  OTV4TEST r34 — `from tools.query import …` becomes `from query
       import …`: query.py moved back to the repo root. ⚠️ THIS IS THE ONE THAT
       WOULD HAVE FAILED SILENTLY. The import sits in a try/except whose fallback
@@ -70,7 +71,8 @@ except Exception:  # noqa: BLE001
     # and the date is what matters for the daily rollup at 15:50.
     from datetime import timedelta
     DB_PATH = os.path.join(INSTALL_DIR, "trades.db")
-    INSTRUMENT = os.environ.get("OT_INSTRUMENT", "QQQ")
+    from utils.instrument import box_instrument     # r146: never QQQ by default
+    INSTRUMENT = box_instrument()
     PAPER_TRADING = os.environ.get("OT_PAPER_TRADING", "True") != "False"
 
     def now_et():

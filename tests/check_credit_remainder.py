@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""tests/check_credit_remainder.py  v1.1
+"""tests/check_credit_remainder.py  v1.2
+v1.2  2026-09-26  OTV4TEST r146 — the fixture symbol SYN is FORCED, not setdefault: with OT_INSTRUMENT present (QQQ from the sweep harness, or any shell that exports it) the ladder read QQQ's penny ticks (9 rungs, not 3) and keyed on cv:QQQ - C2b/C2c/C7b went red on ENVIRONMENT, not code.
 v1.1  2026-09-22  OTV4TEST r92 — C7d reads TCS_ENTRY_END_ET from config instead of the
       literal (14,0). ⚠️ The config import is bound to `_cfg`, NOT `_C` —
       this file already binds `_C` to its contract factory and shadowing it
@@ -32,7 +33,7 @@ import tempfile
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
 os.environ.setdefault("OT_PAPER_TRADING", "1")
-os.environ.setdefault("OT_INSTRUMENT", "SYN")
+os.environ["OT_INSTRUMENT"] = "SYN"   # r146: FORCED - an ambient OT_INSTRUMENT must not replace the fixture symbol
 
 _fails = []
 

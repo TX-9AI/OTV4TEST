@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-warehouse/self_close.py  v1.3
+warehouse/self_close.py  v1.4
+v1.4 2026-09-26  OTV4TEST r146 — its alerts name the box's real instrument: the self-close unit carries no OT_INSTRUMENT, so config's QQQ fallback labelled SOFI's and AAL's alerts QQQ.
 The box closes ITSELF: drain to S3, verify it landed, then shut down.
 
 v1.3  2026-09-05  r255 — RELEASE THE STORES BEFORE THE RECLAIM. `retention_purge`
@@ -97,9 +98,10 @@ def main(argv=None) -> int:
     dry = "--dry-run" in (argv or sys.argv)
 
     try:
-        from config import INSTRUMENT
+        from utils.instrument import box_instrument         # r146: the bot unit's own symbol
+        INSTRUMENT = box_instrument()
     except Exception:                                           # noqa: BLE001
-        INSTRUMENT = os.environ.get("OT_INSTRUMENT", "?")
+        INSTRUMENT = os.environ.get("OT_INSTRUMENT") or "UNSET"
 
     _log(f"{INSTRUMENT}: nobody closed this box — closing it myself")
 

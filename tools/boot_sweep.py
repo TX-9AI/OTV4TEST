@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""tools/boot_sweep.py — v1.2
+"""tools/boot_sweep.py — v1.3
+
+v1.3 (2026-09-26) — OTV4TEST r146. Checkers get OT_INSTRUMENT=QQQ EXPLICITLY when the
+      sweep's environment has none: config no longer falls back to QQQ, and the
+      checkers were written against it. A fixture symbol stated here, not guessed.
 
 v1.2 (2026-09-25) — OTV4TEST r144. THE SIGNAL JOURNAL IS SCRATCH TOO.
       2026-09-25: the boot sweep's ORB checkers wrote 126 retest_check fixture events into the LIVE
@@ -121,6 +125,7 @@ def run_one(name: str) -> bool:
     env["OT_DERIVED_DB"] = os.path.join(d, "derived_store.db")
     env["OT_RESTING_DB"] = os.path.join(d, "resting_orders.db")     # r109
     env["OT_SIGNAL_JOURNAL_DIR"] = os.path.join(d, "signal_journal")  # r144
+    env.setdefault("OT_INSTRUMENT", "QQQ")   # r146: an EXPLICIT fixture symbol; config no longer guesses one
     try:
         p = subprocess.run([PY, os.path.join(TESTS, name)],
                            cwd=_root, env=env, stdout=subprocess.DEVNULL,
