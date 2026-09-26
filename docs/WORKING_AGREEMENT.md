@@ -1,6 +1,6 @@
 # WORKING_AGREEMENT.md — how we operate (read this first, every new thread)
 
-**`WORKING_AGREEMENT.md` v4.22 · 2026-09-26 — §0 through §40, plus §15a, §18a, §36a, §38.9 and §40.1. See the CHANGELOG at the foot.**
+**`WORKING_AGREEMENT.md` v4.23 · 2026-09-26 — §0 through §40, plus §15a, §18a, §36a, §38.9 and §40.1. See the CHANGELOG at the foot.**
 
 > 🔴 **§0 IS THE FLOOR — AN ATTESTATION, NOT A TIP. Read it first, every thread.**
 > The operator ordered it once before and was told it existed. It did not.
@@ -1650,6 +1650,13 @@ examples say which tree each came from, and otv4's closing paragraph ("§40 is
 not a section of this file") is NOT carried, because here it is. Every citation
 of a mainline section is labelled **otv4 WA**. Operator, 2026-09-26: *"Send it"*.
 
+🔗 **THE PAIR IS CROSS-REFERENCED BOTH WAYS.** otv4 WA §38.11 cites this section
+(otv4 r450, `47e1f3c`, WA v6.3) and ADOPTED two of the four additions below, credited
+here: criterion 2's hash-verified transfer and criterion 6's "checksum only stores no
+running service writes". It DECLINED, with its reasons recorded there, criterion 1's
+header-naming rule (already its practice) and the WHO AUTHORS note — so those two are
+this tree's alone. Operator, 2026-09-26: *"Agree on the optional item."*
+
 **Operator (mainline), 2026-09-26:** *"Fixes should be durable, compatible with
 both repos, and consistently applied. In cases where timing and sequence are
 critical, I expect close coordination between you 2."*
@@ -1874,6 +1881,10 @@ joins the table above.
 ---
 
 ## CHANGELOG
+
+**v4.23 — 2026-09-26 — OTV4TEST r154 — §38.9 CITES otv4 r450 BACK.** otv4 WA §38.11 now cites
+§38.9 and adopted two of its four additions (hash-verified transfer; checksum only stores no
+service writes); the two it declined are marked as this tree's alone. No rule changed here.
 
 **v4.22 — 2026-09-26 — OTV4TEST r153 — §38.9 ADDED: A SHARED FIX IS NOT DONE
 UNTIL IT IS DONE IN BOTH TREES, THE SAME WAY.** Mirrored from otv4 WA §38.11

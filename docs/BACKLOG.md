@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v1.48
+# BACKLOG.md — OTV4TEST — v1.49
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -274,6 +274,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v1.49 — 2026-09-26 — OTV4TEST r154 — DOCS ONLY: §38.9 CITES otv4 r450 (47e1f3c), which cites it back and adopted two of its four additions.** No code changed.
 
 **v1.48 — 2026-09-26 — OTV4TEST r153 — DOCS ONLY: WORKING_AGREEMENT v4.22 GAINS §38.9, THE SHARED-FIX STANDARD, MIRRORED FROM otv4 WA §38.11 (r441 + r447 834456a).** The eight criteria and the sequencing rule, received byte-exact by sha256 and adapted per its own criterion 1; four additions of this tree's own, told to the mainline agent; §38.2 points to it; §40's 'mainline half not landed' struck. No code changed.
 
