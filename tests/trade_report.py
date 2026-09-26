@@ -1,4 +1,8 @@
-# tests/trade_report.py — v1.23
+# tests/trade_report.py — v1.24
+# v1.24 (2026-09-26) — OTV4TEST r160. EXIT REASON — DOLLARS IS RANKED BY NET $, best first (was by N).
+#   Operator: "For Exit Reason - Dollars, can you rank them by net?" The table's rendering moves into
+#   show_exit_dollars() so the order is testable (check_trade_report T13); a reason with no P&L sorts
+#   last, N breaks ties.
 # v1.23 (2026-09-26) — OTV4TEST r159. THE EXIT-REASON TABLE IS IN DOLLARS. The operator: "I don't
 #   know what that share column is for or what I would do with that information. I'd rather see the
 #   dollar amounts of the actual exits. And I would rather see the MFE/MAE in dollar amounts." SESS,
@@ -808,6 +812,21 @@ def exit_concentration(trades: List[dict], min_n: int) -> Dict[str, dict]:
 
 
 # ── display ──────────────────────────────────────────────────────────────────
+def show_exit_dollars(conc: Dict[str, dict]) -> None:
+    """r159/r160 — EXIT REASON — DOLLARS rows, RANKED BY NET $ (best first; no P&L last; N breaks
+    ties): N, NET $, AVG $ exit P&L, mean MFE $ / MAE $ open P&L per trade. 67 wide + 1-DAY."""
+    print(f"  {'':<21}{'N':>4}{'NET $':>9}{'AVG $':>8}{'MFE $':>8}{'MAE $':>8}")
+    _usd = lambda v, w: f"{'-':>{w}}" if v is None else f"{v:>+{w}.0f}"   # noqa: E731
+    for reason, c in sorted(conc.items(), key=lambda kv: (kv[1].get("net") is None,
+                                                          -(kv[1].get("net") or 0.0), -kv[1]["n"])):
+        flag = "  1-DAY" if c["single_session"] else ""
+        print(f"  {reason[:21]:<21}{c['n']:>4}{_usd(c.get('net'), 9)}{_usd(c.get('avg'), 8)}"
+              f"{_usd(c.get('mfe_usd'), 8)}{_usd(c.get('mae_usd'), 8)}{flag}")
+    print(f"  Ranked by NET $. AVG $ = mean exit P&L per trade; MFE $ / MAE $ =\n"
+          f"  mean best / worst open P&L per trade. 1-DAY = >=80% on one date.")
+
+
+
 def show(title: str, d: Dict[str, dict], min_n: int, width: int = 21) -> None:
     if not d:
         return
@@ -1246,15 +1265,7 @@ def main(argv: List[str]) -> int:
 
     conc = exit_concentration(trades, args.min_n)
     print("\nEXIT REASON — DOLLARS")
-    # r159 — dollars: NET / AVG exit P&L and mean MFE / MAE open P&L per trade. 67 wide + 1-DAY.
-    print(f"  {'':<21}{'N':>4}{'NET $':>9}{'AVG $':>8}{'MFE $':>8}{'MAE $':>8}")
-    _usd = lambda v, w: f"{'-':>{w}}" if v is None else f"{v:>+{w}.0f}"   # noqa: E731
-    for reason, c in sorted(conc.items(), key=lambda kv: -kv[1]["n"]):
-        flag = "  1-DAY" if c["single_session"] else ""
-        print(f"  {reason[:21]:<21}{c['n']:>4}{_usd(c.get('net'), 9)}{_usd(c.get('avg'), 8)}"
-              f"{_usd(c.get('mfe_usd'), 8)}{_usd(c.get('mae_usd'), 8)}{flag}")
-    print(f"  AVG $ = mean exit P&L per trade; MFE $ / MAE $ = mean best / worst\n"
-          f"  open P&L per trade. 1-DAY = >=80% of its trades on one date.")
+    show_exit_dollars(conc)                    # r160 — ranked by NET $
 
     eb = exit_behaviour(trades)
     print("\nEXIT BEHAVIOUR")

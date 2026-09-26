@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_trade_report.py  v1.5
+tests/check_trade_report.py  v1.6
+v1.6  2026-09-26  OTV4TEST r160 — T13 ADDED: EXIT REASON — DOLLARS is ranked by NET $ (operator: "For Exit
+      Reason - Dollars, can you rank them by net?"), even where N would order it the other way.
 v1.5  2026-09-26  OTV4TEST r159 — T12 RE-POINTED to the dollar table: per exit reason NET $, AVG $ and mean
       MFE $ / MAE $ of open P&L (operator: "I'd rather see the dollar amounts of the actual exits ...
       MFE/MAE in dollar amounts"); SHARE is gone.
@@ -229,6 +231,24 @@ def main():
               f"tsh={tsh} hs={hs} thin={thin_hits[:3]}")
     except Exception as exc:                                    # noqa: BLE001
         check("T12 (did not run)", False, f"raised {type(exc).__name__}: {exc}")
+    # T13 (r160) — ranked by NET $, not by N.
+    try:
+        TR = sys.modules.get("trade_report") or __import__("trade_report")
+        import io, contextlib
+        conc = {"many_small_losers": dict(n=9, net=-900.0, avg=-100.0, mfe_usd=10.0, mae_usd=-120.0, single_session=False),
+                "few_big_winners":  dict(n=2, net=5000.0, avg=2500.0, mfe_usd=3000.0, mae_usd=-50.0, single_session=False),
+                "middle":           dict(n=5, net=100.0, avg=20.0, mfe_usd=90.0, mae_usd=-30.0, single_session=True),
+                "no_pnl":           dict(n=3, net=None, avg=None, mfe_usd=None, mae_usd=None, single_session=False)}
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            TR.show_exit_dollars(conc)
+        order = [l.split()[0] for l in buf.getvalue().splitlines() if l.split() and l.split()[0] in conc]
+        check("T13 EXIT REASON — DOLLARS ranks by NET $ (best first, no P&L last), not by N",
+              order == ["few_big_winners", "middle", "many_small_losers", "no_pnl"]
+              and "1-DAY" in buf.getvalue() and all(len(l) <= 76 for l in buf.getvalue().splitlines()),
+              f"order={order}")
+    except Exception as exc:                                    # noqa: BLE001
+        check("T13 (did not run)", False, f"raised {type(exc).__name__}: {exc}")
     rc6, out6 = run("--db", os.path.join(WORK, "nope.db"), "--no-json")
     check("T6 a missing database is rc 1 and says PATH DOES NOT EXIST",
           rc6 == 1 and "PATH DOES NOT EXIST" in out6, f"rc {rc6}")
