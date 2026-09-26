@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-346 Python modules across 12 local packages.
+349 Python modules across 12 local packages.
 
-**Reached by:** 118 imported · 12 declared entry points · 132 referenced from a script, unit or doc but never imported · **84 by nothing here**.
+**Reached by:** 118 imported · 12 declared entry points · 135 referenced from a script, unit or doc but never imported · **84 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -650,6 +650,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** (none)
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
+### `tests/check_counter_pop.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
 ### `tests/check_credit_remainder.py`
 - **calls:** `config.py`, `database/trade_logger.py`, `execution/__init__.py`, `execution/credit_remainder.py`, `execution/entry_engine.py`, `execution/entry_ladder.py`, `execution/ladder_registry.py`, `execution/position_manager.py`, `main.py`, `strategy/base_strategy.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
@@ -1086,6 +1090,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** `analysis/orb_engine.py`, `config.py`, `data/derived_store.py`, `database/trade_logger.py`, `execution/exit_engine.py`, `strategy/__init__.py`, `strategy/plan.py`, `strategy/runaway_continuation.py`, `strategy/runaway_plan.py`
 - **called by:** (not imported) — referenced in `devtools.sh`, `docs/PLAN_SPEC.md`, `docs/PORT_MANIFEST.md`
 
+### `tests/check_self_close_hold.py`
+- **calls:** `warehouse/__init__.py`, `warehouse/retention_purge.py`, `warehouse/self_close.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
 ### `tests/check_shell_parses.py`
 - **calls:** (none)
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
@@ -1432,7 +1440,11 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `warehouse/__init__.py`
 - **calls:** (none)
-- **called by:** `tests/check_audit_20260823.py`, `tests/check_level_tape.py`, `tests/check_lineage.py`, `tests/check_purge_lock.py`, `tests/check_purge_pushed.py`, `tests/check_purge_reclaim.py`, `tests/check_retention_armed.py`, `warehouse/self_close.py`
+- **called by:** `tests/check_audit_20260823.py`, `tests/check_level_tape.py`, `tests/check_lineage.py`, `tests/check_purge_lock.py`, `tests/check_purge_pushed.py`, `tests/check_purge_reclaim.py`, `tests/check_retention_armed.py`, `tests/check_self_close_hold.py`, `warehouse/self_close.py`
+
+### `warehouse/counter_pop.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/WORKING_AGREEMENT.md`
 
 ### `warehouse/midnight_halt.py`
 - **calls:** `utils/shutdown_cause.py`
@@ -1440,7 +1452,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `warehouse/retention_purge.py`
 - **calls:** (none)
-- **called by:** `tests/check_audit_20260823.py`, `tests/check_level_tape.py`, `tests/check_purge_lock.py`, `tests/check_purge_pushed.py`, `tests/check_purge_reclaim.py`, `tests/check_retention_armed.py`, `warehouse/self_close.py`
+- **called by:** `tests/check_audit_20260823.py`, `tests/check_level_tape.py`, `tests/check_purge_lock.py`, `tests/check_purge_pushed.py`, `tests/check_purge_reclaim.py`, `tests/check_retention_armed.py`, `tests/check_self_close_hold.py`, `warehouse/self_close.py`
 
 ### `warehouse/s3_push.py`
 - **calls:** (none)
@@ -1448,7 +1460,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `warehouse/self_close.py`
 - **calls:** `notifications/alert_manager.py`, `utils/instrument.py`, `warehouse/__init__.py`, `warehouse/retention_purge.py`
-- **called by:** `tests/check_audit_20260823.py`
+- **called by:** `tests/check_audit_20260823.py`, `tests/check_self_close_hold.py`
 
 <!-- REMOVED-ON-PURPOSE -->
 ## Removed on purpose

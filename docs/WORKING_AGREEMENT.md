@@ -1,6 +1,6 @@
 # WORKING_AGREEMENT.md — how we operate (read this first, every new thread)
 
-**`WORKING_AGREEMENT.md` v4.20 · 2026-09-26 — §0 through §40, plus §15a, §18a, §36a and §40.1. See the CHANGELOG at the foot.**
+**`WORKING_AGREEMENT.md` v4.21 · 2026-09-26 — §0 through §40, plus §15a, §18a, §36a and §40.1. See the CHANGELOG at the foot.**
 
 > 🔴 **§0 IS THE FLOOR — AN ATTESTATION, NOT A TIP. Read it first, every thread.**
 > The operator ordered it once before and was told it existed. It did not.
@@ -1541,6 +1541,27 @@ so nothing but the role was missing.
   worse than a refusal because the numbers stay plausible.
   **If a write to the warehouse is ever wanted it is the operator's ruling**, and
   it needs a symbol or prefix that cannot collide with the live QQQ box.
+- 🔴 **DELETE.1 — A DELIBERATE S3 DELETE NAMES WHAT IT EMPTIED, AND REPAIRS IT IN
+  THE SAME OPERATION (added 2026-09-26, OTV4TEST r147; the operator: *"Yes"*).**
+  Shared with otv4, where 1-REPORTER drafted it and this tree amended it. Any
+  deliberate deletion from `raw/` must, **after the delete completes**, LIST every
+  prefix it touched and enumerate those now holding **zero objects**. That list
+  comes from the post-delete LIST, **never from the delete manifest**: the manifest
+  records intent, only the LIST records consequence. Resetting the counters for
+  those prefixes (`warehouse/counter_pop.py`) is part of the same operation, not a
+  follow-up.
+  ⚠️ **A DELETE THAT CANNOT NAME WHAT IT EMPTIED IS NOT AUTHORISED TO RUN.** The
+  enumeration is a precondition, not a courtesy.
+  📊 **MEASURED, BOTH TREES:** six mixed objects deleted from SOFI's `dt=2026-09-24`
+  partitions, with a full VersionId manifest, left **six prefixes at zero** that
+  nothing recorded until the Saturday brief reconstructed them two days later.
+  An emptied prefix is **never repaired by the automatic heal** (it is gated on
+  `got > 0`), so its SHORT persists until someone edits the counter; it is
+  labelled **COUNTER DRIFT when every emptied prefix's counter is <= 2 - false,
+  the objects are absent - and at >= 3 reads as possible loss and holds the box**.
+  Until r147 that drift label also let `self_close` halt and purge on a FAILED
+  drain (S3.15). This box never deletes from the warehouse (read-only, above); its
+  part is the manifests it specifies and the counters on the boxes it runs on.
 
 ### 38.4 REFUSED — by anyone, including the operator
 
@@ -1767,6 +1788,15 @@ joins the table above.
 ---
 
 ## CHANGELOG
+
+**v4.21 — 2026-09-26 — OTV4TEST r147 — §38.3 GAINS DELETE.1: A DELIBERATE S3
+DELETE NAMES THE PREFIXES IT EMPTIED, FROM A POST-DELETE LIST, AND RESETS THEIR
+COUNTERS IN THE SAME OPERATION.** The operator's ruling (*"Yes"*), on wording
+drafted by the mainline agent and amended here: the enumeration comes from the
+LIST, never the manifest, and a delete that cannot produce it may not run. The
+SOFI case is the evidence: the manifest said six objects; what mattered was six
+prefixes at zero, which surfaced two days late and had quietly disarmed a safety
+hold (S3.15). 🔑 **THE ONE RULE CHANGE IS THE OPERATOR'S.**
 
 **v4.20 — 2026-09-26 — OTV4TEST r145 — §38.2: A SHARED DEFECT GETS THE
 IDENTICAL FIX IN BOTH TREES.** The operator's ruling of 2026-09-25 (relayed by

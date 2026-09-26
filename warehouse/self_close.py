@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-warehouse/self_close.py  v1.4
+warehouse/self_close.py  v1.5
+v1.5 2026-09-26  OTV4TEST r147 — A FAILED DRAIN HOLDS THE BOX. `drift` overrode `not ok` whatever failed= said, so any gap <= 2 anywhere (an S3 delete that EMPTIES a prefix leaves one PERMANENTLY: got=0 never heals) turned a failed PUT into a halt-and-purge. Drift now counts only on a drain the DRAIN line reports failed=0. Operator 2026-09-26, proposal 2a: "Concur". Shared with otv4 (WA 38.2); gate tests/check_self_close_hold.py; BACKLOG S3.15.
 v1.4 2026-09-26  OTV4TEST r146 — its alerts name the box's real instrument: the self-close unit carries no OT_INSTRUMENT, so config's QQQ fallback labelled SOFI's and AAL's alerts QQQ.
 The box closes ITSELF: drain to S3, verify it landed, then shut down.
 
@@ -132,7 +133,12 @@ def main(argv=None) -> int:
 
     line = next((l for l in out.splitlines() if l.startswith("DRAIN ")), "")
     ok = " short=0 " in line and line.rstrip().endswith("OK")
-    drift = "COUNTER DRIFT" in out
+    # 🔴 r147 — DRIFT EXCUSES A SHORTFALL, NEVER A FAILED PUT. Before this, any
+    # drift line overrode `not ok` even when this drain failed, and a prefix an
+    # S3 delete had emptied (got=0, never healed) kept a gap of 1 lit forever -
+    # SOFI 6 prefixes, mainline 31, measured 2026-09-26 - so a failed PUT HALTED
+    # and PURGED instead of holding. The DRAIN line owns failed=; read it there.
+    drift = "COUNTER DRIFT" in out and " failed=0 " in line
 
     # ⚠️ DRIFT IS NOT LOSS. Same rule as the conductor: a small consistent
     # shortfall across many prefixes is an inflated ledger with every object
