@@ -1,6 +1,6 @@
 # WORKING_AGREEMENT.md — how we operate (read this first, every new thread)
 
-**`WORKING_AGREEMENT.md` v4.21 · 2026-09-26 — §0 through §40, plus §15a, §18a, §36a and §40.1. See the CHANGELOG at the foot.**
+**`WORKING_AGREEMENT.md` v4.22 · 2026-09-26 — §0 through §40, plus §15a, §18a, §36a, §38.9 and §40.1. See the CHANGELOG at the foot.**
 
 > 🔴 **§0 IS THE FLOOR — AN ATTESTATION, NOT A TIP. Read it first, every thread.**
 > The operator ordered it once before and was told it existed. It did not.
@@ -1460,6 +1460,8 @@ with `^C` because it looked hung. A study that widens its date window says so
   🔑 **WHY:** this tree is meant to supersede mainline IN PLACE. A shared
   defect fixed two ways is two lineages, and the next merge inherits whichever
   one it happens to read.
+  · **WHAT "DONE" MEANS FOR A SHARED FIX — the eight criteria and the
+    sequencing rule — is §38.9** (mirrored from otv4 WA §38.11).
 
 ⚠️ **WHAT THIS BOX DOES NOT HAVE.** The source document grants cloud-storage
 reads "from the control machine" and fleet fan-out. ~~**Neither exists here**:
@@ -1638,6 +1640,89 @@ not hold surfaces at the worst moment: *after* the work and *after* the approval
 7. Update the record with what was proven, **including what went wrong on the
    way** (§35: a ledger that only lists successes is a marketing page).
 
+### 38.9 A SHARED FIX IS NOT DONE UNTIL IT IS DONE IN BOTH TREES, THE SAME WAY.
+
+**Mirrored from otv4 WA §38.11** (otv4 r441, `d71a1ad`; text received byte-exact
+from the mainline agent, sha256 `3f693bd6…`, with the changes otv4 r447 made to
+it — landed unamended as `834456a`, otv4 WA v6.2). **Adapted, not copied** — which is the point of criterion 1: the tree names
+are turned to this side, criterion 3 quotes this file's own §40.1, the worked
+examples say which tree each came from, and otv4's closing paragraph ("§40 is
+not a section of this file") is NOT carried, because here it is. Every citation
+of a mainline section is labelled **otv4 WA**. Operator, 2026-09-26: *"Send it"*.
+
+**Operator (mainline), 2026-09-26:** *"Fixes should be durable, compatible with
+both repos, and consistently applied. In cases where timing and sequence are
+critical, I expect close coordination between you 2."*
+
+🔴 **THE FAILURE THIS CLOSES IS THAT THE STANDARD ITSELF WAS NOT DURABLE.** On
+2026-09-26 this session and the mainline control agent negotiated an eight-point
+definition of a properly-constructed shared fix across a dozen messages, agreed
+it, amended it three times, and applied it to four changes — and **filed it
+nowhere.** It existed only in cross-session messages. Either session ending
+would have destroyed it, and the next pair would have re-derived it badly. A
+standard that lives in a conversation is not a standard.
+
+**A SHARED FIX IS DONE WHEN ALL EIGHT HOLD:**
+
+1. **Identical logic and identical decision points** in both trees. Only
+   headers and changelogs differ. ⚠️ Any path or constant that legitimately
+   differs is READ FROM EACH TREE'S OWN MODULE, never hardcoded — `counter_pop`
+   imports `COUNTERS_PATH`, `BUCKET`, `REGION` and `LOCK_WAIT` from `s3_push`
+   for exactly this reason. A difference that cannot be read from a module is
+   NAMED in that tree's header with its reason (r152: otv4's query.py resolves
+   `America/New_York` because control's system python lacks tzdata-legacy; this
+   box resolves `US/Eastern` under both interpreters and keeps it).
+2. **One gate file, byte-identical but for its header**, which DRIVES the real
+   function rather than grepping source, with every side effect replaced by a
+   recorder: subprocess, purge, alerts, network. ⚠️ **Verify the transfer by
+   hash, not by eye** — r147's gate reached otv4 three comment lines short
+   (otv4 r443), found only because the body was hashed on both sides.
+3. **Born red on each tree's own unfixed code**, at the named checks and only
+   those, and **the born-red output is quoted in the ledger row**. §40.1: *"a
+   FAIL must be distinguished from a non-zero exit"* — so a crash, or an import
+   error from an interpreter that lacks a module, is an exit code and not a
+   verdict. It must run under both the system interpreter and the venv.
+4. **Mutation-proven**, each mutant killed by a named check, and **any
+   surviving mutant reported rather than hidden**.
+5. **The unchanged paths are pinned too** — the cases the fix must NOT alter
+   are asserted, not assumed.
+6. **Live stores checksummed before and after every run** — and only stores no
+   running service writes; the live derived store is written every minute by
+   the bot's own engines, so it is checked for fixture symbols instead (r149).
+7. **Landing order agreed in advance.** Each side announces its sha, and
+   **both operators have said yes for their own tree.** ⚠️ A peer's operator's
+   yes is never this operator's yes, and vice versa.
+8. **Stated blast radius and a named rollback.** Before landing, the ledger row
+   says: how many boxes it reaches, which runtime path it alters, what the
+   failure looks like if the fix is WRONG, and the exact command that reverts
+   it. A shared fix that cannot be described as *"if this is wrong, N boxes do
+   X, and `<command>` undoes it"* is not ready, however green its gate.
+
+🔑 **WHEN SEQUENCE IS CRITICAL, THE ORDER IS AGREED BEFORE ANY OF IT LANDS, IN
+WRITING, WITH THE DEPENDENCY NAMED.** Not "you go first" but *"your mirror
+lands, that box bakes it, I run it dry, you see the output, I apply, we both
+verify"* — the form actually used for SOFI's counter pop on 2026-09-26, which
+worked. ⚠️ **A step that cannot be done by the session that owns the code is
+named as such and handed over explicitly**: this box has no network path to
+SOFI, so that run was the mainline agent's, under ITS operator's yes, on a box
+in ITS fleet.
+
+⚠️ **AND EACH SIDE MEASURES ON ITS OWN TREE RATHER THAN ACCEPTING THE OTHER'S
+RUN** (§40). Every time that rule was followed on 2026-09-26 it found something
+the other session had missed: otv4 carried a SECOND `sys.path` insert in
+`query.py` and a third use this session's report omitted (r152); the counter-pop
+gate's N7 was found reading the BYTECODE CACHE instead of the file it named — a
+**false green** on the one check that existed to catch renames (otv4 r438,
+adopted here in r147); and a comment both sessions read as the specification
+turned out to predate the ruling that governs the code (S3.15, r150). Two
+sessions agreeing is not evidence. Two trees measured is.
+
+🔗 **WHO AUTHORS:** §38.2 names the mainline agent as the default author of a
+shared fix; by agreement either side may author (the operator, 2026-09-26: *"I
+don't really care who authors the fix as long as it is a credible fix and both
+of you agree on the premise of what 'properly constructed' looks like"*) —
+r152's query.py was authored here and mirrored there. The eight hold either way.
+
 ---
 
 ## 39. THE ASSISTANT BRINGS THE INSTRUMENTS. THE OPERATOR SHOULD NOT HAVE TO NAME THEM.
@@ -1753,9 +1838,10 @@ appeared to do. That sentence is what located the same hole here, where the
 boundary was **absent**. An outcome-only report — *"lookahead redundant, kept
 it"* — would have transferred nothing.
 
-⚠️ **THIS SECTION IS HALF OF A PAIR AND THE MAINLINE HALF IS PROPOSED, NOT
-LANDED.** Wording was sent for agreement rather than imposed; their operator has
-not ruled. If the two texts end up differing, **the rule matters more than the
+⚠️ **THIS SECTION IS HALF OF A PAIR.** ~~The mainline half is proposed, not
+landed.~~ *(struck 2026-09-26, r153: mainline carries this rule as otv4 WA §38.11,
+landed in otv4 r441 — its agreement ends at §39, so it restates the rule and
+quotes this section rather than numbering one §40; see §38.9.)* If the two texts end up differing, **the rule matters more than the
 symmetry** — identical text in two wrong places is worse than fitted text in two
 right ones.
 
@@ -1788,6 +1874,17 @@ joins the table above.
 ---
 
 ## CHANGELOG
+
+**v4.22 — 2026-09-26 — OTV4TEST r153 — §38.9 ADDED: A SHARED FIX IS NOT DONE
+UNTIL IT IS DONE IN BOTH TREES, THE SAME WAY.** Mirrored from otv4 WA §38.11
+(otv4 r441, received byte-exact by sha256), with otv4 r447's changes (834456a), and
+ADAPTED per its own criterion 1: tree names turned to this side, criterion 3
+quoting this file's §40.1, the worked examples attributed by tree, otv4's
+"§40 is not a section of this file" paragraph not carried. §38.2 points to it;
+§40's "mainline half proposed, not landed" is struck (r240), because it landed
+as otv4 §38.11. 🔑 **THE ONE RULE CHANGE IS THE OPERATOR'S** (*"Send it"*); the
+eight criteria were agreed between the two agents and ruled by mainline's
+operator.
 
 **v4.21 — 2026-09-26 — OTV4TEST r147 — §38.3 GAINS DELETE.1: A DELIBERATE S3
 DELETE NAMES THE PREFIXES IT EMPTIED, FROM A POST-DELETE LIST, AND RESETS THEIR
