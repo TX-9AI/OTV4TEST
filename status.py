@@ -1,5 +1,6 @@
 """
-status.py  v4.8
+status.py  v4.9
+v4.9 2026-09-27  OTV4TEST r162 (CAP.1) — the halt line names the DAILY CATASTROPHIC LOSS CAP and says entries re-open once the realized loss is back under it (risk_manager v4.8). This reader already recomputed from the day's P&L on every run, so its logic is unchanged.
 v4.8 2026-09-26  OTV4TEST r146 — the last-resort fallback is UNSET, not QQQ: the unit's own OT_INSTRUMENT is still read first.
 v4.7  2026-09-17  OTV4TEST r34 — MOVED BACK TO THE REPO ROOT. Operator's ruling,
       2026-09-17. r14 sorted the root by FILE TYPE rather than by ROLE: every
@@ -738,9 +739,9 @@ def main():
         # `from config import DAILY_LOSS_LIMIT_USD`, which resolved against this
         # process's env and falsely reported $200 / a phantom halt.
         if pnl <= -DAILY_LOSS_LIMIT:
-            cb_warning = (f"  \U0001F6D1  DAILY LOSS LIMIT HIT "
-                          f"(day P&L ${pnl:+.0f} <= -${DAILY_LOSS_LIMIT:.0f}) "
-                          f"\u2192 new entries halted (override via configure.sh)")
+            cb_warning = (f"  \U0001F6D1  CATASTROPHIC LOSS CAP HIT "
+                          f"(${pnl:+.0f} <= -${DAILY_LOSS_LIMIT:.0f})\n"
+                          f"      no new entries until the loss is back under")
         print(f"  Trades:       {total}  ({wins}W / {losses}L)")
         print(f"  Win rate:     {wr:.0f}%")
         print(f"  Net P&L:      {usd(pnl)}")

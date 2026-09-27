@@ -1,5 +1,17 @@
 """
-risk/risk_manager.py  v4.7
+risk/risk_manager.py  v4.8
+v4.8 2026-09-27  OTV4TEST r162 (CAP.1) — THE DAILY CATASTROPHIC LOSS CAP RE-ARMS. The
+      operator, 2026-09-27: "Manage what's open but no new entries. If the open
+      TRADES put us back under the limit again after they close, it can open
+      trades again." is_halted() LATCHED for the rest of the day once breached;
+      it is now RECOMPUTED on every call from the day's REALIZED (closed-trade)
+      net P&L: at or beyond -limit no new entries, back under it entries re-open.
+      The halt pages ONCE PER EPISODE (a new breach after a re-open pages again,
+      WA 17); the re-open is a WARNING in the log. This also removes an
+      inconsistency: reset_session() (every restart) already re-derived the
+      state from the DB, so a restart un-halted a recovered day while a running
+      process stayed halted. Open positions were never gated by it (only the
+      entry path, main.py, reads it) and still are not.
 v4.7 2026-09-27  OTV4TEST r161 (SIZE.2) — size_for(scaled=False) SIZES FLAT. The operator,
       2026-09-27: keep the structure stop, "just use a flat dollar amount for the
       entry". A long debit that supplies geometry but is switched OFF takes the
@@ -726,26 +738,45 @@ class RiskManager:
         """Authoritative daily-loss gate. Reads today's realized net P&L from
         the DB on every call (single source of truth — identical to what
         query.py/status.py display), so it survives any restart and can't drift
-        from an in-memory tally. Latches once breached; wins offset losses so a
-        net-green day keeps trading."""
+        from an in-memory tally. Wins offset losses so a net-green day keeps
+        trading.
+
+        🔴 r162 — IT NO LONGER LATCHES. The operator, 2026-09-27: *"If the open
+        TRADES put us back under the limit again after they close, it can open
+        trades again."* The answer is recomputed every call: REALIZED net at or
+        beyond -limit halts NEW entries; once closes bring the loss back under
+        the limit, entries re-open. Open positions are never gated here.
+        ⚠️ ONE PAGE PER EPISODE (WA 17): the page fires on the transition INTO
+        the halt; the re-open is logged; a second breach later in the day is a
+        new episode and pages again."""
         net = self.day_realized_pnl()
         self._session_pnl_usd = net   # keep the in-memory mirror truthful
-        if net <= -self._daily_loss_limit and not self._session_halted:
+        breached = net <= -self._daily_loss_limit
+        if not breached and self._session_halted:
+            self._session_halted = False
+            logger.warning(
+                f"\u2705 [{INSTRUMENT}] DAILY CATASTROPHIC LOSS CAP RE-ARMED: day "
+                f"realized ${net:+.0f} is back under the -${self._daily_loss_limit:.0f} "
+                f"limit. New entries RE-OPENED."
+            )
+        if breached and not self._session_halted:
             self._session_halted = True
             # v-symbol 2026-08-03: NAME THE BOX. One symbol per box and 15 of
             # them can breach independently, so an unattributed alert forces a
             # fleet-wide hunt to find which one halted.
             logger.warning(
-                f"\U0001F6D1 [{INSTRUMENT}] DAILY LOSS LIMIT HIT: day P&L ${net:+.0f} "
-                f"<= -${self._daily_loss_limit:.0f}. Halting NEW entries. "
-                f"Override via configure.sh."
+                f"\U0001F6D1 [{INSTRUMENT}] DAILY CATASTROPHIC LOSS CAP HIT: day "
+                f"realized ${net:+.0f} <= -${self._daily_loss_limit:.0f}. Halting NEW "
+                f"entries; open positions are still managed. Entries re-open if "
+                f"closes bring the loss back under the limit."
             )
             try:
                 from notifications.alert_manager import get_alert_manager
                 get_alert_manager()._send(
-                    f"\U0001F6D1 {INSTRUMENT} DAILY LOSS LIMIT HIT — day P&L ${net:+.0f} "
-                    f"(limit ${self._daily_loss_limit:.0f}). New entries halted. "
-                    f"Override via configure.sh."
+                    f"\U0001F6D1 {INSTRUMENT} DAILY CATASTROPHIC LOSS CAP HIT — day "
+                    f"realized ${net:+.0f} (limit ${self._daily_loss_limit:.0f}). New "
+                    f"entries halted; open positions still managed. Entries re-open "
+                    f"if closes bring the loss back under the limit."
                 )
             except Exception:
                 pass
@@ -764,7 +795,9 @@ class RiskManager:
         self._seeded             = False   # allow the DB re-seed to run
         # Re-derive halt state from the DB rather than blindly clearing it: on a
         # genuine new day realized P&L is 0 (no closed trades) and this clears;
-        # on a mid-session restart it re-reads today's loss and STAYS halted.
+        # on a mid-session restart it re-reads today's loss and STAYS halted
+        # while the loss is at or beyond the limit (r162: the same rule
+        # is_halted() applies every call, so the two can no longer disagree).
         self._session_pnl_usd    = self.day_realized_pnl()
         self._session_halted     = self._session_pnl_usd <= -self._daily_loss_limit
         logger.info(

@@ -1,4 +1,6 @@
 #!/bin/bash
+# v4.3 — 2026-09-27 — OTV4TEST r162. Item 6 is the Daily catastrophic loss cap (same key);
+#         it now re-opens entries once the realized loss is back under the limit.
 # v4.2 — 2026-09-27 — OTV4TEST r161. Item 2 is Risk per trade AND the ramp START
 #         (MIN): OT_ORB_RISK_USD is merged into it and no longer read. Item 8 is the
 #         ramp TOP (MAX); items 9-11 are the ORB / Breakout / VOLT scaling switches.
@@ -58,7 +60,7 @@ export OT_RISK_USD="200"               # configure.sh item 2  Risk per trade / r
 # export OT_SCALE_ORB="1"             # configure.sh item 9  ORB scaling (1 on, 0 flat)
 # export OT_SCALE_BREAKOUT="1"        # configure.sh item 10 Breakout scaling (1 on, 0 flat)
 # export OT_SCALE_VOLT="1"            # configure.sh item 11 VOLT scaling (1 on, 0 flat)
-# export OT_DAILY_LOSS_LIMIT="200"    # configure.sh item 6  Daily loss cap (defaults to OT_RISK_USD)
+# export OT_DAILY_LOSS_LIMIT="200"    # configure.sh item 6  Daily catastrophic loss cap (defaults to OT_RISK_USD)
 export OT_PIN_PROXIMITY_ACTIVE="0"    # configure.sh item 7  Pin-proximity gate (PIN.1: off pending data)
 
 # ── Box ───────────────────────────────────────────────────────────────────────

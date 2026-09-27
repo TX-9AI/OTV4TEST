@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-354 Python modules across 12 local packages.
+355 Python modules across 12 local packages.
 
-**Reached by:** 118 imported · 12 declared entry points · 141 referenced from a script, unit or doc but never imported · **83 by nothing here**.
+**Reached by:** 118 imported · 12 declared entry points · 142 referenced from a script, unit or doc but never imported · **83 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -55,7 +55,7 @@ Change these with the most care; a break here reaches everything downstream.
 | `strategy/__init__.py` | 53 | atp_butterfly_plan.py, breakout_plan.py, check_age_gate_gone.py, check_anchors.py |
 | `strategy/plan.py` | 47 | atp_butterfly_plan.py, breakout_plan.py, check_anchors.py, check_atp_butterfly.py |
 | `utils/time_utils.py` | 41 | alert_manager.py, broker_reconcile.py, check_bfly_vwap_band.py, check_butterfly_foundational.py |
-| `database/trade_logger.py` | 30 | breakout_plan.py, check_atp_butterfly.py, check_breakout_new_extreme.py, check_condor_mgmt.py |
+| `database/trade_logger.py` | 31 | breakout_plan.py, check_atp_butterfly.py, check_breakout_new_extreme.py, check_condor_mgmt.py |
 | `data/derived_store.py` | 28 | anchors.py, breakout_plan.py, check_bfly_vwap_band.py, check_derived_layer.py |
 | `derived/__init__.py` | 24 | atp_butterfly_plan.py, check_anchors.py, check_atp_butterfly.py, check_bfly_vwap_band.py |
 | `strategy/base_strategy.py` | 22 | atp_butterfly.py, breakout_plan.py, check_credit_remainder.py, check_entry_gate.py |
@@ -220,11 +220,11 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `database/__init__.py`
 - **calls:** (none)
-- **called by:** `tests/check_lineage.py`, `tests/check_runaway_break_key.py`
+- **called by:** `tests/check_lineage.py`, `tests/check_loss_cap_rearm.py`, `tests/check_runaway_break_key.py`
 
 ### `database/trade_logger.py`
 - **calls:** `config.py`, `derived/registry.py`, `strategy/sweep_credit_spread.py`, `utils/time_utils.py`
-- **called by:** `derived/counterfactual.py`, `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `main.py`, `risk/risk_manager.py`, `strategy/breakout_plan.py`, `strategy/condor_roll.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`, `tests/check_atp_butterfly.py`, `tests/check_breakout_new_extreme.py`, `tests/check_condor_mgmt.py`, `tests/check_condor_pairing.py`, `tests/check_condor_stop_suppression.py`, `tests/check_credit_remainder.py`, `tests/check_db_handles.py`, `tests/check_lineage.py`, `tests/check_management_plan.py`, `tests/check_one_per_session.py`, `tests/check_orb_resume.py`, `tests/check_plan_prepares.py`, `tests/check_runaway_break_key.py`, `tests/check_runaway_plan.py`, `tests/check_standing_offer.py`, `tests/check_structure_viable.py`, `tests/check_sweep_plan.py`, `tests/check_sweep_stop.py`, `tests/check_trade_report.py`
+- **called by:** `derived/counterfactual.py`, `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `main.py`, `risk/risk_manager.py`, `strategy/breakout_plan.py`, `strategy/condor_roll.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`, `tests/check_atp_butterfly.py`, `tests/check_breakout_new_extreme.py`, `tests/check_condor_mgmt.py`, `tests/check_condor_pairing.py`, `tests/check_condor_stop_suppression.py`, `tests/check_credit_remainder.py`, `tests/check_db_handles.py`, `tests/check_lineage.py`, `tests/check_loss_cap_rearm.py`, `tests/check_management_plan.py`, `tests/check_one_per_session.py`, `tests/check_orb_resume.py`, `tests/check_plan_prepares.py`, `tests/check_runaway_break_key.py`, `tests/check_runaway_plan.py`, `tests/check_standing_offer.py`, `tests/check_structure_viable.py`, `tests/check_sweep_plan.py`, `tests/check_sweep_stop.py`, `tests/check_trade_report.py`
 
 ### `derived/__init__.py`
 - **calls:** `derived/base.py`
@@ -380,7 +380,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `risk/risk_manager.py`
 - **calls:** `config.py`, `database/trade_logger.py`, `notifications/alert_manager.py`, `utils/math_utils.py`, `utils/time_utils.py`
-- **called by:** `execution/entry_engine.py`, `execution/position_manager.py`, `main.py`, `tests/check_breakout_research.py`, `tests/check_noise_floor_open.py`, `tests/check_orb_budget.py`, `tests/check_orb_geometry_size.py`, `tests/check_orb_plan.py`, `tests/check_scaling_toggle.py`, `tests/check_sizing_parity.py`, `tests/check_structure_stop_ramp.py`, `tests/check_volt_sizing.py`
+- **called by:** `execution/entry_engine.py`, `execution/position_manager.py`, `main.py`, `tests/check_breakout_research.py`, `tests/check_loss_cap_rearm.py`, `tests/check_noise_floor_open.py`, `tests/check_orb_budget.py`, `tests/check_orb_geometry_size.py`, `tests/check_orb_plan.py`, `tests/check_scaling_toggle.py`, `tests/check_sizing_parity.py`, `tests/check_structure_stop_ramp.py`, `tests/check_volt_sizing.py`
 
 ### `risk/session_guard.py`
 - **calls:** `config.py`, `data/macro_data.py`, `utils/time_utils.py`
@@ -873,6 +873,10 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tests/check_lone_stop.py`
 - **calls:** `config.py`
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+
+### `tests/check_loss_cap_rearm.py`
+- **calls:** `database/__init__.py`, `database/trade_logger.py`, `risk/risk_manager.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_low_price_symbols.py`
 - **calls:** `config.py`, `strategy/__init__.py`, `strategy/orb_plan.py`, `utils/__init__.py`, `utils/math_utils.py`

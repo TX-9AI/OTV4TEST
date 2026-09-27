@@ -1,5 +1,6 @@
 """
-config.py  v4.40
+config.py  v4.41
+v4.41 2026-09-27  OTV4TEST r162 (CAP.1) — DAILY_LOSS_LIMIT_USD is the DAILY CATASTROPHIC LOSS CAP, and it RE-ARMS. Value and key (OT_DAILY_LOSS_LIMIT) unchanged; the comment now says what risk_manager v4.8 does: no new entries while realized net is at or beyond -limit, entries re-open once closes bring it back under.
 v4.40 2026-09-27  OTV4TEST r161 (SIZE.2) — ONE MIN, ONE MAX, AND A SCALING SWITCH PER TRADE. The operator, 2026-09-27: "Risk per trade/Ramp Start (MIN)", "Merge it. that was always the intent." ORB_RISK_USD no longer reads OT_ORB_RISK_USD: it IS RISK_PER_TRADE_USD, and a unit still carrying the old key is named at startup (ORB_RISK_ENV_IGNORED) rather than silently obeyed or silently dropped. SCALE_ORB / SCALE_BREAKOUT / SCALE_VOLT (OT_SCALE_ORB / OT_SCALE_BREAKOUT / OT_SCALE_VOLT, "1" = on, default on): OFF sizes that strategy FLAT on the budget rule (about RISK_PER_TRADE_USD of premium) while its structure stop, exits and the r93 noise floor stay exactly as they are - "retain the original structure stop ... but just use a flat dollar amount for the entry".
 v4.39 2026-09-26  OTV4TEST r149 (EOD.1) — THE END OF DAY IS ONE TABLE, AND THE OPERATOR RESET IT. `EOD_SCHEDULE`: entries stop 15:40; positions with ASSIGNMENT RISK (a short leg) post RESTING best-case closes at 15:45; everything else LADDERS from 15:50; anything unfilled CROSSES at 15:55. Directional debit entries run ALL DAY to 15:40 (ORB, Runaway, Hunt, Breakout, VOLT; was 11:30). HARD_CLOSE_ET, FLATTEN_WINDOW_OPEN_ET, VERTICAL_HOLD_TO_ET and DEBIT_DIRECTIONAL_CUTOFF_ET now DERIVE from it; the debit cutoff's OT_DEBIT_CUTOFF_ET override is REMOVED (a second window source).
 v4.38 2026-09-26  OTV4TEST r148 (WIN.1) — ONE ENTRY-WINDOW TABLE. `ENTRY_WINDOWS` is the single source of every strategy's entry window; the admission table and every plan read it, and each older name (ORB_NO_ENTRY_AFTER_ET, RUNAWAY_CUTOFF_ET, VOLT_WINDOW_*, TCS_*, CREDIT_*, CONDOR_ENTRY_CUTOFF_ET, SWEEP_CS_*_FORK, BUTTERFLY_ENTRY_START_ET) is DERIVED from it. HUNT_CUTOFF_ET, BREAKOUT_LATEST_ET and GEX_BFLY_LATEST_ET are added: three strategies read those names with a literal fallback and the names never existed. Every value is UNCHANGED (tests/check_one_window_table.py pins all 47 resolved values).
@@ -1043,8 +1044,10 @@ TRAIL_GAIN_LOCK = float(os.environ.get("OT_TRAIL_GAIN_LOCK", "0.50"))
 # is explicit and the default is the exception that needs announcing. main.py
 # logs it at startup and status.py prints it; this flag is how they tell.
 ORB_BUDGET_IS_DEFAULT = "OT_ORB_BUDGET_USD" not in os.environ
-# Daily loss limit: halt NEW entries when the day's NET realized P&L is down by
-# this much. Defaults to one trade's risk; override via OT_DAILY_LOSS_LIMIT.
+# DAILY CATASTROPHIC LOSS CAP (r162 name): no NEW entries while the day's NET
+# REALIZED P&L is down by this much; open positions are still managed, and
+# entries RE-OPEN once closes bring the loss back under it (the operator,
+# 2026-09-27). Defaults to one trade's risk; override via OT_DAILY_LOSS_LIMIT.
 DAILY_LOSS_LIMIT_USD = float(os.environ.get("OT_DAILY_LOSS_LIMIT", str(RISK_PER_TRADE_USD)))
 # v2.0 (runner refinement): the universal directional premium floor, now 40%
 # by default. On 0DTE, gamma routinely wicks a healthy trade -25% while the

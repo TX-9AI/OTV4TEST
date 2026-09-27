@@ -1,5 +1,6 @@
 """
-main.py  v4.73
+main.py  v4.74
+v4.74 2026-09-27  OTV4TEST r162 (CAP.1) — the entry gate's halt line and the startup lines name the DAILY CATASTROPHIC LOSS CAP and say it RE-OPENS once closes bring the realized loss back under the limit (risk_manager v4.8 no longer latches). The gate itself is unchanged: it still blocks only NEW entries; open positions are managed as before.
 v4.73 2026-09-27  OTV4TEST r161 (SIZE.2) — PER-TRADE SCALING SWITCHES. `_scaling_on(signal)` reads config.SCALE_ORB / SCALE_BREAKOUT / SCALE_VOLT by the strategy's own name and the entry path passes it to size_for(scaled=...); OFF sizes FLAT (the budget rule) after the r93 noise floor, and the signal's structure stop, exits and `sizes_on_geometry` are untouched. Every other strategy returns True and reaches exactly the arithmetic it reached before. The service-mode line names the three switches and the merged MIN, and a unit still carrying the retired OT_ORB_RISK_USD is WARNED at startup (it is no longer read: ORB_RISK_USD is RISK_PER_TRADE_USD by the operator's ruling, "Merge it").
 v4.72 2026-09-26  OTV4TEST r149 (EOD.1) — handle_hard_close runs the operator's end of day: it passes the tick's spot (the analysis price cache) so a resting close can be priced at its best case; flatten_all labels each close itself; it pages ONLY for a position still open PAST the 15:55 cross (a resting or laddering close before then is expected, and paging on it would cry wolf every afternoon, WA section 17); it no longer logs 'complete — all positions flat' while positions are held or resting. The held-position manage pass runs until 15:50 (the ladder), for the positions without assignment risk. The intraday broker reconcile's wind-down sweeps follow EOD_SCHEDULE — 15:45, 15:50, 15:55 (NEW: before the cross, so a short the broker liquidated since 15:50 is found and its surviving long adopted before the cross fires) and 15:57 (operator: "Agree").
 v4.71 2026-09-26  OTV4TEST r146 — main() REFUSES TO START WITH OT_INSTRUMENT UNSET (exit 78,
@@ -3701,11 +3702,14 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     entry_eng = get_entry_engine(state.paper_trading)
 
     # ── Session gate ──────────────────────────────────────────────────────────
-    # Daily loss halt: if the day's NET P&L is down by the limit, take no new
-    # trades (open positions keep being managed to exit). Override via configure.sh.
+    # Daily catastrophic loss cap: while the day's REALIZED net P&L is down by
+    # the limit, take no new trades (open positions keep being managed to exit).
+    # r162: it re-opens once closes bring the loss back under the limit.
     if risk_mgr.is_halted():
-        logger.info("Entry blocked: DAILY LOSS LIMIT reached — halted. Override via configure.sh.")
-        _plan_skip_all("DAILY LOSS LIMIT reached — halted", gate="catastrophic_cap")
+        logger.info("Entry blocked: DAILY CATASTROPHIC LOSS CAP reached — no new entries "
+                    "until the realized loss is back under the limit.")
+        _plan_skip_all("CATASTROPHIC LOSS CAP reached — no new entries until back under",
+                       gate="catastrophic_cap")
         return
 
     # r102 — OUTSIDE RTH THIS IS A REHEARSAL, NOT A TRADING PASS. can_enter
@@ -6285,7 +6289,7 @@ def main():
             f"Service mode: {'PAPER' if PAPER_TRADING else 'LIVE'} | "
             f"{INSTRUMENT} | "
             f"risk=${RISK_PER_TRADE_USD:.0f}/trade | "
-            f"daily_loss_cap=${DAILY_LOSS_LIMIT_USD:.0f} net"
+            f"catastrophic_loss_cap=${DAILY_LOSS_LIMIT_USD:.0f} realized net"
             # r201 — WHICH BUDGET, AND WHETHER ANYBODY CHOSE IT. An
             # unconfigured box trades 1-lot on an index name, which reads as a
             # defect rather than a config gap unless the banner says otherwise.
@@ -6431,7 +6435,7 @@ def _interactive_startup() -> SessionConfig:
     print(f"  Instrument:    {instrument}")
     print(f"  Risk/trade:    ${risk_usd:.0f}")
     print(f"  Mode:          {'PAPER' if paper else '⚠️  LIVE'}")
-    print(f"  Daily cap:     ${DAILY_LOSS_LIMIT_USD:.0f} NET loss → halt new entries")
+    print(f"  Loss cap:      ${DAILY_LOSS_LIMIT_USD:.0f} realized → no new entries until back under")
     print(f"  ORB budget:    ${ORB_BUDGET_USD:.0f} per setup"
           f"{'  (DEFAULT — not set for this box)' if ORB_BUDGET_IS_DEFAULT else ''}")
     print(f"{'─'*50}")

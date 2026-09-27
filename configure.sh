@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# configure.sh  v4.12
+# configure.sh  v4.13
+# v4.13 2026-09-27  OTV4TEST r162 (CAP.1) — ITEM 6 IS THE DAILY CATASTROPHIC LOSS CAP.
+#       The operator's name for it, and his rule: "Manage what's open but no new
+#       entries. If the open TRADES put us back under the limit again after they
+#       close, it can open trades again." Same key (OT_DAILY_LOSS_LIMIT); the
+#       labels and the item's explanation now say it re-opens (risk_manager v4.8).
 # v4.12 2026-09-27  OTV4TEST r161 (SIZE.2) — ONE MIN, ONE MAX, A SCALING SWITCH PER
 #       TRADE. The operator: "Risk per trade/Ramp Start (MIN)", "Scaling Position
 #       Ramp TOP (MAX)", "ORB Scaling OFF/ON", "Breakout Scaling OFF/ON", "VOLT
@@ -279,7 +284,7 @@ show_config() {
     echo -e "  Instrument:     ${BOLD}${instrument:-not set}${RESET}"
     echo -e "  Risk per trade: ${BOLD}\$${risk:-not set}${RESET}"
     local dll=$(get_env "OT_DAILY_LOSS_LIMIT")
-    echo -e "  Daily loss cap: ${BOLD}$(fmt_declared "$dll")${RESET}"
+    echo -e "  Loss cap:       ${BOLD}$(fmt_declared "$dll")${RESET} (daily catastrophic)"
     echo -e "  Pin gate:       ${BOLD}$(pin_gate_label)${RESET}"
     echo -e "  Scaling:        ${BOLD}ORB $(scaling_short OT_SCALE_ORB SCALE_ORB) · BRK $(scaling_short OT_SCALE_BREAKOUT SCALE_BREAKOUT) · VOLT $(scaling_short OT_SCALE_VOLT SCALE_VOLT)${RESET}"
     local old_start=$(get_env "OT_ORB_RISK_USD")
@@ -577,8 +582,9 @@ change_daily_loss() {
     current=$(get_env "OT_DAILY_LOSS_LIMIT")
     risk=$(get_env "OT_RISK_USD")
     echo ""
-    echo -e "  ${BOLD}Daily loss cap${RESET} — halts NEW entries once the day's NET"
-    echo -e "  P&L is down by this amount. Open trades still exit normally."
+    echo -e "  ${BOLD}Daily catastrophic loss cap${RESET} — no NEW entries while the"
+    echo -e "  day's REALIZED net is down by this amount. Open trades are still"
+    echo -e "  managed; entries re-open once closes bring it back under."
     echo -e "  Current: ${BOLD}$(fmt_declared "$current")${RESET}"
     echo ""
     while true; do
@@ -590,13 +596,13 @@ change_daily_loss() {
         if [[ "$input" == "r" ]]; then
             set_env "OT_DAILY_LOSS_LIMIT" "$risk"
             reload_daemon
-            print_ok "Daily loss cap reset to per-trade risk (\$${risk})."
+            print_ok "Catastrophic loss cap reset to per-trade risk (\$${risk})."
             return
         fi
         if [[ "$input" =~ ^[0-9]+(\.[0-9]+)?$ ]] && (( $(echo "$input > 0" | bc -l) )); then
             set_env "OT_DAILY_LOSS_LIMIT" "$input"
             reload_daemon
-            print_ok "Daily loss cap updated to ${BOLD}\$$input${RESET}."
+            print_ok "Catastrophic loss cap updated to ${BOLD}\$$input${RESET}."
             return
         fi
         print_warn "Enter a positive number, 'r' to reset, or ENTER to keep."
@@ -777,7 +783,7 @@ while true; do
     echo -e "  ${BOLD}3.${RESET}  Paper / Live mode   (currently: $([ "$(get_env OT_PAPER_TRADING)" = "False" ] && echo "🔴 LIVE" || echo "📄 PAPER"))"
     echo -e "  ${BOLD}4.${RESET}  Telegram alerts     (chat: $(get_env TELEGRAM_CHAT_ID))"
     echo -e "  ${BOLD}5.${RESET}  TastyTrade credentials"
-    echo -e "  ${BOLD}6.${RESET}  Daily loss cap      (currently: \$$(dll=$(get_env OT_DAILY_LOSS_LIMIT); echo ${dll:-$(get_env OT_RISK_USD)}))"
+    echo -e "  ${BOLD}6.${RESET}  Catastrophic cap    (currently: \$$(dll=$(get_env OT_DAILY_LOSS_LIMIT); echo ${dll:-$(get_env OT_RISK_USD)}))"
     echo -e "  ${BOLD}7.${RESET}  Pin-proximity gate  (currently: $(pin_gate_label))"
     echo -e "  ${BOLD}8.${RESET}  Ramp TOP (MAX)      (currently: $(fmt_declared "$(get_env OT_ORB_BUDGET_USD)"))"
     echo -e "  ${BOLD}9.${RESET}  ORB scaling         (currently: $(scaling_label OT_SCALE_ORB SCALE_ORB))"

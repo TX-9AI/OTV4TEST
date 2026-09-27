@@ -1,4 +1,7 @@
-"""tests/check_bootstrap.py — v1.6
+"""tests/check_bootstrap.py — v1.7
+
+v1.7  2026-09-27 — OTV4TEST r162. G17 RE-POINTED (section 38.4): item 6's label is
+      "Daily catastrophic loss cap" (the operator's name); same key, same item.
 
 v1.6  2026-09-27 — OTV4TEST r161. RE-POINTED, NOT DROPPED (section 38.4): the ramp
       START is merged into risk per trade (the operator: "Merge it"), so setup no
@@ -785,7 +788,7 @@ guard("G17 each sizing line names its configure.sh item",
                                     ("OT_SCALE_ORB", "9", "ORB scaling"),
                                     ("OT_SCALE_BREAKOUT", "10", "Breakout scaling"),
                                     ("OT_SCALE_VOLT", "11", "VOLT scaling"),
-                                    ("OT_DAILY_LOSS_LIMIT", "6", "Daily loss cap"))))
+                                    ("OT_DAILY_LOSS_LIMIT", "6", "Daily catastrophic loss cap"))))
 
 # ── G0 ────────────────────────────────────────────────────────────────────────
 for d in _TMP:
