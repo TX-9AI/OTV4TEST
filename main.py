@@ -1,5 +1,6 @@
 """
-main.py  v4.74
+main.py  v4.75
+v4.75 2026-09-27  OTV4TEST r165 (EXP.1) — AN EXPIRED POSITION BOOKS ITS SETTLEMENT VALUE. Boot Step 1 passes close_expired_open_trades a `settle` built from broker_reconcile.settle_expired and `_settlement_spot` (the underlying's 16:00 settlement close from this box's feed store, read-only), and `_close_phantom_with_recovery` settles an expired phantom the same way before falling back to the flagged $0.00. The live broker reconcile then reads SHARE positions: any in the box's instrument is an exercise/assignment footprint and pages (send_exercise_footprint_alert). Nothing that trades or exits is touched.
 v4.74 2026-09-27  OTV4TEST r162 (CAP.1) — the entry gate's halt line and the startup lines name the DAILY CATASTROPHIC LOSS CAP and say it RE-OPENS once closes bring the realized loss back under the limit (risk_manager v4.8 no longer latches). The gate itself is unchanged: it still blocks only NEW entries; open positions are managed as before.
 v4.73 2026-09-27  OTV4TEST r161 (SIZE.2) — PER-TRADE SCALING SWITCHES. `_scaling_on(signal)` reads config.SCALE_ORB / SCALE_BREAKOUT / SCALE_VOLT by the strategy's own name and the entry path passes it to size_for(scaled=...); OFF sizes FLAT (the budget rule) after the r93 noise floor, and the signal's structure stop, exits and `sizes_on_geometry` are untouched. Every other strategy returns True and reaches exactly the arithmetic it reached before. The service-mode line names the three switches and the merged MIN, and a unit still carrying the retired OT_ORB_RISK_USD is WARNED at startup (it is no longer read: ORB_RISK_USD is RISK_PER_TRADE_USD by the operator's ruling, "Merge it").
 v4.72 2026-09-26  OTV4TEST r149 (EOD.1) — handle_hard_close runs the operator's end of day: it passes the tick's spot (the analysis price cache) so a resting close can be priced at its best case; flatten_all labels each close itself; it pages ONLY for a position still open PAST the 15:55 cross (a resting or laddering close before then is expected, and paging on it would cry wolf every afternoon, WA section 17); it no longer logs 'complete — all positions flat' while positions are held or resting. The held-position manage pass runs until 15:50 (the ladder), for the positions without assignment risk. The intraday broker reconcile's wind-down sweeps follow EOD_SCHEDULE — 15:45, 15:50, 15:55 (NEW: before the cross, so a short the broker liquidated since 15:50 is found and its surviving long adopted before the cross fires) and 15:57 (operator: "Agree").
@@ -5949,6 +5950,42 @@ def _fetch_close_order_history(records: list) -> list:
         return []
 
 
+def _settlement_spot(symbol: str, expiry: str):
+    """r165 (EXP.1): the underlying's 16:00 ET settlement close on `expiry` - the close of the
+    last 1m bar that opens before 16:00 that day - from the feed store, read-only. None if the
+    store has no bar for that day (the caller then keeps the flagged $0.00)."""
+    try:
+        import sqlite3
+        from datetime import datetime as _dt
+        from zoneinfo import ZoneInfo as _Z
+        from data.candle_feed import feed_db_path
+        y, m, d = (int(x) for x in expiry[:10].split("-"))
+        t16 = _dt(y, m, d, 16, 0, tzinfo=_Z("America/New_York")).timestamp() * 1000
+        t_open = t16 - 390 * 60 * 1000
+        c = sqlite3.connect(f"file:{feed_db_path()}?mode=ro", uri=True)
+        try:
+            row = c.execute("SELECT close FROM candles WHERE symbol=? AND interval='1m' "
+                            "AND ts_epoch_ms>=? AND ts_epoch_ms<? ORDER BY ts_epoch_ms DESC LIMIT 1",
+                            (symbol, int(t_open), int(t16))).fetchone()
+        finally:
+            c.close()
+        return float(row[0]) if row and row[0] else None
+    except Exception as exc:                                   # noqa: BLE001
+        logger.warning("settlement spot unavailable for %s %s: %s", symbol, expiry, exc)
+        return None
+
+
+def _settle_expired_row(rec):
+    """r165: (exit_price, pnl_usd, label) for an expired record, or None (keep flagged 0.0)."""
+    from execution.broker_reconcile import settle_expired, phantom_pnl
+    from utils.time_utils import now_et as _net
+    got = settle_expired(rec, _net(), _settlement_spot)
+    if got is None:
+        return None
+    net, label = got
+    return net, phantom_pnl(rec, net), label
+
+
 def _close_phantom_with_recovery(trade_logger, rec, orders, reason: str) -> str:
     """Close one phantom row, booking the REAL fill recovered from broker order
     history when a matching closing order exists (manual close), else the
@@ -5968,6 +6005,12 @@ def _close_phantom_with_recovery(trade_logger, rec, orders, reason: str) -> str:
             pnl_usd    = pnl,
         )
         return f"{rid[:8]} pnl=${pnl:+.2f}@{net}" + ("" if full else f" ({qty:g} of {rec.get('contracts')})")
+    # r165 (EXP.1): an EXPIRED position leaves no closing order - settle it at its value.
+    settled = _settle_expired_row(rec)
+    if settled is not None:
+        net, pnl, label = settled
+        trade_logger.close_phantom(rid, reason=f"{reason}_{label}", exit_price=net, pnl_usd=pnl)
+        return f"{rid[:8]} {label} pnl=${pnl:+.2f}@{net}"
     trade_logger.close_phantom(rid, reason=reason)
     return f"{rid[:8]} pnl=UNKNOWN($0 flagged)"
 
@@ -6131,7 +6174,31 @@ def _reconcile_with_broker(state: BotState, live_rows: list,
             f"id={rec.get('trade_id','')[:8]}"
         )
 
+    _check_exercise_footprint(instrument)                     # r165 (EXP.1)
     return list(plan.keep) + list(plan.adopt)
+
+
+def _check_exercise_footprint(instrument: str) -> list:
+    """r165 (EXP.1): LIVE share positions in the box's instrument are what an exercise or
+    assignment leaves behind - page them. Fail-safe: a failed read logs and pages nothing."""
+    try:
+        from data.tasty_client import get_open_equity_positions
+        eq = [e for e in get_open_equity_positions()
+              if str(e.get("symbol", "")).upper() == str(instrument).upper()]
+    except Exception as exc:                                   # noqa: BLE001
+        logger.error("exercise footprint check: share read failed (%s) - could not look", exc)
+        return []
+    if eq:
+        px = None
+        try:
+            from data.market_data import fetch_quote
+            px = fetch_quote(instrument)
+        except Exception:                                      # noqa: BLE001
+            px = None
+        notional = sum(float(e.get("quantity", 0)) for e in eq) * float(px or 0)
+        logger.error("SHARES IN THE ACCOUNT %s: %s", instrument, eq)
+        get_alert_manager().send_exercise_footprint_alert(instrument, eq, notional)
+    return eq
 
 
 def _recover_open_position(state: BotState, restart_type: str = ""):
@@ -6154,7 +6221,7 @@ def _recover_open_position(state: BotState, restart_type: str = ""):
     instrument = os.environ.get("OT_INSTRUMENT", INSTRUMENT)
 
     # ── Step 1: sweep only genuinely EXPIRED orphans ─────────────────────────
-    expired = trade_logger.close_expired_open_trades()
+    expired = trade_logger.close_expired_open_trades(settle=_settle_expired_row)   # r165
     if expired:
         descs = [_describe_position(r) for r in expired]
         logger.warning(

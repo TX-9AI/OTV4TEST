@@ -1,5 +1,8 @@
 """
-data/tasty_client.py  v4.0
+data/tasty_client.py  v4.1
+v4.1  2026-09-27  OTV4TEST r165 (EXP.1) — get_open_equity_positions(): the account's SHARE
+      positions, the footprint an exercise or assignment leaves. Same read and version handling
+      as get_open_option_positions, equities only. LIVE only; raises TastyClientError on failure.
 TastyTrade session and REST wrapper.
 
 v4.0  2026-08-19  Ported from options_trader_v3 at the OTV4 split.
@@ -173,6 +176,32 @@ def get_open_option_positions() -> list:
             continue
 
     logger.info(f"Broker reports {len(out)} open option position(s)")
+    return out
+
+
+def get_open_equity_positions() -> list:
+    """r165 (EXP.1): LIVE share positions -> [{symbol, quantity, direction}]. An exercised
+    long call / assigned short put arrives as LONG shares, the reverse as SHORT. Raises
+    TastyClientError on failure so the caller can say it could not look."""
+    account = get_account()
+    session = get_session()
+    try:
+        raw = account.get_positions(session)
+        if asyncio.iscoroutine(raw):
+            raw = run_async(raw)
+    except Exception as e:
+        raise TastyClientError(f"get_positions failed: {e}") from e
+    out = []
+    for p in raw or []:
+        itype = getattr(p, "instrument_type", "")
+        itype = str(getattr(itype, "value", itype))
+        if "Equity" not in itype or "Option" in itype:
+            continue
+        qty = int(abs(float(getattr(p, "quantity", 0) or 0)))
+        direction = str(getattr(p, "quantity_direction", "") or "")
+        if qty and direction.lower() != "zero":
+            out.append({"symbol": getattr(p, "symbol", "") or "", "quantity": qty,
+                        "direction": direction})
     return out
 
 

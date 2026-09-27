@@ -1,5 +1,8 @@
 """
-notifications/alert_manager.py  v4.4
+notifications/alert_manager.py  v4.5
+v4.5  2026-09-27  OTV4TEST r165 (EXP.1) — send_exercise_footprint_alert: shares in the account
+      are what an exercise or assignment leaves. Pages ONCE per episode (a key per symbol and
+      share count) - it is a real emergency, WA 17, not a routine line.
 v4.4  2026-09-20  OTV4TEST r68 (BOX.11) — THE BOOT ALERT SAYS WHETHER AN AGENT
       SESSION IS UP. Operator: "on a reboot, I get a telegram notification of
       the new ip address. Can I get added to that 'Claude is up' ... and 'Agent
@@ -365,6 +368,16 @@ class AlertManager:
         self._send(
             f"\U0001F9F9 Closed {len(trade_ids)} phantom(s) | {instrument} | "
             f"{ids} | in DB but not at broker | {fmt_et_short()}"
+        )
+
+    def send_exercise_footprint_alert(self, instrument: str, equity: list, notional: float = 0.0):
+        """r165 (EXP.1): shares in the account = an exercise or assignment happened."""
+        desc = ", ".join(f"{e.get('direction','?')} {e.get('quantity')} {e.get('symbol')}" for e in equity)
+        self._send(
+            f"\U0001F6A8 SHARES IN THE ACCOUNT | {instrument} | {desc}"
+            + (f" | ~${notional:,.0f} notional" if notional else "")
+            + " | an option was exercised or assigned - flatten before the next open | "
+            + f"{fmt_et_short()}"
         )
 
     def send_reconcile_unavailable_alert(self, instrument: str, reason: str = ""):

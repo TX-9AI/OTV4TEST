@@ -1,5 +1,16 @@
 """
-database/trade_logger.py  v4.18
+database/trade_logger.py  v4.19
+v4.19 2026-09-27  OTV4TEST r165 (EXP.1) — close_expired_open_trades(settle=...) BOOKS THE
+      SETTLEMENT. This is the path an overnight-expired position actually takes (boot Step 1, paper
+      AND live), and it forced pnl_usd to 0.0: an exercised ITM winner booked as nothing. A caller
+      may pass `settle(record) -> (exit_price, pnl_usd, label) | None`; a settled row books its
+      exit_price, pnl_usd and exit_reason "<reason>_<label>". A row settle() cannot price keeps the
+      old flagged 0.0, as before. With no settle, behaviour is unchanged.
+      🔴 AND A DEFECT FROM THE v4 PORT (08-19): close_phantom's RECOVERED branch wrote
+      `exit_price=?` - there is NO exit_price column (it is exit_premium), so the first LIVE
+      phantom whose real fill was recovered from order history would have raised
+      OperationalError instead of booking. Paper never runs that path. Both writes now use
+      exit_premium. Shared with otv4 (same line, ported from v3).
 v4.18 2026-09-25  OTV4TEST r143 — EVERY CONNECTION IS CLOSED. `with self._connect() as conn:`
       COMMITS but does NOT close a sqlite3 connection, and these sit in a
       reference cycle, so each call left its file handle open until the cyclic
@@ -1131,7 +1142,7 @@ class TradeLogger:
         return out
 
     def close_expired_open_trades(
-        self, exit_reason: str = "expired_orphan_autoclosed"
+        self, exit_reason: str = "expired_orphan_autoclosed", settle=None
     ) -> List[TradeRecord]:
         """Reconcile TRULY EXPIRED orphans only: any status='open' row whose
         expiry date has passed (expiry < today ET). A weekly still in its life is
@@ -1152,8 +1163,27 @@ class TradeLogger:
                 exp = self._expiry_date(r["expiry"])
                 if exp != "" and exp < today_et:
                     expired.append(make_record(**dict(r)))
-            if expired:
-                ids = [r["trade_id"] for r in expired]
+            # r165 (EXP.1): price what can be priced at its settlement value.
+            settled = {}
+            if settle is not None:
+                for r in expired:
+                    try:
+                        got = settle(r)
+                    except Exception as exc:                   # noqa: BLE001
+                        logger.warning("expiry settlement failed for %s: %s - flagged 0.0",
+                                       str(r.get("trade_id", ""))[:8], exc)
+                        got = None
+                    if got is not None:
+                        settled[r["trade_id"]] = got
+                for tid, (px, pnl, label) in settled.items():
+                    conn.execute(
+                        "UPDATE trades SET status='closed', exit_reason=?, exit_time=?, "
+                        "exit_premium=?, pnl_usd=? WHERE trade_id=?",
+                        (f"{exit_reason}_{label}", ts_for_db(), px, float(pnl), tid))
+                    logger.warning(f"Settled EXPIRED {tid[:8]} — {label} @ {px} pnl=${pnl:+.2f}")
+            unsettled = [r for r in expired if r["trade_id"] not in settled]
+            if unsettled:
+                ids = [r["trade_id"] for r in unsettled]
                 placeholders = ",".join("?" * len(ids))
                 conn.execute(
                     f"UPDATE trades SET status='closed', "
@@ -1189,7 +1219,7 @@ class TradeLogger:
             if pnl_usd is not None:
                 conn.execute(
                     "UPDATE trades SET status='closed', exit_reason=?, exit_time=?, "
-                    "exit_price=?, pnl_usd=? WHERE trade_id=?",
+                    "exit_premium=?, pnl_usd=? WHERE trade_id=?",
                     (reason, ts_for_db(), exit_price, float(pnl_usd), trade_id),
                 )
                 logger.warning(

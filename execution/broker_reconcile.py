@@ -1,5 +1,17 @@
 """
-execution/broker_reconcile.py  v4.0
+execution/broker_reconcile.py  v4.1
+v4.1  2026-09-27  OTV4TEST r165 (EXP.1) — AN EXPIRED POSITION IS BOOKED AT ITS SETTLEMENT VALUE,
+      NOT A FLAGGED $0.00. The operator, 2026-09-27, approving EXP.1's booking fix. QQQ is
+      physically settled and American-style: a long ITM 0DTE held to 16:00 is EXERCISED into
+      shares and a short ITM one ASSIGNED - neither leaves a closing order, so the reconcile fell
+      back to "pnl UNKNOWN $0.00" and booked an exercised winner as a total loss. `settle_expired`
+      prices each leg at intrinsic off the underlying's 16:00 settlement close and returns the
+      structure's net on the SAME basis match_closing_fills returns (single = premium, vertical =
+      short - long, butterfly = lower + upper - 2 x center), so phantom_pnl's existing
+      credit-signed math books it. It applies ONLY on/after the position's expiry (16:00 ET on the
+      expiry date): a position that vanishes BEFORE expiry with no closing order is still the
+      flagged $0.00 - genuinely unknown, and guessing would hide it. No settlement price -> None,
+      and the caller keeps the flagged $0.00, loudly.
 Reconciles local state against the broker.
 
 v4.0  2026-08-19  Ported from options_trader_v3 at the OTV4 split.
@@ -317,6 +329,59 @@ def match_closing_fills(record: dict, orders: list):
     if q <= 0 or p is None:
         return None
     return q, round(p, 4)
+
+
+def _expiry_passed(record: dict, now_et) -> bool:
+    """True on/after 16:00 ET of the record's expiry date. Missing/unparseable -> False."""
+    try:
+        y, m, d = (int(x) for x in str(record.get("expiry", "") or "")[:10].split("-"))
+    except Exception:                                          # noqa: BLE001
+        return False
+    exp = (y, m, d); today = (now_et.year, now_et.month, now_et.day)
+    return today > exp or (today == exp and now_et.hour * 60 + now_et.minute >= 16 * 60)
+
+
+def _intrinsic(side: str, strike: float, spot: float) -> float:
+    side = str(side or "").lower()
+    return max(spot - strike, 0.0) if side.startswith("c") else max(strike - spot, 0.0)
+
+
+def settle_expired(record: dict, now_et, spot_reader):
+    """r165 (EXP.1): (net_price, label) for an EXPIRED position, or None.
+    `spot_reader(symbol, expiry 'YYYY-MM-DD')` -> the underlying's 16:00 settlement close or
+    None. net_price is on match_closing_fills' basis so phantom_pnl books it unchanged.
+    label: expired_worthless | expired_itm_exercised (long) | expired_itm_assigned (short) |
+    expired_settled (a spread or fly with an ITM leg)."""
+    if not _expiry_passed(record, now_et):
+        return None
+    spot = spot_reader(str(record.get("symbol", "") or ""), str(record.get("expiry", ""))[:10])
+    if spot is None or spot <= 0:
+        return None
+    side = record.get("option_side", "")
+    f = lambda k: float(record.get(k) or 0.0)                  # noqa: E731
+    if bool(record.get("is_butterfly", False)):
+        lo, ce, up = f("lower_strike"), f("center_strike"), f("upper_strike")
+        if not (lo and ce and up):
+            return None
+        net = _intrinsic(side, lo, spot) + _intrinsic(side, up, spot) - 2.0 * _intrinsic(side, ce, spot)
+        return round(net, 4), ("expired_worthless" if abs(net) < 1e-9 and _intrinsic(side, ce, spot) == 0
+                               else "expired_settled")
+    is_vertical = (bool(record.get("is_condor_leg"))
+                   or record.get("strategy") == "IronCondorStrategy"
+                   or (record.get("short_symbol") and record.get("long_symbol")))
+    if is_vertical:
+        ks, kl = f("short_strike"), f("long_strike")
+        if not (ks and kl):
+            return None
+        si, li = _intrinsic(side, ks, spot), _intrinsic(side, kl, spot)
+        return round(si - li, 4), ("expired_worthless" if si == 0 and li == 0 else "expired_settled")
+    k = f("strike")
+    if not k:
+        return None
+    v = _intrinsic(side, k, spot)
+    if v == 0:
+        return 0.0, "expired_worthless"
+    return round(v, 4), ("expired_itm_assigned" if record.get("is_short_position") else "expired_itm_exercised")
 
 
 def phantom_pnl(record: dict, net_price: float, closed_qty: float = None) -> float:
