@@ -6,7 +6,7 @@ the canary fails on drift (WORKING_AGREEMENT 33).
 
 357 Python modules across 12 local packages.
 
-**Reached by:** 118 imported · 12 declared entry points · 144 referenced from a script, unit or doc but never imported · **83 by nothing here**.
+**Reached by:** 118 imported · 12 declared entry points · 141 referenced from a script, unit or doc but never imported · **86 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -556,7 +556,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_bfly_vwap_band.py`
 - **calls:** `data/derived_store.py`, `data/market_data.py`, `derived/__init__.py`, `derived/anchors.py`, `derived/indicators.py`, `strategy/__init__.py`, `strategy/gex_pin_butterfly.py`, `strategy/plan.py`, `utils/time_utils.py`
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
 ### `tests/check_boot_sweep.py`
 - **calls:** (none)
@@ -912,7 +912,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_midnight_halt.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `deploy/install_midnight_halt.sh`, `docs/BACKLOG.md`
+- **called by:** (not imported) — referenced in `deploy/install_midnight_halt.sh`
 
 ### `tests/check_missed_inert.py`
 - **calls:** `derived/plan_ledger.py`
@@ -1160,7 +1160,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_startup_alert.py`
 - **calls:** `notifications/alert_manager.py`
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
 ### `tests/check_status_panel.py`
 - **calls:** (none)
@@ -1244,7 +1244,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_volt_sizing.py`
 - **calls:** `main.py`, `risk/__init__.py`, `risk/risk_manager.py`, `strategy/base_strategy.py`, `strategy/volt_plan.py`, `strategy/volt_strategy.py`
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
 ### `tests/check_warehouse_stream.py`
 - **calls:** `tests/warehouse_source.py`
