@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
-tests/check_volt_sizing.py  v1.2
+tests/check_volt_sizing.py  v1.3
+v1.3  2026-09-27  OTV4TEST r161 — THE RAMP START IS RISK PER TRADE (the operator: "Merge
+      it"). OT_ORB_RISK_USD is no longer read, so the fixture's forced START of 1000
+      became 1050 (OT_RISK_USD). V4 is RE-CAPTURED, NOT LOOSENED: HEAD 6e1fa68's own
+      size_for, run with OT_ORB_RISK_USD=1050, returns ORB tight 77, ORB wide 19,
+      Breakout 50->52, hunt 11 - exactly what the merged tree returns. Hand check:
+      1050 // (0.45 x 0.30 x 100) = 77; 1050 // 54 = 19; 1050 // 20 = 52.
 v1.2  2026-09-25  OTV4TEST r141 — V7 RE-POINTED, NOT DROPPED (§38.4): the noise floor
       moved into main._noise_floor_of(df_1m). V7 now requires the call site to
       pass only ctx["df_1m"], and the helper to use NOISE_FLOOR_BAR_MULT and never
@@ -76,9 +82,9 @@ if not all(os.environ.get(k) for k in ("OT_TRADES_DB", "OT_DERIVED_DB", "OT_REST
 os.environ.setdefault("OT_PAPER_TRADING", "1")
 # The operator's live ramp values, 2026-09-24 (START risk, TOP budget), FORCED
 # so V4's HEAD-captured golden numbers do not move with the shell's env.
-os.environ["OT_ORB_RISK_USD"] = "1000"
+# r161: the ramp START IS OT_RISK_USD (merged); OT_ORB_RISK_USD is not read.
 os.environ["OT_ORB_BUDGET_USD"] = "10000"
-os.environ["OT_RISK_USD"] = "1050"          # the budget rule's per-trade risk (V1b, V4 hunt)
+os.environ["OT_RISK_USD"] = "1050"          # risk per trade = ramp MIN (V1, V1b, V4)
 
 FAIL: list = []
 
@@ -239,7 +245,9 @@ check("V3b ...and one just outside it is sized (the gate is the floor, not a wal
 # (label, signal kwargs, extra attrs, noise_floor) -> HEAD's (w, d, rule, n, allowed)
 # 🔑 GOLDEN captured 2026-09-24 by running b1b6594's inline sizing block and
 # size_for on these exact signals (OT_ORB_RISK_USD=1000, OT_ORB_BUDGET_USD=10000,
-# OT_RISK_USD=1050).
+# OT_RISK_USD=1050). RE-CAPTURED 2026-09-27 (r161) at START = 1050 by running
+# HEAD 6e1fa68 with OT_ORB_RISK_USD=1050: the merge moves the START, never the
+# arithmetic, so parity with HEAD at the same START is what this still pins.
 _CASES = [
     ("ORB tight", dict(strategy_name="ORBStrategy", orb_range_high=601.0,
                        orb_range_low=600.0, underlying_entry=601.10,
@@ -263,10 +271,10 @@ _CASES = [
                         entry_premium=0.95), {}, 0.21),
 ]
 GOLD = {
-    "ORB tight":    (1.0, 0.30, "orb_geometry", 74, True),
-    "ORB wide":     (0.4, 1.20, "orb_geometry", 18, True),
+    "ORB tight":    (1.0, 0.30, "orb_geometry", 77, True),
+    "ORB wide":     (0.4, 1.20, "orb_geometry", 19, True),
     "ORB in-floor": (1.0, 0.10, "orb_geometry", 0, False),
-    "Breakout":     (1.0, 0.40, "orb_geometry", 50, True),
+    "Breakout":     (1.0, 0.40, "orb_geometry", 52, True),
     "Hunt shape":   (0.0, 0.0, "budget", 11, True),
 }
 for label, kw, extra, nf in _CASES:

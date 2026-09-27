@@ -1,5 +1,6 @@
 """
-config.py  v4.39
+config.py  v4.40
+v4.40 2026-09-27  OTV4TEST r161 (SIZE.2) — ONE MIN, ONE MAX, AND A SCALING SWITCH PER TRADE. The operator, 2026-09-27: "Risk per trade/Ramp Start (MIN)", "Merge it. that was always the intent." ORB_RISK_USD no longer reads OT_ORB_RISK_USD: it IS RISK_PER_TRADE_USD, and a unit still carrying the old key is named at startup (ORB_RISK_ENV_IGNORED) rather than silently obeyed or silently dropped. SCALE_ORB / SCALE_BREAKOUT / SCALE_VOLT (OT_SCALE_ORB / OT_SCALE_BREAKOUT / OT_SCALE_VOLT, "1" = on, default on): OFF sizes that strategy FLAT on the budget rule (about RISK_PER_TRADE_USD of premium) while its structure stop, exits and the r93 noise floor stay exactly as they are - "retain the original structure stop ... but just use a flat dollar amount for the entry".
 v4.39 2026-09-26  OTV4TEST r149 (EOD.1) — THE END OF DAY IS ONE TABLE, AND THE OPERATOR RESET IT. `EOD_SCHEDULE`: entries stop 15:40; positions with ASSIGNMENT RISK (a short leg) post RESTING best-case closes at 15:45; everything else LADDERS from 15:50; anything unfilled CROSSES at 15:55. Directional debit entries run ALL DAY to 15:40 (ORB, Runaway, Hunt, Breakout, VOLT; was 11:30). HARD_CLOSE_ET, FLATTEN_WINDOW_OPEN_ET, VERTICAL_HOLD_TO_ET and DEBIT_DIRECTIONAL_CUTOFF_ET now DERIVE from it; the debit cutoff's OT_DEBIT_CUTOFF_ET override is REMOVED (a second window source).
 v4.38 2026-09-26  OTV4TEST r148 (WIN.1) — ONE ENTRY-WINDOW TABLE. `ENTRY_WINDOWS` is the single source of every strategy's entry window; the admission table and every plan read it, and each older name (ORB_NO_ENTRY_AFTER_ET, RUNAWAY_CUTOFF_ET, VOLT_WINDOW_*, TCS_*, CREDIT_*, CONDOR_ENTRY_CUTOFF_ET, SWEEP_CS_*_FORK, BUTTERFLY_ENTRY_START_ET) is DERIVED from it. HUNT_CUTOFF_ET, BREAKOUT_LATEST_ET and GEX_BFLY_LATEST_ET are added: three strategies read those names with a literal fallback and the names never existed. Every value is UNCHANGED (tests/check_one_window_table.py pins all 47 resolved values).
 v4.37 2026-09-26  OTV4TEST r146 — OT_INSTRUMENT HAS NO "QQQ" FALLBACK: unset reads "UNSET".
@@ -888,7 +889,36 @@ ORB_BUDGET_USD     = float(os.environ.get("OT_ORB_BUDGET_USD",
 # ORB *"is typically a loser… but when it does win it usually pretty good"* —
 # so this scales the losses too, and it is deliberately ONE ENV VAR so it can be
 # dialled to a fraction while it proves itself, without a revision.
-ORB_RISK_USD = float(os.environ.get("OT_ORB_RISK_USD", RISK_PER_TRADE_USD))
+# 🔴 r161 (SIZE.2) — MERGED INTO RISK_PER_TRADE_USD BY RULING. The operator,
+# 2026-09-27: *"Risk per trade/Ramp Start (MIN)"* and *"Merge it. that was
+# always the intent."* The ramp's START and the per-trade risk were two keys
+# for one intent, and they had drifted apart on this box ($1,001 vs $1,050).
+# ⚠️ THE NAME IS KEPT so every reader (risk_manager, the checkers) reads one
+# value under the name it already uses; the ENV KEY is what is retired.
+# ⚠️ A UNIT STILL CARRYING OT_ORB_RISK_USD IS NOT OBEYED AND NOT SILENT:
+# ORB_RISK_ENV_IGNORED holds what it said, and main.py names it at startup
+# (§0.5 — "ignored" must never look like "applied").
+ORB_RISK_USD = RISK_PER_TRADE_USD
+ORB_RISK_ENV_IGNORED = os.environ.get("OT_ORB_RISK_USD", "")
+
+# ── r161 (SIZE.2) — POSITION SCALING, ON OR OFF, PER TRADE ─────────────────
+# 🔑 THE OPERATOR, 2026-09-27: *"some of the other positions have benefited
+# from the scaling sizes, but ultimately the orb has only gotten worse"*, and
+# *"retain the original structure stop responsible for scaling the sizes but
+# just use a flat dollar amount for the entry"*.
+# ON  = the ramp: risk RISK_PER_TRADE_USD at the structure stop, capped at
+#       ORB_BUDGET_USD deployed (RiskManager._size_geometry).
+# OFF = FLAT: the budget rule every unscaled debit uses — about
+#       RISK_PER_TRADE_USD of premium, whatever the stop distance.
+# ⚠️ OFF CHANGES THE CONTRACT COUNT AND NOTHING ELSE. The structure stop is
+# set by the strategy before sizing and the exits read it from the trade; the
+# r93 noise floor is §36 FEASIBILITY and refuses a stop inside one bar either
+# way; `sizes_on_geometry` (which also anchors the trail) is untouched.
+# ⚠️ ONLY THE LITERAL "1" IS ON, as OT_PIN_PROXIMITY_ACTIVE — so a typo reads
+# as OFF, the smaller position, never as the larger one.
+SCALE_ORB      = os.environ.get("OT_SCALE_ORB", "1") == "1"
+SCALE_BREAKOUT = os.environ.get("OT_SCALE_BREAKOUT", "1") == "1"
+SCALE_VOLT     = os.environ.get("OT_SCALE_VOLT", "1") == "1"
 
 # ── r93 — THE NOISE FLOOR: A STOP INSIDE ONE BAR IS NOT A STOP ────────────
 # 🔴 THE INVERSION THIS CLOSES, MEASURED LIVE 2026-09-22. The 1-R rule

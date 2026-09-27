@@ -1,6 +1,12 @@
 #!/bin/bash
 # ==========================================================================
-# setup_ec2.sh  v4.7
+# setup_ec2.sh  v4.8
+# v4.8  2026-09-27  OTV4TEST r161 (SIZE.2) — THE RAMP START IS RISK PER TRADE, AND
+#       THE THREE SCALING SWITCHES ARE PRIMED. The operator: "Merge it. that was
+#       always the intent." OT_ORB_RISK_USD is no longer written (config.py no
+#       longer reads it); OT_SCALE_ORB / OT_SCALE_BREAKOUT / OT_SCALE_VOLT are,
+#       default 1 (on) as config.py defaults them, so a fresh box sizes exactly as
+#       this one does until the operator switches one off in configure.sh.
 # v4.7  2026-09-25  OTV4TEST r138 — THE BOT IS INSTALLED, NOT STARTED. Operator: "the
 #       options bot service should be defaulted to not started", "when I set all
 #       the variables in configure and exit out of the menu that resets everything
@@ -211,7 +217,9 @@ PAPER_TRADING="True"
 # r132 — the keys configure.sh grew after v3, primed so a fresh box shows values
 # the operator chose. Defaults match config.py's, EXCEPT the pin gate: config.py
 # defaults it ON and the operator ruled it OFF on 2026-09-24 (PIN.1).
-ORB_RISK_USD="${OT_ORB_RISK_USD:-$RISK_USD}"
+SCALE_ORB="${OT_SCALE_ORB:-1}"                  # r161 — configure.sh items 9-11
+SCALE_BREAKOUT="${OT_SCALE_BREAKOUT:-1}"
+SCALE_VOLT="${OT_SCALE_VOLT:-1}"
 ORB_BUDGET_USD="${OT_ORB_BUDGET_USD:-$RISK_USD}"
 DAILY_LOSS_LIMIT="${OT_DAILY_LOSS_LIMIT:-$RISK_USD}"
 PIN_GATE="${OT_PIN_PROXIMITY_ACTIVE:-0}"
@@ -340,7 +348,9 @@ if [ "$PLAN" = 1 ]; then
     echo "PLAN instrument=$INSTRUMENT"
     echo "PLAN paper=$PAPER_TRADING"
     echo "PLAN risk_usd=$RISK_USD"
-    echo "PLAN orb_risk_usd=$ORB_RISK_USD"
+    echo "PLAN scale_orb=$SCALE_ORB"
+    echo "PLAN scale_breakout=$SCALE_BREAKOUT"
+    echo "PLAN scale_volt=$SCALE_VOLT"
     echo "PLAN orb_budget_usd=$ORB_BUDGET_USD"
     echo "PLAN daily_loss_limit=$DAILY_LOSS_LIMIT"
     echo "PLAN pin_gate=$PIN_GATE"
@@ -473,7 +483,9 @@ Environment=TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
 Environment=TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
 Environment=GITHUB_TOKEN=${GITHUB_TOKEN}
 Environment=GITHUB_REPO=${GITHUB_REPO}
-Environment=OT_ORB_RISK_USD=${ORB_RISK_USD}
+Environment=OT_SCALE_ORB=${SCALE_ORB}
+Environment=OT_SCALE_BREAKOUT=${SCALE_BREAKOUT}
+Environment=OT_SCALE_VOLT=${SCALE_VOLT}
 Environment=OT_ORB_BUDGET_USD=${ORB_BUDGET_USD}
 Environment=OT_DAILY_LOSS_LIMIT=${DAILY_LOSS_LIMIT}
 Environment=OT_PIN_PROXIMITY_ACTIVE=${PIN_GATE}

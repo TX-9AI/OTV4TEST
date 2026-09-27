@@ -1,4 +1,7 @@
 #!/bin/bash
+# v4.2 — 2026-09-27 — OTV4TEST r161. Item 2 is Risk per trade AND the ramp START
+#         (MIN): OT_ORB_RISK_USD is merged into it and no longer read. Item 8 is the
+#         ramp TOP (MAX); items 9-11 are the ORB / Breakout / VOLT scaling switches.
 # v4.1 — 2026-09-25 — OTV4TEST r138. Each sizing line names its configure.sh item
 #         ("ORB ramp TOP" etc.) - the operator looked for the ramps and could not
 #         find them under their variable names. OT_START_BOT added (default 0:
@@ -50,9 +53,11 @@ fi
 # ── Instrument and sizing (optional; these are the defaults) ──────────────────
 # Installs are ALWAYS paper. Switch to live later, deliberately, via configure.sh.
 export OT_INSTRUMENT="QQQ"              # configure.sh item 1  Instrument
-export OT_RISK_USD="200"               # configure.sh item 2  Risk per trade
-# export OT_ORB_RISK_USD="200"        # configure.sh item 9  ORB ramp START (defaults to OT_RISK_USD)
-# export OT_ORB_BUDGET_USD="200"      # configure.sh item 8  ORB ramp TOP   (defaults to OT_RISK_USD)
+export OT_RISK_USD="200"               # configure.sh item 2  Risk per trade / ramp MIN
+# export OT_ORB_BUDGET_USD="200"      # configure.sh item 8  Ramp TOP (MAX) (defaults to OT_RISK_USD)
+# export OT_SCALE_ORB="1"             # configure.sh item 9  ORB scaling (1 on, 0 flat)
+# export OT_SCALE_BREAKOUT="1"        # configure.sh item 10 Breakout scaling (1 on, 0 flat)
+# export OT_SCALE_VOLT="1"            # configure.sh item 11 VOLT scaling (1 on, 0 flat)
 # export OT_DAILY_LOSS_LIMIT="200"    # configure.sh item 6  Daily loss cap (defaults to OT_RISK_USD)
 export OT_PIN_PROXIMITY_ACTIVE="0"    # configure.sh item 7  Pin-proximity gate (PIN.1: off pending data)
 

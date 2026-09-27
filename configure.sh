@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# configure.sh  v4.11
+# configure.sh  v4.12
+# v4.12 2026-09-27  OTV4TEST r161 (SIZE.2) — ONE MIN, ONE MAX, A SCALING SWITCH PER
+#       TRADE. The operator: "Risk per trade/Ramp Start (MIN)", "Scaling Position
+#       Ramp TOP (MAX)", "ORB Scaling OFF/ON", "Breakout Scaling OFF/ON", "VOLT
+#       Scaling OFF/ON", and on the merge "that was always the intent". Item 2 is
+#       Risk per trade / ramp START (MIN) and REMOVES a leftover OT_ORB_RISK_USD
+#       line (config.py no longer reads it); item 9 "ORB ramp START" is gone; 8 is
+#       Scaling ramp TOP (MAX), the same OT_ORB_BUDGET_USD key; 9/10/11 switch
+#       OT_SCALE_ORB / OT_SCALE_BREAKOUT / OT_SCALE_VOLT ("1" on, "0" OFF = flat
+#       size, structure stop kept); Data capture moves to 12 and Done to 13. The
+#       summary shows the three switches and names a leftover OT_ORB_RISK_USD.
 # v4.11 2026-09-25  OTV4TEST r139 — ITEM 1 MOVES THE WHOLE BOX, NOT JUST THE BOT. The
 #       instrument lives in THREE places: optionsbot.service, candle-feed.service
 #       (its own Environment=OT_INSTRUMENT, written by setup_ec2.sh) and, on a
@@ -195,6 +205,11 @@ set_env() {
     fi
 }
 
+# r161 — remove an Environment= line (a retired key), silently if absent.
+drop_env() {
+    sudo sed -i "/^Environment=${1}=/d" "$UNIT_FILE"
+}
+
 reload_daemon() {
     sudo systemctl daemon-reload
 }
@@ -266,6 +281,9 @@ show_config() {
     local dll=$(get_env "OT_DAILY_LOSS_LIMIT")
     echo -e "  Daily loss cap: ${BOLD}$(fmt_declared "$dll")${RESET}"
     echo -e "  Pin gate:       ${BOLD}$(pin_gate_label)${RESET}"
+    echo -e "  Scaling:        ${BOLD}ORB $(scaling_short OT_SCALE_ORB SCALE_ORB) · BRK $(scaling_short OT_SCALE_BREAKOUT SCALE_BREAKOUT) · VOLT $(scaling_short OT_SCALE_VOLT SCALE_VOLT)${RESET}"
+    local old_start=$(get_env "OT_ORB_RISK_USD")
+    [[ -n "$old_start" ]] && print_warn "OT_ORB_RISK_USD=${old_start} is NOT read (merged into risk per trade) - item 2 removes it."
     echo -e "  Data capture:   ${BOLD}$(data_capture_label)${RESET}"
     echo -e "  Trading mode:   $(echo -e $mode_label)"
     local rec_pin rec_label
@@ -360,7 +378,9 @@ change_risk() {
     local current
     current=$(get_env "OT_RISK_USD")
     echo ""
-    echo -e "  Current risk per trade: ${BOLD}\$${current}${RESET}"
+    echo -e "  ${BOLD}Risk per trade / ramp START (MIN)${RESET}  (OT_RISK_USD)"
+    echo -e "  What every trade risks, and where the scaling ramp starts."
+    echo -e "  Current: ${BOLD}\$${current}${RESET}"
     echo ""
     while true; do
         read -p "    New risk per trade in \$ [ENTER to keep \$${current}]: " input
@@ -370,8 +390,11 @@ change_risk() {
         fi
         if [[ "$input" =~ ^[0-9]+(\.[0-9]+)?$ ]] && (( $(echo "$input > 0" | bc -l) )); then
             set_env "OT_RISK_USD" "$input"
+            # r161 — the old ramp-START key is merged into this one. Remove it
+            # so the unit cannot show a number config.py no longer reads.
+            drop_env "OT_ORB_RISK_USD"
             reload_daemon
-            print_ok "Risk per trade updated to ${BOLD}\$$input${RESET}."
+            print_ok "Risk per trade / ramp MIN updated to ${BOLD}\$$input${RESET}."
             return
         fi
         print_warn "Please enter a positive number (e.g. 200 or 150.50)."
@@ -467,28 +490,54 @@ change_pin_gate() {
 #   · the r203 land gate RUNS this body against a planted repo and REQUIRES a
 #     Spot line back, and refuses both a literal `data/` path and any
 #     re-suppression of stderr on this call.
-change_orb_risk() {
-    local current
-    current=$(get_env "OT_ORB_RISK_USD")
+# ── r161 (SIZE.2) — POSITION SCALING PER TRADE, ON OR OFF ──────────────────
+# ON  = the ramp: risk the MIN at the structure stop, up to the TOP deployed.
+# OFF = flat: about the MIN in premium, whatever the stop distance. The
+#       structure stop, the exits and the noise floor do not change.
+# Only the literal "1" is ON in config.py, so a bad value reads as OFF (the
+# smaller position). Unset shows the code default read from config.py (r91).
+scaling_label() {
+    local key="$1" attr="$2" v dflt
+    v=$(get_env "$key")
+    if [[ "$v" == "1" ]]; then printf 'ON'; return; fi
+    if [[ "$v" == "0" ]]; then printf 'OFF'; return; fi
+    if [[ -n "$v" ]]; then printf 'OFF (set to %s; only 1 is on)' "$v"; return; fi
+    dflt=$(cd "$BOT_DIR" && env -u "$key" python3 -c \
+        "import config; print('ON' if config.${attr} else 'OFF')")
+    printf 'not set (code default: %s)' "${dflt:-UNREADABLE - config.py did not import}"
+}
+
+# The summary line's short form: ON / OFF as set, or "unset=ON" naming the
+# code default — still never a value the operator did not choose (r91).
+scaling_short() {
+    local l; l=$(scaling_label "$1" "$2")
+    case "$l" in
+        ON|OFF) printf '%s' "$l" ;;
+        OFF*)   printf 'OFF' ;;
+        "not set (code default: "*) l=${l#not set (code default: }; printf 'unset=%s' "${l%)}" ;;
+        *)      printf '%s' "$l" ;;
+    esac
+}
+
+change_scaling() {
+    local key="$1" attr="$2" name="$3"
     echo ""
-    echo -e "  ${BOLD}ORB ramp START${RESET}  (OT_ORB_RISK_USD)"
+    echo "  ${name} scaling: $(scaling_label "$key" "$attr")"
     echo ""
-    echo -e "  Current: ${BOLD}$(fmt_declared "$current")${RESET}"
+    echo "  ON  - size on the ramp: risk the MIN at the structure stop,"
+    echo "        up to the ramp TOP deployed (tight stop = bigger size)."
+    echo "  OFF - flat: about the MIN in premium, whatever the stop."
+    echo "  Either way the structure stop and exits are unchanged."
     echo ""
-    while true; do
-        read -p "    New ORB ramp start in \$, ENTER to keep: " input
-        if [[ -z "$input" ]]; then
-            print_info "Unchanged."
-            return
-        fi
-        if [[ "$input" =~ ^[0-9]+(\.[0-9]+)?$ ]] && (( $(echo "$input > 0" | bc -l) )); then
-            set_env "OT_ORB_RISK_USD" "$input"
-            reload_daemon
-            print_ok "ORB ramp start updated to ${BOLD}\$$input${RESET}."
-            return
-        fi
-        print_warn "Enter a positive number, or ENTER to keep."
-    done
+    if ask_yn "Turn ${name} scaling ON?"; then
+        set_env "$key" "1"
+        reload_daemon
+        echo "  ${name} scaling ON."
+    else
+        set_env "$key" "0"
+        reload_daemon
+        echo "  ${name} scaling OFF (flat size)."
+    fi
 }
 
 change_orb_budget() {
@@ -496,12 +545,13 @@ change_orb_budget() {
     current=$(get_env "OT_ORB_BUDGET_USD")
     risk=$(get_env "OT_RISK_USD")
     echo ""
-    echo -e "  ${BOLD}ORB ramp TOP${RESET}  (OT_ORB_BUDGET_USD)"
+    echo -e "  ${BOLD}Scaling ramp TOP (MAX)${RESET}  (OT_ORB_BUDGET_USD)"
+    echo -e "  The most premium one scaled trade (ORB/Breakout/VOLT) may deploy."
     echo ""
     echo -e "  Current: ${BOLD}$(fmt_declared "$current")${RESET}"
     echo ""
     while true; do
-        read -p "    New ORB budget in \$, 'r' to reset to default, ENTER to keep: " input
+        read -p "    New ramp TOP in \$, 'r' to reset to default, ENTER to keep: " input
         if [[ -z "$input" ]]; then
             print_info "Unchanged."
             return
@@ -509,13 +559,13 @@ change_orb_budget() {
         if [[ "$input" == "r" ]]; then
             set_env "OT_ORB_BUDGET_USD" "$risk"
             reload_daemon
-            print_ok "ORB budget reset to the per-trade risk default (\$${risk})."
+            print_ok "Ramp TOP reset to the per-trade risk default (\$${risk})."
             return
         fi
         if [[ "$input" =~ ^[0-9]+(\.[0-9]+)?$ ]] && (( $(echo "$input > 0" | bc -l) )); then
             set_env "OT_ORB_BUDGET_USD" "$input"
             reload_daemon
-            print_ok "ORB budget updated to ${BOLD}\$$input${RESET}."
+            print_ok "Ramp TOP updated to ${BOLD}\$$input${RESET}."
             return
         fi
         print_warn "Enter a positive number, 'r' to reset, or ENTER to keep."
@@ -723,18 +773,20 @@ while true; do
     echo -e "  ${BOLD}What would you like to change?${RESET}"
     echo ""
     echo -e "  ${BOLD}1.${RESET}  Instrument          (currently: $(get_env OT_INSTRUMENT))"
-    echo -e "  ${BOLD}2.${RESET}  Risk per trade      (currently: \$$(get_env OT_RISK_USD))"
+    echo -e "  ${BOLD}2.${RESET}  Risk/trade, ramp MIN (currently: \$$(get_env OT_RISK_USD))"
     echo -e "  ${BOLD}3.${RESET}  Paper / Live mode   (currently: $([ "$(get_env OT_PAPER_TRADING)" = "False" ] && echo "🔴 LIVE" || echo "📄 PAPER"))"
     echo -e "  ${BOLD}4.${RESET}  Telegram alerts     (chat: $(get_env TELEGRAM_CHAT_ID))"
     echo -e "  ${BOLD}5.${RESET}  TastyTrade credentials"
     echo -e "  ${BOLD}6.${RESET}  Daily loss cap      (currently: \$$(dll=$(get_env OT_DAILY_LOSS_LIMIT); echo ${dll:-$(get_env OT_RISK_USD)}))"
     echo -e "  ${BOLD}7.${RESET}  Pin-proximity gate  (currently: $(pin_gate_label))"
-    echo -e "  ${BOLD}8.${RESET}  ORB ramp TOP        (currently: $(fmt_declared "$(get_env OT_ORB_BUDGET_USD)"))"
-    echo -e "  ${BOLD}9.${RESET}  ORB ramp START      (currently: $(fmt_declared "$(get_env OT_ORB_RISK_USD)"))"
-    echo -e "  ${BOLD}10.${RESET} Data capture        (currently: $(data_capture_label))"
-    echo -e "  ${BOLD}11.${RESET} Done"
+    echo -e "  ${BOLD}8.${RESET}  Ramp TOP (MAX)      (currently: $(fmt_declared "$(get_env OT_ORB_BUDGET_USD)"))"
+    echo -e "  ${BOLD}9.${RESET}  ORB scaling         (currently: $(scaling_label OT_SCALE_ORB SCALE_ORB))"
+    echo -e "  ${BOLD}10.${RESET} Breakout scaling    (currently: $(scaling_label OT_SCALE_BREAKOUT SCALE_BREAKOUT))"
+    echo -e "  ${BOLD}11.${RESET} VOLT scaling        (currently: $(scaling_label OT_SCALE_VOLT SCALE_VOLT))"
+    echo -e "  ${BOLD}12.${RESET} Data capture        (currently: $(data_capture_label))"
+    echo -e "  ${BOLD}13.${RESET} Done"
     echo ""
-    read -p "    Select [1-11]: " menu_choice
+    read -p "    Select [1-13]: " menu_choice
 
     case "$menu_choice" in
         1) change_instrument; CHANGED=true ;;
@@ -745,10 +797,12 @@ while true; do
         6) change_daily_loss;     CHANGED=true ;;
         7) change_pin_gate;       CHANGED=true ;;
         8) change_orb_budget;     CHANGED=true ;;
-        9) change_orb_risk;       CHANGED=true ;;
-        10) change_data_capture ;;
-        11) break ;;
-        *) print_warn "Please enter a number between 1 and 11." ;;
+        9) change_scaling OT_SCALE_ORB SCALE_ORB "ORB";                CHANGED=true ;;
+        10) change_scaling OT_SCALE_BREAKOUT SCALE_BREAKOUT "Breakout"; CHANGED=true ;;
+        11) change_scaling OT_SCALE_VOLT SCALE_VOLT "VOLT";             CHANGED=true ;;
+        12) change_data_capture ;;
+        13) break ;;
+        *) print_warn "Please enter a number between 1 and 13." ;;
     esac
     echo ""
 done

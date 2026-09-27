@@ -1,5 +1,13 @@
 """
-risk/risk_manager.py  v4.6
+risk/risk_manager.py  v4.7
+v4.7 2026-09-27  OTV4TEST r161 (SIZE.2) — size_for(scaled=False) SIZES FLAT. The operator,
+      2026-09-27: keep the structure stop, "just use a flat dollar amount for the
+      entry". A long debit that supplies geometry but is switched OFF takes the
+      BUDGET rule (rule "flat") AFTER the r93 noise floor, which moves out of
+      _size_geometry into _noise_floor_refusal so both paths run the SAME gate:
+      a stop inside one bar is §36 FEASIBILITY and is refused with scaling on or
+      off. scaled defaults True, so every caller that does not pass it sizes
+      exactly as before.
 v4.6 2026-09-22  OTV4TEST r93 — _size_geometry REFUSES a stop inside the noise floor,
       before any sizing arithmetic, with the floor NAMED in the reason.
       Operator's ruling 2026-09-22: refuse, not floor. Section 36 FEASIBILITY —
@@ -270,7 +278,8 @@ class RiskManager:
                  orb_width: float = 0.0,
                  orb_stop_distance: float = 0.0,
                  budget_usd=None,
-                 noise_floor: float = 0.0) -> SizingResult:
+                 noise_floor: float = 0.0,
+                 scaled: bool = True) -> SizingResult:
         """THE single entry point for position size. Dispatches on STRUCTURE.
 
         🔑 EVERY RULE RETURNS A SizingResult, AND THE ORDER READS ONLY
@@ -296,6 +305,26 @@ class RiskManager:
             return self._size_budget(premium=0.0, grade=grade, is_butterfly=True,
                                      net_debit=net_debit,
                                      butterfly_half_size=butterfly_half_size)
+        if st == "long_debit" and (orb_width or orb_stop_distance) and not scaled:
+            # r161 (SIZE.2) — SCALING OFF: the r93 floor, then FLAT. The
+            # operator: *"retain the original structure stop ... but just use
+            # a flat dollar amount for the entry"*. The stop is the signal's,
+            # set before sizing; only the contract count changes here.
+            _refused = self._noise_floor_refusal(orb_stop_distance, noise_floor,
+                                                 grade)
+            if _refused is not None:
+                return _refused
+            flat = self._size_budget(premium=premium, grade=grade,
+                                     stop_premium=stop_premium)
+            flat.rule = "flat"
+            if flat.allowed:
+                logger.info(
+                    "[size] scaling OFF -> flat: %d contract(s) = $%.0f deployed "
+                    "against $%.0f per trade (stop %.3f; the ramp would have "
+                    "sized on it)", flat.contracts,
+                    flat.contracts * flat.cost_per_contract,
+                    self._risk_per_trade, float(orb_stop_distance or 0.0))
+            return flat
         if st == "long_debit" and (orb_width or orb_stop_distance):
             return self._size_geometry(premium, orb_width, orb_stop_distance,
                                        grade, budget_usd=budget_usd,
@@ -304,25 +333,11 @@ class RiskManager:
         return self._size_budget(premium=premium, grade=grade,
                                  stop_premium=stop_premium)
 
-    def _size_geometry(self, premium: float, width: float, distance: float,
-                       grade: str = "B", budget_usd=None,
-                       stop_premium: float = 0.0,
-                       noise_floor: float = 0.0) -> SizingResult:
-        """Risk-normalised size off the impulsive candle. NO BUDGET, NO CAP.
-
-        contracts = max(1, floor(width / stop_distance)); the worst entry — a
-        stop the full width away — sizes to exactly 1, so every ORB trade risks
-        roughly the same dollars AT THE STRUCTURE STOP by construction.
-
-        🔴 THIS RULE HAS NO `insufficient_capital` RUNG, deliberately, per the
-        operator's 2026-08-28 ruling. A setup the budget path would have
-        REFUSED outright now trades at one lot or more. The notional is logged
-        every time, so that is a visible fact rather than an inferred one.
-
-        ⚠️ DEGENERATE GEOMETRY SIZES 1, LOUDLY — never a leveraged position on
-        arithmetic nobody trusts. distance <= 0 or distance > width means the
-        entry or the stop is not what the strategy thinks it is.
-        """
+    def _noise_floor_refusal(self, distance, noise_floor,
+                             grade: str = "B"):
+        """The r93 gate, shared by the ramp and the flat path (r161): a
+        refused SizingResult when the stop sits inside the noise floor, else
+        None. Moved VERBATIM out of _size_geometry so there is one gate."""
         result = SizingResult(grade=grade)
         result.rule = "orb_geometry"
         # ── r93 — THE NOISE FLOOR, CHECKED BEFORE ANY ARITHMETIC ──────────
@@ -346,6 +361,32 @@ class RiskManager:
                            "%.3f (%.2fx) — a stop inside one bar is not a stop",
                            float(distance), _nf, float(distance) / _nf)
             return result
+        return None
+
+    def _size_geometry(self, premium: float, width: float, distance: float,
+                       grade: str = "B", budget_usd=None,
+                       stop_premium: float = 0.0,
+                       noise_floor: float = 0.0) -> SizingResult:
+        """Risk-normalised size off the impulsive candle. NO BUDGET, NO CAP.
+
+        contracts = max(1, floor(width / stop_distance)); the worst entry — a
+        stop the full width away — sizes to exactly 1, so every ORB trade risks
+        roughly the same dollars AT THE STRUCTURE STOP by construction.
+
+        🔴 THIS RULE HAS NO `insufficient_capital` RUNG, deliberately, per the
+        operator's 2026-08-28 ruling. A setup the budget path would have
+        REFUSED outright now trades at one lot or more. The notional is logged
+        every time, so that is a visible fact rather than an inferred one.
+
+        ⚠️ DEGENERATE GEOMETRY SIZES 1, LOUDLY — never a leveraged position on
+        arithmetic nobody trusts. distance <= 0 or distance > width means the
+        entry or the stop is not what the strategy thinks it is.
+        """
+        result = SizingResult(grade=grade)
+        result.rule = "orb_geometry"
+        _refused = self._noise_floor_refusal(distance, noise_floor, grade)
+        if _refused is not None:
+            return _refused
         cost_per_contract = float(premium or 0.0) * CONTRACT_MULTIPLIER
         if cost_per_contract <= 0:
             result.allowed       = False

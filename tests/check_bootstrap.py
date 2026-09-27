@@ -1,4 +1,12 @@
-"""tests/check_bootstrap.py — v1.5
+"""tests/check_bootstrap.py — v1.6
+
+v1.6  2026-09-27 — OTV4TEST r161. RE-POINTED, NOT DROPPED (section 38.4): the ramp
+      START is merged into risk per trade (the operator: "Merge it"), so setup no
+      longer plans or writes OT_ORB_RISK_USD. G3 plans scale_orb/breakout/volt=1
+      (the code default, so a fresh box sizes as this one does); G3c's "risk 500
+      flows" now reaches the TOP and the loss cap, and an OT_SCALE_ORB=0 from the
+      bootstrap wins; G5 requires the three switches in the unit AND that
+      OT_ORB_RISK_USD is no longer written there; G17 names items 2, 8, 9, 10, 11.
 
 v1.5  2026-09-25 — OTV4TEST r138. G16: setup installs the bot but never ENABLES or
       STARTS it unless OT_START_BOT=1 (the operator: "defaulted to not started");
@@ -239,7 +247,8 @@ _R = {}
 _R["base"] = _setup(["--plan"], {"OT_CLAUDE_AT_BOOT": "1", "CLAUDE_LOGIN_B64": "x"})
 r, plan, suite, home_after, sudo_calls = _R["base"]
 _WANT = {"unattended": "true", "tty": "0", "paper": "True", "instrument": "QQQ",
-         "risk_usd": "200", "orb_risk_usd": "200", "orb_budget_usd": "200",
+         "risk_usd": "200", "orb_budget_usd": "200",
+         "scale_orb": "1", "scale_breakout": "1", "scale_volt": "1",
          "daily_loss_limit": "200", "pin_gate": "0", "swap_gb": "2",
          "requirements": "requirements.lock", "git_repo": "TX-9AI/OTV4TEST",
          "git_ref": "main", "git_push": "0", "claude_at_boot": "1",
@@ -270,9 +279,11 @@ guard("G3b OT_CLAUDE_AT_BOOT=0 leaves the claude-boot installer out, keeps insta
 
 r1, plan1, _s1, _h1, _x1 = _setup(["--plan"], {"OT_RISK_USD": "500", "OT_PIN_PROXIMITY_ACTIVE": "1",
                                                "OT_SWAP_GB": "0", "OT_GIT_PUSH": "1",
-                                               "OT_GIT_REF": "abc1234", "OT_DATA_CAPTURE": "managed", "OT_START_BOT": "1"})
-guard("G3c the bootstrap's values win (risk 500 flows to ORB/loss; gate, swap, push, ref)",
-      lambda: r1.returncode == 0 and plan1.get("orb_risk_usd") == "500"
+                                               "OT_GIT_REF": "abc1234", "OT_DATA_CAPTURE": "managed", "OT_START_BOT": "1",
+                                               "OT_SCALE_ORB": "0"})
+guard("G3c the bootstrap's values win (risk 500 flows to TOP/loss; ORB scaling off; gate, swap, push, ref)",
+      lambda: r1.returncode == 0 and "orb_risk_usd" not in plan1
+      and plan1.get("scale_orb") == "0" and plan1.get("scale_breakout") == "1"
       and plan1.get("orb_budget_usd") == "500" and plan1.get("daily_loss_limit") == "500"
       and plan1.get("pin_gate") == "1" and plan1.get("swap_gb") == "0"
       and plan1.get("git_push") == "1" and plan1.get("git_ref") == "abc1234"
@@ -295,9 +306,12 @@ guard("G5 no pip self-upgrade (a version change the freeze forbids)",
       lambda: "pip install --upgrade pip" not in _setup_txt)
 _unit = _setup_txt[_setup_txt.find("${SERVICE_NAME}.service > /dev/null << SVCEOF"):
                    _setup_txt.find("SVCEOF\n\nsudo chmod 600")]
-guard("G5 the bot unit carries the four keys configure.sh grew",
+guard("G5 the bot unit no longer writes the merged OT_ORB_RISK_USD (r161)",
+      lambda: "Environment=OT_ORB_RISK_USD" not in _unit)
+guard("G5 the bot unit carries the keys configure.sh grew",
       lambda: all("Environment=%s=${%s}" % (k, v) in _unit for k, v in (
-          ("OT_ORB_RISK_USD", "ORB_RISK_USD"), ("OT_ORB_BUDGET_USD", "ORB_BUDGET_USD"),
+          ("OT_SCALE_ORB", "SCALE_ORB"), ("OT_SCALE_BREAKOUT", "SCALE_BREAKOUT"),
+          ("OT_SCALE_VOLT", "SCALE_VOLT"), ("OT_ORB_BUDGET_USD", "ORB_BUDGET_USD"),
           ("OT_DAILY_LOSS_LIMIT", "DAILY_LOSS_LIMIT"),
           ("OT_PIN_PROXIMITY_ACTIVE", "PIN_GATE"))))
 guard("G5 secrets are unset before the final login shell",
@@ -766,9 +780,11 @@ guard("G16 the candle feed is still enabled and started at install",
 _b17 = _read("bootstrap.example.sh")
 guard("G17 each sizing line names its configure.sh item",
       lambda: all(re.search(r"%s=.*configure\.sh item %s\s+%s" % (v, n, lbl), _b17)
-                  for v, n, lbl in (("OT_RISK_USD", "2", "Risk per trade"),
-                                    ("OT_ORB_RISK_USD", "9", "ORB ramp START"),
-                                    ("OT_ORB_BUDGET_USD", "8", "ORB ramp TOP"),
+                  for v, n, lbl in (("OT_RISK_USD", "2", "Risk per trade / ramp MIN"),
+                                    ("OT_ORB_BUDGET_USD", "8", r"Ramp TOP \(MAX\)"),
+                                    ("OT_SCALE_ORB", "9", "ORB scaling"),
+                                    ("OT_SCALE_BREAKOUT", "10", "Breakout scaling"),
+                                    ("OT_SCALE_VOLT", "11", "VOLT scaling"),
                                     ("OT_DAILY_LOSS_LIMIT", "6", "Daily loss cap"))))
 
 # ── G0 ────────────────────────────────────────────────────────────────────────

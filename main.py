@@ -1,5 +1,6 @@
 """
-main.py  v4.72
+main.py  v4.73
+v4.73 2026-09-27  OTV4TEST r161 (SIZE.2) — PER-TRADE SCALING SWITCHES. `_scaling_on(signal)` reads config.SCALE_ORB / SCALE_BREAKOUT / SCALE_VOLT by the strategy's own name and the entry path passes it to size_for(scaled=...); OFF sizes FLAT (the budget rule) after the r93 noise floor, and the signal's structure stop, exits and `sizes_on_geometry` are untouched. Every other strategy returns True and reaches exactly the arithmetic it reached before. The service-mode line names the three switches and the merged MIN, and a unit still carrying the retired OT_ORB_RISK_USD is WARNED at startup (it is no longer read: ORB_RISK_USD is RISK_PER_TRADE_USD by the operator's ruling, "Merge it").
 v4.72 2026-09-26  OTV4TEST r149 (EOD.1) — handle_hard_close runs the operator's end of day: it passes the tick's spot (the analysis price cache) so a resting close can be priced at its best case; flatten_all labels each close itself; it pages ONLY for a position still open PAST the 15:55 cross (a resting or laddering close before then is expected, and paging on it would cry wolf every afternoon, WA section 17); it no longer logs 'complete — all positions flat' while positions are held or resting. The held-position manage pass runs until 15:50 (the ladder), for the positions without assignment risk. The intraday broker reconcile's wind-down sweeps follow EOD_SCHEDULE — 15:45, 15:50, 15:55 (NEW: before the cross, so a short the broker liquidated since 15:50 is found and its surviving long adopted before the cross fires) and 15:57 (operator: "Agree").
 v4.71 2026-09-26  OTV4TEST r146 — main() REFUSES TO START WITH OT_INSTRUMENT UNSET (exit 78,
       EX_CONFIG), as its FIRST act - before logging, the broker login or any
@@ -1263,6 +1264,7 @@ from config import (
     POLL_INTERVAL_SECONDS, LOG_LEVEL, LOG_FILE, LOG_ROTATION_MB,
     PAPER_TRADING, RISK_PER_TRADE_USD, DAILY_LOSS_LIMIT_USD,
     ORB_BUDGET_USD, ORB_BUDGET_IS_DEFAULT,
+    SCALE_ORB, SCALE_BREAKOUT, SCALE_VOLT, ORB_RISK_ENV_IGNORED,   # r161
     NOISE_FLOOR_BAR_MULT, NOISE_FLOOR_LOOKBACK_BARS, NOISE_FLOOR_MIN_BARS,
     PIN_PROXIMITY_ACTIVE, PIN_PROXIMITY_MIN_FRAC,
     REASSESS_MINUTES, INSTRUMENT, INSTRUMENT_UNSET, SessionConfig, DIRECTIONAL_ONLY,
@@ -4689,6 +4691,22 @@ def _noise_floor_of(df_1m) -> float:
     return float(_rng.median()) * NOISE_FLOOR_BAR_MULT
 
 
+# r161 (SIZE.2) — WHICH TRADES SCALE. Keyed on the strategy's OWN name, the
+# same names _STRUCTURE_BY_NAME carries; a strategy not listed here never
+# supplied geometry in the first place, so True for it changes nothing.
+_SCALING_SWITCH = {"ORBStrategy": "SCALE_ORB", "Breakout": "SCALE_BREAKOUT",
+                   "VOLT": "SCALE_VOLT"}
+
+
+def _scaling_on(signal) -> bool:
+    """True = size on the ramp; False = FLAT. The operator, 2026-09-27: *"ORB
+    Scaling OFF/ON, Breakout Scaling OFF/ON, VOLT Scaling OFF/ON"*. Read from
+    this module's bindings of the config switches so a test can flip one
+    without re-importing config."""
+    key = _SCALING_SWITCH.get(getattr(signal, "strategy_name", "") or "")
+    return True if key is None else bool(globals()[key])
+
+
 def _geometry_inputs(signal):
     """(orb_width, orb_stop_distance) for `size_for` — (0.0, 0.0) means the
     signal takes the budget rule. Extracted from `_execute_entry_signal`'s
@@ -4993,6 +5011,7 @@ def _execute_entry_signal(signal, ctx, ms, state, _sigj=None, *, additive: bool 
         orb_width           = _orb_w,
         orb_stop_distance   = _orb_d,
         noise_floor         = _noise_floor,
+        scaled              = _scaling_on(signal),        # r161: OFF = flat
     )
 
     if not sizing.allowed:
@@ -6272,7 +6291,17 @@ def main():
             # defect rather than a config gap unless the banner says otherwise.
             f" · orb_budget=${ORB_BUDGET_USD:.0f}"
             f"{' (DEFAULT — not set for this box)' if ORB_BUDGET_IS_DEFAULT else ''}"
+            # r161 — the ramp is MIN (risk per trade) to MAX (orb_budget), and
+            # each switch says whether that trade rides it or sizes flat.
+            f" · scaling ORB={'on' if SCALE_ORB else 'OFF'}"
+            f" BRK={'on' if SCALE_BREAKOUT else 'OFF'}"
+            f" VOLT={'on' if SCALE_VOLT else 'OFF'}"
         )
+        if ORB_RISK_ENV_IGNORED:
+            logger.warning(
+                "OT_ORB_RISK_USD=%s is set on this unit and is NO LONGER READ "
+                "(r161: the ramp START is risk per trade, $%.0f). Remove it with "
+                "configure.sh item 2.", ORB_RISK_ENV_IGNORED, RISK_PER_TRADE_USD)
     else:
         session_config = _interactive_startup()
 
