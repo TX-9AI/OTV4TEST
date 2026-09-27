@@ -4,6 +4,22 @@ You should be familiar with public repo- https://github.com/TX-9AI/options_trade
 
 You have direct ownership of https://github.com/TX-9AI/OTV4TEST
 
+## SATURDAY EARLY WAKE — THE RESEARCH RUN (do this BEFORE the catch-up below)
+
+If you were raised on a SATURDAY between 02:00 and 06:00 ET, you were woken for this. Do it first; the catch-up below waits until the operator arrives (~08:00). The operator, 2026-09-27: *"I don't wanna come up with the ideas myself ... I want you to look at the data critically and try different variables and if you find one that presents an interesting sample that's when you would expand it to try it on other symbols ... creatively approach it because my creativity has limits."*
+
+YOUR JOB: find better exits, stops and dials than the ones we run. Nobody hands you the ideas. Read the week critically - this box's trades.db (QQQ), the bucket's SOFI/AAL trades, the losers, the giveback - form your OWN hypotheses and test them on history. When one looks interesting, EXPAND it: the other symbols, the newest week.
+
+THE RULES THAT KEEP IT HONEST:
+- Discovery first (QQQ + the older weeks). Before expanding an idea to other symbols or the newest week, WRITE ITS TERMS DOWN (what counts as a pass), then test. Two sessions agreeing is not evidence; unseen data is.
+- Keep a lab notebook: every idea tried, including the dead ones, with numbers.
+- Score the operator's way: losing days first, trend days kept, against today's settings AND hold-to-close; dollars and percent.
+- The harness: /var/tmp/breakout_exit_wargame (simulate, candidates, hist, fetch_stream, run_history2.sh, the cache of 266+ symbol-days; PREREG_EXIT_COMPROMISE.md for what was already tried and failed). Add the new week to the cache first.
+- BIG JOBS STREAM. The warehouse is large (QQQ quote_series ~1.3 GB a day in 12 MB objects). Never load a whole object: stream it in chunks, match rows on the raw bytes, decode only the rows you keep (fetch_stream.py is the pattern, proven identical to a full load). Cache what you keep to disk under /var/tmp and simulate from the cache. Measure a job's memory on one day before a big run.
+- Every process under guarded.sh (memory cap, and it volunteers as the first OOM victim - the bot's oom_score was once HIGHER than a study's). One heavy job at a time; the 03:00 boot also runs the full checker sweep (~9 min) - wait for it.
+- READ AND STUDY ONLY: no code/config/service changes, no commits, no pushes, no warehouse writes, no deletes outside your own scratch.
+- Stop by 07:30 ET. Write /var/tmp/saturday_study_<date>.md, every line 76 characters or fewer: the 3-5 findings worth his time, how many ideas were tried per finding kept, and whether each held on symbols it was not found on. Then do the catch-up below.
+
 FIRST, CATCH UP ON WHERE WE LEFT OFF — run `python3 tools/last_session.py`. It prints my messages from the previous conversation in order, with the revisions that landed in that window and how the thread ended. That is 2-7k tokens, not the transcript; the transcripts are 50MB and live in ~/.claude/projects/-home-ubuntu-options-trader/ if you ever need to search them for something specific (`--list` shows every session, `--session <id>` reads a particular one). READ IT BEFORE YOU START THE WORK BELOW — a ruling I already gave you is not a question to ask me again.
 
 THEN READ THE OVERNIGHT SWEEP — `python3 tools/boot_sweep.py --show`. The FULL checker set runs once at the 08:00 boot, ordered after the bot and the feed, so a delivery never has to pay for it. It reports NEW and FIXED against the previous run, not a bare count — this tree carried 11 standing reds once; since r128 (2026-09-24) it carries NONE outside a worktree, so ANY red is the signal. If it reports a NEW failure, BRIEF IT TO ME with the proposed fix and why the fix works before you start the work below; if it reports SKIPPED or CRASHED, say so rather than treating silence as green. The sweep DETECTS and RECORDS; you DIAGNOSE — it cannot produce a rationale and is not trying to.
