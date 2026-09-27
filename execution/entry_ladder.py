@@ -1,5 +1,19 @@
 """
-execution/entry_ladder.py  v4.2
+execution/entry_ladder.py  v4.3
+v4.3  2026-09-27  OTV4TEST r164 — NO ORDER IS EVER PRICED AT $0.00. The operator,
+      2026-09-27: "We can NEVER bid or ask $0.00 — this is the one time that we
+      may have to cross Mark. On our ladder exit and entries ... if Mark is ever
+      zero, we have to skip that rung and go to the next one. This is the ONLY
+      exception for getting a worse fill than mark." and "Entry AND exit ladder."
+      MEASURED on this code before the fix: a BUY into a 0.00/0.01 book posted
+      rungs [0.00], into 0.00/0.02 [0.00, 0.01] - the first post $0.00. Exits walk
+      this same LadderState through ladder_registry.price_for, so a buy-to-close of
+      a cheap short, or of a combo whose net quote straddles zero (position_manager
+      clamps the negative net bid to 0.00 - "debit or credit?"), opened at $0.00.
+      Now a rung at or below zero is SKIPPED; when nothing is left the price is ONE
+      VENUE INCREMENT (0.01 penny / 0.05 nickel) - worse than mark, and the only
+      place this file allows that. Sells snap UP and never reach zero; a dead
+      0.00/0.00 book still returns [] and every caller floors it at one tick.
 v4.2  2026-09-08  r315 — THE WALK BELONGS TO THE INTENT, NOT TO A STRIKE PAIR.
       `LadderState.next_price` takes an optional `structure` tag. When the tag
       CHANGES mid-walk — the strategy re-selected its strikes because spot
@@ -240,6 +254,12 @@ def rungs(bid: float, ask: float, side: str, symbol: str = "") -> list:
     m = round(_snap_mark_in_our_favour(mark, inc, sell), 4)
     if m not in out:
         out.append(m)
+    # 🔴 r164 — NEVER $0.00. A rung at or below zero is SKIPPED to the next; if
+    # that empties the table (a buy into 0.00/0.01), the one rung is ONE VENUE
+    # INCREMENT - worse than mark, the operator's ONLY ruled exception.
+    out = [r for r in out if r > 1e-9]
+    if not out:
+        out = [round(inc, 4)]
     return out
 
 
@@ -315,6 +335,12 @@ class LadderState:
             px = _snap_mark_in_our_favour(mark, _increment(self.symbol, mark, bid, ask), False)
             why = "mark (better than the rung)"
 
+        # 🔴 r164 — NEVER $0.00, whatever rule 1 or rule 3 produced (a sub-tick
+        # mark snapped down in our favour is 0.00 on a buy). One increment is
+        # the ruled exception: "skip that rung and go to the next one."
+        if px <= 1e-9:
+            px = _increment(self.symbol, mark, bid, ask)
+            why += " (a $0.00 rung skipped: one increment, the ruled exception)"
         return round(px, 4), why
 
     def refuse(self, price: float):
