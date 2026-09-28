@@ -8,6 +8,8 @@ You have direct ownership of https://github.com/TX-9AI/OTV4TEST
 
 If you were raised on a SATURDAY between 02:00 and 06:00 ET, you were woken for this. Do it first; the catch-up below waits until the operator arrives (~08:00). The operator, 2026-09-27: *"I don't wanna come up with the ideas myself ... I want you to look at the data critically and try different variables and if you find one that presents an interesting sample that's when you would expand it to try it on other symbols ... creatively approach it because my creativity has limits."*
 
+ASSIGNED ITEMS FIRST. Before your own ideas, do every row in docs/BACKLOG.md tagged **SAT-RUN** whose state is still OPEN (`grep -n "SAT-RUN" docs/BACKLOG.md`). They are the operator's (2026-09-28: *"Make sure this is part of the SATURDAY TIMER's work, so it's ready in time for the Saturday Brief"*). Each goes at the top of the study file with its result; the rules below govern them too. Report each row's result so the next delivery can mark it. Then spend the time left on your own hypotheses. No SAT-RUN row open means the whole run is yours.
+
 YOUR JOB: find better exits, stops and dials than the ones we run. Nobody hands you the ideas. Read the week critically - this box's trades.db (QQQ), the bucket's SOFI/AAL trades, the losers, the giveback - form your OWN hypotheses and test them on history. When one looks interesting, EXPAND it: the other symbols, the newest week.
 
 THE RULES THAT KEEP IT HONEST:
