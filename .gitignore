@@ -102,3 +102,7 @@ data/retention_purge.lock
 # Claude Code's per-checkout overrides — machine-local by design (the shared,
 # committed permissions are .claude/settings.json).
 .claude/settings.local.json
+# r168 - the emergency watchdog: the bot heartbeat and the watchdog episode state, runtime only
+data/BOT_HEARTBEAT
+data/emergency_watchdog.json
+data/emergency_watchdog.json.tmp

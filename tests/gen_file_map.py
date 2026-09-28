@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/gen_file_map.py  v4.11
+tests/gen_file_map.py  v4.12
+v4.12 2026-09-27  OTV4TEST r168 — `tools/emergency_watchdog.py` DECLARED. Launched by
+      deploy/install_emergency_watchdog.sh; caught red by check_map_accuracy E1 on the build.
 v4.11 2026-09-24  OTV4TEST r132 — `tools/boot_sweep.py` DECLARED. Its unit now ships
       as deploy/install_boot_sweep.sh (it was hand-written on the reference box), so
       check_map_accuracy E1 sees a deploy/ unit launch it — caught red by E1 on the build.
@@ -154,6 +156,7 @@ ENTRY_POINTS = {
     "tools/claude_boot.py",
     "tools/open_scan.py",          # r130 — launched by deploy/install_open_scan_timer.sh
     "tools/boot_sweep.py",         # r132 — launched by deploy/install_boot_sweep.sh
+    "tools/emergency_watchdog.py", # r168 — launched by deploy/install_emergency_watchdog.sh
     # CLI helpers, run by hand or by a script
     "analysis/get_orb_range.py",
     "utils/check_sdk.py",

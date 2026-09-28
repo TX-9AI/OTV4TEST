@@ -1,5 +1,6 @@
 """
-main.py  v4.75
+main.py  v4.76
+v4.76 2026-09-27  OTV4TEST r168 (EXP.1 item 3) — THE HEARTBEAT. `_touch_heartbeat` writes data/BOT_HEARTBEAT at the top of every main-loop pass (never raises; a failed write warns once), read by the new out-of-process emergency watchdog as its liveness signal. Nothing that trades, sizes or exits is touched.
 v4.75 2026-09-27  OTV4TEST r165 (EXP.1) — AN EXPIRED POSITION BOOKS ITS SETTLEMENT VALUE. Boot Step 1 passes close_expired_open_trades a `settle` built from broker_reconcile.settle_expired and `_settlement_spot` (the underlying's 16:00 settlement close from this box's feed store, read-only), and `_close_phantom_with_recovery` settles an expired phantom the same way before falling back to the flagged $0.00. The live broker reconcile then reads SHARE positions: any in the box's instrument is an exercise/assignment footprint and pages (send_exercise_footprint_alert). Nothing that trades or exits is touched.
 v4.74 2026-09-27  OTV4TEST r162 (CAP.1) — the entry gate's halt line and the startup lines name the DAILY CATASTROPHIC LOSS CAP and say it RE-OPENS once closes bring the realized loss back under the limit (risk_manager v4.8 no longer latches). The gate itself is unchanged: it still blocks only NEW entries; open positions are managed as before.
 v4.73 2026-09-27  OTV4TEST r161 (SIZE.2) — PER-TRADE SCALING SWITCHES. `_scaling_on(signal)` reads config.SCALE_ORB / SCALE_BREAKOUT / SCALE_VOLT by the strategy's own name and the entry path passes it to size_for(scaled=...); OFF sizes FLAT (the budget rule) after the r93 noise floor, and the signal's structure stop, exits and `sizes_on_geometry` are untouched. Every other strategy returns True and reaches exactly the arithmetic it reached before. The service-mode line names the three switches and the merged MIN, and a unit still carrying the retired OT_ORB_RISK_USD is WARNED at startup (it is no longer read: ORB_RISK_USD is RISK_PER_TRADE_USD by the operator's ruling, "Merge it").
@@ -5333,12 +5334,35 @@ def _page_dispatch_failure(state, err: Exception, where: str) -> None:
         logger.error("dispatch-failure page could not be sent: %s", _alert_err)
 
 
+_HEARTBEAT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "BOT_HEARTBEAT")
+_heartbeat_warned = False
+
+
+def _touch_heartbeat(tick: int) -> None:
+    """r168 (EXP.1 item 3) — one small write per main-loop pass. The emergency
+    watchdog (tools/emergency_watchdog.py) reads its AGE: a loop that stops
+    passing stops touching it, however quiet or noisy bot.log is (bot.log went
+    silent 703-1208s at 15:40 ET on three flat days, so its age cannot say
+    stuck). ⚠️ NEVER RAISES: a heartbeat that could stop the loop would be the
+    hang it exists to catch. A failed write warns once and the watchdog, seeing
+    the file age, pages - the loud direction."""
+    global _heartbeat_warned
+    try:
+        with open(_HEARTBEAT, "w") as f:
+            f.write(f"{time.time():.0f} {tick}\n")
+    except Exception as exc:                                    # noqa: BLE001
+        if not _heartbeat_warned:
+            _heartbeat_warned = True
+            logger.warning("heartbeat write failed (%s) — the emergency watchdog will read this bot as stuck", exc)
+
+
 def main_loop(state: BotState):
     pos_mgr = get_position_manager(state.paper_trading)
 
     while True:
         tick_start  = time.time()
         state.tick_count += 1
+        _touch_heartbeat(state.tick_count)   # r168 — the emergency watchdog's liveness read
 
         try:
             _apply_log_level()      # r112 — one stat; DEBUG flips with no restart

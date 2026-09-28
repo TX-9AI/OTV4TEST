@@ -1,4 +1,7 @@
-"""tests/check_bootstrap.py — v1.7
+"""tests/check_bootstrap.py — v1.8
+
+v1.8  2026-09-27 — OTV4TEST r168. G3 RE-POINTED (section 38.4): the suite gains
+      deploy/install_emergency_watchdog.sh, before install_claude.sh as setup_ec2 v4.9 lists it.
 
 v1.7  2026-09-27 — OTV4TEST r162. G17 RE-POINTED (section 38.4): item 6's label is
       "Daily catastrophic loss cap" (the operator's name); same key, same item.
@@ -263,7 +266,8 @@ for k, v in _WANT.items():
           lambda k=k: "got %r" % plan.get(k))
 _SUITE = ["deploy/harden_hosts.sh", "deploy/install_midnight_halt.sh",
           "deploy/install_retention_purge_timer.sh", "deploy/install_open_scan_timer.sh",
-          "deploy/install_boot_sweep.sh", "deploy/install_claude.sh",
+          "deploy/install_boot_sweep.sh", "deploy/install_emergency_watchdog.sh",
+          "deploy/install_claude.sh",
           "deploy/install_claude_boot.sh"]
 guard("G3 the whole suite is planned and every file is present",
       lambda: [s.split(" ")[0] for s in suite] == _SUITE

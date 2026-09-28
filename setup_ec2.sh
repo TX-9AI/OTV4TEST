@@ -1,6 +1,9 @@
 #!/bin/bash
 # ==========================================================================
-# setup_ec2.sh  v4.8
+# setup_ec2.sh  v4.9
+# v4.9  2026-09-27  OTV4TEST r168 (EXP.1 item 3) — THE SUITE INSTALLS THE EMERGENCY
+#       WATCHDOG (deploy/install_emergency_watchdog.sh), so a fresh box has it
+#       as this one does. It copies nothing from the bot unit: it reads it live.
 # v4.8  2026-09-27  OTV4TEST r161 (SIZE.2) — THE RAMP START IS RISK PER TRADE, AND
 #       THE THREE SCALING SWITCHES ARE PRIMED. The operator: "Merge it. that was
 #       always the intent." OT_ORB_RISK_USD is no longer written (config.py no
@@ -336,7 +339,7 @@ fi
 
 # The suite, in install order. Each is run with `bash`, so a lost exec bit
 # cannot stop it, and one failure is reported rather than ending the install.
-SUITE="deploy/harden_hosts.sh deploy/install_midnight_halt.sh deploy/install_retention_purge_timer.sh deploy/install_open_scan_timer.sh deploy/install_boot_sweep.sh deploy/install_claude.sh"
+SUITE="deploy/harden_hosts.sh deploy/install_midnight_halt.sh deploy/install_retention_purge_timer.sh deploy/install_open_scan_timer.sh deploy/install_boot_sweep.sh deploy/install_emergency_watchdog.sh deploy/install_claude.sh"
 [ "$CLAUDE_AT_BOOT" = 1 ] && SUITE="$SUITE deploy/install_claude_boot.sh"
 REQ_FILE="requirements.lock"
 [ -f "$SRC_DIR/$REQ_FILE" ] || REQ_FILE="requirements.txt"
