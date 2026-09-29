@@ -1,5 +1,6 @@
 """
-config.py  v4.41
+config.py  v4.42
+v4.42 2026-09-29  OTV4TEST r175 (SYM.1) — THE TRADEABLE UNIVERSE IS THE TOP 75 OPTIONS NAMES, AND A SYMBOL OFF THE LIST IS REFUSED. The operator, 2026-09-29: "probably the 50 most liquid names ... bump it up to 75. Any list that would include AAL and Sofi would be the right number", then "Yes to all" to: rank by options volume, keep only an ATM spread <= 10%, keep every symbol already listed. MEASURED 2026-09-29 ~13:40 ET on Cboe's public delayed chains (181 candidates, 180 read; /var/tmp/option_liquidity_2026-09-29.jsonl on the reference box): 71 pass the spread filter (SOFI #22, AAL #73 by volume); with SPY/QQQ/IWM/SPX that is 75. 50 are new: STRIKE_INCREMENTS gains each at its MEASURED near-money step (the mode of the listed-strike gaps within ~6% of spot on the nearest expiry, four spot-checked against the raw ladder), PENNY_CLASSES gains the 48 measured penny-quoted (APP and ASML quote on the nickel grid and stay out). Existing entries are NOT re-stepped here: 18 disagree with the real ladder (NVDA/AMZN/AAPL... trade 2.5, SMCI 0.5) and that is STRK.1, the shared fix that reads the ladder from the chain. INSTRUMENT_LISTED is new: a symbol not in STRIKE_INCREMENTS used to get a silent $1 step from .get(INSTRUMENT, 1); main.py and data/candle_feed.py now refuse it at startup. The declared (inert) RETENTION_DAYS copy moves 5m 10 -> 30 and 15m 20 -> 30 with warehouse/retention_purge.py, for the 30-day first-boot backfill.
 v4.41 2026-09-27  OTV4TEST r162 (CAP.1) — DAILY_LOSS_LIMIT_USD is the DAILY CATASTROPHIC LOSS CAP, and it RE-ARMS. Value and key (OT_DAILY_LOSS_LIMIT) unchanged; the comment now says what risk_manager v4.8 does: no new entries while realized net is at or beyond -limit, entries re-open once closes bring it back under.
 v4.40 2026-09-27  OTV4TEST r161 (SIZE.2) — ONE MIN, ONE MAX, AND A SCALING SWITCH PER TRADE. The operator, 2026-09-27: "Risk per trade/Ramp Start (MIN)", "Merge it. that was always the intent." ORB_RISK_USD no longer reads OT_ORB_RISK_USD: it IS RISK_PER_TRADE_USD, and a unit still carrying the old key is named at startup (ORB_RISK_ENV_IGNORED) rather than silently obeyed or silently dropped. SCALE_ORB / SCALE_BREAKOUT / SCALE_VOLT (OT_SCALE_ORB / OT_SCALE_BREAKOUT / OT_SCALE_VOLT, "1" = on, default on): OFF sizes that strategy FLAT on the budget rule (about RISK_PER_TRADE_USD of premium) while its structure stop, exits and the r93 noise floor stay exactly as they are - "retain the original structure stop ... but just use a flat dollar amount for the entry".
 v4.39 2026-09-26  OTV4TEST r149 (EOD.1) — THE END OF DAY IS ONE TABLE, AND THE OPERATOR RESET IT. `EOD_SCHEDULE`: entries stop 15:40; positions with ASSIGNMENT RISK (a short leg) post RESTING best-case closes at 15:45; everything else LADDERS from 15:50; anything unfilled CROSSES at 15:55. Directional debit entries run ALL DAY to 15:40 (ORB, Runaway, Hunt, Breakout, VOLT; was 11:30). HARD_CLOSE_ET, FLATTEN_WINDOW_OPEN_ET, VERTICAL_HOLD_TO_ET and DEBIT_DIRECTIONAL_CUTOFF_ET now DERIVE from it; the debit cutoff's OT_DEBIT_CUTOFF_ET override is REMOVED (a second window source).
@@ -780,6 +781,13 @@ PENNY_CLASSES = {
     "JPM", "LLY", "META", "MSFT", "MU", "NFLX", "NVDA", "ORCL", "PLTR",
     "SMCI", "SMH", "TSLA", "UNH", "XOM",
     "SOFI", "AAL",                                  # r137: measured penny-quoted
+    # r175 — measured penny-quoted 2026-09-29 (>= half of sub-$3 quotes off the nickel grid)
+    "INTC", "NU", "IBIT", "MSTR", "SOXL", "SLV", "CCL", "TQQQ", "USO",
+    "AMC", "GME", "BAC", "RIVN", "WMT", "NKE", "BA", "HOOD", "GOOG",
+    "MRVL", "UBER", "QCOM", "TSM", "ARM", "BABA", "XLE", "MARA", "NOW",
+    "GDX", "CVNA", "CRWD", "COIN", "SQQQ", "IONQ", "MCD", "DKNG", "SOXS",
+    "ACHR", "RIOT", "KO", "C", "RGTI", "TNA", "MS", "JNJ", "MRK",
+    "OKTA", "AA", "DASH",
 }
 # SPX is DELIBERATELY ABSENT — index options are not in the penny program.
 PRICE_INCREMENT_BOUNDARY    = 3.00
@@ -797,8 +805,22 @@ STRIKE_INCREMENTS = {
     # r137 — low-priced names for the live-mechanics paper boxes (FLEET.1).
     # $0.50 strikes near the money, weeklies - measured on Cboe's chain 09-24.
     "SOFI": 0.5, "AAL": 0.5,
+    # r175 (SYM.1) — the top-75 options names, ATM spread <= 10%, measured on
+    # Cboe's delayed chains 2026-09-29 (near-money step, nearest expiry).
+    "INTC": 1, "NU": 0.5, "IBIT": 0.5, "MSTR": 1, "SOXL": 1, "SLV": 0.5,
+    "CCL": 0.5, "TQQQ": 1, "USO": 1, "AMC": 0.5, "GME": 0.5, "BAC": 1,
+    "RIVN": 0.5, "WMT": 1, "NKE": 0.5, "BA": 2.5, "HOOD": 1, "GOOG": 2.5,
+    "MRVL": 2.5, "UBER": 1, "QCOM": 2.5, "TSM": 2.5, "ARM": 2.5, "BABA": 1,
+    "XLE": 1, "MARA": 0.5, "NOW": 1, "GDX": 0.5, "CVNA": 1, "CRWD": 2.5,
+    "COIN": 2.5, "SQQQ": 0.5, "IONQ": 0.5, "MCD": 2.5, "DKNG": 0.5, "SOXS": 0.5,
+    "ACHR": 0.5, "RIOT": 0.5, "KO": 1, "APP": 2.5, "C": 1, "RGTI": 0.5,
+    "ASML": 5, "TNA": 1, "MS": 2.5, "JNJ": 2.5, "MRK": 1, "OKTA": 2.5,
+    "AA": 0.5, "DASH": 2.5,
 }
 STRIKE_INCREMENT    = STRIKE_INCREMENTS.get(INSTRUMENT, 1)
+# r175 (SYM.1) — a symbol off the list got the $1 default above in silence.
+# main.py and data/candle_feed.py refuse to start unless this is True.
+INSTRUMENT_LISTED   = INSTRUMENT in STRIKE_INCREMENTS
 
 # Neutral strategies (iron condor, butterfly) require true-0DTE decay and strike
 # density, so they run ONLY on these. Every other tradeable symbol is
@@ -2304,8 +2326,8 @@ TIMEFRAMES = {
 #
 # RETENTION_DAYS = {
 #     "1m":  60,          # r108 — was 5; must equal "1h" (breaches judged on 1m)
-#     "5m":  10,
-#     "15m": 20,
+#     "5m":  30,
+#     "15m": 30,
 #     "1h":  60,
 #     "1d":  None,        # None = keep everything; it is one row per session
 # }

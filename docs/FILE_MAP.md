@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-362 Python modules across 12 local packages.
+363 Python modules across 12 local packages.
 
-**Reached by:** 119 imported · 12 declared entry points · 146 referenced from a script, unit or doc but never imported · **85 by nothing here**.
+**Reached by:** 119 imported · 12 declared entry points · 147 referenced from a script, unit or doc but never imported · **85 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -600,7 +600,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_butterfly_wing_grid.py`
 - **calls:** `strategy/__init__.py`, `strategy/gex_pin_butterfly.py`, `strategy/plan.py`, `utils/time_utils.py`
-- **called by:** (not imported) — referenced in `docs/PLAN_SPEC.md`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/PLAN_SPEC.md`
 
 ### `tests/check_cascade_constants.py`
 - **calls:** `config.py`
@@ -1210,6 +1210,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** `database/trade_logger.py`, `execution/__init__.py`, `execution/credit_remainder.py`, `execution/ladder_registry.py`, `execution/position_manager.py`, `main.py`, `strategy/base_strategy.py`, `strategy/criteria.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
+### `tests/check_symbol_universe.py`
+- **calls:** `warehouse/__init__.py`, `warehouse/retention_purge.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
 ### `tests/check_tcs_fifty.py`
 - **calls:** `tests/check_tcs_plan.py`
 - **called by:** (not imported) — referenced in `docs/PLAN_SPEC.md`, `docs/PORT_MANIFEST.md`
@@ -1492,7 +1496,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `warehouse/__init__.py`
 - **calls:** (none)
-- **called by:** `tests/check_audit_20260823.py`, `tests/check_level_tape.py`, `tests/check_lineage.py`, `tests/check_purge_lock.py`, `tests/check_purge_pushed.py`, `tests/check_purge_reclaim.py`, `tests/check_retention_armed.py`, `tests/check_self_close_hold.py`, `warehouse/self_close.py`
+- **called by:** `tests/check_audit_20260823.py`, `tests/check_level_tape.py`, `tests/check_lineage.py`, `tests/check_purge_lock.py`, `tests/check_purge_pushed.py`, `tests/check_purge_reclaim.py`, `tests/check_retention_armed.py`, `tests/check_self_close_hold.py`, `tests/check_symbol_universe.py`, `warehouse/self_close.py`
 
 ### `warehouse/counter_pop.py`
 - **calls:** (none)
@@ -1504,7 +1508,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `warehouse/retention_purge.py`
 - **calls:** (none)
-- **called by:** `tests/check_audit_20260823.py`, `tests/check_level_tape.py`, `tests/check_purge_lock.py`, `tests/check_purge_pushed.py`, `tests/check_purge_reclaim.py`, `tests/check_retention_armed.py`, `tests/check_self_close_hold.py`, `warehouse/self_close.py`
+- **called by:** `tests/check_audit_20260823.py`, `tests/check_level_tape.py`, `tests/check_purge_lock.py`, `tests/check_purge_pushed.py`, `tests/check_purge_reclaim.py`, `tests/check_retention_armed.py`, `tests/check_self_close_hold.py`, `tests/check_symbol_universe.py`, `warehouse/self_close.py`
 
 ### `warehouse/s3_push.py`
 - **calls:** (none)

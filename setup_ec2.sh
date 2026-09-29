@@ -1,6 +1,11 @@
 #!/bin/bash
 # ==========================================================================
-# setup_ec2.sh  v4.9
+# setup_ec2.sh  v4.10
+# v4.10 2026-09-29  OTV4TEST r175 (SYM.1) — AN UNLISTED OT_INSTRUMENT STOPS THE
+#       INSTALL AT STEP 1, NAMED. The bootstrap's symbol used to install and
+#       run on a silent $1 strike step; now it must be a key of
+#       config.STRIKE_INCREMENTS (read from this repo's config.py with the
+#       system python3 and NO import - a fresh box has no venv yet).
 # v4.9  2026-09-27  OTV4TEST r168 (EXP.1 item 3) — THE SUITE INSTALLS THE EMERGENCY
 #       WATCHDOG (deploy/install_emergency_watchdog.sh), so a fresh box has it
 #       as this one does. It copies nothing from the bot unit: it reads it live.
@@ -235,6 +240,18 @@ case "$DATA_CAPTURE" in managed|standalone) ;; *)
 GIT_PUSH="${OT_GIT_PUSH:-0}"
 GIT_REF="${OT_GIT_REF:-main}"
 
+# r175 (SYM.1) — the symbol must be on the list. Parsed, never imported.
+if ! python3 - "$SRC_DIR/config.py" "$INSTRUMENT" <<'PYEOF'
+import ast, re, sys
+src = open(sys.argv[1]).read()
+m = re.search(r"^STRIKE_INCREMENTS = (\{.*?\n\})", src, re.S | re.M)
+sys.exit(0 if m and sys.argv[2] in ast.literal_eval(m.group(1)) else 1)
+PYEOF
+then
+    echo "  🔴 OT_INSTRUMENT=${INSTRUMENT} is not a listed symbol (config.STRIKE_INCREMENTS)."
+    echo "     Set a listed one in bootstrap.sh, or add it with its measured strike step."
+    exit 1
+fi
 print_ok "Defaults: ${INSTRUMENT} | \$${RISK_USD}/trade | PAPER"
 print_info "Change risk, mode (paper/live), and instrument anytime via configure.sh"
 

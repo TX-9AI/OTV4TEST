@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-warehouse/retention_purge.py  v1.8
+warehouse/retention_purge.py  v1.9
+v1.9  2026-09-29  OTV4TEST r175 (SYM.1) — 5m AND 15m ARE KEPT 30 DAYS (were 10 and
+      20), so the ~30-day first-boot backfill the operator asked for on
+      2026-09-29 is not deleted by the first nightly purge after it lands.
+      config.py's declared copy moves with it. 1m (60) and 1h (60) unchanged.
 v1.8  2026-09-24  OTV4TEST r136 — THE PURGE NEVER DELETES WHAT S3 HAS NOT CONFIRMED
       (mainline r417's `_safe_cutoff`, ported). The operator, 2026-09-24:
       "Adopt mainline's approach. Should work under managed or standalone."
@@ -249,7 +253,7 @@ sys.path.insert(0, HERE)
 # 1m. A 1m window shorter than the 1h one leaves every older level's breaches
 # unjudgeable, and measured on real tape the hourly stand-in left 39% of dead
 # levels live. `check_level_tape` T8 pins 1m >= 1h. See the v1.7 note above.
-RETENTION_DAYS = {"1m": 60, "5m": 10, "15m": 20, "1h": 60, "1d": None}
+RETENTION_DAYS = {"1m": 60, "5m": 30, "15m": 30, "1h": 60, "1d": None}   # r175: 5m/15m 30
 
 # Non-candle raw artifacts. A RE-PUSH window, not a warm-up requirement:
 # verified in source that the surface engine reads a 15-minute window and

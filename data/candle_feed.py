@@ -1,5 +1,6 @@
 """
-data/candle_feed.py  v4.17
+data/candle_feed.py  v4.18
+v4.18 2026-09-29  OTV4TEST r175 (SYM.1) — main() refuses a symbol that is not on the list (config.INSTRUMENT_LISTED), exit 78, beside r146's unset refusal: never stream a symbol the bot will not trade.
 v4.17 2026-09-26  OTV4TEST r146 — main() refuses to start with OT_INSTRUMENT unset (exit 78), first,
       before logging: the feed would otherwise subscribe a symbol named UNSET.
 v4.16 2026-09-24  OTV4TEST r135 — A FRESH BOX BACKFILLS 45 DAYS OF HOURLY BARS, NOT 16.
@@ -1922,6 +1923,11 @@ def main():
     from config import INSTRUMENT_UNSET
     if INSTRUMENT == INSTRUMENT_UNSET:
         sys.stderr.write("CRITICAL: OT_INSTRUMENT is not set - candle feed refusing to start.\n")
+        sys.exit(78)
+    from config import INSTRUMENT_LISTED          # r175 (SYM.1)
+    if not INSTRUMENT_LISTED:
+        sys.stderr.write("CRITICAL: OT_INSTRUMENT=%s is not in config.STRIKE_INCREMENTS - "
+                         "candle feed refusing to start.\n" % INSTRUMENT)
         sys.exit(78)
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s")

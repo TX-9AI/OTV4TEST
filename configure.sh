@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# configure.sh  v4.13
+# configure.sh  v4.14
+# v4.14 2026-09-29  OTV4TEST r175 (SYM.1) — ITEM 1's SYMBOL LIST WRAPS AT 72
+#       COLUMNS. It is 82 symbols since r175 and printed as one line, which
+#       the phone (Termius, 76 columns) broke mid-ticker.
 # v4.13 2026-09-27  OTV4TEST r162 (CAP.1) — ITEM 6 IS THE DAILY CATASTROPHIC LOSS CAP.
 #       The operator's name for it, and his rule: "Manage what's open but no new
 #       entries. If the open TRADES put us back under the limit again after they
@@ -337,7 +340,7 @@ change_instrument() {
     echo -e "  ${BOLD}Directional only${RESET} (ORB + sweep):    everything else"
     echo ""
     echo -e "  Tradeable symbols:"
-    echo "    ${allowed}"
+    echo "${allowed}" | fold -s -w 68 | sed 's/^/    /'
     echo ""
     while true; do
         read -p "    Enter ticker [ENTER to keep ${current}]: " choice

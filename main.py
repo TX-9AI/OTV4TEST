@@ -1,5 +1,6 @@
 """
-main.py  v4.76
+main.py  v4.77
+v4.77 2026-09-29  OTV4TEST r175 (SYM.1) — main() REFUSES A SYMBOL THAT IS NOT ON THE LIST (config.INSTRUMENT_LISTED), exit 78 like r146's unset refusal and before any login or alert. Until now an unlisted OT_INSTRUMENT traded on a silent $1 strike step (STRIKE_INCREMENTS.get(INSTRUMENT, 1)).
 v4.76 2026-09-27  OTV4TEST r168 (EXP.1 item 3) — THE HEARTBEAT. `_touch_heartbeat` writes data/BOT_HEARTBEAT at the top of every main-loop pass (never raises; a failed write warns once), read by the new out-of-process emergency watchdog as its liveness signal. Nothing that trades, sizes or exits is touched.
 v4.75 2026-09-27  OTV4TEST r165 (EXP.1) — AN EXPIRED POSITION BOOKS ITS SETTLEMENT VALUE. Boot Step 1 passes close_expired_open_trades a `settle` built from broker_reconcile.settle_expired and `_settlement_spot` (the underlying's 16:00 settlement close from this box's feed store, read-only), and `_close_phantom_with_recovery` settles an expired phantom the same way before falling back to the flagged $0.00. The live broker reconcile then reads SHARE positions: any in the box's instrument is an exercise/assignment footprint and pages (send_exercise_footprint_alert). Nothing that trades or exits is touched.
 v4.74 2026-09-27  OTV4TEST r162 (CAP.1) — the entry gate's halt line and the startup lines name the DAILY CATASTROPHIC LOSS CAP and say it RE-OPENS once closes bring the realized loss back under the limit (risk_manager v4.8 no longer latches). The gate itself is unchanged: it still blocks only NEW entries; open positions are managed as before.
@@ -1270,7 +1271,7 @@ from config import (
     SCALE_ORB, SCALE_BREAKOUT, SCALE_VOLT, ORB_RISK_ENV_IGNORED,   # r161
     NOISE_FLOOR_BAR_MULT, NOISE_FLOOR_LOOKBACK_BARS, NOISE_FLOOR_MIN_BARS,
     PIN_PROXIMITY_ACTIVE, PIN_PROXIMITY_MIN_FRAC,
-    REASSESS_MINUTES, INSTRUMENT, INSTRUMENT_UNSET, SessionConfig, DIRECTIONAL_ONLY,
+    REASSESS_MINUTES, INSTRUMENT, INSTRUMENT_UNSET, INSTRUMENT_LISTED, SessionConfig, DIRECTIONAL_ONLY,
     DEBIT_BLOCKED_STRUCTURES,
     ORB_NO_ENTRY_AFTER_ET, BROKER_RECONCILE_ENABLED,
     ORB_REBUILD_1M_BARS,                        # r95 restart tape reach-back
@@ -6366,6 +6367,13 @@ def main():
         sys.stderr.write("CRITICAL: OT_INSTRUMENT is not set for this process - refusing to "
                          "start. Set Environment=OT_INSTRUMENT=<SYMBOL> on the unit "
                          "(configure.sh item 1).\n")
+        sys.exit(78)
+    # 🔴 r175 (SYM.1) — NOR A SYMBOL OFF THE LIST: its strike step would be a
+    # silent $1 default. The list is config.STRIKE_INCREMENTS (configure.sh item 1).
+    if not INSTRUMENT_LISTED:
+        sys.stderr.write("CRITICAL: OT_INSTRUMENT=%s is not in config.STRIKE_INCREMENTS - "
+                         "refusing to start. Pick a listed symbol (configure.sh item 1) or "
+                         "add it with its measured strike step.\n" % INSTRUMENT)
         sys.exit(78)
     service_mode = "--service" in sys.argv
 
