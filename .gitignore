@@ -76,6 +76,10 @@ data/REHEARSAL_OFF
 # rather than becoming a fourth instance of the same gap.
 data/NO_MIDNIGHT_HALT
 data/DRILL_DISK
+# r171 (AGT.1/AGT.2) - the agent watcher's event record and its observe-only
+# trading verdicts. Runtime records, never committed; never purged.
+data/AGENT_EVENTS.jsonl
+data/AGENT_VERDICTS.jsonl
 data/SHUTDOWN_CAUSE
 data/AGENT_STATUS
 env/

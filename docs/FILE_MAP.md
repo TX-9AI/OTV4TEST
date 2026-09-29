@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-359 Python modules across 12 local packages.
+362 Python modules across 12 local packages.
 
-**Reached by:** 119 imported · 12 declared entry points · 142 referenced from a script, unit or doc but never imported · **86 by nothing here**.
+**Reached by:** 119 imported · 12 declared entry points · 145 referenced from a script, unit or doc but never imported · **86 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -364,7 +364,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `notifications/alert_manager.py`
 - **calls:** `config.py`, `notifications/telegram_sender.py`, `utils/agent_status.py`, `utils/time_utils.py`
-- **called by:** `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `main.py`, `risk/risk_manager.py`, `strategy/condor_roll.py`, `tests/check_claude_boot.py`, `tests/check_startup_alert.py`, `tools/eod_summary.py`, `warehouse/self_close.py`
+- **called by:** `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `main.py`, `risk/risk_manager.py`, `strategy/condor_roll.py`, `tests/check_agent_watch.py`, `tests/check_claude_boot.py`, `tests/check_startup_alert.py`, `tools/eod_summary.py`, `warehouse/self_close.py`
 
 ### `notifications/telegram_sender.py`
 - **calls:** `config.py`
@@ -525,6 +525,10 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tests/check_age_gate_gone.py`
 - **calls:** `strategy/__init__.py`, `strategy/criteria.py`, `strategy/sweep_credit_spread.py`, `strategy/sweep_plan.py`
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+
+### `tests/check_agent_watch.py`
+- **calls:** `notifications/alert_manager.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_anchors.py`
 - **calls:** `analysis/trade_readiness.py`, `derived/__init__.py`, `derived/anchors.py`, `strategy/__init__.py`, `strategy/plan.py`
@@ -1377,6 +1381,14 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tests/warehouse_source.py`
 - **calls:** (none)
 - **called by:** `tests/check_warehouse_stream.py`
+
+### `tools/agent_verdict.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/HANDOFF.md`
+
+### `tools/agent_watch.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/HANDOFF.md`
 
 ### `tools/boot_sweep.py`
 - **calls:** (none)
