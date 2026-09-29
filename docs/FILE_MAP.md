@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-363 Python modules across 12 local packages.
+366 Python modules across 12 local packages.
 
-**Reached by:** 119 imported · 12 declared entry points · 147 referenced from a script, unit or doc but never imported · **85 by nothing here**.
+**Reached by:** 119 imported · 12 declared entry points · 151 referenced from a script, unit or doc but never imported · **84 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -216,7 +216,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `data/tasty_client.py`
 - **calls:** `config.py`
-- **called by:** `data/candle_feed.py`, `data/market_data.py`, `data/options_chain.py`, `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `main.py`, `strategy/condor_roll.py`, `tests/check_standing_offer.py`, `tools/emergency_watchdog.py`, `tools/feed_capabilities.py`, `tools/probe_aux_streams.py`
+- **called by:** `data/candle_feed.py`, `data/market_data.py`, `data/options_chain.py`, `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `main.py`, `strategy/condor_roll.py`, `tests/check_standing_offer.py`, `tools/emergency_watchdog.py`, `tools/feed_capabilities.py`, `tools/probe_aux_streams.py`, `tools/probe_candle_depth.py`
 
 ### `database/__init__.py`
 - **calls:** (none)
@@ -1114,6 +1114,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** (none)
 - **called by:** (not imported) — referenced in `deploy/install_retention_purge_timer.sh`, `docs/BACKLOG.md`
 
+### `tests/check_run_with_bot_env.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
 ### `tests/check_runaway_break_key.py`
 - **calls:** `database/__init__.py`, `database/trade_logger.py`, `strategy/__init__.py`, `strategy/runaway_continuation.py`
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
@@ -1420,7 +1424,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tools/feed_capabilities.py`
 - **calls:** `config.py`, `data/tasty_client.py`
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tools/last_session.py`
 - **calls:** (none)
@@ -1445,6 +1449,14 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tools/probe_aux_streams.py`
 - **calls:** `config.py`, `data/tasty_client.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/HANDOFF.md`
+
+### `tools/probe_candle_depth.py`
+- **calls:** `data/tasty_client.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
+### `tools/run_with_bot_env.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tools/segregate_nonrth_bars.py`
 - **calls:** (none)
