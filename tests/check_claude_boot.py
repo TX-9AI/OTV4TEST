@@ -1,6 +1,41 @@
 #!/usr/bin/env python3
-"""tests/check_claude_boot.py — v1.1
-AN AGENT SESSION IS RAISED AT BOOT, AND "UP" MEANS A LIVE CLAUDE PROCESS.
+"""tests/check_claude_boot.py — v1.2
+AN AGENT SESSION IS RAISED AT BOOT, AND "UP" MEANS A LIVE CLAUDE PROCESS
+WHOSE FIRST TURN GOT A REAL REPLY.
+
+v1.2  2026-09-29 — OTV4TEST r170 (BOOT.6). The 08:00 session died on its
+      first turn on 09-28 and 09-29 ("Could not refresh your login because
+      another Claude Code process is refreshing it") and the boot alert said
+      "Claude up (handoff)" both times. B10-B13 drive the REAL functions with
+      every side effect recorded: tmux, the raise, the kill, the spawn, the
+      clock. No real claude is started and no real transcript, login file,
+      status stamp or watcher log is read or written: OT_CLAUDE_PROJECTS_DIR,
+      CLAUDE_CONFIG_DIR, OT_AGENT_STATUS and OT_CLAUDE_BOOT_LOG are pointed at
+      this checker's TMP BEFORE the module is imported. The transcript
+      fixtures copy the KEYS of the two real 09-29/09-27 first replies
+      (isApiErrorMessage/error/<synthetic> vs a real model + requestId), not
+      a guess at them (§0.4).
+        B10  auth_ok reads the login FILE: present True, absent False, no
+             OAuth block False, malformed None
+        B10b bring_up starts NO claude process before the raise (a stub
+             binary logs every invocation) — the r132 `auth status` is gone
+        B11  a FAILED first turn is reported FAILED, not up; the watcher is
+             spawned once; NO --continue fallback is raised
+        B11b an OK first turn is "up (handoff)" and spawns nothing
+        B11c no reply in the budget reads "up?", never "up", and spawns
+        B11d the worst in-unit path fits inside the unit's TimeoutStartSec
+        B12  watcher: login renewed -> ONE relaunch -> OK -> "relaunched"
+        B12b watcher: a claude it did not start appears -> stands down,
+             kills NOTHING (the operator's hand restart)
+        B12c watcher: a real reply appears -> stands down, kills nothing
+        B12d watcher: every relaunch fails -> exactly RETRY_MAX kills, then
+             NOT AVAILABLE by name
+        B12e watcher: no renewal and inside the lock window -> no relaunch
+        B11e the EARLIEST reply is the verdict (a failed turn answered later
+             is still a failed first turn)
+        B13  the REAL spawn path: a detached `--retry` process runs,
+             records a status and a log line in the fixture, and exits;
+             B13c it leads its own session; B13b the real log is untouched
 
 v1.1  2026-09-23 — OTV4TEST r107. 🔴 THIS CHECKER WAS MOVING THE LIVE AGENT'S
       FILES OUT FROM UNDER IT. B7 ran the REAL raiser with `CLAUDE_TMUX` aimed
@@ -92,6 +127,17 @@ def guard(name, fn, detail=lambda: ""):
 
 TMP = tempfile.mkdtemp(prefix="cb_")
 os.environ["OT_AGENT_STATUS"] = os.path.join(TMP, "AGENT_STATUS")
+# 🔴 r170 — EVERY NEW PATH IS A FIXTURE, SET BEFORE THE IMPORT (the module
+# reads them at import time). Without these the watcher tests would read the
+# live agent's transcripts and append to the real ~/.optbot/claude_boot.log.
+PROJ = os.path.join(TMP, "projects")
+CCFG = os.path.join(TMP, "claude_cfg")
+os.makedirs(PROJ); os.makedirs(CCFG)
+os.environ["OT_CLAUDE_PROJECTS_DIR"] = PROJ
+os.environ["CLAUDE_CONFIG_DIR"] = CCFG
+os.environ["OT_CLAUDE_BOOT_LOG"] = os.path.join(TMP, "claude_boot.log")
+REAL_LOG = os.path.expanduser("~/.optbot/claude_boot.log")
+_real_log_before = os.path.getsize(REAL_LOG) if os.path.exists(REAL_LOG) else None
 
 # 🔴 r107 — snapshot the REAL scratch root BEFORE anything runs; B7b compares.
 REAL_ROOT = "/tmp/claude-%d" % os.getuid()
@@ -402,6 +448,385 @@ guard("B9 the real startup alert carries the agent field",
 guard("B9b it says UNKNOWN when there is no stamp, never guessing",
       lambda: "Claude status unknown" in _A.setdefault("off", _alert(False)),
       lambda: _A.get("off", "")[:120])
+
+# ── B10-B13 — r170: the first turn decides "up" ─────────────────────────────
+import json as _json
+from datetime import datetime as _dt, timezone as _tz
+
+
+def _iso(t):
+    return _dt.fromtimestamp(t, _tz.utc).isoformat().replace("+00:00", "Z")
+
+
+# The KEYS of the real first replies (09-29 failed, 09-27 ok), values trimmed.
+def _entry(kind, t):
+    if kind == "failed":
+        return {"type": "assistant", "timestamp": _iso(t), "isApiErrorMessage": True,
+                "error": "server_error",
+                "message": {"model": "<synthetic>", "stop_reason": "stop_sequence",
+                            "content": [{"type": "text", "text":
+                                         "Could not refresh your login because another "
+                                         "Claude Code process is refreshing it (or exited "
+                                         "mid-refresh)"}]}}
+    return {"type": "assistant", "timestamp": _iso(t), "requestId": "req_fixture",
+            "message": {"model": "claude-opus-5-5", "stop_reason": "tool_use",
+                        "content": [{"type": "thinking", "thinking": ""}]}}
+
+
+def _transcript(kind, t=None, name=None):
+    t = time.time() if t is None else t
+    p = os.path.join(PROJ, name or "fx-%d-%s.jsonl" % (int(t * 1000), kind))
+    with open(p, "a") as fh:
+        fh.write(_json.dumps({"type": "user", "timestamp": _iso(t),
+                              "message": {"content": "brief"}}) + "\n")
+        if kind:
+            fh.write(_json.dumps(_entry(kind, t + 0.2)) + "\n")
+    # the watcher runs on a FAKE clock and the reader filters on mtime
+    os.utime(p, (t + 0.2, t + 0.2))
+    return p
+
+
+def _clear_proj():
+    for n in os.listdir(PROJ):
+        os.unlink(os.path.join(PROJ, n))
+
+
+def _write_cred(obj):
+    with open(os.path.join(CCFG, ".credentials.json"), "w") as fh:
+        fh.write(obj if isinstance(obj, str) else _json.dumps(obj))
+
+
+def _b10():
+    cp = os.path.join(CCFG, ".credentials.json")
+    if os.path.exists(cp):
+        os.unlink(cp)
+    absent = cb.auth_ok()
+    _write_cred({"claudeAiOauth": {"refreshToken": "FIXTURE", "accessToken": "FIXTURE"}})
+    present = cb.auth_ok()
+    _write_cred({"somethingElse": 1})
+    no_oauth = cb.auth_ok()
+    _write_cred("{not json")
+    bad = cb.auth_ok()
+    _write_cred({"claudeAiOauth": {"refreshToken": "FIXTURE"}})
+    return [present, absent, no_oauth, bad] == [True, False, False, None]
+
+
+guard("B10 auth_ok reads the login FILE: present/absent/no-oauth/malformed",
+      _b10)
+
+
+_MISSING = object()
+
+
+class _Rig:
+    """Every side effect of bring_up/run_retry recorded, nothing real run."""
+
+    def __init__(self, first_reply):
+        self.first_reply = first_reply          # 'ok' | 'failed' | None
+        self.raised, self.killed, self.spawned = [], 0, []
+        self.saved = {}
+        d = tempfile.mkdtemp(prefix="stubbin_")
+        self.stub_log = os.path.join(d, "invoked.log")
+        self.stub = os.path.join(d, "claude")
+        with open(self.stub, "w") as fh:
+            fh.write('#!/bin/sh\necho "$@" >> "%s"\nexit 0\n' % self.stub_log)
+        os.chmod(self.stub, 0o755)
+        self.dir = d
+
+    def _raise(self, cmd, name=None):
+        self.raised.append(cmd)
+        if self.first_reply is not None:
+            _transcript(self.first_reply)
+
+    def _kill(self, name=None):
+        self.killed += 1
+
+    def __enter__(self):
+        for n, v in (("claude_bin", lambda: self.stub),
+                     ("tmux_bin", lambda: "/usr/bin/tmux"),
+                     ("agent_alive", lambda name=None: False),
+                     ("has_session", lambda name=None: True),
+                     ("_settle", lambda budget=None: True),
+                     ("_raise", self._raise), ("_kill", self._kill),
+                     ("spawn_retry", lambda since: (self.spawned.append(since), True)[1]),
+                     ("FIRST_TURN_S", 1.0)):
+            # ⚠️ getattr with a sentinel: on the unfixed tree the r170 names do
+            # not exist, and the born-red run must be a FAIL, not a crash (§40.1)
+            self.saved[n] = getattr(cb, n, _MISSING)
+            setattr(cb, n, v)
+        _clear_proj()
+        _write_cred({"claudeAiOauth": {"refreshToken": "FIXTURE"}})
+        return self
+
+    def __exit__(self, *a):
+        for n, v in self.saved.items():
+            if v is _MISSING:
+                delattr(cb, n)
+            else:
+                setattr(cb, n, v)
+        shutil.rmtree(self.dir, ignore_errors=True)
+        _clear_proj()
+
+
+_B11 = {}
+
+
+def _run_bring_up(kind):
+    with _Rig(kind) as r:
+        ok, text = cb.bring_up()
+        _B11[kind] = (ok, text)
+        stub_ran = os.path.exists(r.stub_log)
+        return ok, text, r.raised, r.spawned, stub_ran
+
+
+def _b10b():
+    ok, text, raised, spawned, stub_ran = _run_bring_up("ok")
+    return not stub_ran and len(raised) == 1
+
+
+guard("B10b bring_up starts NO claude process before the raise", _b10b)
+
+
+def _b11():
+    ok, text, raised, spawned, _ = _run_bring_up("failed")
+    return (ok is False and text.startswith("FIRST TURN FAILED")
+            and "login refresh" in text and "up (" not in text
+            and len(spawned) == 1 and len(raised) == 1
+            and "--continue" not in raised[0])
+
+
+guard("B11 a FAILED first turn is reported FAILED, watcher spawned, no --continue",
+      _b11, lambda: str(_B11.get("failed")))
+
+
+def _b11b():
+    ok, text, raised, spawned, _ = _run_bring_up("ok")
+    return ok is True and text == "up (handoff)" and spawned == []
+
+
+guard("B11b an OK first turn is 'up (handoff)' and spawns nothing", _b11b,
+      lambda: str(_B11.get("ok")))
+
+
+def _b11c():
+    ok, text, raised, spawned, _ = _run_bring_up(None)
+    return (ok is False and text.startswith("up? (") and not text.startswith("up (")
+            and len(spawned) == 1)
+
+
+guard("B11c no reply in the budget reads 'up?', never 'up', and spawns", _b11c,
+      lambda: str(_B11.get(None)))
+
+
+def _b11d():
+    tmo = int(re.search(r"^TimeoutStartSec=(\d+)", _txt, re.M).group(1))
+    s, f = float(cb.SETTLE_S), float(cb.FIRST_TURN_S)
+    _B11["budget"] = (tmo, s, f)
+    return s + f + 5 <= tmo and 2 * s + 5 <= tmo
+
+
+guard("B11d the worst in-unit path fits inside the unit's TimeoutStartSec", _b11d,
+      lambda: "TimeoutStartSec, SETTLE_S, FIRST_TURN_S = %s" % (_B11.get("budget"),))
+
+
+def _b11e():
+    """The EARLIEST reply is the verdict: a turn that failed and replied later
+    (the operator typed into it) is still a failed FIRST turn."""
+    _clear_proj()
+    t = time.time()
+    p = _transcript("failed", t, name="two.jsonl")
+    with open(p, "a") as fh:
+        fh.write(_json.dumps(_entry("ok", t + 5)) + "\n")
+    os.utime(p, (t + 5, t + 5))
+    try:
+        return cb.first_turn(t, budget=0.5)[0] == "failed"
+    finally:
+        _clear_proj()
+
+
+guard("B11e the EARLIEST reply is the first turn's verdict", _b11e)
+
+
+class _Clock:
+    def __init__(self, t0):
+        self.t = t0
+
+    def now(self):
+        return self.t
+
+    def sleep(self, s):
+        self.t += s
+
+
+def _watch(first_reply, renew_at=None, pid_at=None, reply_at=None):
+    """Drive the REAL run_retry on a fake clock. -> (text, kills, raises)."""
+    c = _Clock(time.time())
+    since = c.t
+    extra = {"pids": [111]}
+    ticks = {"n": 0}
+
+    def sleep(s):
+        c.sleep(s)
+        ticks["n"] += 1
+        if renew_at is not None and ticks["n"] == renew_at:
+            _write_cred({"claudeAiOauth": {"refreshToken": "FIXTURE2"}})
+            os.utime(os.path.join(CCFG, ".credentials.json"), (c.t, c.t + 5))
+        if pid_at is not None and ticks["n"] == pid_at:
+            extra["pids"] = [111, 222]
+        if reply_at is not None and ticks["n"] == reply_at:
+            _transcript("ok", c.t, name="operator-session.jsonl")
+
+    with _Rig(first_reply) as r:
+        os.utime(os.path.join(CCFG, ".credentials.json"), (since - 100, since - 100))
+        _transcript("failed", since, name="failed-session.jsonl")
+        saved_pids = cb.live_claude_pids
+        cb.live_claude_pids = lambda uid=None: list(extra["pids"])
+        try:
+            # the relaunched session's reply must carry the FAKE clock's time
+            r._raise = (lambda cmd, name=None: (r.raised.append(cmd),
+                        first_reply and _transcript(first_reply, c.t)))
+            cb._raise = r._raise
+            text = cb.run_retry(since, sleep=sleep, now=c.now)
+        finally:
+            cb.live_claude_pids = saved_pids
+        return text, r.killed, len(r.raised), round(c.t - since)
+
+
+_B12 = {}
+
+
+def _b12():
+    _B12["renew"] = res = _watch("ok", renew_at=2)
+    text, kills, raises, took = res
+    # PROMPT: it acted on the renewal, not on the lock-window fallback
+    return (text.startswith("up (handoff, relaunched") and kills == 1 and raises == 1
+            and took < cb.RELAUNCH_AFTER_S)
+
+
+guard("B12 watcher: login renewed -> one relaunch -> OK -> 'relaunched'", _b12,
+      lambda: str(_B12.get("renew")))
+
+
+def _b12b():
+    _B12["pid"] = res = _watch("ok", pid_at=2)
+    text, kills, raises, _ = res
+    return "stood down, killed nothing" in text and kills == 0 and raises == 0
+
+
+guard("B12b watcher: a claude it did not start -> stands down, kills NOTHING", _b12b,
+      lambda: str(_B12.get("pid")))
+
+
+def _b12c():
+    _B12["reply"] = res = _watch("ok", reply_at=2)
+    text, kills, raises, _ = res
+    return text.startswith("up (handoff — a session replied") and kills == 0
+
+
+guard("B12c watcher: a real reply appears -> stands down, kills nothing", _b12c,
+      lambda: str(_B12.get("reply")))
+
+
+def _b12d():
+    _B12["fail"] = res = _watch("failed", renew_at=1)
+    text, kills, raises, _ = res
+    return (text.startswith("NOT AVAILABLE (first turn failed; %d relaunch" % cb.RETRY_MAX)
+            and kills == cb.RETRY_MAX and raises == cb.RETRY_MAX)
+
+
+guard("B12d watcher: every relaunch fails -> RETRY_MAX kills, then NOT AVAILABLE",
+      _b12d, lambda: str(_B12.get("fail")))
+
+
+def _b12e():
+    saved = cb.RETRY_WINDOW_S
+    cb.RETRY_WINDOW_S = cb.RELAUNCH_AFTER_S - 2 * cb.RETRY_POLL_S
+    try:
+        _B12["quiet"] = res = _watch("ok")
+    finally:
+        cb.RETRY_WINDOW_S = saved
+    text, kills, raises, _ = res
+    return kills == 0 and raises == 0 and text.startswith("NOT AVAILABLE")
+
+
+guard("B12e watcher: no renewal inside the lock window -> no relaunch", _b12e,
+      lambda: str(_B12.get("quiet")))
+
+
+def _b13():
+    """The REAL spawn: a detached `--retry` that can relaunch NOTHING
+    (RETRY_MAX=0, no claude reachable) records its status and a log line."""
+    saved = {k: os.environ.get(k) for k in
+             ("OT_CLAUDE_RETRY_MAX", "OT_CLAUDE_RETRY_WINDOW_S", "OT_CLAUDE_RETRY_POLL_S",
+              "CLAUDE_TMUX", "HOME", "PATH")}
+    status = os.environ["OT_AGENT_STATUS"]
+    log = os.environ["OT_CLAUDE_BOOT_LOG"]
+    for p in (status, log):
+        if os.path.exists(p):
+            os.unlink(p)
+    fakehome = tempfile.mkdtemp(prefix="b13home_")
+    os.environ.update({"OT_CLAUDE_RETRY_MAX": "0", "OT_CLAUDE_RETRY_WINDOW_S": "1",
+                       "OT_CLAUDE_RETRY_POLL_S": "0.2",
+                       "CLAUDE_TMUX": "cb_b13_%d" % os.getpid(),
+                       "HOME": fakehome, "PATH": "/usr/bin:/bin"})
+    try:
+        started = cb.spawn_retry(time.time())
+        # B13c — DETACHED: the watcher leads its own session, so a signal to
+        # the raiser's process group (or its exit) never reaches it
+        detached = None
+        t_end = time.time() + 5
+        while detached is None and time.time() < t_end:
+            for pid in os.listdir("/proc"):
+                if not pid.isdigit():
+                    continue
+                # ⚠️ MATCH THE ARGV, NOT A SUBSTRING. The first cut searched the
+                # joined cmdline for "claude_boot.py --retry" and found the
+                # SHELL that launched this checker, whose command line quoted
+                # that text, in our own session: a false FAIL on a detached
+                # watcher (§40.1's shape, caught before it could go the other way).
+                try:
+                    argv = open("/proc/%s/cmdline" % pid, "rb").read().split(b"\0")
+                except OSError:
+                    continue
+                if (len(argv) > 2 and argv[1].endswith(b"tools/claude_boot.py")
+                        and argv[2] == b"--retry"):
+                    try:
+                        detached = os.getsid(int(pid)) != os.getsid(0)
+                    except OSError:
+                        continue
+                    break
+            time.sleep(0.05)
+        _B12["detached"] = detached
+        deadline = time.time() + 20
+        txt = ""
+        while time.time() < deadline:
+            if os.path.exists(status):
+                txt = open(status).read()
+                if "NOT AVAILABLE" in txt:
+                    break
+            time.sleep(0.2)
+        logged = os.path.exists(log) and "watcher up" in open(log).read()
+        _B12["spawn"] = (started, txt.strip()[:100], logged)
+        return started and "NOT AVAILABLE (first turn failed; 0 relaunch" in txt and logged
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        shutil.rmtree(fakehome, ignore_errors=True)
+
+
+guard("B13 the REAL detached --retry runs, records a status and a log line", _b13,
+      lambda: str(_B12.get("spawn")))
+
+guard("B13c the watcher is DETACHED (its own session, not the raiser's)",
+      lambda: _B12.get("detached") is True, lambda: "detached=%s" % _B12.get("detached"))
+
+guard("B13b CONTROL: the real watcher log is untouched by this checker",
+      lambda: (os.path.getsize(REAL_LOG) if os.path.exists(REAL_LOG) else None)
+      == _real_log_before, lambda: REAL_LOG)
+
 
 guard("B0c no tmux session is left behind by this checker",
       lambda: subprocess.run(["tmux", "has-session", "-t", SESS],

@@ -1,4 +1,11 @@
-"""tests/check_bootstrap.py — v1.8
+"""tests/check_bootstrap.py — v1.9
+
+v1.9  2026-09-29 — OTV4TEST r170. G10 RE-POINTED (section 38.4): claude_boot's
+      auth_ok() reads the login FILE instead of running `claude auth status`
+      (the only other claude process at the 08:00 boot on 09-28 and 09-29, when
+      the session's first login refresh failed). Same True/False/None
+      contract, now driven with a present, an absent and a malformed file.
+      Red at G10 alone on the r170 code before this change, measured.
 
 v1.8  2026-09-27 — OTV4TEST r168. G3 RE-POINTED (section 38.4): the suite gains
       deploy/install_emergency_watchdog.sh, before install_claude.sh as setup_ec2 v4.9 lists it.
@@ -85,7 +92,8 @@ v1.0  2026-09-24 — OTV4TEST r132. The operator: "make sure that I can do a boo
       binary version that cannot be replaced is rc 1; G9e a garbage login is
       ignored, not installed
   G10 claude_boot.py: FIRST_BOOT.md while the marker exists, HANDOFF.md after;
-      auth_ok True/False/None on rc 0/1/other; a definite not-logged-in
+      auth_ok True/False/None on a login file present/absent/malformed
+      (r170; was rc 0/1/other of `claude auth status`); a definite not-logged-in
       raises NOTHING and says so; OT_RC_NAME names the session
   G11 install_boot_sweep.sh rendered with sudo stubbed: the unit the reference
       box runs (ExecStart, ordering, Nice, timeouts), path-substituted
@@ -561,7 +569,7 @@ b, first = cb.choose_brief(); out["with_marker"] = [os.path.basename(b), first]
 os.unlink(cb.FIRST_BOOT_MARKER)
 b, first = cb.choose_brief(); out["without_marker"] = [os.path.basename(b), first]
 out["auth"] = [cb.auth_ok(p) for p in sys.argv[2:5]]
-cb.claude_bin = lambda: sys.argv[3]
+cb.claude_bin = lambda: sys.argv[5]
 cb.tmux_bin = lambda: "/usr/bin/tmux" if os.path.exists("/usr/bin/tmux") else "/bin/true"
 cb.agent_alive = lambda name=cb.SESSION: False
 raised = []
@@ -585,10 +593,17 @@ def _g10():
     d = _mk("cb_")
     marker = os.path.join(d, "first_boot")
     open(marker, "w").close()
-    bins = [_stub_bin(d, "c_ok", 0), _stub_bin(d, "c_no", 1), _stub_bin(d, "c_odd", 3)]
+    # r170 — auth_ok reads the LOGIN FILE (no `claude auth status`): a login,
+    # no file at all, and a malformed file. Same True/False/None contract.
+    creds = [os.path.join(d, "cred_ok.json"), os.path.join(d, "cred_absent.json"),
+             os.path.join(d, "cred_bad.json")]
+    open(creds[0], "w").write('{"claudeAiOauth":{"refreshToken":"FIXTURE-NEVER-PRINT"}}')
+    open(creds[2], "w").write("{not json")
+    binp = _stub_bin(d, "c_ok", 0)
     env = {**os.environ, "OT_FIRST_BOOT_MARKER": marker, "OT_RC_NAME": "fixture-rc",
            "OT_AGENT_STATUS": os.path.join(d, "S"), "HOME": d}
-    r = subprocess.run([sys.executable, "-c", _PROBE, _root, *bins], capture_output=True,
+    env.pop("CLAUDE_CONFIG_DIR", None)      # the not-logged-in case reads HOME's
+    r = subprocess.run([sys.executable, "-c", _PROBE, _root, *creds, binp], capture_output=True,
                        text=True, env=env, timeout=60)
     try:
         return json.loads(r.stdout.strip().splitlines()[-1])
@@ -600,7 +615,7 @@ _G10 = _g10()
 guard("G10 FIRST_BOOT.md while the marker exists, HANDOFF.md after",
       lambda: _G10["with_marker"] == ["FIRST_BOOT.md", True]
       and _G10["without_marker"] == ["HANDOFF.md", False], lambda: str(_G10)[:200])
-guard("G10 auth_ok: rc 0 True, rc 1 False, anything else None",
+guard("G10 auth_ok (the login file): present True, absent False, malformed None",
       lambda: _G10["auth"] == [True, False, None])
 guard("G10 not logged in raises NOTHING and names the fix",
       lambda: _G10["bring_up"][0] is False and "not logged in" in _G10["bring_up"][1]

@@ -1,6 +1,47 @@
 #!/usr/bin/env python3
-"""tools/claude_boot.py — v1.4
+"""tools/claude_boot.py — v1.5
 RAISE AN AGENT SESSION AT BOOT, AND PROVE IT IS ACTUALLY RUNNING.
+
+v1.5 (2026-09-29) — OTV4TEST r170 (BOOT.6). THE 08:00 SESSION DIED ON ITS FIRST
+      TURN TWO MORNINGS RUNNING, AND THE BOOT ALERT SAID "UP" BOTH TIMES. The
+      operator restarted it by hand on 09-28 and 09-29: *"now that it's two in a
+      row, would you mind looking into what happened?"*, then *"Yes, it's worth a
+      shot"*. MEASURED from the two transcripts: the brief landed at 08:00:28
+      and the first reply, 3-4 s later, was a synthetic API error — *"Could not
+      refresh your login because another Claude Code process is refreshing it
+      (or exited mid-refresh)"* — and Remote Control dropped. The login file was
+      rewritten at 08:10:40 and Remote Control came back by itself at 08:10:43,
+      but nothing re-sent the brief. Meanwhile the alert read "Claude up
+      (handoff)", because "up" meant a live claude PROCESS, and a process that
+      failed its only turn is still a process.
+      RULED OUT: the Claude Code version (09-28 failed on 2.1.283, which had
+      booted cleanly on 09-26 and 09-27); the unit order (identical to the
+      second on good and bad days); the boot sweep (its checker uses a fake
+      claude); SOFI/AAL (powered off until the 09:15 wake, per 1-REPORTER's
+      power ledger); control (a separate login). ⚠️ THE CAUSE IS NOT PROVEN.
+      The one other claude process on this box at 08:00 is this file's own
+      `claude auth status` (r132), at 08:00:17-20, and nothing refreshed the
+      login successfully until 08:10:40. No lock file or debug log survives
+      to confirm it, and the weekend boots ran the same check without failing.
+      🔑 TWO CHANGES. (1) `auth_ok()` READS THE LOGIN FILE and starts no claude
+      process: absent or no OAuth block is False, unreadable is None, exactly
+      the old contract. This removes the only suspect on the box. (2) "UP" NOW
+      REQUIRES A REAL FIRST REPLY. `first_turn()` reads the new session's own
+      transcript: a first assistant entry flagged `isApiErrorMessage` is
+      FAILED, one with a real model is OK, none within FIRST_TURN_S is UNSEEN
+      (measured: real first replies landed 1-2 s after the brief on 09-26 and
+      09-27). FAILED or UNSEEN is written as such to the status, so the boot
+      alert cannot say "up" over a dead turn. A DETACHED `--retry` watcher then
+      re-raises the handoff once the login file is renewed, or after
+      RELAUNCH_AFTER_S (the 09-29 lock cleared in about 10 min), at most
+      RETRY_MAX times. It stands down the moment any session replies or a claude
+      it did not start appears, so it never kills a session the operator
+      raised by hand. ⚠️ IT CANNOT RUN INSIDE THE UNIT: the unit is ordered
+      before the bot with TimeoutStartSec=45, and a relaunch that must wait
+      out a ten-minute lock would hold up the bot's 08:00 start.
+      ⚠️ THE ALERT IS NOT RE-SENT when the watcher recovers (§17: a boot that
+      recovers on its own is not an emergency). The recovery is written to the
+      status file and to RETRY_LOG, which `--status-only` prints.
 
 v1.4 (2026-09-24) — OTV4TEST r132. A FRESH BOX IS BRIEFED FOR A FRESH BOX, AND
       A MISSING LOGIN IS NAMED INSTEAD OF RAISED. The operator, on the unattended
@@ -151,22 +192,40 @@ def choose_brief() -> tuple[str, bool]:
     return BRIEF, False
 
 
-def auth_ok(binp: str, timeout: float = 10.0):
+def _claude_dir() -> str:
+    """Claude Code's config dir, resolved at CALL time so a fixture HOME or
+    CLAUDE_CONFIG_DIR set after import is honoured."""
+    return os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+
+
+def cred_path() -> str:
+    return os.path.join(_claude_dir(), ".credentials.json")
+
+
+def auth_ok(path: str | None = None):
     """True logged in, False definitely not, None when the check itself could
-    not run. ⚠️ Output is DISCARDED — it names the account (§18a)."""
-    try:
-        r = subprocess.run(["env", "-u", "ANTHROPIC_API_KEY",
-                            "-u", "ANTHROPIC_AUTH_TOKEN", "-u", "CLAUDE_API_KEY",
-                            "-u", "ANTHROPIC_BASE_URL", binp, "auth", "status"],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                           timeout=timeout)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    if r.returncode == 0:
-        return True
-    if r.returncode == 1:
+    not run.
+    🔴 r170 — IT READS THE LOGIN FILE; IT NO LONGER RUNS `claude auth status`.
+    That subprocess was the only other claude process on the box at 08:00,
+    11 s before the session whose first login refresh then failed, two
+    mornings running (header, v1.5). Same contract as r132: a DEFINITE "not
+    logged in" (no file, or a file with no OAuth block) is False and blocks
+    the raise; an unreadable or malformed file is None and does not.
+    ⚠️ NOTHING IS PRINTED OR RETURNED FROM THE FILE BUT A BOOLEAN (§18a) —
+    it holds live tokens."""
+    import json
+    p = path or cred_path()
+    if not os.path.exists(p):
         return False
-    return None
+    try:
+        with open(p, encoding="utf-8") as fh:
+            d = json.load(fh)
+    except Exception:                                           # noqa: BLE001
+        return None
+    o = d.get("claudeAiOauth") if isinstance(d, dict) else None
+    if not isinstance(o, dict):
+        return False
+    return bool(o.get("refreshToken") or o.get("accessToken"))
 
 # The settle budget. `claude` needs a few seconds to be a real process; the
 # unit's own TimeoutStartSec sits above this so systemd never waits longer
@@ -253,6 +312,212 @@ def _settle(budget: float = SETTLE_S) -> bool:
             return True
         time.sleep(POLL_S)
     return agent_alive()
+
+
+# ── r170 — "UP" MEANS THE FIRST TURN GOT A REAL REPLY ───────────────────────
+# Budgets. The unit gives this script TimeoutStartSec=45: the worst in-unit
+# path is a handoff that settles late plus a first turn that never shows
+# (SETTLE_S + FIRST_TURN_S), or a handoff that never settles plus the
+# --continue fallback (2 x SETTLE_S). check_claude_boot B11d pins both
+# under the unit's timeout.
+FIRST_TURN_S = float(os.environ.get("OT_CLAUDE_FIRST_TURN_S", "20"))
+RETRY_POLL_S = float(os.environ.get("OT_CLAUDE_RETRY_POLL_S", "30"))
+RELAUNCH_AFTER_S = float(os.environ.get("OT_CLAUDE_RELAUNCH_AFTER_S", "660"))
+RETRY_WINDOW_S = float(os.environ.get("OT_CLAUDE_RETRY_WINDOW_S", "1800"))
+RETRY_MAX = int(os.environ.get("OT_CLAUDE_RETRY_MAX", "2"))
+RETRY_LOG = (os.environ.get("OT_CLAUDE_BOOT_LOG")
+             or os.path.expanduser("~/.optbot/claude_boot.log"))
+
+
+def projects_dir() -> str:
+    """Where Claude Code writes THIS repo's transcripts: the cwd with every
+    non-alphanumeric character turned into '-' (measured: /home/ubuntu/
+    options-trader -> -home-ubuntu-options-trader). The gate overrides it."""
+    import re
+    return (os.environ.get("OT_CLAUDE_PROJECTS_DIR")
+            or os.path.join(_claude_dir(), "projects",
+                            re.sub(r"[^A-Za-z0-9]", "-", _root)))
+
+
+def _ts(s) -> float | None:
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(str(s).replace("Z", "+00:00")).timestamp()
+    except Exception:                                           # noqa: BLE001
+        return None
+
+
+def _replies(since: float):
+    """-> [(ts, 'ok'|'failed', reason)] for every assistant entry at or after
+    `since`, in every transcript touched since then. Never raises.
+    🔑 THE DISCRIMINATOR IS MEASURED, NOT ASSUMED: on 09-28 and 09-29 the dead
+    turn's entry carries `isApiErrorMessage: true`, `error: server_error` and
+    model `<synthetic>`; on 09-26 and 09-27 the good one carries a real model
+    and a `requestId`."""
+    import json
+    out = []
+    d = projects_dir()
+    try:
+        names = [n for n in os.listdir(d) if n.endswith(".jsonl")]
+    except OSError:
+        return out
+    for n in names:
+        p = os.path.join(d, n)
+        try:
+            if os.path.getmtime(p) < since - 2:
+                continue
+            with open(p, encoding="utf-8", errors="replace") as fh:
+                lines = fh.readlines()
+        except OSError:
+            continue
+        for ln in lines:
+            try:
+                e = json.loads(ln)
+            except ValueError:
+                continue
+            if not isinstance(e, dict) or e.get("type") != "assistant":
+                continue
+            t = _ts(e.get("timestamp"))
+            if t is None or t < since - 1:
+                continue
+            if e.get("isApiErrorMessage"):
+                txt = json.dumps((e.get("message") or {}).get("content", ""))
+                why = ("login refresh" if "refresh your login" in txt
+                       else "API error: %s" % (e.get("error") or "unknown"))
+                out.append((t, "failed", why))
+            else:
+                out.append((t, "ok", ""))
+    out.sort()
+    return out
+
+
+def first_turn(since: float, budget: float | None = None) -> tuple[str, str]:
+    """-> ('ok'|'failed'|'unseen', reason). The EARLIEST reply after the raise
+    is the first turn's verdict; polls until one appears or `budget` runs out.
+    The budget is read at CALL time (module FIRST_TURN_S), not bound at def."""
+    budget = FIRST_TURN_S if budget is None else budget
+    deadline = time.time() + budget
+    while True:
+        r = _replies(since)
+        if r:
+            return r[0][1], r[0][2]
+        if time.time() >= deadline:
+            return "unseen", "no reply in %ds" % int(budget)
+        time.sleep(POLL_S)
+
+
+def _handoff_cmd(binp: str, brief: str) -> str:
+    # ⚠️ The brief is passed as ONE argument. r32 measured the hazard: the file
+    # contains double quotes, and expanding it through another shell layer ends
+    # the argument at the first one and hands Claude a truncated brief.
+    return ("%s %s --remote-control %s \"$(cat %s)\"; exec bash"
+            % (ENV_STRIP, binp, _sh_quote(RC_NAME), _sh_quote(brief)))
+
+
+def _et_hm() -> str:
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("America/New_York")).strftime("%H:%M ET")
+    except Exception:                                           # noqa: BLE001
+        return time.strftime("%H:%M UTC", time.gmtime())
+
+
+def _log(msg: str) -> None:
+    """§38.7 — an unattended action leaves a record. Never raises."""
+    try:
+        os.makedirs(os.path.dirname(RETRY_LOG), exist_ok=True)
+        if os.path.exists(RETRY_LOG) and os.path.getsize(RETRY_LOG) > 1_000_000:
+            os.replace(RETRY_LOG, RETRY_LOG + ".1")
+        with open(RETRY_LOG, "a", encoding="utf-8") as fh:
+            fh.write("%s %s\n" % (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), msg))
+    except Exception:                                           # noqa: BLE001
+        pass
+
+
+def spawn_retry(since: float) -> bool:
+    """Start the detached watcher. It outlives this process in the unit's
+    cgroup exactly as the tmux server does (RemainAfterExit=yes, B6)."""
+    try:
+        subprocess.Popen([sys.executable, os.path.abspath(__file__),
+                          "--retry", "--since", "%.3f" % since],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True,
+                         cwd=_root)
+        return True
+    except Exception as exc:                                    # noqa: BLE001
+        _log("retry watcher could not start: %s" % type(exc).__name__)
+        return False
+
+
+def _mtime(p: str) -> float:
+    try:
+        return os.path.getmtime(p)
+    except OSError:
+        return 0.0
+
+
+def run_retry(since: float, sleep=time.sleep, now=time.time) -> str:
+    """The detached watcher. -> the final status text (also recorded).
+
+    Re-raises the handoff when the login file has been RENEWED since the
+    failure, or once RELAUNCH_AFTER_S has passed (the 09-29 refresh lock
+    cleared in about ten minutes), at most RETRY_MAX times in RETRY_WINDOW_S.
+    🔴 IT STANDS DOWN, AND KILLS NOTHING, the moment (a) any session has
+    produced a real reply since the failure, or (b) a claude process appears
+    that this watcher did not start. That is the operator restarting by hand,
+    and his session is never the one killed."""
+    t_fail = since
+    cred0 = _mtime(cred_path())
+    known = set(live_claude_pids())
+    attempts = 0
+    start = now()
+    brief, first = choose_brief()
+    _log("watcher up: first turn not confirmed since %.0f; claude pids %s"
+         % (since, sorted(known)))
+    while now() - start < RETRY_WINDOW_S:
+        sleep(RETRY_POLL_S)
+        if any(v == "ok" for _, v, _ in _replies(t_fail)):
+            text = "up (handoff — a session replied at %s)" % _et_hm()
+            record(text); _log(text)
+            return text
+        new = set(live_claude_pids()) - known
+        if new:
+            text = ("up? (a claude this watcher did not start is running, pid %s"
+                    " — stood down, killed nothing)" % ",".join(map(str, sorted(new))))
+            record(text); _log(text)
+            return text
+        renewed = _mtime(cred_path()) > cred0
+        if not (renewed or now() - t_fail >= RELAUNCH_AFTER_S):
+            continue
+        if attempts >= RETRY_MAX:
+            break
+        attempts += 1
+        binp = claude_bin()
+        if not binp or not os.path.exists(brief):
+            break
+        _log("relaunch %d (%s)" % (attempts, "login renewed" if renewed else "lock window passed"))
+        t_launch = now()
+        _kill()
+        _raise(_handoff_cmd(binp, brief))
+        _settle()
+        known = set(live_claude_pids())
+        v, why = first_turn(t_launch)
+        if v == "ok":
+            if first:
+                try:
+                    os.unlink(FIRST_BOOT_MARKER)
+                except OSError:
+                    pass
+            text = "up (handoff, relaunched %s after a failed first turn)" % _et_hm()
+            record(text); _log(text)
+            return text
+        _log("relaunch %d first turn: %s %s" % (attempts, v, why))
+        t_fail, cred0 = t_launch, _mtime(cred_path())
+    text = ("NOT AVAILABLE (first turn failed; %d relaunch(es) did not recover it"
+            " — ssh in and raise it by hand)" % attempts)
+    record(text); _log(text)
+    return text
 
 
 def live_claude_pids(uid: int | None = None) -> list[int]:
@@ -433,28 +698,38 @@ def bring_up(dry: bool = False) -> tuple[bool, str]:
 
     # r132 — a DEFINITE "not logged in" is named, not raised into a login
     # screen that reads "up". None (the check could not run) does not block.
-    if auth_ok(binp) is False:
+    # r170 — read from the login FILE; no claude process is started for it.
+    if auth_ok() is False:
         return False, ("NOT AVAILABLE (not logged in — ssh in and run: "
                        "claude auth login)")
 
     # 1 — r86, THE OPERATOR'S CURRENT RULING: a HANDOFF session, briefed.
-    # ⚠️ The brief is passed as ONE argument. r32 measured the hazard: the file
-    # contains double quotes, and expanding it through another shell layer ends
-    # the argument at the first one and hands Claude a truncated brief.
     # r132 — FIRST_BOOT.md on a freshly installed box (choose_brief).
     brief, first = choose_brief()
     if os.path.exists(brief):
         _kill()
-        _raise("%s %s --remote-control %s \"$(cat %s)\"; exec bash"
-               % (ENV_STRIP, binp, _sh_quote(RC_NAME), _sh_quote(brief)))
+        t_launch = time.time()
+        _raise(_handoff_cmd(binp, brief))
         if _settle():
-            if first:
-                try:
-                    os.unlink(FIRST_BOOT_MARKER)
-                except OSError:
-                    pass
-                return True, "up (first boot)"
-            return True, "up (handoff)"
+            # 🔴 r170 — A LIVE PROCESS IS NOT A WORKING TURN. On 09-28 and 09-29
+            # this branch returned "up (handoff)" over a session whose only
+            # turn had already died on a login refresh.
+            label = "first boot" if first else "handoff"
+            v, why = first_turn(t_launch)
+            if v == "ok":
+                if first:
+                    try:
+                        os.unlink(FIRST_BOOT_MARKER)
+                    except OSError:
+                        pass
+                return True, "up (%s)" % label
+            # ⚠️ NO --continue FALLBACK HERE: it would hit the same login.
+            retry = spawn_retry(t_launch)
+            tail = "auto-retry running" if retry else "auto-retry DID NOT START"
+            if v == "failed":
+                return False, ("FIRST TURN FAILED (%s, %s) — %s"
+                               % (label, why, tail))
+            return False, ("up? (%s: process live, %s) — %s" % (label, why, tail))
 
     # 2 — the fallback, which is r68's ruling kept for exactly this case: a
     # MISSING or UNREADABLE brief, or a handoff that refuses to settle, must
@@ -483,13 +758,35 @@ def main(argv=None) -> int:
                     help="report what would happen; raise nothing")
     ap.add_argument("--status-only", action="store_true",
                     help="report current availability without raising anything")
+    ap.add_argument("--retry", action="store_true",
+                    help="r170: the detached first-turn watcher (spawned by bring_up)")
+    ap.add_argument("--since", type=float, default=None,
+                    help="with --retry: epoch of the raise whose first turn failed")
     a = ap.parse_args(argv)
 
     if a.status_only:
         ok = agent_alive()
         print("agent_alive=%s session=%s bin=%s"
               % (ok, has_session(), claude_bin() or "(not found)"))
+        # r170 — the watcher's last line, so a recovery is visible without
+        # opening the log (the boot alert is never re-sent, header v1.5).
+        try:
+            with open(RETRY_LOG, encoding="utf-8") as fh:
+                last = fh.readlines()[-1:]
+            if last:
+                print("last watcher line: %s" % last[0].rstrip())
+        except OSError:
+            pass
         return 0 if ok else 1
+
+    if a.retry:
+        # ⚠️ NEVER RAISES, like the raiser — its status IS its report.
+        try:
+            run_retry(a.since if a.since is not None else time.time())
+        except Exception as exc:                                # noqa: BLE001
+            text = "NOT AVAILABLE (retry watcher error: %s)" % type(exc).__name__
+            record(text); _log(text)
+        return 0
 
     # ⚠️ ANY escape still leaves a STATUS and still exits 0. The unit is ordered
     # before the bot; a traceback here must never become a failed unit with no
