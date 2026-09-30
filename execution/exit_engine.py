@@ -1,5 +1,14 @@
 """
-execution/exit_engine.py  v4.27
+execution/exit_engine.py  v4.28
+v4.28 2026-09-30  OTV4TEST r182 (EXIT.3) — MESSAGE ONLY: A BREAKOUT NO LONGER LOGS "has no exit route
+      ... Add a branch." That line is false for Breakout and has been since 2026-09-21: the operator
+      ruled its exit stays as it is ("That exit is fucking solid. I actually don't want to change
+      whatever it was using") and its management plan acts on it before this dispatch (EXIT.3). It
+      logged 118 times and, since r171, woke the agent as UNUSUAL every day a Breakout traded. For
+      Breakout the fall-through now logs, once per trade at INFO, that there is no branch here BY
+      RULING. The routing is unchanged: a Breakout still falls through to the same evaluator. Any
+      OTHER unrouted strategy still WARNS "has no exit route", so a real one still wakes the agent.
+      The operator: "Agree on all", 2026-09-30.
 v4.27 2026-09-26  OTV4TEST r149 (EOD.1) — THE OPERATOR'S END OF DAY. Every hard-close decision now reads ONE clock per position: ASSIGNMENT RISK (a short leg: verticals, condor/trend legs, the tent, butterflies, an adopted short) closes from 15:45 on a RESTING BEST-CASE limit — the structure's ESTIMATED VALUE AT 15:55 if spot holds (each leg priced with the 5 minutes then left to expiry at its own chain IV; no IV -> expiry value), a nickel floor on a buy-back, one tick under on a sale (operator: "Best case on the trajectory (nickel close, 1 delta, etc)", then "Can we instead estimate their assumed BY 1555 & rest that?"), re-priced each tick; everything else LADDERS from 15:50 (a long single never below parity - tick); at 15:55 EVERY structure crosses, credits included. 🔴 r105's "credit hard close takes the nickel or takes assignment and never crosses" is SUPERSEDED by the operator's 2026-09-26 ruling. Labels derive from the schedule: hard_close_resting_15:45_ET / hard_close_ladder_15:50_ET (the "hard_close" substring every reader keys on is kept). PAPER (operator: "use latest possible close allowed by code ... or best-case available when deep ITM (par, nickel)"; "I want to be accustomed to seeing late closing orders"): EVERY end-of-day close books at the 15:55 cross — at the mark (the ladder's last rung), or at its best case (nickel / parity less a tick) when the outcome is already SETTLED (_eod_determined: with IV, the 15:55 estimate prices to the same tick as the expiry value). Other paper exits are unchanged.
 v4.26 2026-09-23  OTV4TEST r120 — THE SWEEP'S BREACH EXIT RUNS ON THE OPERATOR'S
       BREACHED (LVL.15 step 4). *"Price was accepted beyond the level ... as
@@ -1179,9 +1188,15 @@ class ExitEngine:
             # mechanism). Once per trade.
             if not record.get("_unrouted_said"):
                 record["_unrouted_said"] = 1
-                logger.warning("[exit] strategy %r has no exit route — "
-                               "defaulting to sweep rules. Add a branch.",
-                               strategy)
+                if strategy == "Breakout":
+                    # r182 (EXIT.3): no branch here BY RULING, not by omission.
+                    logger.info("[exit] Breakout: no exit branch here by ruling (EXIT.3) - its "
+                                "management plan acts first; this falls through to the sweep "
+                                "rules as before.")
+                else:
+                    logger.warning("[exit] strategy %r has no exit route — "
+                                   "defaulting to sweep rules. Add a branch.",
+                                   strategy)
             return self._evaluate_sweep(record, current_premium, df_1m, df_5m)
 
     # \u2500\u2500\u2500 ORB Exit \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
