@@ -1,6 +1,24 @@
 """
-analysis/entry_snapshot.py  v4.0
+analysis/entry_snapshot.py  v4.1
 Captures the decision-time context of an entry.
+
+v4.1  2026-09-30  OTV4TEST r183 (SMA.1) — THE 5-MINUTE 50 SMA AND THE OPENING-CANDLE CROSS
+      ARE RECORDED ON EVERY TRADE. The operator, 2026-09-30: "On the 5-min, I want to know if
+      every directional trade we took above and below the 50 SMA & whether that bias could
+      have informed better decisions ... Simply, was that an appropriate read on direction?",
+      "I want it in the trades log", and on the opening candle: "when price crossed through
+      the 5-min 50 SMA on the opening candle, if it crossed and closed above, it showed
+      bullish bias but if it crossed and closed below, the move continued bearish". Then
+      "yes" to recording it, backfilling the past trades and testing it out of sample.
+      MEASURED THAT DAY, read-only, 198 closed directional trades: right-way at 15 min 60%
+      WITH the SMA (n 133) vs 43% AGAINST (n 65); VOLT 85% vs 38%. The open cross held to
+      noon on 6 of 7 sessions with the SMA carrying pre-market bars, and was mixed on 4
+      with regular-hours bars only - so BOTH are recorded. New payload key "sma50_5m":
+      {"rth": {...}, "ext": {...}} - each the SMA of the last 50 CLOSED 5m bars before the
+      entry (built from the feed store's 1m bars, the same way live and in the backfill),
+      the entry's distance from it signed by direction, "with"/"against", and the session's
+      09:30 candle cross ("above"/"below"/"none", null before 09:35). SCHEMA_VERSION 1 -> 2.
+      RECORD ONLY: nothing reads it to decide anything; build() still never raises.
 
 v4.0  2026-08-19  Ported from options_trader_v3 at the OTV4 split.
 
@@ -81,6 +99,8 @@ this is written once per trade and read by tooling, not by eye):
 """
 
 import json
+import os
+import time
 import logging
 from typing import Any, Dict, Optional
 
@@ -88,7 +108,7 @@ from utils.time_utils import ts_for_db
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2                  # r183: + "sma50_5m"
 
 # One DEBUG line per site per process. A capture failure must not spam a session
 # (that is how three dead timeframes went unnoticed) and must not be invisible
@@ -220,6 +240,8 @@ def build(ctx: Dict[str, Any], direction: str) -> Dict[str, Any]:
                 anchor = {"t": round(float(g.top), 4),
                           "b": round(float(g.bottom), 4)}
         payload["anchor"] = anchor
+        # r183 (SMA.1): record only. Its own failure is recorded inside its key.
+        payload["sma50_5m"] = sma50_context(time.time(), price, direction)
 
     except Exception as exc:                                 # noqa: BLE001
         if _first("build"):
@@ -229,6 +251,85 @@ def build(ctx: Dict[str, Any], direction: str) -> Dict[str, Any]:
         payload["err"] = f"{type(exc).__name__}: {exc}"
 
     return payload
+
+
+# ── r183 (SMA.1) — the 5-minute 50 SMA at entry, and the opening-candle cross ──
+SMA_LEN = 50
+_ET_TZ = "America/New_York"
+
+
+def _feed_db() -> str:
+    """The same resolution as data/candle_feed.feed_db_path, import-free."""
+    p = os.environ.get("OT_FEED_DB", "").strip()
+    return os.path.expanduser(p) if p else os.path.expanduser("~/options-trader/data/feed_store.db")
+
+
+def _bars_5m(conn, symbol: str, t_epoch: float, lookback_s: int = 6 * 86400):
+    """[(start_epoch, open, close)] 5m bars built from the store's 1m bars, ending at
+    the last bar that CLOSED at or before t_epoch. One method, live and in backfill."""
+    rows = conn.execute(
+        "SELECT ts_epoch_ms/1000, open, close FROM candles WHERE symbol=? AND interval='1m' "
+        "AND ts_epoch_ms BETWEEN ? AND ? ORDER BY ts_epoch_ms",
+        (symbol, int((t_epoch - lookback_s) * 1000), int(t_epoch * 1000))).fetchall()
+    out: list = []
+    for ts, o, c in rows:
+        k = int(ts) - int(ts) % 300
+        if out and out[-1][0] == k:
+            out[-1][2] = c
+        else:
+            out.append([k, o, c])
+    return [b for b in out if b[0] + 300 <= t_epoch]
+
+
+def _sma_one(conn, symbol: str, t_epoch: float, price: float, direction: str) -> Dict[str, Any]:
+    from zoneinfo import ZoneInfo                              # noqa: PLC0415
+    import datetime as _dt                                     # noqa: PLC0415
+    bars = _bars_5m(conn, symbol, t_epoch)
+    if len(bars) < SMA_LEN:
+        return {"sma": None, "why": f"{len(bars)} closed 5m bars (need {SMA_LEN})"}
+    sma = sum(b[2] for b in bars[-SMA_LEN:]) / SMA_LEN
+    out: Dict[str, Any] = {"sma": round(sma, 4)}
+    sign = 1 if direction == "long" else -1 if direction == "short" else 0
+    if price and sign:
+        out["dist"] = round((price - sma) * sign, 4)
+        out["side"] = "with" if (price - sma) * sign > 0 else "against"
+    # the session's 09:30 candle against the SMA of the 50 closed bars before it
+    et = ZoneInfo(_ET_TZ)
+    day = _dt.datetime.fromtimestamp(t_epoch, et).date()
+    cross = None
+    for i, b in enumerate(bars):
+        bt = _dt.datetime.fromtimestamp(b[0], et)
+        if bt.date() == day and (bt.hour, bt.minute) == (9, 30):
+            if i >= SMA_LEN:
+                s0 = sum(x[2] for x in bars[i - SMA_LEN:i]) / SMA_LEN
+                o, c = b[1], b[2]
+                cross = ("above" if c > s0 else "below") if (o - s0) * (c - s0) < 0 else "none"
+                out["open_sma"] = round(s0, 4)
+            break
+    out["open_cross"] = cross
+    return out
+
+
+def sma50_context(t_epoch: float, price: float, direction: str,
+                  db_path: Optional[str] = None, symbol: Optional[str] = None) -> Dict[str, Any]:
+    """{"rth": {...}, "ext": {...}} or {"err": ...}. NEVER raises; read-only."""
+    try:
+        import sqlite3                                         # noqa: PLC0415
+        if symbol is None:
+            import config                                      # noqa: PLC0415
+            symbol = str(getattr(config, "INSTRUMENT", "") or "")
+        if not symbol:
+            return {"err": "no instrument"}
+        conn = sqlite3.connect(f"file:{db_path or _feed_db()}?mode=ro", uri=True, timeout=5)
+        try:
+            return {"rth": _sma_one(conn, symbol, t_epoch, price, (direction or "").lower()),
+                    "ext": _sma_one(conn, symbol + "_EXT", t_epoch, price, (direction or "").lower())}
+        finally:
+            conn.close()
+    except Exception as exc:                                   # noqa: BLE001
+        if _first("sma50"):
+            logger.debug("entry_snapshot sma50 failed (%s: %s)", type(exc).__name__, exc)
+        return {"err": f"{type(exc).__name__}: {exc}"}
 
 
 def to_json(ctx: Dict[str, Any], direction: str) -> str:
