@@ -1,8 +1,22 @@
 #!/usr/bin/env python3
-"""tests/check_agent_watch.py — v1.0
+"""tests/check_agent_watch.py — v1.1
 THE AGENT HEARS EVERY PAGE, WAKES ONLY ON THE ONES THAT MATTER, AND ITS
 TRADING VERDICTS ARE READ BY NOTHING.
 
+v1.1  2026-09-30 — OTV4TEST r180 (AGT.3). C1 COMPARED THE LIVE FILES' SIZES,
+      SO THE REAL WATCHER RECORDING A REAL EVENT MID-RUN TURNED IT RED. The
+      08:00 boot sweep on 2026-09-30 reached this checker (fourth in order, the
+      sweep started 08:00:31 ET) while the session's live watcher recorded the
+      bot's STARTED page at 08:00:38: one real row, a red control, nothing
+      leaked. C1 is now three checks that ask the question it was for - did
+      THIS process write a live file - and do not depend on nothing else
+      writing them: C1a the tools under test resolve every path they write or
+      read inside the scratch directory; C1b no row appended to the live event
+      or verdict log during the run, and no state written to the live state
+      file, is one this process produced (every event, verdict and state it
+      writes is captured as written); C1c the comparison itself flags a
+      produced row and passes a foreign one. A size change alone is no longer
+      a failure.
 v1.0  2026-09-29 — OTV4TEST r171 (AGT.1 / AGT.2). Drives the REAL
       tools/agent_watch.py and tools/agent_verdict.py against fixture files:
       a fixture bot.log, a fixture trades.db built with the live table's own
@@ -35,7 +49,10 @@ v1.0  2026-09-29 — OTV4TEST r171 (AGT.1 / AGT.2). Drives the REAL
       the last 1m close and the seconds since the loss
   V2  bad forbid, empty note, unknown trade: refused, nothing written
   V4  OBSERVE ONLY: no shipped module names AGENT_VERDICTS or agent_verdict
-  C1  the live events, verdicts and watcher state are untouched
+  C1a the tools under test resolve every path inside the scratch directory
+  C1b nothing THIS process produced reached the live events, verdicts or state
+      (a real event recorded by the live watcher mid-run is not a failure)
+  C1c the leak comparison flags a produced row and passes a foreign one
 """
 from __future__ import annotations
 
@@ -90,6 +107,41 @@ def _size(p):
     return os.path.getsize(p) if os.path.exists(p) else None
 
 
+def _tail(p, start):
+    """The complete lines appended to `p` after byte `start` (whole file if it
+    shrank or is new)."""
+    try:
+        with open(p, "rb") as fh:
+            if start and os.path.getsize(p) >= start:
+                fh.seek(start)
+            data = fh.read()
+    except OSError:
+        return []
+    return [l for l in data.decode("utf-8", "replace").splitlines() if l.strip()]
+
+
+def _leaked(appended, produced):
+    """Rows in `appended` that this process produced (compared as parsed JSON,
+    so key order and spacing cannot hide one)."""
+    def _norm(l):
+        try:
+            return json.dumps(json.loads(l), sort_keys=True)
+        except ValueError:
+            return l.strip()
+    made = {_norm(x) for x in produced}
+    return [l for l in appended if _norm(l) in made]
+
+
+PRODUCED_EVENTS, PRODUCED_VERDICTS, PRODUCED_STATES = [], [], []
+
+
+def _slurp(path, into):
+    try:
+        into.extend(l for l in open(path, encoding="utf-8").read().splitlines() if l.strip())
+    except OSError:
+        pass
+
+
 # ── C1 baseline: the live files, BEFORE anything runs ───────────────────────
 LIVE = [os.path.join(_root, "data", "AGENT_EVENTS.jsonl"),
         os.path.join(_root, "data", "AGENT_VERDICTS.jsonl"),
@@ -120,8 +172,26 @@ def _load(rel, name):
 aw = _load("tools/agent_watch.py", "_aw")
 av = _load("tools/agent_verdict.py", "_av")
 
+# C1b: capture what this process writes, AS it writes it.
+_real_emit, _real_save = aw.Watch.emit, aw.save_state
+
+
+def _emit(self, *a, **k):
+    ev = _real_emit(self, *a, **k)
+    PRODUCED_EVENTS.append(json.dumps(ev))
+    return ev
+
+
+def _save(st):
+    PRODUCED_STATES.append(json.dumps(st, sort_keys=True))
+    return _real_save(st)
+
+
+aw.Watch.emit, aw.save_state = _emit, _save
+
 
 def _reset():
+    _slurp(os.environ["OT_AGENT_EVENTS"], PRODUCED_EVENTS)      # before it is deleted
     for p in (os.environ["OT_AGENT_EVENTS"], os.environ["OT_AGENT_WATCH_STATE"], BOTLOG,
               BOTLOG + ".1", TDB):
         if os.path.exists(p):
@@ -550,8 +620,53 @@ def _v4():
 guard("V4 OBSERVE ONLY: no shipped module names the verdicts or their tool", _v4,
       lambda: str(_T.get("v4")))
 
-guard("C1 CONTROL: the live events, verdicts and watcher state are untouched",
-      lambda: [_size(p) for p in LIVE] == _live_before, lambda: str(LIVE))
+_slurp(os.environ["OT_AGENT_EVENTS"], PRODUCED_EVENTS)
+_slurp(os.environ["OT_AGENT_VERDICTS"], PRODUCED_VERDICTS)
+_C1 = {}
+
+
+def _c1a():
+    paths = {"aw.EVENTS": aw.EVENTS, "aw.STATE": aw.STATE, "aw.BOT_LOG": aw.BOT_LOG,
+             "aw.TRADES_DB": aw.TRADES_DB, "av.VERDICTS": av.VERDICTS,
+             "av.TRADES_DB": av.TRADES_DB, "av.FEED_DB": av.FEED_DB}
+    _C1["a"] = sorted(k for k, v in paths.items() if not str(v).startswith(TMP + os.sep))
+    return not _C1["a"]
+
+
+guard("C1a CONTROL: the tools under test resolve every path inside the scratch directory",
+      _c1a, lambda: "outside scratch: %s" % _C1.get("a"))
+
+
+def _c1b():
+    ev = _leaked(_tail(LIVE[0], _live_before[0] or 0), PRODUCED_EVENTS)
+    vd = _leaked(_tail(LIVE[1], _live_before[1] or 0), PRODUCED_VERDICTS)
+    try:
+        live_state = json.dumps(json.load(open(LIVE[2], encoding="utf-8")), sort_keys=True)
+    except (OSError, ValueError):
+        live_state = None
+    st = live_state is not None and live_state in set(PRODUCED_STATES)
+    _C1["b"] = {"events": len(ev), "verdicts": len(vd), "state": st,
+                "captured": (len(PRODUCED_EVENTS), len(PRODUCED_VERDICTS), len(PRODUCED_STATES)),
+                "live grew": [(_size(p) or 0) - (b or 0) for p, b in zip(LIVE, _live_before)]}
+    return (not ev and not vd and not st
+            and PRODUCED_EVENTS and PRODUCED_VERDICTS and PRODUCED_STATES)
+
+
+guard("C1b CONTROL: nothing this process produced reached the live events, verdicts or state",
+      _c1b, lambda: str(_C1.get("b")))
+
+
+def _c1c():
+    mine = PRODUCED_EVENTS[0]
+    shuffled = json.dumps(dict(reversed(list(json.loads(mine).items()))))
+    foreign = json.dumps({"id": "E20260930120035-50", "severity": "ROUTINE", "kind": "startup",
+                          "text": "a real event the live watcher recorded mid-run"})
+    return (_leaked([foreign], PRODUCED_EVENTS) == []
+            and _leaked([foreign, shuffled], PRODUCED_EVENTS) == [shuffled])
+
+
+guard("C1c the leak comparison flags a produced row (in any key order) and passes a foreign one",
+      _c1c)
 
 shutil.rmtree(TMP, ignore_errors=True)
 print()
