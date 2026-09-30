@@ -1,5 +1,6 @@
 """
-main.py  v4.77
+main.py  v4.78
+v4.78 2026-09-30  OTV4TEST r178 (CAP.2) — AT THE DAILY CATASTROPHIC LOSS CAP THE TWO BUTTERFLIES ARE STILL ASKED. The operator, 2026-09-30: "Allow both flies to fire even if we've hit the cap. Only one of each TYPE per session, not one butterfly per session." attempt_new_entry no longer returns at is_halted(): it runs the session gate and the admission table (position_manager v5.9 refuses every strategy but a cap-exempt one on the cap), then asks ONLY `_attempt_butterfly` and returns - no other strategy is reached. FAILS CLOSED: if the admission table cannot be computed while capped, nothing is asked. One of each type per session was already the rule (r85) and is unchanged.
 v4.77 2026-09-29  OTV4TEST r175 (SYM.1) — main() REFUSES A SYMBOL THAT IS NOT ON THE LIST (config.INSTRUMENT_LISTED), exit 78 like r146's unset refusal and before any login or alert. Until now an unlisted OT_INSTRUMENT traded on a silent $1 strike step (STRIKE_INCREMENTS.get(INSTRUMENT, 1)).
 v4.76 2026-09-27  OTV4TEST r168 (EXP.1 item 3) — THE HEARTBEAT. `_touch_heartbeat` writes data/BOT_HEARTBEAT at the top of every main-loop pass (never raises; a failed write warns once), read by the new out-of-process emergency watchdog as its liveness signal. Nothing that trades, sizes or exits is touched.
 v4.75 2026-09-27  OTV4TEST r165 (EXP.1) — AN EXPIRED POSITION BOOKS ITS SETTLEMENT VALUE. Boot Step 1 passes close_expired_open_trades a `settle` built from broker_reconcile.settle_expired and `_settlement_spot` (the underlying's 16:00 settlement close from this box's feed store, read-only), and `_close_phantom_with_recovery` settles an expired phantom the same way before falling back to the flagged $0.00. The live broker reconcile then reads SHARE positions: any in the box's instrument is an exercise/assignment footprint and pages (send_exercise_footprint_alert). Nothing that trades or exits is touched.
@@ -3708,12 +3709,16 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     # Daily catastrophic loss cap: while the day's REALIZED net P&L is down by
     # the limit, take no new trades (open positions keep being managed to exit).
     # r162: it re-opens once closes bring the loss back under the limit.
-    if risk_mgr.is_halted():
+    # r178 (CAP.2): the two butterflies are exempt. The operator, 2026-09-30:
+    # "Allow both flies to fire even if we've hit the cap." So this no longer
+    # returns here; the capped branch below (after admission) asks ONLY the
+    # butterfly path and returns before any other strategy.
+    _cap_hit = risk_mgr.is_halted()
+    _adm_ok = False
+    if _cap_hit:
         logger.info("Entry blocked: DAILY CATASTROPHIC LOSS CAP reached — no new entries "
-                    "until the realized loss is back under the limit.")
-        _plan_skip_all("CATASTROPHIC LOSS CAP reached — no new entries until back under",
-                       gate="catastrophic_cap")
-        return
+                    "until the realized loss is back under the limit (the two "
+                    "butterflies are exempt and keep their own window and quota).")
 
     # r102 — OUTSIDE RTH THIS IS A REHEARSAL, NOT A TRADING PASS. can_enter
     # short-circuited on the RTH gate and returned at DEBUG, so r101's
@@ -3808,12 +3813,13 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
             (_adm_now.hour, _adm_now.minute),
             trading_day     = True,
             orb_established = bool(_orb_d and _orb_d.orb_high and _orb_d.orb_low),
-            cap_intact      = not risk_mgr.is_halted(),
+            cap_intact      = not _cap_hit,
             past_hard_close = _adm_now.time() >= HARD_CLOSE,
             tries_used      = _tries,
         )
         _eligible = [n for n, (ok, _g, _w) in _state.items() if ok]
         _set_admission(_eligible)
+        _adm_ok = True
         # 🔑 A REFUSED STRATEGY NAMES THE GATE THAT REFUSED IT, and the GATE is
         # passed as its own field rather than buried in prose — `strategy/plan.py`
         # keys the operator's "say it once" rule on it (window once per inactive
@@ -3837,6 +3843,21 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
         if state.tick_count % 20 == 0:
             logger.info("[admission] may be asked: %s",
                         ", ".join(_eligible) if _eligible else "(none)")
+
+    # ══ r178 (CAP.2) — AT THE CAP, ONLY THE BUTTERFLIES ARE ASKED ═════════════
+    # The admission table has already refused every strategy but a cap-exempt
+    # one (gate catastrophic_cap, one plan row each). This branch asks the
+    # butterfly path and RETURNS, so no other strategy below is reached.
+    # ⚠️ FAILS CLOSED. The admission block above fails OPEN when the table
+    # cannot be computed (every name passes); at the cap that would let every
+    # strategy trade, so here an uncomputed table means nothing is asked.
+    if _cap_hit:
+        if not _adm_ok:
+            _plan_skip_all("CATASTROPHIC LOSS CAP reached and the admission table is "
+                           "unavailable — nothing is asked", gate="catastrophic_cap")
+            return
+        _attempt_butterfly(ctx, ms, state, additive=True)
+        return
 
     # ── Fetch options chain (shared across strategies) ────────────────────────
     chain = ctx.get("chain") or get_chain_fetcher().fetch_chain()

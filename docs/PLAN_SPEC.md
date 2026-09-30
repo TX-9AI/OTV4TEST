@@ -1,5 +1,6 @@
 # PLAN_SPEC.md — every strategy declares its intent BEFORE the trigger
 
+**v1.29 · 2026-09-30 · OTV4TEST r178 — CAP.2: both butterflies are exempt from the daily catastrophic loss cap; §39.1's "one per session" row corrected to one of EACH type (true since r85) and its slot to the configured window.**
 **v1.28 · 2026-09-24 · OTV4TEST r131 — §29 amended by ruling: a close back inside is a new opportunity after a runaway; the break is a close AT or beyond the line; the break bar is never its own retest; the stop is the break candle's extreme inside the range. Breakout re-fires only at a new session extreme; VOLT sizes on Breakout's 1-R curve.**
 **v1.27 · 2026-09-14 · OTV4TEST r30 — §40: a confirmed level carries its dated timeframe so it outlives the tape; stale VWAP ids retire.**
 **v1.26 · 2026-09-14 · OTV4TEST r29 — the levels are built from the tape: held session extremes, walked from spot, spent only on acceptance (§40).**
@@ -1447,14 +1448,15 @@ Found on mainline's warehouse and verified here by reading: **(1) pools were wri
 | part | definition |
 |---|---|
 | thesis | price already SITS on the pin on a settled tape; the fly pays as the wings die into the close. §32's trade buys for price to TRAVEL to the pin |
-| slot | the butterfly slot, shared with §32 (12:00–15:00) |
+| slot | the butterfly slot, from `config.ENTRY_WINDOWS`: 11:30–15:00 for the ATP fly, 12:00–15:00 for §32's pin fly, as of r178 (this row said 12:00–15:00, shared) |
 | regime | PINNING with a pin strike |
 | pin strength | `gex_pin_butterfly.pin_strength()` — the SAME function §32 calls: concentration ≥ 0.25, or the pin within ±0.10 × EM of today's VWAP (r25) |
 | at the pin | \|spot − pin\| ≤ `ATP_BFLY_AT_PIN_EM_FRAC` ⟨PRIOR 0.30⟩ × EM — the complement of §32's 0.30–1.00 reach, so on one tick at most one butterfly can be viable |
 | settled | the last `ATP_BFLY_SETTLED_BARS` ⟨PRIOR 15⟩ CLOSED 1m bars all closed inside that band — read from the candles, never counted in memory (DEC.1) |
 | structure | both sides priced; symmetric listed wings, apex exactly on the pin; spot must be INSIDE the tent (width > \|spot − pin\|); R ≥ R_FLOOR; the 40% stop clears the fly's own three-leg spread by STOP_VS_SPREAD_MIN; the pick is the MAX R |
 | exits | §32's, by construction: the 40% floor and the 15:45 flatten, no target (`strategy/management.py` `BUTTERFLIES`) |
-| one per session | main.py's trades.db cap counts EITHER butterfly name before asking either — a butterfly of one kind ends the day for both. No played-pin set and no tick counter |
+| one per session | ~~main.py's trades.db cap counts EITHER butterfly name before asking either — a butterfly of one kind ends the day for both.~~ **SUPERSEDED at r85 (2026-09-21) and corrected here at r178:** one of EACH type per session — each butterfly counts its own name in trades.db, and both may fire on one day (the operator, 2026-09-30: *"Only one of each TYPE per session, not one butterfly per session"*). No played-pin set and no tick counter |
+| daily loss cap | **EXEMPT (r178, CAP.2).** The operator, 2026-09-30: *"Allow both flies to fire even if we've hit the cap."* At the cap every other strategy is refused and both butterflies are still asked, inside their own window and quota (`AdmissionRule.cap_exempt`; the same holds for §32's pin butterfly). Their results still count in the day's realized net |
 | starved | no price, no GEX, open interest summing to zero (§32.2's park — it matters more here, since a gamma² "pin" sits at spot), no chain |
 
 ### 39.2 Measured before building

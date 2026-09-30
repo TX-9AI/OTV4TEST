@@ -1,5 +1,6 @@
 """
-execution/position_manager.py  v5.8
+execution/position_manager.py  v5.9
+v5.9  2026-09-30  OTV4TEST r178 (CAP.2) — THE TWO BUTTERFLIES ARE EXEMPT FROM THE DAILY CATASTROPHIC LOSS CAP. The operator, 2026-09-30: "Allow both flies to fire even if we've hit the cap. Only one of each TYPE per session, not one butterfly per session." `AdmissionRule.cap_exempt` (default False) is True for GEXFLY and ATPFLY only; `decide()` skips the cap universal for a cap-exempt rule and for nothing else, and every other term (orb range, hard close, window, one try per session, one open of its type) still applies to them. `config.ADMISSION_RULES` can turn an exemption OFF and can never GRANT one: main.py's capped branch asks only the butterfly path, so an exemption on any other strategy would read ACTIVE on the board and never be asked.
 v5.8  2026-09-26  OTV4TEST r149 (EOD.1) — flatten_all runs the operator's end of day: an ASSIGNMENT-RISK position (a short leg) closes from 15:45, everything else is HELD (and managed) until 15:50; each close carries its own derived label; the tick's spot is stamped on the record as _eod_spot for the resting best-case price; a close still resting or laddering before 15:55 is not a failure (INFO, not ERROR). The admission hard-close refusal text derives from HARD_CLOSE_ET. it also stamps each leg's chain IV (`_eod_iv`) and the chain's ATM IV (`_eod_iv_atm`) beside `_eod_spot`, so the resting price is the position's ESTIMATED VALUE BY 15:55 (operator: "Can we instead estimate their assumed BY 1555 & rest that?").
 v5.7  2026-09-26  OTV4TEST r148 (WIN.1) — THE TABLE'S WINDOWS COME FROM config.ENTRY_WINDOWS, the one entry-window table; `config.ADMISSION_RULES` can still override caps and tries but NO LONGER a window (a second window source is WIN.1's defect). TrendCreditSpread's row reads 11:31, the minute its plan actually opened (it said 11:30).
 v5.6  2026-09-21  OTV4TEST r78 — ONE OF EACH AT A TIME. r76 read the ruling as
@@ -278,7 +279,8 @@ VOLT = "VOLT"
 class AdmissionRule:
     """One strategy's admission terms. §36: every field here is SELECTION —
     the operator toggles them as the data arrives. None of them is foundational;
-    the FEASIBILITY gate is the catastrophic cap, which is universal."""
+    the FEASIBILITY gate is the catastrophic cap, which is universal except for
+    a `cap_exempt` rule (r178: the two butterflies, by ruling)."""
     window: tuple                       # ((sh, sm), (eh, em)), half-open [start, end)
     # 🔑 r76 — `None` MEANS UNLIMITED, matching `max_tries_per_session` in this
     # same dataclass rather than inventing a sentinel. The operator, 2026-09-21:
@@ -294,6 +296,9 @@ class AdmissionRule:
     # end and a half-configured matrix cannot silently do nothing.
     blocks: frozenset = field(default_factory=frozenset)      # I block these from opening
     blocked_by: frozenset = field(default_factory=frozenset)  # these block me
+    # r178 (CAP.2) — True: the daily catastrophic loss cap does not refuse this
+    # strategy. The two butterflies only, by ruling (2026-09-30).
+    cap_exempt: bool = False
 
 
 # ── THE TABLE. Operator's specification, 2026-09-17. ────────────────────────
@@ -368,8 +373,8 @@ _DEFAULT_RULES = {
     # r178: on 2026-08-28 at 15:00 a stack of FIVE BUTTERFLIES fired in NINETY
     # SECONDS on the same pin. `max_tries_per_session=1` is the admission half
     # of that guard; `mark_pin_played` is the other.
-    GEXFLY:  AdmissionRule(config.ENTRY_WINDOWS[GEXFLY], max_open_of_type=1, max_tries_per_session=1),
-    ATPFLY:  AdmissionRule(config.ENTRY_WINDOWS[ATPFLY], max_open_of_type=1, max_tries_per_session=1),
+    GEXFLY:  AdmissionRule(config.ENTRY_WINDOWS[GEXFLY], max_open_of_type=1, max_tries_per_session=1, cap_exempt=True),
+    ATPFLY:  AdmissionRule(config.ENTRY_WINDOWS[ATPFLY], max_open_of_type=1, max_tries_per_session=1, cap_exempt=True),
 }
 
 
@@ -395,6 +400,8 @@ def rules() -> dict:
             max_tries_per_session=patch.get("max_tries_per_session", base.max_tries_per_session),
             blocks=frozenset(patch.get("blocks", base.blocks)),
             blocked_by=frozenset(patch.get("blocked_by", base.blocked_by)),
+            # r178: an override can switch an exemption OFF, never grant one.
+            cap_exempt=bool(base.cap_exempt and patch.get("cap_exempt", True)),
         )
     return out
 
@@ -437,7 +444,8 @@ def decide(f: Facts, table: Optional[dict] = None) -> Verdict:
 
     THE THREE UNIVERSALS ARE ASKED ONCE, FOR EVERY STRATEGY, and they are the
     operator's own list: is today a trading day, is the ORB range established,
-    is the catastrophic cap unbroken. The hard close rides with them.
+    is the catastrophic cap unbroken (r178: a `cap_exempt` rule, the two
+    butterflies, is not refused by the cap). The hard close rides with them.
     ⚠️ THE VIX CRISIS GATE IS GONE, and that is a ruling, not an omission.
     Operator, 2026-09-17: *"VIX crisis — get rid of it. That is major
     opportunity."* It previously refused every new entry on `macro`'s say-so.
@@ -451,7 +459,9 @@ def decide(f: Facts, table: Optional[dict] = None) -> Verdict:
         # the universal floor for EVERY strategy: nothing trades inside the
         # opening range, and the ORB itself cannot be read before it exists.
         return Verdict(False, "orb_range", "opening range not established yet")
-    if not f.cap_intact:
+    # r178 (CAP.2): the cap refuses every strategy except a cap-exempt one (the
+    # two butterflies). An unknown strategy has no rule and is refused here too.
+    if not f.cap_intact and not getattr(table.get(f.strategy), "cap_exempt", False):
         return Verdict(False, "catastrophic_cap", "catastrophic cap reached — no new entries")
     if f.past_hard_close:
         from config import HARD_CLOSE_ET as _HCE

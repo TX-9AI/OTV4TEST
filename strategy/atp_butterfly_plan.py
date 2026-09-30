@@ -1,5 +1,11 @@
 """
-strategy/atp_butterfly_plan.py  v1.1
+strategy/atp_butterfly_plan.py  v1.2
+v1.2  2026-09-30  OTV4TEST r178 (CAP.2) — COMMENT ONLY. The header below said the
+      once-per-session cap counts BOTH butterflies; that stopped being true at r85
+      (2026-09-21: each butterfly has its OWN session quota - both fired on 09-22),
+      and the stale line was quoted to the operator as fact on 2026-09-30. Corrected.
+      Also recorded: both butterflies are exempt from the daily catastrophic loss
+      cap (position_manager v5.9, main v4.78). No code changes here.
 v1.1  2026-09-17  OTV4TEST r31 (BFLY.7) — the pinning REGIME stamped on the row,
       record-only and at ZERO WEIGHT, the same `derived/gamma_regime.read()` the
       travel fly stamps, so the two butterflies cannot disagree about the regime any
@@ -40,7 +46,8 @@ v1.0  2026-09-14  OTV4TEST r26 — THE ATP BUTTERFLY'S PLAN (PLAN_SPEC §39, BFL
       ⚠️ NO TICK-PERSISTENCE COUNTER AND NO PLAYED-PIN SET. The travel fly's
       `_persist` and `PLAYED_PINS` live in process memory (DEC.1 debt, recorded);
       this plan's persistence is the settled-bars read, and its once-per-session is
-      main.py's trades.db cap across BOTH butterflies.
+      main.py's trades.db cap - ONE ATP fly per session, counted on its own name
+      (r85; the pin fly has its own quota, and both may fire on one day).
 
       THE STRUCTURE. Both sides priced (at the pin neither is "the OTM side"); every
       symmetric wing from the LISTED strikes, apex exactly on the pin; a wing must
