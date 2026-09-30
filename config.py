@@ -1,5 +1,6 @@
 """
-config.py  v4.43
+config.py  v4.44
+v4.44 2026-09-30  OTV4TEST r179 (BFLY.9) — `ATP_BFLY_PIN_CONC_MIN = 0.15`: THE ATP BUTTERFLY HAS ITS OWN PIN-CONCENTRATION FLOOR. The operator, 2026-09-30, reading the ATP fly HOLD all afternoon on a PINNING tape at the pin: "The ATP fly should be accepting the plan for the EXACT reason GEX pin fly is declining (price too close to pin)", then "Drop the ATP to .19" and, minutes later, "Actually .15 sounds better". The pin (travel) butterfly keeps GEX_BFLY_PIN_CONC_MIN (0.25); only the ATP reads the new key. AND `ATP_BFLY_VWAP_STRICT_EM_FRAC = 0.05`, the ATP's ROUTE B: when route A (PINNING and concentration >= 0.15) fails, a NOT-TRENDING regime qualifies if the pin is within ±0.05 x EM of today's VWAP. The operator, 2026-09-30: "Allow a non-pinning ATP if it qualifies on STRICT VWAP & NOT TRENDING", "Route B for VWAP if A fails", and yes to NEUTRAL and to ±0.05 x EM. ALSO: ENTRY_WINDOWS["ATPButterfly"] 11:30 -> 12:00. The table said 11:30 while the plan used the pin fly's slot and stayed DORMANT until 12:00 (measured 2026-09-30: DORMANT at 11:29:57, first asked 12:00:06), so the table now says what happens; the operator: "12:00 is fine". No entry is gained or lost by it.
 v4.43 2026-09-29  OTV4TEST r177 — COMMENT ONLY: v4.42 below calls the strike-ladder fix "STRK.1"; it is LADR.1. STRK.1 was already the 2026-09-21 row (strike selection scaling with the implied move). No value or behaviour changes.
 v4.42 2026-09-29  OTV4TEST r175 (SYM.1) — THE TRADEABLE UNIVERSE IS THE TOP 75 OPTIONS NAMES, AND A SYMBOL OFF THE LIST IS REFUSED. The operator, 2026-09-29: "probably the 50 most liquid names ... bump it up to 75. Any list that would include AAL and Sofi would be the right number", then "Yes to all" to: rank by options volume, keep only an ATM spread <= 10%, keep every symbol already listed. MEASURED 2026-09-29 ~13:40 ET on Cboe's public delayed chains (181 candidates, 180 read; /var/tmp/option_liquidity_2026-09-29.jsonl on the reference box): 71 pass the spread filter (SOFI #22, AAL #73 by volume); with SPY/QQQ/IWM/SPX that is 75. 50 are new: STRIKE_INCREMENTS gains each at its MEASURED near-money step (the mode of the listed-strike gaps within ~6% of spot on the nearest expiry, four spot-checked against the raw ladder), PENNY_CLASSES gains the 48 measured penny-quoted (APP and ASML quote on the nickel grid and stay out). Existing entries are NOT re-stepped here: 18 disagree with the real ladder (NVDA/AMZN/AAPL... trade 2.5, SMCI 0.5) and that is STRK.1, the shared fix that reads the ladder from the chain. INSTRUMENT_LISTED is new: a symbol not in STRIKE_INCREMENTS used to get a silent $1 step from .get(INSTRUMENT, 1); main.py and data/candle_feed.py now refuse it at startup. The declared (inert) RETENTION_DAYS copy moves 5m 10 -> 30 and 15m 20 -> 30 with warehouse/retention_purge.py, for the 30-day first-boot backfill.
 v4.41 2026-09-27  OTV4TEST r162 (CAP.1) — DAILY_LOSS_LIMIT_USD is the DAILY CATASTROPHIC LOSS CAP, and it RE-ARMS. Value and key (OT_DAILY_LOSS_LIMIT) unchanged; the comment now says what risk_manager v4.8 does: no new entries while realized net is at or beyond -limit, entries re-open once closes bring it back under.
@@ -703,7 +704,7 @@ ENTRY_WINDOWS = {
     "SweepCreditSpread":    ((9, 35),  EOD_SCHEDULE["entries_stop"]),
     "TrendCreditSpread":    ((11, 31), EOD_SCHEDULE["entries_stop"]),
     "GEXPinButterfly":      ((12, 0),  (15, 0)),
-    "ATPButterfly":         ((11, 30), (15, 0)),
+    "ATPButterfly":         ((12, 0),  (15, 0)),   # r179: was 11:30 here while the plan itself stayed dormant until 12:00; the operator, 2026-09-30: "12:00 is fine"
 }
 
 
@@ -1167,6 +1168,8 @@ BUTTERFLY_STOP_LOSS_PCT = 0.40   # OTV4TEST r24, operator: "Widen it to 40%." (w
 ATP_BUTTERFLY_ENABLED = os.environ.get("OT_ATP_BUTTERFLY", "1") == "1"   # OTV4TEST r26 (BFLY.6)
 ATP_BFLY_AT_PIN_EM_FRAC = 0.30   # ⟨PRIOR⟩ r26: at the pin = spot within this x EM of it
 ATP_BFLY_SETTLED_BARS = 15       # ⟨PRIOR⟩ r26: closed 1m bars all within that band
+ATP_BFLY_VWAP_STRICT_EM_FRAC = 0.05   # r179 (BFLY.9) route B: NOT TRENDING and the pin within ±this x EM of VWAP, only when route A fails. The operator, 2026-09-30: "Allow a non-pinning ATP if it qualifies on STRICT VWAP & NOT TRENDING", "Route B for VWAP if A fails", and yes to NEUTRAL and to ±0.05 x EM.
+ATP_BFLY_PIN_CONC_MIN = 0.15     # r179 (BFLY.9), operator 2026-09-30: "Drop the ATP to .19", then "Actually .15 sounds better". The pin fly keeps 0.25. 0.15 is also the floor data/gex_data.py needs to call the regime PINNING.
 GEX_BFLY_VWAP_BAND_EM_FRAC = 0.10   # OTV4TEST r25 (BFLY.5): pin within ±this x EM of today's VWAP waives the conc floor
 # Max-loss stop applied to an ADOPTED position (one discovered open at the
 # broker on a LIVE restart with no DB plan). Defaults to the same threshold

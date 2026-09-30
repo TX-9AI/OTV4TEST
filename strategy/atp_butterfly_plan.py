@@ -1,5 +1,19 @@
 """
-strategy/atp_butterfly_plan.py  v1.2
+strategy/atp_butterfly_plan.py  v1.3
+v1.3  2026-09-30  OTV4TEST r179 (BFLY.9) — THE ATP FLY'S OWN PIN-CONCENTRATION FLOOR, 0.15.
+      The operator, 2026-09-30, reading the ATP fly HOLD all afternoon on a PINNING tape at the pin: "The ATP fly should be accepting the plan for the EXACT reason GEX pin fly is declining (price too close to pin)", then "Drop the ATP to .19" and, minutes later, "Actually .15 sounds better".
+      MEASURED that day: PINNING at 745, spot 0.5-1.5 off the pin, a 743/745/747 fly PREPARED at
+      about 0.40 for R 4.0, and all 148 ticks from 12:00 to 12:40 ET waiting on this one condition
+      (concentration 0.18-0.20 against the shared 0.25; the pin 2.0 from VWAP, so no waiver). The
+      regime needs only 0.15 to read PINNING, so between 0.15 and 0.25 the pin fly declined for
+      being too close and this fly declined for a weak pin. `PIN_CONC_MIN` here reads
+      config.ATP_BFLY_PIN_CONC_MIN. ROUTE B, ruled the same afternoon: The operator, 2026-09-30: "Allow a non-pinning ATP if it qualifies on STRICT VWAP & NOT TRENDING", "Route B for VWAP if A fails", and yes to NEUTRAL and to ±0.05 x EM.
+      So the fly qualifies on ROUTE A - PINNING and concentration >= 0.15 - or, only when A
+      fails, on ROUTE B - a regime that is NOT TRENDING (PINNING or NEUTRAL, never unknown) with
+      the pin within ±0.05 x EM of today's VWAP, read through anchors.vwap_now(), which fails
+      closed on a missing or stale VWAP. This fly no longer calls the shared `pin_strength()`
+      (whose waiver band is 0.10 x EM); the pin fly still does and is unchanged. The route that
+      admitted a fly is named in its plan row and noted on the tick.
 v1.2  2026-09-30  OTV4TEST r178 (CAP.2) — COMMENT ONLY. The header below said the
       once-per-session cap counts BOTH butterflies; that stopped being true at r85
       (2026-09-21: each butterfly has its OWN session quota - both fired on 09-22),
@@ -31,9 +45,10 @@ v1.0  2026-09-14  OTV4TEST r26 — THE ATP BUTTERFLY'S PLAN (PLAN_SPEC §39, BFL
         entry_window       the butterfly slot, shared with GEXPinButterfly
         enabled            ATP_BUTTERFLY_ENABLED
         pinning            GEX environment PINNING with a pin strike
-        pin_concentration  `gex_pin_butterfly.pin_strength` — the SAME definition
-                           the travel fly uses: conc >= 0.25, or the pin within
-                           ±0.10 x EM of today's VWAP (r25)
+        pin_concentration  `gex_pin_butterfly.pin_strength` — the SAME function the
+                           travel fly uses, with THIS fly's own floor since r179:
+                           conc >= 0.15 (the travel fly's is 0.25), or the pin
+                           within ±0.10 x EM of today's VWAP (r25)
         expected_move      from the chain's ATM IV, no fallback
         at_pin             |price - pin| <= ATP_BFLY_AT_PIN_EM_FRAC x EM ⟨PRIOR 0.30⟩
                            — the exact complement of the travel fly's reach, so on
@@ -81,6 +96,10 @@ NAME = "ATPButterfly"
 ENABLED = bool(getattr(config, "ATP_BUTTERFLY_ENABLED", True))
 AT_PIN_EM_FRAC = float(getattr(config, "ATP_BFLY_AT_PIN_EM_FRAC", 0.30))     # ⟨PRIOR⟩
 SETTLED_BARS = int(getattr(config, "ATP_BFLY_SETTLED_BARS", 15))            # ⟨PRIOR⟩
+# r179 (BFLY.9): this fly's own floor. Falls back to the pin fly's if the key is absent.
+PIN_CONC_MIN = float(getattr(config, "ATP_BFLY_PIN_CONC_MIN", _gpb.PIN_CONC_MIN))
+# r179 (BFLY.9): route B's strict VWAP band, as a fraction of EM.
+VWAP_STRICT_EM_FRAC = float(getattr(config, "ATP_BFLY_VWAP_STRICT_EM_FRAC", 0.05))
 
 # WA 36 — every gate named with its category. NOTHING here is relaxable: the two
 # priors ARE the thesis ("at the pin", "an already sideways tape"), so a relaxed
@@ -89,6 +108,8 @@ SETTLED_BARS = int(getattr(config, "ATP_BFLY_SETTLED_BARS", 15))            # �
 GATES = {
     "AT_PIN_EM_FRAC": "FOUNDATIONAL",   # ⟨PRIOR 0.30⟩ the complement of §32's reach
     "SETTLED_BARS":   "FOUNDATIONAL",   # ⟨PRIOR 15⟩ the settled-tape bar
+    "PIN_CONC_MIN":   "FOUNDATIONAL",   # 0.15 by ruling (r179); the pin fly's is 0.25
+    "VWAP_STRICT_EM_FRAC": "FOUNDATIONAL",   # 0.05 by ruling (r179): route B, only when A fails
 }
 
 
@@ -118,7 +139,7 @@ class ATPPreparation:
     """What the plan hands the strategy each tick of the slot — never executable."""
     __slots__ = ("tick", "pin", "side", "conc", "em", "dist", "settled", "wing",
                  "lower", "center", "upper", "debit", "width", "r", "ratio",
-                 "conditions", "unmet", "structural", "starved", "ready", "vwap_waiver")
+                 "conditions", "unmet", "structural", "starved", "ready", "vwap_waiver", "route")
 
     def __init__(self, tick):
         self.tick = tick
@@ -130,6 +151,7 @@ class ATPPreparation:
         self.conditions, self.unmet, self.structural, self.starved = {}, [], [], []
         self.ready = False
         self.vwap_waiver = ""
+        self.route = ""                   # r179: "A", "B" or "" (not qualified)
 
     def cond(self, name, current, required, met):
         self.conditions[name] = (current, required, bool(met))
@@ -149,8 +171,9 @@ class ATPButterflyPlan:
     CONDITIONS = {
         "entry_window":      "the butterfly slot (shared with GEXPinButterfly)",
         "enabled":           "ATP_BUTTERFLY_ENABLED is on",
-        "pinning":           "GEX environment is PINNING with a pin strike",
-        "pin_concentration": "pin_strength(): conc >= PIN_CONC_MIN, or the pin within the VWAP band",
+        "pinning":           "a pin strike and a regime that is NOT TRENDING (PINNING, or NEUTRAL for route B)",
+        "pin_concentration": (f"route A: PINNING and conc >= {PIN_CONC_MIN:.2f}; or, only when A fails, route B: "
+                              f"the pin within ±{VWAP_STRICT_EM_FRAC:.2f}x EM of today's VWAP"),
         "expected_move":     "an expected move from the chain's ATM IV (no fallback)",
         "at_pin":            f"price within {AT_PIN_EM_FRAC:.2f}x EM of the pin",
         "settled":           f"the last {SETTLED_BARS} closed 1m bars all closed within that band",
@@ -202,11 +225,36 @@ class ATPButterflyPlan:
         conc = float(getattr(gex, "pin_concentration", 0.0) or 0.0)
         pin = float(getattr(gex, "pin_strike", 0.0) or 0.0)
         prep.pin, prep.conc = pin, conc
-        prep.cond("pinning", pin or None, f"PINNING (now {env or 'unknown'})",
-                  env == "PINNING" and pin > 0)
+        # r179 (BFLY.9): NOT TRENDING, never an unknown regime (fails closed).
+        prep.cond("pinning", pin or None,
+                  f"a pin and a regime that is NOT TRENDING (now {env or 'unknown'})",
+                  pin > 0 and env in ("PINNING", "NEUTRAL"))
         em = _gpb.expected_move(price_now, atm_iv)
         prep.em = em or 0.0
-        _met, _need, prep.vwap_waiver = _gpb.pin_strength(t, pin, conc, em)
+        # r179 (BFLY.9): ROUTE A, or ROUTE B only when A fails.
+        _vw, _vw_why = None, "not read"
+        try:
+            from derived import anchors as _A0
+            _vw, _vw_why = _A0.vwap_now()
+        except Exception as _e:                     # noqa: BLE001
+            _vw, _vw_why = None, f"VWAP read failed: {_e}"
+        _band = VWAP_STRICT_EM_FRAC * em if (em and em > 0) else None
+        _vdist = abs(pin - _vw) if (_vw is not None and pin > 0) else None
+        t.check("pin_vwap_dist", _vdist,
+                None if (_vdist is None or _band is None) else _vdist <= _band)
+        _route_a = env == "PINNING" and pin > 0 and conc >= PIN_CONC_MIN
+        _route_b = (not _route_a and env in ("PINNING", "NEUTRAL") and pin > 0
+                    and _vdist is not None and _band is not None and _vdist <= _band)
+        prep.route = "A" if _route_a else ("B" if _route_b else "")
+        _met = _route_a or _route_b
+        _need = (f"route A: PINNING and conc >= {PIN_CONC_MIN:.2f}; route B: pin within "
+                 + (f"±{_band:.2f} ({VWAP_STRICT_EM_FRAC:.2f}x EM) of VWAP" if _band is not None
+                    else f"{VWAP_STRICT_EM_FRAC:.2f}x EM of VWAP (no EM)")
+                 + (f" (now {_vdist:.2f} off)" if _vdist is not None else f" (no VWAP: {_vw_why})"))
+        if _route_b:
+            prep.vwap_waiver = (f"ROUTE B (strict VWAP): regime {env}, conc {conc:.2f}, pin {pin:g} is "
+                                f"{_vdist:.2f} from VWAP {_vw:.2f} (band ±{_band:.2f})")
+            t.note(prep.vwap_waiver)
         try:            # r31 (BFLY.7) — the pinning REGIME, record only, zero weight
             from derived import anchors as _A
             from derived import gamma_regime as _G
@@ -236,7 +284,8 @@ class ATPButterflyPlan:
             prep.cond("settled", None, self.CONDITIONS["settled"], False)
 
         head = (f"pin {pin:g} ({env or 'no env'}, conc {conc:.2f}, spot {price_now:.2f} is "
-                f"{prep.dist:.2f} off, EM {prep.em:.2f})")
+                f"{prep.dist:.2f} off, EM {prep.em:.2f}"
+                + (f", route {prep.route}" if prep.route else "") + ")")
         if prep.starved:
             t.starved(*prep.starved)
             return prep

@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_admission.py  v1.7
+tests/check_admission.py  v1.8
 THE ADMISSION TABLE, DRIVEN EXHAUSTIVELY (OTV4TEST r35).
 
+v1.8  2026-09-30  OTV4TEST r179 (BFLY.9) — the ATP fly's window RE-POINTED 11:30 -> 12:00, by ruling. The table said 11:30 while the
+        plan itself stayed dormant until 12:00 (measured 2026-09-30); the operator: "12:00 is fine". The SPEC row moves and A8 now
+        asserts the ATP fly is OUT at 11:30 and IN at 12:00.
 v1.7  2026-09-26  OTV4TEST r149 (EOD.1) — the SPEC and A8 RE-POINTED to the operator's ruling, restated from
         his words: "I wanna extend the debit window to all day" and "1. Stop entries at 1540". ORB, RUNAWAY,
         HUNT, BREAKOUT and VOLT now run 09:35-15:40 (VOLT keeps the ORB's window, as r72 requires). A8's 11:30
@@ -119,7 +122,7 @@ def main():
         SWEEP:   (((9, 35), (15, 40)), 2, None),
         TCS:     (((11, 31), (15, 40)), 1, None),   # r148: the minute its plan opens (AFD.1)
         GEXFLY:  (((12, 0), (15, 0)), 1, 1),
-        ATPFLY:  (((11, 30), (15, 0)), 1, 1),
+        ATPFLY:  (((12, 0), (15, 0)), 1, 1),     # r179: was 11:30
     }
     # ⚠️ r76 — CAPS RESTATED FROM THE OPERATOR'S RULING, 2026-09-21: *"With
     # rare exception, there are no blocking TRADES and no maximum number of
@@ -146,9 +149,9 @@ def main():
               f"{before}={bool(ok(s,before))} {at_start}={bool(ok(s,at_start))} "
               f"{before_end}={bool(ok(s,before_end))} {at_end}={bool(ok(s,at_end))}")
 
-    check("A8 r149: at 11:30 the directional five are IN, the TCS OUT until 11:31, the ATP fly IN; at 15:40 every directional and credit entry is OUT",
+    check("A8 r149: at 11:30 the directional five are IN, the TCS OUT until 11:31, the ATP fly OUT until 12:00 (r179); at 15:40 every directional and credit entry is OUT",
           all(bool(ok(x, (11, 30))) for x in (ORB, RUNAWAY, HUNT, BREAKOUT, VOLT))
-          and not ok(TCS, (11, 30)) and bool(ok(TCS, (11, 31))) and bool(ok(ATPFLY, (11, 30)))
+          and not ok(TCS, (11, 30)) and bool(ok(TCS, (11, 31))) and not ok(ATPFLY, (11, 30)) and bool(ok(ATPFLY, (12, 0)))
           and not any(ok(x, (15, 40)) for x in (ORB, RUNAWAY, HUNT, BREAKOUT, VOLT, SWEEP, TCS)),
           "the debit window runs all day (operator 2026-09-26); the TCS's one-minute gap is its plan's own (AFD.1)")
 

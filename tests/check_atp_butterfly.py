@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-"""tests/check_atp_butterfly.py  v1.2
+"""tests/check_atp_butterfly.py  v1.3
 THE ATP (AT-THE-PIN) BUTTERFLY — ITS PLAN, ITS STRATEGY, ITS EXITS AND ITS SESSION CAP.
 
+v1.3  2026-09-30  OTV4TEST r179 (BFLY.9) — P7 RE-POINTED: the ATP fly's own
+      concentration floor is 0.15 by ruling ("Actually .15 sounds better"), so
+      the HOLD case is 0.14, not 0.15. check_atp_pin_floor owns the floor itself.
 v1.2  2026-09-21  OTV4TEST r85 — S3/S4 RE-POINTED (r33/r43/r64),
       S4b added as the control: with BOTH traded, neither may be asked, so a
       fix that merely deleted the cap cannot pass.
@@ -32,7 +35,7 @@ replaced by spies, so "was it asked" is observed, not inferred from source.
       the row saying how many
   P5  no 1m bars -> HOLD, settled names that there were no bars (never a fire)
   P6  GEX TRENDING -> HOLD waiting on pinning
-  P7  conc 0.15 with no VWAP -> HOLD on pin_concentration (the shared pin_strength)
+  P7  conc 0.14 with no VWAP -> HOLD on pin_concentration (pin_strength, this fly's 0.15 floor)
   P8  outside the butterfly slot -> dormant, no fire
   P9  a ladder where no wing contains spot -> DECLINE wing_search naming the tent
   M1  the management plan covers ATPButterfly
@@ -170,8 +173,8 @@ def main():
     check("P6 GEX TRENDING -> HOLD waiting on pinning",
           sig is None and row[0] == "HOLD" and "pinning=" in row[1], f"{row[0]}: {row[1][-110:]}")
 
-    sig, row = run(gex=_GEX(conc=0.15))
-    check("P7 conc 0.15, no VWAP -> HOLD on pin_concentration (the shared pin_strength rule)",
+    sig, row = run(gex=_GEX(conc=0.14))
+    check("P7 conc 0.14, no VWAP -> HOLD on pin_concentration (pin_strength, this fly's 0.15 floor)",
           sig is None and row[0] == "HOLD" and "pin_concentration=" in row[1] and "no VWAP" in row[1],
           f"{row[0]}: {row[1][-120:]}")
 

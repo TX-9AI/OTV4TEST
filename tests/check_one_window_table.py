@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""tests/check_one_window_table.py — v1.1
+"""tests/check_one_window_table.py — v1.2
 ONE ENTRY-WINDOW TABLE, AND NOTHING READS A WINDOW FROM ANYWHERE ELSE.
 
+v1.2  2026-09-30 — OTV4TEST r179 (BFLY.9) — ONE W5 pin UPDATED BY RULING: admission.ATPButterfly.window
+      11:30 -> 12:00 (marked "# r179"). The plan already stayed dormant until 12:00; the operator: "12:00 is fine".
 v1.1  2026-09-26 — OTV4TEST r149 (EOD.1) — W5's pins UPDATED BY RULING, as W5 itself provides. The
       operator: "I wanna extend the debit window to all day", "1. Stop entries at 1540 / 2. Resting limit
       orders at 1545, ladder exits at 1550". EIGHTEEN pins move (each marked "# r149"): the five
@@ -57,7 +59,7 @@ def hhmm(t) -> str:
 
 
 PIN = {   # measured on the r148 build; identical to r147 except the TrendCreditSpread admission row
-    "admission.ATPButterfly.window": ((11, 30), (15, 0)),
+    "admission.ATPButterfly.window": ((12, 0), (15, 0)),   # r179
     "admission.Breakout.window": ((9, 35), (15, 40)),   # r149
     "admission.GEXPinButterfly.window": ((12, 0), (15, 0)),
     "admission.LiquidityHunt.window": ((9, 35), (15, 40)),   # r149
