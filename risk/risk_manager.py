@@ -1,5 +1,17 @@
 """
-risk/risk_manager.py  v4.8
+risk/risk_manager.py  v4.9
+v4.9 2026-09-30  OTV4TEST r181 (ALRT.2) — THE CAP PAGE IS ONCE PER EPISODE ACROSS A
+      RESTART. 2026-09-29 16:01 ET the r175 restart re-sent the 11:08 cap page: a
+      fresh process starts un-halted, reads the day's realized loss, sees the
+      transition INTO the halt and pages again. The operator's standing rule
+      (WDOG.1): no duplicate notifications for a single event; he approved this
+      fix 2026-09-30 ("Yes", then "Agree on all"). The page now writes a stamp,
+      data/CAP_PAGED beside the trades store (so a checker's scratch store gets a
+      scratch stamp), holding today's ET date and whether the episode is still
+      open. A process that finds today's episode still open does NOT page and
+      logs that it did not; a re-open (back under the limit) closes the episode,
+      in this process or the next, so a later breach pages again as r162 ruled.
+      A stamp that cannot be read or written never suppresses a page.
 v4.8 2026-09-27  OTV4TEST r162 (CAP.1) — THE DAILY CATASTROPHIC LOSS CAP RE-ARMS. The
       operator, 2026-09-27: "Manage what's open but no new entries. If the open
       TRADES put us back under the limit again after they close, it can open
@@ -170,6 +182,7 @@ Sizing model:
 import logging
 import math
 import os
+from datetime import datetime
 from dataclasses import dataclass
 from typing import Optional
 
@@ -734,6 +747,47 @@ class RiskManager:
         """Back-compat shim — the authoritative check now lives in is_halted()."""
         self.is_halted()
 
+    # ── r181 (ALRT.2) — the page is once per EPISODE, across restarts ────────
+    def _cap_stamp_path(self) -> str:
+        """data/CAP_PAGED beside the trades store the day's P&L is read from."""
+        try:
+            from database.trade_logger import get_trade_logger
+            base = os.path.dirname(os.path.abspath(get_trade_logger().db_path))
+        except Exception:                                      # noqa: BLE001
+            from config import DB_PATH
+            base = os.path.dirname(os.path.abspath(DB_PATH))
+        return os.path.join(base, "data", "CAP_PAGED")
+
+    @staticmethod
+    def _et_date() -> str:
+        try:
+            from zoneinfo import ZoneInfo
+            return datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+        except Exception:                                      # noqa: BLE001
+            return datetime.utcnow().strftime("%Y-%m-%d")
+
+    def _cap_episode_open(self) -> bool:
+        """True only when the stamp says TODAY's episode was paged and has not
+        re-opened. Anything unreadable is False: a bad file never silences a page."""
+        try:
+            with open(self._cap_stamp_path(), encoding="utf-8") as fh:
+                d, flag = fh.read().strip().split("|")
+            return d == self._et_date() and flag == "1"
+        except Exception:                                      # noqa: BLE001
+            return False
+
+    def _cap_stamp(self, open_: bool) -> None:
+        try:
+            p = self._cap_stamp_path()
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            tmp = p + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                fh.write(f"{self._et_date()}|{1 if open_ else 0}\n")
+            os.replace(tmp, p)
+        except Exception as exc:                               # noqa: BLE001
+            logger.warning(f"[{INSTRUMENT}] cap stamp not written ({type(exc).__name__}: {exc}) "
+                           f"- a restart may page this episode again")
+
     def is_halted(self) -> bool:
         """Authoritative daily-loss gate. Reads today's realized net P&L from
         the DB on every call (single source of truth — identical to what
@@ -752,6 +806,10 @@ class RiskManager:
         net = self.day_realized_pnl()
         self._session_pnl_usd = net   # keep the in-memory mirror truthful
         breached = net <= -self._daily_loss_limit
+        # r181: an episode that ended (back under the limit) is closed on the
+        # stamp too - including one paged by a process that has since restarted.
+        if not breached and (self._session_halted or self._cap_episode_open()):
+            self._cap_stamp(False)
         if not breached and self._session_halted:
             self._session_halted = False
             logger.warning(
@@ -770,6 +828,12 @@ class RiskManager:
                 f"entries; open positions are still managed. Entries re-open if "
                 f"closes bring the loss back under the limit."
             )
+            if self._cap_episode_open():
+                # r181 (ALRT.2): this episode was paged before a restart.
+                logger.warning(f"[{INSTRUMENT}] cap episode already paged today "
+                               f"(data/CAP_PAGED) - not paged again after a restart")
+                return self._session_halted
+            self._cap_stamp(True)
             try:
                 from notifications.alert_manager import get_alert_manager
                 get_alert_manager()._send(

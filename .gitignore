@@ -81,6 +81,8 @@ data/DRILL_DISK
 data/AGENT_EVENTS.jsonl
 data/AGENT_VERDICTS.jsonl
 data/SHUTDOWN_CAUSE
+data/CAP_PAGED
+data/CAP_PAGED.tmp
 data/AGENT_STATUS
 env/
 ohlc/
