@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_level_engine_book.py  v1.3
+tests/check_level_engine_book.py  v1.4
+v1.4  2026-10-01  OTV4TEST FLIP.1 — E5 RE-POINTED BY THE RULING, NOT DELETED: the breach
+      bar now also publishes the lone level's FLIPPED row, so E5 pins "a second derive
+      publishes nothing new" (n0 == n1) and exactly one NON-flip event.
 v1.3  2026-09-23  OTV4TEST r126 — THE LEGACY PATH IS DELETED, SO THREE THINGS MOVE HERE.
       E6 is RETARGETED: there is no LEVEL_SOURCE switch left to be "book" — the
       assertion is now that derive() has only the book path (no switch, no
@@ -228,7 +231,10 @@ def _e5():
     eng._book_bar = ""                                       # even a forced re-sync
     eng.derive(ctx)
     n1 = len(events(store))
-    return (n0 == n1 == 1), f"events after first {n0}, after second {n1}"
+    # v1.4 (FLIP.1): the breach bar now also publishes the lone level's FLIPPED
+    # row — so the pin is "nothing NEW" (n0 == n1) and exactly ONE non-flip event.
+    nf = len([e for e in events(store) if ":flip:" not in e[0]])
+    return (n0 == n1 and nf == 1), f"events after first {n0}, after second {n1}, non-flip {nf}"
 
 
 def _e6():

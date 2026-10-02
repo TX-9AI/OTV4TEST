@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_level_book.py  v1.2
+tests/check_level_book.py  v1.3
 THE LEVEL BOOK, DRIVEN ON HAND-BUILT TAPES.
 
+v1.3  2026-10-01  OTV4TEST FLIP.1 — K5 RE-POINTED BY THE RULING, NOT DELETED: it judges
+      the original level's own events; the operator's flip (2026-10-01) adds a
+      FLIPPED successor on the same bar, which tests/check_level_flip.py pins.
 v1.2  2026-09-23  OTV4TEST r111 — K13 (the lone-print ruling, on build()'s defaults)
       and K14 (the opening-range ruling); each red on r110's book.
 v1.1  2026-09-23  OTV4TEST r110 — K11, K12: the book moved to ET-clock blocks built
@@ -166,7 +169,10 @@ def _k5b():
             (t + M, 100.8, 101.3, 100.7, 101.2),        # closes beyond
             (t + 2 * M, 101.25, 101.4, 101.2, 101.3)]   # opens beyond -> BREACHED
     b = B.build("QQQ", h1, tape, now_ms=t)
-    evs = [(e["event"], (e["ts"] - t) // M) for e in b.events if 101.0 in e["prices"]]
+    # v1.3 (FLIP.1): the flip is the ORIGINAL level's successor and is pinned in
+    # check_level_flip; K5 judges the original level's own events only.
+    evs = [(e["event"], (e["ts"] - t) // M) for e in b.events
+           if 101.0 in e["prices"] and not e.get("flip")]
     ok = evs == [("TESTED", 0), ("HELD", 0), ("TESTED", 1), ("BREACHED", 2)] \
         and "QQQ:resistance:101.00" not in b.live and "QQQ:resistance:101.00" in b.dead
     return ok, f"{evs}"

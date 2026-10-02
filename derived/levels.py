@@ -1,5 +1,19 @@
 """
-derived/levels.py  v6.6
+derived/levels.py  v6.7
+v6.7  2026-10-01  OTV4TEST FLIP.1 — THE BOOK'S FLIPPED LEVELS ARE RECORDED, AND NO PLAN
+      SEES ONE. `_book_sync` writes each flip to `level_ledger` ONCE, live or
+      already retired (one that flipped and broke again between two syncs, or
+      while the bot was down, is still recorded): kind 'flip_support' /
+      'flip_resistance', provenance 'flip', timeframe 'flip_of:<the level it
+      came from>', created at the flip bar; its second break or the opening
+      range retires it BREACHED / TRAVERSED. The original keeps its BREACHED,
+      as before. Its events go to `level_event` as FLIPPED, FLIP_REJECTED and
+      FLIP_ACCEPTED with kind flip_*. 🔑 WHY THAT IS RECORD-ONLY, MEASURED:
+      board(), walk() and live_levels() all filter kind IN ('support',
+      'resistance'), and every plan's trigger asks latest_event() for
+      REJECTED/ACCEPTED BY NAME — so no reader a plan trades on can return a
+      flip. Making one tradeable is a later ruling (break-and-retest, designed
+      2026-10-03). tests/check_level_flip.py F8-F12.
 v6.6  2026-09-23  OTV4TEST r126 - THE LEGACY LEVEL PATH IS DELETED (LVL.15 step 5,
       the operator: "Yes, for sure" / "Yep, delete"). `derive()` publishes the
       book, and nothing else: the LEVEL_SOURCE switch, the legacy body of
@@ -542,6 +556,7 @@ class LevelEngine(DerivedEngine):
         self._zone_width: Optional[float] = None
         self._book_live: set = set()     # level_ids the ledger holds live, per the book
         self._book_emitted: set = set()  # (level_ids, ts_ms, event) already published
+        self._flip_written: set = set()  # FLIP.1 — (flip_id, retire ts | None) already in the ledger
         # v6.2 — the rails' TOUCHES (a fork's death is the ForkEngine's alone, v6.3)
         self._rail_eps: dict = {}        # (fork_key, rail, role) -> {"ep": Episode, "ext": price}
         self._rail_bar = ""              # the closed 1m bar the rails were last judged on
@@ -1007,18 +1022,51 @@ class LevelEngine(DerivedEngine):
         except Exception as exc:                                # noqa: BLE001
             logger.warning("[level] book: ledger read failed — nothing retired: %s", exc)
             rows = []
+        # ── 1b. FLIP.1 — the flipped levels, RECORD-ONLY. kind is 'flip_support' /
+        # 'flip_resistance': every reader that trades levels (board(), walk(),
+        # live_levels()) filters kind IN ('support','resistance'), so no plan
+        # sees one until the operator rules it does. timeframe names the level
+        # it came from; created_ts is the bar it flipped on.
+        # ⚠️ EVERY flip the book knows is written ONCE, live or already retired:
+        # one that flipped and broke again between two syncs, or while the bot
+        # was down, would otherwise never reach the record. The upsert is
+        # idempotent (ON CONFLICT on level_id), so a restart rewriting them is
+        # harmless; `_flip_written` keeps it to once per process.
+        flip_ids = set(getattr(book, "flipped", {}) or {})
+        flip_dead = getattr(book, "flip_dead", {}) or {}
+        for e in book.events:
+            if e.get("event") != "FLIPPED":
+                continue
+            fid = e["level_ids"][0]
+            dead_ts = flip_dead.get(fid)
+            state = (fid, dead_ts)
+            if state in self._flip_written:
+                continue
+            self._flip_written.add(state)
+            side = e["side"]
+            reason = None if dead_ts is None else (
+                "TRAVERSED" if fid in book.traversed else "BREACHED")
+            store.upsert_level((fid, sym, float(e["near"]), f"flip_{side}", "flip",
+                                f"flip_of:{e.get('from', '')}", e["ts"] / 1000.0,
+                                0, None, 0, None if dead_ts is None else dead_ts / 1000.0,
+                                reason, 0))
+            written += 1
         retired = 0
         for (lid,) in rows:
-            if lid in live_ids:
+            if lid in live_ids or lid in flip_ids:
                 continue
-            if lid in book.traversed:
+            if lid in flip_dead:
+                # its SECOND break (ruling 4) or the opening range (ruling 5)
+                store.retire_level(lid, flip_dead[lid] / 1000.0,
+                                   "TRAVERSED" if lid in book.traversed else "BREACHED")
+            elif lid in book.traversed:
                 store.retire_level(lid, book.dead[lid] / 1000.0, "TRAVERSED")   # inside the opening range
             elif lid in book.dead:
                 store.retire_level(lid, book.dead[lid] / 1000.0, "BREACHED")
             else:
                 store.retire_level(lid, now, "NOT_A_LEVEL")
             retired += 1
-        self._book_live = live_ids
+        self._book_live = live_ids | flip_ids
 
         # ── 2. fresh events, under the names every plan already reads ──
         import bisect
@@ -1065,11 +1113,21 @@ class LevelEngine(DerivedEngine):
                 name, p = "REJECTED", {"pierce_pct": pierce, "depth": depth, "closes_back": 1}
             elif e["event"] == "BREACHED":
                 name, p = "ACCEPTED", {"pierce_pct": 0.0, "depth": "accepted", "closes_back": 0}
+            elif e["event"] == "FLIPPED" and e.get("flip"):
+                name, p = "FLIPPED", {"pierce_pct": 0.0, "depth": "flipped", "closes_back": 0}
             else:
                 continue
             bar_ts = str(_dt.datetime.fromtimestamp(e["ts"] / 1000.0, _et))
             prov = self._block_of(book.live[lid].formed_ts) if lid in book.live else "book"
-            written += self._emit(store, sym, lid, near, side, prov, bar_ts, now, name, p, close)
+            kind = side
+            if e.get("flip"):
+                # FLIP.1 — RECORD-ONLY names and kind: every plan asks
+                # latest_event() for REJECTED/ACCEPTED by name, so a flipped
+                # level's retest is FLIP_REJECTED / FLIP_ACCEPTED and no plan
+                # reads it until the operator rules one should.
+                name = name if name == "FLIPPED" else f"FLIP_{name}"
+                kind, prov = f"flip_{side}", "flip"
+            written += self._emit(store, sym, lid, near, kind, prov, bar_ts, now, name, p, close)
             published += 1
         self.last_book_ms = round((time.time() - t0) * 1000.0)
         logger.info("[level] book synced in %d ms — %d live, %d retired, %d event(s) published",

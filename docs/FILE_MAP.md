@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-372 Python modules across 12 local packages.
+373 Python modules across 12 local packages.
 
-**Reached by:** 120 imported · 12 declared entry points · 154 referenced from a script, unit or doc but never imported · **86 by nothing here**.
+**Reached by:** 120 imported · 12 declared entry points · 156 referenced from a script, unit or doc but never imported · **85 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -56,8 +56,8 @@ Change these with the most care; a break here reaches everything downstream.
 | `strategy/plan.py` | 48 | atp_butterfly_plan.py, breakout_plan.py, check_anchors.py, check_atp_butterfly.py |
 | `utils/time_utils.py` | 41 | alert_manager.py, broker_reconcile.py, check_bfly_vwap_band.py, check_butterfly_foundational.py |
 | `database/trade_logger.py` | 35 | breakout_plan.py, check_atp_butterfly.py, check_breakout_new_extreme.py, check_cap_fly_exempt.py |
-| `data/derived_store.py` | 28 | anchors.py, breakout_plan.py, check_bfly_vwap_band.py, check_derived_layer.py |
-| `derived/__init__.py` | 25 | atp_butterfly_plan.py, check_anchors.py, check_atp_butterfly.py, check_atp_pin_floor.py |
+| `data/derived_store.py` | 29 | anchors.py, breakout_plan.py, check_bfly_vwap_band.py, check_derived_layer.py |
+| `derived/__init__.py` | 26 | atp_butterfly_plan.py, check_anchors.py, check_atp_butterfly.py, check_atp_pin_floor.py |
 | `strategy/base_strategy.py` | 22 | atp_butterfly.py, breakout_plan.py, check_credit_remainder.py, check_entry_gate.py |
 | `execution/exit_engine.py` | 21 | check_breakout_exit_line.py, check_condor_mgmt.py, check_condor_spec.py, check_condor_stop_suppression.py |
 | `execution/__init__.py` | 20 | check_admission_wired.py, check_atp_pin_floor.py, check_breakout_exit_line.py, check_cap_fly_exempt.py |
@@ -188,7 +188,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `data/derived_store.py`
 - **calls:** (none)
-- **called by:** `analysis/gate_report.py`, `derived/anchors.py`, `derived/gamma_regime.py`, `derived/registry.py`, `derived/snapshot.py`, `execution/exit_engine.py`, `strategy/breakout_plan.py`, `strategy/liquidity_hunt.py`, `strategy/plan.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_bfly_vwap_band.py`, `tests/check_derived_layer.py`, `tests/check_engine_status.py`, `tests/check_fork_closed_bars.py`, `tests/check_fork_invalidation.py`, `tests/check_indicator_votes.py`, `tests/check_level_engine_book.py`, `tests/check_level_source.py`, `tests/check_levels_in_play.py`, `tests/check_liquidity_hunt.py`, `tests/check_plan_heartbeat.py`, `tests/check_plan_prepares.py`, `tests/check_rails_book.py`, `tests/check_runaway_plan.py`, `tests/check_tcs_narrates.py`, `tests/check_tcs_plan.py`, `tests/check_zones.py`
+- **called by:** `analysis/gate_report.py`, `derived/anchors.py`, `derived/gamma_regime.py`, `derived/registry.py`, `derived/snapshot.py`, `execution/exit_engine.py`, `strategy/breakout_plan.py`, `strategy/liquidity_hunt.py`, `strategy/plan.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_bfly_vwap_band.py`, `tests/check_derived_layer.py`, `tests/check_engine_status.py`, `tests/check_fork_closed_bars.py`, `tests/check_fork_invalidation.py`, `tests/check_indicator_votes.py`, `tests/check_level_engine_book.py`, `tests/check_level_flip.py`, `tests/check_level_source.py`, `tests/check_levels_in_play.py`, `tests/check_liquidity_hunt.py`, `tests/check_plan_heartbeat.py`, `tests/check_plan_prepares.py`, `tests/check_rails_book.py`, `tests/check_runaway_plan.py`, `tests/check_tcs_narrates.py`, `tests/check_tcs_plan.py`, `tests/check_zones.py`
 
 ### `data/disk_watch.py`
 - **calls:** (none)
@@ -228,7 +228,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `derived/__init__.py`
 - **calls:** `derived/base.py`
-- **called by:** `derived/fork_projection.py`, `derived/level_book.py`, `derived/levels.py`, `derived/snapshot.py`, `execution/exit_engine.py`, `strategy/atp_butterfly_plan.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/liquidity_hunt.py`, `strategy/orb_plan.py`, `strategy/runaway_plan.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_anchors.py`, `tests/check_atp_butterfly.py`, `tests/check_atp_pin_floor.py`, `tests/check_bfly_vwap_band.py`, `tests/check_fork_projection.py`, `tests/check_gamma_regime.py`, `tests/check_level_book.py`, `tests/check_level_engine_book.py`, `tests/check_level_rules.py`, `tests/check_level_tape.py`, `tests/check_levels_in_play.py`, `tests/check_zones.py`
+- **called by:** `derived/fork_projection.py`, `derived/level_book.py`, `derived/levels.py`, `derived/snapshot.py`, `execution/exit_engine.py`, `strategy/atp_butterfly_plan.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/liquidity_hunt.py`, `strategy/orb_plan.py`, `strategy/runaway_plan.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_anchors.py`, `tests/check_atp_butterfly.py`, `tests/check_atp_pin_floor.py`, `tests/check_bfly_vwap_band.py`, `tests/check_fork_projection.py`, `tests/check_gamma_regime.py`, `tests/check_level_book.py`, `tests/check_level_engine_book.py`, `tests/check_level_flip.py`, `tests/check_level_rules.py`, `tests/check_level_tape.py`, `tests/check_levels_in_play.py`, `tests/check_zones.py`
 
 ### `derived/anchors.py`
 - **calls:** `config.py`, `data/derived_store.py`, `derived/levels.py`
@@ -264,15 +264,15 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `derived/level_book.py`
 - **calls:** `derived/__init__.py`, `derived/level_rules.py`
-- **called by:** `derived/levels.py`, `tests/check_level_book.py`, `tests/check_level_engine_book.py`, `tests/check_level_tape.py`, `tests/check_zones.py`
+- **called by:** `derived/levels.py`, `tests/check_level_book.py`, `tests/check_level_engine_book.py`, `tests/check_level_flip.py`, `tests/check_level_tape.py`, `tests/check_zones.py`
 
 ### `derived/level_rules.py`
 - **calls:** (none)
-- **called by:** `derived/fork_projection.py`, `derived/level_book.py`, `derived/levels.py`, `execution/exit_engine.py`, `tests/check_fork_projection.py`, `tests/check_level_book.py`, `tests/check_level_rules.py`
+- **called by:** `derived/fork_projection.py`, `derived/level_book.py`, `derived/levels.py`, `execution/exit_engine.py`, `tests/check_fork_projection.py`, `tests/check_level_book.py`, `tests/check_level_flip.py`, `tests/check_level_rules.py`
 
 ### `derived/levels.py`
 - **calls:** `config.py`, `data/candle_feed.py`, `derived/__init__.py`, `derived/base.py`, `derived/forks.py`, `derived/level_book.py`, `derived/level_rules.py`, `derived/registry.py`
-- **called by:** `derived/anchors.py`, `derived/registry.py`, `strategy/breakout_plan.py`, `strategy/liquidity_hunt.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_fork_invalidation.py`, `tests/check_level_engine_book.py`, `tests/check_level_source.py`, `tests/check_levels_in_play.py`, `tests/check_rails_book.py`, `tests/check_zones.py`
+- **called by:** `derived/anchors.py`, `derived/registry.py`, `strategy/breakout_plan.py`, `strategy/liquidity_hunt.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_fork_invalidation.py`, `tests/check_level_engine_book.py`, `tests/check_level_flip.py`, `tests/check_level_source.py`, `tests/check_levels_in_play.py`, `tests/check_rails_book.py`, `tests/check_zones.py`
 
 ### `derived/notes.py`
 - **calls:** `analysis/order_flow.py`, `derived/base.py`, `strategy/plan.py`
@@ -868,10 +868,14 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_level_book.py`
 - **calls:** `derived/__init__.py`, `derived/level_book.py`, `derived/level_rules.py`
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_level_engine_book.py`
 - **calls:** `data/derived_store.py`, `derived/__init__.py`, `derived/level_book.py`, `derived/levels.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
+### `tests/check_level_flip.py`
+- **calls:** `data/derived_store.py`, `derived/__init__.py`, `derived/level_book.py`, `derived/level_rules.py`, `derived/levels.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_level_rules.py`

@@ -1,8 +1,24 @@
 """
-derived/level_book.py  v1.2
+derived/level_book.py  v1.3
 THE ONE LEVEL BOOK: closed session extremes, walked by recency, grouped into
 zones, judged HELD / BREACHED on the 1-minute tape by `derived/level_rules`.
 
+v1.3  2026-10-01  OTV4TEST FLIP.1 — A LONE LEVEL ACCEPTED THROUGH FLIPS AND WAITS FOR ITS
+      RETEST; RECORD-ONLY. The operator, 2026-10-01: *"record genuinely broken
+      levels as future retest candidates ... when it's broken through, it needs
+      to flip"*. His rulings that morning, each in the code: (1) broken = the
+      existing BREACHED; (2) the record's form is ours "as long as the flip is
+      recorded"; (3) a ZONE never flips — it retires as before (*"A zone is
+      similar to a fair value Gap it's not going to hold"*); (4) a flipped
+      level broken AGAIN retires (*"If a level isn't respected, then it's not a
+      level"*); (5) the opening-range TRAVERSED rule applies to it; (6) the
+      rail lock is untouched. On BREACHED of a one-member zone the original
+      retires exactly as before AND `Book.flipped` gains `<SYM>:flip:<new
+      side>:<price>`, judged ALONE by its own `level_rules.Episode` from the
+      NEXT candle; every event it produces carries `flip: True`. Flipped levels
+      are NOT in `live`, so current_zones() and board() are unchanged: nothing
+      trades a flip until the operator rules a plan reads one.
+      tests/check_level_flip.py F1-F7.
 v1.2  2026-09-23  OTV4TEST r111 — TWO OPERATOR RULINGS, BOTH IN THE BOOK.
       (1) A LONE PRINT IS NOT A SESSION EXTREME ("1. Yes"): `spike_extremes`
       is ON by default at SPIKE_REJECT_USD $1.00 and judges OUTSIDE RTH ONLY —
@@ -312,6 +328,12 @@ class Book:
     events: List[dict] = field(default_factory=list)
     hourly_judged: int = 0
     as_of: Optional[int] = None
+    # v1.3 (FLIP.1) — a LONE level accepted through flips side and waits for its
+    # retest. Kept OUT of `live`, so current_zones() and every board are exactly
+    # what they were: RECORD-ONLY until the operator rules a plan reads them.
+    flipped: Dict[str, Level] = field(default_factory=dict)  # flip_id -> the flipped level (live)
+    flip_of: Dict[str, str] = field(default_factory=dict)    # flip_id -> the level_id it came from
+    flip_dead: Dict[str, int] = field(default_factory=dict)  # flip_id -> retire ts (2nd break / traversed)
 
     def current_zones(self) -> List[dict]:
         return zones(list(self.live.values()), self.width)
@@ -320,6 +342,16 @@ class Book:
 def level_id(symbol: str, side: str, price: float) -> str:
     """Side + price. NO SESSION LABEL — ruled irrelevant (2026-09-22)."""
     return f"{symbol}:{side}:{price:.2f}"
+
+
+def flip_id(symbol: str, side: str, price: float) -> str:
+    """A flipped level's identity: its NEW side, its price, marked `flip` so it
+    can never collide with a session extreme printed at the same price."""
+    return f"{symbol}:flip:{side}:{price:.2f}"
+
+
+def opposite(side: str) -> str:
+    return R.SUPPORT if side == R.RESISTANCE else R.RESISTANCE
 
 
 def _levels_from(symbol: str, sessions: Sequence[dict]) -> List[Level]:
@@ -371,6 +403,7 @@ def build(symbol: str, h1: Sequence[Bar], m1: Sequence[Bar],
     or_done: set = set()
     pending = list(levels)                 # not yet live, in live_from order
     episodes: Dict[FrozenSet[str], R.Episode] = {}
+    flip_eps: Dict[str, R.Episode] = {}                    # FLIP.1 — one per flipped level
     zone_list: List[dict] = []
     dirty = True
     hourly_touched = set()
@@ -396,6 +429,33 @@ def build(symbol: str, h1: Sequence[Bar], m1: Sequence[Bar],
                                         "level_ids": sorted(gone), "prices": sorted(
                                             float(x.rsplit(":", 1)[1]) for x in gone)})
                     dirty = True
+                # FLIP.1 ruling 5 ("Yes same concept"): a flipped level inside
+                # the opening range retires TRAVERSED too.
+                fgone = [fid for fid, fl in book.flipped.items() if lo_ <= fl.price <= hi_]
+                for fid in fgone:
+                    book.flip_dead[fid] = ts
+                    book.traversed.add(fid)
+                    book.flipped.pop(fid, None)
+                    flip_eps.pop(fid, None)
+                if fgone:
+                    book.events.append({"event": "TRAVERSED", "ts": ts, "judged_on": "1m",
+                                        "side": None, "near": lo_, "far": hi_, "flip": True,
+                                        "level_ids": sorted(fgone), "prices": sorted(
+                                            float(x.rsplit(":", 1)[1]) for x in fgone)})
+        # FLIP.1 — the flipped levels, each judged ALONE on its new side, before
+        # this bar's zones so a level flipped on THIS bar starts on the NEXT one.
+        # A second BREACHED retires it (ruling 4: "If a level isn't respected,
+        # then it's not a level").
+        for fid in list(book.flipped):
+            fl = book.flipped[fid]
+            for ev in flip_eps[fid].step(bar, (fl.price, fl.price)):
+                book.events.append({"event": ev, "ts": ts, "judged_on": tf, "flip": True,
+                                    "side": fl.side, "near": fl.price, "far": fl.price,
+                                    "level_ids": [fid], "prices": [fl.price]})
+                if ev == R.BREACHED:
+                    book.flip_dead[fid] = ts
+                    book.flipped.pop(fid, None)
+                    flip_eps.pop(fid, None)
         while pending and pending[0].live_from <= ts:
             lv = pending.pop(0)
             if lv.level_id not in book.dead:
@@ -430,6 +490,22 @@ def build(symbol: str, h1: Sequence[Bar], m1: Sequence[Bar],
                         book.dead[lid] = ts
                         book.live.pop(lid, None)
                     dirty = True
+                    # FLIP.1 — a LONE level accepted through FLIPS (rulings 1-2);
+                    # a ZONE retires as before and never flips (ruling 3: "A zone
+                    # is similar to a fair value Gap it's not going to hold").
+                    if len(key) == 1:
+                        (m,) = z["members"]
+                        new_side = opposite(ep.side)
+                        fid = flip_id(book.symbol, new_side, m.price)
+                        if fid not in book.flipped and fid not in book.flip_dead:
+                            book.flipped[fid] = Level(fid, new_side, m.price, m.formed_ts, ts)
+                            book.flip_of[fid] = m.level_id
+                            flip_eps[fid] = R.Episode(new_side)
+                            book.events.append({"event": "FLIPPED", "ts": ts, "judged_on": tf,
+                                                "flip": True, "side": new_side,
+                                                "near": m.price, "far": m.price,
+                                                "level_ids": [fid], "prices": [m.price],
+                                                "from": m.level_id})
         book.as_of = ts
     book.hourly_judged = len(hourly_touched)
     return book
