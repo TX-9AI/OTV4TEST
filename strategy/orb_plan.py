@@ -1,5 +1,12 @@
 """
-strategy/orb_plan.py  v1.6
+strategy/orb_plan.py  v1.7
+v1.7  2026-10-02  OTV4TEST r185 (LADR.1) — BOTH CANDIDATES TARGET THE RAW 100%
+      PROJECTION and `select_contract` takes the nearest LISTED strike; the
+      pre-round on config.STRIKE_INCREMENT (one table number per symbol, 18
+      of them wrong) is gone, and so is the constant, which nothing else
+      read. On a $1 ladder that equals the snapped value except at an exact
+      half-dollar target, where the tie now breaks by DELTA_BIAS as the
+      docstring always said instead of by Python's round-half-even.
 v1.6  2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged.
 v1.5  2026-09-24  OTV4TEST r131b — A REFUSED BREAK IS NAMED ON THE ROW. Operator,
       2026-09-24: "The stop should be inside the opening range to be a valid
@@ -91,7 +98,6 @@ import logging
 import config
 from analysis.orb_engine import ORBState
 from strategy.plan import Plan, _n
-from utils.math_utils import round_to_strike
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +112,6 @@ GATES = {
 CUTOFF_ET          = config.ORB_NO_ENTRY_AFTER_ET     # r148: no literal fallback
 WINDOW_OPEN_ET     = config.ENTRY_OPEN_ET   # r148: no literal fallback      # the range exists from here
 MAX_LOSS_PCT       = float(getattr(config, "MAX_LOSS_PCT", 0.25))       # the 25% floor
-STRIKE_INCREMENT   = getattr(config, "STRIKE_INCREMENT", 1)
 QUOTE_FLOOR        = 0.05          # carried from select_orb_strike — NOT RULED
 DELTA_BIAS         = getattr(config, "ORB_STRIKE_DELTA_BIAS", "lower")   # carried — NOT RULED
 BUDGET_USD         = float(getattr(config, "ORB_BUDGET_USD", 0.0) or 0.0)
@@ -330,8 +335,8 @@ class ORBPlan:
             prep.starved.append("chain")
             t.starved("chain")
             return prep
-        long_k  = round_to_strike(hi + prep.width, STRIKE_INCREMENT)
-        short_k = round_to_strike(lo - prep.width, STRIKE_INCREMENT)
+        long_k  = round(hi + prep.width, 2)     # LADR.1: raw target; the chain snaps
+        short_k = round(lo - prep.width, 2)
         cl = select_contract(chain, "long", long_k)
         cs = select_contract(chain, "short", short_k)
         prep.candidates = {"long": (long_k, cl), "short": (short_k, cs)}

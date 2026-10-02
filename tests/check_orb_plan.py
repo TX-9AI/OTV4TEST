@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
-tests/check_orb_plan.py  v1.4
+tests/check_orb_plan.py  v1.5
+v1.5  2026-10-02  OTV4TEST r185 (LADR.1) — P2, P3b and P8 RE-POINTED BY THE RULING,
+      not deleted: the plan's target is the RAW 100% projection (709.19 /
+      704.72), no longer pre-rounded on config.STRIKE_INCREMENT; the CONTRACT
+      pinned is unchanged (709C / 705P). P4c's range moves to 706.40-707.70 so
+      its target is exactly 709.00 and the 708/710 tie it names is still a tie
+      (at 709.19 it passed on distance, not on the tie-break).
 v1.4  2026-09-26  OTV4TEST r149 (EOD.1) — P7 and P16b RE-POINTED to the cutoff READ FROM CONFIG
       (ORB_NO_ENTRY_AFTER_ET, 15:40 by the operator's "extend the debit window to all day" /
       "Stop entries at 1540"), not a typed 11:30; the behaviour pinned is unchanged: AT the
@@ -242,7 +248,7 @@ def main():
     sk, sc = p2.candidates.get("short", (None, None))
     check("P2 range set -> HOLD with BOTH candidates priced, waiting on impulsive candle",
           v == "HOLD" and "impulsive candle" in why and lc is not None and sc is not None
-          and lk == 709 and sk == 705,
+          and abs(lk - 709.19) < 1e-9 and abs(sk - 704.72) < 1e-9,
           f"{v}: {why[:120]} long={lk} short={sk}")
     check("P2b the long candidate is a CALL at +width and the short a PUT at -width",
           lc is not None and sc is not None and lc.option_type == "C"
@@ -260,7 +266,7 @@ def main():
           v == "HOLD" and "PREPARED" in why and "Waiting on: retest" in why and not p3.ready,
           f"{v}: {why[:140]}")
     check("P3b stop = the impulsive candle's LOW; strike = high + width; floor = 75% premium",
-          p3.stop == 707.10 and p3.target_strike == 709
+          p3.stop == 707.10 and abs(p3.target_strike - 709.19) < 1e-9
           and p3.contract is not None and float(p3.contract.strike) == 709.0
           and abs(p3.floor_premium - round(p3.premium * (1 - MAX_LOSS_PCT), 4)) < 1e-9,
           f"stop={p3.stop} strike={p3.target_strike} prem={p3.premium} floor={p3.floor_premium}")
@@ -293,7 +299,7 @@ def main():
           f"plan={getattr(p4.contract, 'strike', None)} legacy={getattr(legacy, 'strike', None)}")
     # and the tie-break: two equidistant strikes, lower |delta| wins (carried rule)
     ch_tie = _chain(strikes=(708, 710))         # target 709 sits between them
-    e3b = _retest(_break(_engine_with_range(), "long"), "long")
+    e3b = _retest(_break(_engine_with_range(lo=706.40), "long"), "long")  # target 709.00
     p4b = prep_for(e3b, ch_tie)
     legacy_tie = fetcher.select_orb_strike(ch_tie, "long", e3b._data.target_strike)
     check("P4c PARITY on the equidistant tie-break too",
@@ -339,7 +345,8 @@ def main():
     p8 = prep_for(e7, _chain())
     check("P8 short: stop = the impulsive candle's HIGH (706.81); put at low - width (705); ready",
           p8.ready and p8.stop == 706.81 and p8.side == "put"
-          and p8.target_strike == 705 and p8.contract.option_type == "P",
+          and abs(p8.target_strike - 704.72) < 1e-9
+          and float(p8.contract.strike) == 705.0 and p8.contract.option_type == "P",
           f"ready={p8.ready} stop={p8.stop} strike={p8.target_strike}")
 
     # ── P9 sizing parity with the real sizer (C.23) ──────────────────────

@@ -1,5 +1,9 @@
 """
-strategy/gex_pin_butterfly.py  v5.6
+strategy/gex_pin_butterfly.py  v5.7
+v5.7  2026-10-02  OTV4TEST r185 (LADR.1) — `_chain_increment` IS NOW AN ALIAS of
+      data/options_chain.chain_increment, where the r198 body moved verbatim
+      so every caller reads one ladder reader (shared with otv4). No wing,
+      apex or gate here changes; check_butterfly_wing_grid W1-W6 still hold.
 v5.6  2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged. GEX_BFLY_LATEST_ET never existed in config; the 15:00 lived here.
 v5.5  2026-09-17  OTV4TEST r31 (BFLY.7) — THE PINNING REGIME IS RECORDED, AT ZERO WEIGHT.
       This fly reads the pin STRIKE and the CONCENTRATION at it and has never read
@@ -324,6 +328,9 @@ from strategy.base_strategy import OptionsSignal as Signal
 from strategy.plan import Plan
 from strategy.criteria import stop_survivable, R_FLOOR, STOP_VS_SPREAD_MIN
 from utils.math_utils import safe_float
+# LADR.1 (r185): the r198 ladder reader lives in data/options_chain; the
+# private name stays because check_butterfly_wing_grid and every call below use it.
+from data.options_chain import chain_increment as _chain_increment
 
 logger = logging.getLogger(__name__)
 
@@ -983,39 +990,6 @@ def pin_strength(t, pin: float, conc: float, em) -> tuple:
         f", or pin within ±{_band:.2f} of VWAP (now {_vdist:.2f} off)" if _vdist is not None and _band
         else f", or pin within {VWAP_BAND_EM_FRAC:.2f}x EM of VWAP (no VWAP: {_vw_why})")
     return (conc >= _conc_min or bool(waiver)), need, waiver
-
-
-def _chain_increment(contracts, pin: float, default: float = 1.0) -> float:
-    """The symbol's ACTUAL strike ladder near the pin, read off the chain.
-
-    🔴 r198 — `config.STRIKE_INCREMENT` IS ONE GLOBAL NUMBER FOR FIFTEEN
-    SYMBOLS, and `round_to_strike()` returns an **int**, so every wing was
-    quantised to whole dollars whatever the symbol actually lists. Measured
-    2026-08-31: PLTR pin 190, EM 3.25 -> wing 1 -> legs at 189/191 on a $2.50
-    ladder; AMD pin 472.5 -> legs at 470.5/474.5. Neither pair exists, so
-    `_exact()` correctly refused — for 242 and 243 MINUTES respectively, on
-    both boxes, all session.
-
-    🔑 THE APEX WAS NEVER THE PROBLEM. PLTR's 190 and AMD's 472.5 are listed
-    strikes; `_exact(pin)` would have found them. Only the WINGS were computed
-    off a grid that does not exist. So this changes nothing about the apex, and
-    the doctrine — *"the apex is the trade; a nearest-strike substitute is a
-    different one"* — is untouched: no substitution ever reaches the apex.
-
-    Median gap of the strikes nearest the pin. The MEDIAN, not the minimum:
-    one stray half-strike listing in a $2.50 ladder would otherwise set the
-    grid to 0.50 and reproduce the bug.
-    """
-    ks = sorted({float(c.strike) for c in (contracts or [])
-                 if getattr(c, "strike", None) is not None})
-    if len(ks) < 3:
-        return default
-    near = sorted(ks, key=lambda k: abs(k - pin))[:9]
-    gaps = sorted(round(b - a, 4) for a, b in zip(sorted(near), sorted(near)[1:])
-                  if b > a)
-    if not gaps:
-        return default
-    return gaps[len(gaps) // 2] or default
 
 
 def _nr(v):
