@@ -1,5 +1,12 @@
 """
-data/options_chain.py  v4.3
+data/options_chain.py  v4.4
+v4.4  2026-10-02  OTV4TEST r186 (ZBID.1) — A CONTRACT WITH NO BID IS NEVER SELECTED.
+      `two_sided(c)` (bid > 0 and ask > 0) arrives at module level and
+      select_orb_strike and select_sweep_strike require it beside their
+      `mark > 0.05` floor, which a no-bid contract cleared because its mark
+      IS its ask. AAL 2026-10-02 lost 3,128 on three VOLTs bought that way.
+      Nothing else changes: the mark rule, spread/fly/condor legs and r164's
+      order pricing are untouched. Shared with otv4; check_zero_bid_refused.
 v4.3  2026-10-02  OTV4TEST r185 (LADR.1) — STRIKES ARE READ FROM THE CHAIN. (1)
       `chain_increment()` arrives at module level, moved verbatim from
       gex_pin_butterfly._chain_increment (r198; the fly keeps the name as an
@@ -607,7 +614,7 @@ class OptionsChainFetcher:
         equally, break toward the higher- (more ITM/participation) or lower-
         (further OTM) |delta| per delta_bias."""
         contracts = chain.calls if direction == "long" else chain.puts
-        candidates = [c for c in contracts if c.mark > 0.05]
+        candidates = [c for c in contracts if c.mark > 0.05 and two_sided(c)]   # ZBID.1
         if not candidates:
             logger.warning("No liquid contracts in chain")
             return None
@@ -635,7 +642,8 @@ class OptionsChainFetcher:
         scales target_delta by reversal strength). Prefers strikes within
         +/- tolerance of the target; falls back to the nearest available."""
         pool = chain.calls if direction == "long" else chain.puts
-        liquid = [c for c in pool if c.mark > 0.05 and 0.0 < abs(c.delta) <= 0.55]
+        liquid = [c for c in pool if c.mark > 0.05 and two_sided(c)          # ZBID.1
+                  and 0.0 < abs(c.delta) <= 0.55]
         if not liquid:
             return None
         band = [c for c in liquid if abs(abs(c.delta) - target_delta) <= tolerance]
@@ -660,6 +668,21 @@ class OptionsChainFetcher:
 
 # Singleton
 _fetcher: Optional[OptionsChainFetcher] = None
+
+
+def two_sided(c) -> bool:
+    """🔴 ZBID.1 (r186, shared with otv4) — A CONTRACT WITH NO BID IS NOT A
+    LIVE QUOTE. `mark` is the ask when the bid is 0 (the fetch above), so a
+    no-bid contract carries its whole ask as its mark and cleared every
+    `mark > 0.05` floor. AAL 2026-10-02: VOLT bought P11.5 at delta -0.0009,
+    bid 0.00 / ask 0.22, three times, -3,128. The single-contract debit
+    selectors require this as well as the floor; gamma_leverage_pick already
+    refused `bid <= 0`. Spread, butterfly and condor legs keep their own rules.
+    """
+    try:
+        return float(getattr(c, "bid", 0) or 0) > 0 and float(getattr(c, "ask", 0) or 0) > 0
+    except (TypeError, ValueError):
+        return False
 
 
 def chain_increment(contracts, pin: float, default: float = 1.0) -> float:

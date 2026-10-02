@@ -1,5 +1,10 @@
 """
-strategy/orb_plan.py  v1.7
+strategy/orb_plan.py  v1.8
+v1.8  2026-10-02  OTV4TEST r186 (ZBID.1) — `select_contract` (ORB and Breakout) refuses a contract
+      with no bid: data.options_chain.two_sided beside the QUOTE_FLOOR, whose
+      FEASIBILITY reason - "a contract with no live quote cannot fill" - a
+      no-bid contract met only because its mark IS its ask. The AAL chain
+      of 2026-10-02 (P11.5 0.00/0.22) is pinned by check_zero_bid_refused Z6.
 v1.7  2026-10-02  OTV4TEST r185 (LADR.1) — BOTH CANDIDATES TARGET THE RAW 100%
       PROJECTION and `select_contract` takes the nearest LISTED strike; the
       pre-round on config.STRIKE_INCREMENT (one table number per symbol, 18
@@ -98,6 +103,7 @@ import logging
 import config
 from analysis.orb_engine import ORBState
 from strategy.plan import Plan, _n
+from data.options_chain import two_sided                       # ZBID.1 (r186)
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +141,8 @@ def select_contract(chain, direction: str, target_strike: float):
     if chain is None or target_strike is None:
         return None
     contracts = chain.calls if direction == "long" else chain.puts
-    cands = [c for c in (contracts or []) if float(getattr(c, "mark", 0) or 0) > QUOTE_FLOOR]
+    cands = [c for c in (contracts or []) if float(getattr(c, "mark", 0) or 0) > QUOTE_FLOOR
+             and two_sided(c)]                                  # ZBID.1 (r186)
     if not cands:
         return None
     dist = min(abs(float(c.strike) - float(target_strike)) for c in cands)

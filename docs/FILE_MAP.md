@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-374 Python modules across 12 local packages.
+375 Python modules across 12 local packages.
 
-**Reached by:** 120 imported · 12 declared entry points · 157 referenced from a script, unit or doc but never imported · **85 by nothing here**.
+**Reached by:** 120 imported · 12 declared entry points · 158 referenced from a script, unit or doc but never imported · **85 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -212,7 +212,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `data/options_chain.py`
 - **calls:** `analysis/tenor_publish.py`, `config.py`, `data/open_interest.py`, `data/tasty_client.py`, `execution/tick_size.py`, `utils/math_utils.py`, `utils/time_utils.py`
-- **called by:** `analysis/trade_readiness.py`, `data/gex_data.py`, `main.py`, `strategy/base_strategy.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/orb_strategy.py`, `tests/check_entry_gate.py`, `tests/check_orb_plan.py`, `tests/check_orb_reentry.py`, `tests/check_strike_ladder.py`, `tests/check_sweep_spread.py`, `tests/check_tick_join.py`, `tools/emergency_watchdog.py`
+- **called by:** `analysis/trade_readiness.py`, `data/gex_data.py`, `main.py`, `strategy/base_strategy.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/orb_plan.py`, `strategy/orb_strategy.py`, `strategy/volt_plan.py`, `tests/check_entry_gate.py`, `tests/check_orb_plan.py`, `tests/check_orb_reentry.py`, `tests/check_strike_ladder.py`, `tests/check_sweep_spread.py`, `tests/check_tick_join.py`, `tests/check_zero_bid_refused.py`, `tools/emergency_watchdog.py`
 
 ### `data/tasty_client.py`
 - **calls:** `config.py`
@@ -443,8 +443,8 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** `execution/position_manager.py`, `main.py`, `tests/check_atp_butterfly.py`, `tests/check_breakout.py`, `tests/check_breakout_delta_par.py`, `tests/check_breakout_research.py`, `tests/check_management_plan.py`, `tests/check_nearer_stop.py`
 
 ### `strategy/orb_plan.py`
-- **calls:** `analysis/orb_engine.py`, `config.py`, `derived/__init__.py`, `derived/anchors.py`, `strategy/orb_strategy.py`, `strategy/plan.py`
-- **called by:** `strategy/breakout_plan.py`, `strategy/orb_strategy.py`, `tests/check_low_price_symbols.py`, `tests/check_one_window_table.py`, `tests/check_orb_plan.py`, `tests/check_orb_reentry.py`
+- **calls:** `analysis/orb_engine.py`, `config.py`, `data/options_chain.py`, `derived/__init__.py`, `derived/anchors.py`, `strategy/orb_strategy.py`, `strategy/plan.py`
+- **called by:** `strategy/breakout_plan.py`, `strategy/orb_strategy.py`, `tests/check_low_price_symbols.py`, `tests/check_one_window_table.py`, `tests/check_orb_plan.py`, `tests/check_orb_reentry.py`, `tests/check_zero_bid_refused.py`
 
 ### `strategy/orb_strategy.py`
 - **calls:** `analysis/market_state.py`, `analysis/orb_engine.py`, `analysis/volatility_engine.py`, `config.py`, `data/macro_data.py`, `data/options_chain.py`, `strategy/base_strategy.py`, `strategy/orb_plan.py`
@@ -487,8 +487,8 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** `main.py`, `tests/check_plan_prepares.py`, `tests/check_tcs_narrates.py`, `tests/check_tcs_parked.py`, `tests/check_tcs_plan.py`
 
 ### `strategy/volt_plan.py`
-- **calls:** `config.py`, `strategy/plan.py`
-- **called by:** `strategy/volt_strategy.py`, `tests/check_one_window_table.py`, `tests/check_volt_plan.py`, `tests/check_volt_sizing.py`
+- **calls:** `config.py`, `data/options_chain.py`, `strategy/plan.py`
+- **called by:** `strategy/volt_strategy.py`, `tests/check_one_window_table.py`, `tests/check_volt_plan.py`, `tests/check_volt_sizing.py`, `tests/check_zero_bid_refused.py`
 
 ### `strategy/volt_strategy.py`
 - **calls:** `config.py`, `strategy/base_strategy.py`, `strategy/volt_plan.py`
@@ -1296,6 +1296,10 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_wing_search.py`
 - **calls:** `strategy/__init__.py`, `strategy/credit_vertical.py`, `strategy/criteria.py`, `strategy/plan.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
+### `tests/check_zero_bid_refused.py`
+- **calls:** `data/options_chain.py`, `strategy/orb_plan.py`, `strategy/volt_plan.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_zones.py`

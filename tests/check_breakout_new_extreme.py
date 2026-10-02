@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_breakout_new_extreme.py  v1.1
+tests/check_breakout_new_extreme.py  v1.2
+v1.2  2026-10-02  OTV4TEST r186 (ZBID.1) — the _C
+      fixture contract now carries a TWO-SIDED quote (bid/ask around its
+      mark), as every live OptionContract does: r186 (ZBID.1) refuses a
+      contract with no bid, and this fixture had none. No check changed.
 v1.1  2026-09-25  OTV4TEST r142 — N9: A RE-FIRE ON THE SAME SIGNAL BAR IS REFUSED. Live,
       2026-09-25: a long fired at 09:36:16 on the 09:35 close; at 09:36:51 the
       09:35 bar was still the last closed bar and the re-fire PASSED this gate on
@@ -151,6 +155,7 @@ class _ORB:
 class _C:
     def __init__(self, k):
         self.strike, self.mark, self.delta, self.gamma, self.expiry, self.ask = k, 1.0, 0.5, 0.05, "", 1.05
+        self.bid = 0.95                                      # r186: two-sided
 
 
 class _Chain:

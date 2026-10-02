@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_volt_sizing.py  v1.3
+tests/check_volt_sizing.py  v1.4
+v1.4  2026-10-02  OTV4TEST r186 (ZBID.1) — the _C
+      fixture contract now carries a TWO-SIDED quote (bid/ask around its
+      mark), as every live OptionContract does: r186 (ZBID.1) refuses a
+      contract with no bid, and this fixture had none. No check changed.
 v1.3  2026-09-27  OTV4TEST r161 — THE RAMP START IS RISK PER TRADE (the operator: "Merge
       it"). OT_ORB_RISK_USD is no longer read, so the fixture's forced START of 1000
       became 1050 (OT_RISK_USD). V4 is RE-CAPTURED, NOT LOOSENED: HEAD 6e1fa68's own
@@ -161,6 +165,7 @@ def size_like_main(signal, noise_floor=0.0):
 class _C:
     def __init__(self, strike, mark, delta=0.45, gamma=0.02):
         self.strike, self.mark, self.delta, self.gamma = strike, mark, delta, gamma
+        self.bid, self.ask = max(0.01, mark - 0.02), mark + 0.02   # r186: two-sided
         self.expiry = "2026-09-24"
 
 

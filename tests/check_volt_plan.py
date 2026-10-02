@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_volt_plan.py  v1.6
+tests/check_volt_plan.py  v1.7
+v1.7  2026-10-02  OTV4TEST r186 (ZBID.1) — the _C
+      fixture contract now carries a TWO-SIDED quote (bid/ask around its
+      mark), as every live OptionContract does: r186 (ZBID.1) refuses a
+      contract with no bid, and this fixture had none. No check changed.
 v1.6  2026-09-26  OTV4TEST r149 (EOD.1) — V1 and V3 RE-POINTED: VOLT keeps the ORB's window (V1b, r72's
       control property), and the ORB's window is now 09:35-15:40 by the operator's "extend the debit
       window to all day" / "Stop entries at 1540". V1 pins 09:35-15:40 at both edges; V3's "outside"
@@ -102,6 +106,7 @@ check("V2b VOLT still admits with an ORB already open (non-competing)",
 class _C:
     def __init__(self, strike, mark=1.00, delta=0.5, gamma=0.01):
         self.strike, self.mark, self.delta, self.gamma = strike, mark, delta, gamma
+        self.bid, self.ask = max(0.01, mark - 0.02), mark + 0.02   # r186: two-sided
         self.expiry = "2026-09-21"
 class _Chain:
     def __init__(self, spot):

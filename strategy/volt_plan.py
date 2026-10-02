@@ -1,5 +1,10 @@
 """
-strategy/volt_plan.py  v1.3
+strategy/volt_plan.py  v1.4
+v1.4  2026-10-02  OTV4TEST r186 (ZBID.1) — `select_contract` (VOLT) refuses a contract
+      with no bid: data.options_chain.two_sided beside the QUOTE_FLOOR, whose
+      FEASIBILITY reason - "a contract with no live quote cannot fill" - a
+      no-bid contract met only because its mark IS its ask. The AAL chain
+      of 2026-10-02 (P11.5 0.00/0.22) is pinned by check_zero_bid_refused Z6.
 v1.3  2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged.
 v1.2  2026-09-24  OTV4TEST r131 — DOCSTRING ONLY. The operator, 2026-09-24:
       *"VOLT needs to adopt the breakout sizing model."* The ORDER is now sized
@@ -89,6 +94,7 @@ import logging
 
 import config
 from strategy.plan import Plan, _n
+from data.options_chain import two_sided                       # ZBID.1 (r186)
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +165,8 @@ def select_contract(chain, direction: str, target_strike: float, otm_from=None):
     if chain is None or target_strike is None:
         return None
     contracts = chain.calls if direction == "long" else chain.puts
-    cands = [c for c in (contracts or []) if float(getattr(c, "mark", 0) or 0) > QUOTE_FLOOR]
+    cands = [c for c in (contracts or []) if float(getattr(c, "mark", 0) or 0) > QUOTE_FLOOR
+             and two_sided(c)]                                  # ZBID.1 (r186)
     if otm_from is not None:
         spot = float(otm_from)
         cands = [c for c in cands
