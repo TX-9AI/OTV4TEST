@@ -1,5 +1,9 @@
 """
-strategy/orcs_plan.py  v1.2
+strategy/orcs_plan.py  v1.3
+v1.3  2026-10-03  OTV4TEST r207 (PREM.4) — THE WING IS A DOLLAR WIDTH (ORCS_WING_USD), not 1% of spot. The operator: "why the
+      fuck would I risk $1000 for $25???" - the 1% wing was my harness's constant, never varied, and it made
+      the credit 4% of the risk. The long is the listed strike nearest ORCS_WING_USD beyond the short. The
+      delta cap and the implied-move floor are config's (0.20 and 1.0 as of r207).
 v1.2  2026-10-03  OTV4TEST r206 (PREM.3) — THE ENTRY LADDER GOVERNS THE ENTRY; THE PLAN'S OWN OFFER IS REMOVED.
       The operator, 2026-10-03, on r204's "freezes an offer one cent better than the mark": "No, we have a
       ladder for entries. THAT has to govern our entry. 'One cent better' is not even a valid increment
@@ -70,7 +74,7 @@ ORCS_START_ET        = tuple(config.ENTRY_WINDOWS[NAME][0])     # one window tab
 ORCS_END_ET          = tuple(config.ENTRY_WINDOWS[NAME][1])
 ORCS_SHORT_DELTA_MAX = float(config.ORCS_SHORT_DELTA_MAX)
 ORCS_MIN_IM_MULT     = float(config.ORCS_MIN_IM_MULT)
-ORCS_WING_PCT        = float(config.ORCS_WING_PCT)
+ORCS_WING_USD        = float(config.ORCS_WING_USD)
 ORCS_MIN_CREDIT      = float(config.ORCS_MIN_CREDIT)
 ORCS_MAX_GAP_PCT     = float(config.ORCS_MAX_GAP_PCT)
 
@@ -165,7 +169,7 @@ def locate(side: str, chain, spot: float, im: float) -> Located:
     loc.short, loc.delta, loc.dist = short, abs(float(short.delta)), round(d, 4)
     loc.dist_pct = round(100.0 * d / spot, 4)
     loc.im_mult = round(d / im, 4) if im else None
-    want = ORCS_WING_PCT * spot
+    want = ORCS_WING_USD                       # r207: dollars, not a fraction of spot
     wings = [(abs(abs(kk - k) - want), kk, c) for _d, kk, c in otm
              if (kk < k if side == "put" else kk > k) and mark_of(c) is not None]
     if not wings:

@@ -1,5 +1,6 @@
 # PLAN_SPEC.md — every strategy declares its intent BEFORE the trigger
 
+**v1.34 · 2026-10-03 · OTV4TEST r207 — PREM.4: ORCS reshaped by ruling (§41.9): short delta 0.20, a 3-dollar wing, one implied move. Where §41.1-§41.7 say delta 0.15, 1.25 implied moves or a 1% wing, §41.9 governs.**
 **v1.33 · 2026-10-03 · OTV4TEST r206 — PREM.3: ORCS entries are governed by the house entry ladder (§41.8); the plan's own offer (mark + one cent, ten-minute rest) is REMOVED by ruling. Where §41.1-§41.7 say 'offer', 'limit' or 'one cent better', §41.8 governs.**
 **v1.32 · 2026-10-03 · OTV4TEST r204 — PREM.2: §41 is now ORCS, the opening range credit spread, and it TRADES ON PAPER (§41.7); the sweep (§31) and the TCS (§34) are RETIRED by ruling, off behind OT_SWEEP_CS / OT_TCS_ACTIVE.**
 **v1.31 · 2026-10-03 · OTV4TEST r203 — PREM.1: §41, the opening premium spread - the spec, the trigger components, the preliminary dials, and a RECORD-ONLY plan that searches the chain for them. No order is placed.**
@@ -1561,3 +1562,24 @@ The 28 priced sessions paid out about a third of what the 28 before them did; ag
 | on the row | `put_taken` / `call_taken` when a side is already entered; the verdict is TAKE on a tick with a ready side |
 
 **As built (OTV4TEST r206):** `strategy/orcs_plan.py` v1.2, `strategy/orcs.py` v1.1, `config.py` v4.52, `main.py` v4.83 (wording). Gate `tests/check_orcs.py` v1.2.
+
+### 41.9 r207 — THE SHAPE: DELTA 0.20, A 3-DOLLAR WING (operator 2026-10-03; supersedes the shape in §41.2 and §41.4)
+*"why the fuck would I risk $1000 for $25???"* - then *"I want the worst day adjusted for $1050, so use the delta and wing based on that"* and *"To achieve an over 80% win rate."*
+
+The 1%-of-spot wing was a constant of the study harness, never varied; with delta 0.15 it made the credit about 4% of the risk (one contract, about 28 collected on about 670). X9 priced 25 shapes (delta 0.15-0.50 x wings 1, 2, 3, 5 dollars and 1%); X10 sized each at 1,050 a side and replayed all 56 QQQ sessions from 07-08 with the worst day taken as the full loss.
+
+| | delta 0.15 / 1% (r203-r206) | **delta 0.20 / 3 dollars (r207)** |
+|---|---|---|
+| contracts a side at 1,050 | 1 | 3 |
+| collected a day, both sides | about 52 | about 156 |
+| max-loss day (one side full width) | about -652 | about -744 |
+| winning days to repay one max-loss day | 12.6 | 4.8 |
+| winning DAYS, 56 sessions | 86% | 80.4% |
+| winning trades, 28 priced sessions | 96% | 93% |
+| 56-day replay total | +205 | +1,250 |
+
+**The dials:** `ORCS_SHORT_DELTA_MAX` 0.20 · `ORCS_WING_USD` 3.0 (replaces `ORCS_WING_PCT`) · `ORCS_MIN_IM_MULT` 1.0 (1.25 would push a 0.20-delta strike further out than was measured) · the rest unchanged.
+
+**What the replay also said, and it is not good news:** NO shape of the 25 was positive in both halves of the 56 sessions. Every one LOST from 07-08 to 08-20 (this shape: -1,962) and won after (+3,212). The replay uses the calm weeks' average credit in the rough weeks, where credits were probably higher, so the first half is understated - by an amount nobody has measured. 80.4% is 45 winning days of 56: one more losing day and it is under his bar. Delta 0.15 with a 2-dollar wing is the safer alternative (86% of days, about 131 a day, max-loss day about -869, 56-day total +830).
+
+**As built (OTV4TEST r207):** `config.py` v4.53, `strategy/orcs_plan.py` v1.3, `tests/check_orcs.py` v1.3. Studies X9, X10 in `/var/tmp/levels_1003/` (terms in PREREG.md; my frozen choice rule for X10 selected NO shape - this one was chosen on his two stated criteria).

@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_orcs.py  v1.2
+tests/check_orcs.py  v1.3
+v1.3  2026-10-03  OTV4TEST r207 (PREM.4) — THE SHAPE IS DELTA 0.20, A 3-DOLLAR WING, ONE IMPLIED MOVE. The fixture is unchanged;
+      the hand-worked strikes move: at 750.20 the put is 747/744 and the call 753/756 (was 746/738, 754/762);
+      with the 5.54 straddle 744 and 756 (was 743, 758); at 752.20 the put is 749/746. O8 pins the new dials.
 v1.2  2026-10-03  OTV4TEST r206 (PREM.3) — THE ENTRY LADDER GOVERNS THE ENTRY. The operator: "No, we have a ladder for
       entries. THAT has to govern our entry. 'One cent better' is not even a valid increment on most
       contracts". The plan's frozen offer is gone, so O5/O6 (frozen-and-watched, restart) are REPLACED and
@@ -44,7 +47,7 @@ v1.0  2026-10-03  OTV4TEST r203 (PREM.1) — THE OPENING PREMIUM SPREAD PLAN FIN
   hand from the fixture; the expected credits are read off the fixture's own
   bid and ask.
   O1  LOCATION: each side's short is the nearest OTM strike with delta <= 0.15
-      (put 746, call 754 at spot 750.20); the long is ~1% of spot further
+      (put 747, call 753 at spot 750.20); the long is ~1% of spot further
   O2  THE IMPLIED-MOVE FLOOR BINDS: with a dear straddle the delta-qualified
       strike inside 1.25 implied moves is skipped for the next one out
   O3  PRICED AT THE MARK: credit = mid - mid; bid/ask credit recorded beside it;
@@ -164,9 +167,9 @@ def main():
         prep = plan.prepare(price_now=750.2, now_et=_et(9, 45), chain=ch, gap=GAP, today=DAY)
         p, c = prep.sides["put"], prep.sides["call"]
         got = (p.short and p.short.strike, p.long and p.long.strike, c.short and c.short.strike, c.long and c.long.strike)
-        check("O1 put 746/738 and call 754/762: nearest strike with delta <= 0.15, long ~1% further",
-              got == (746.0, 738.0, 754.0, 762.0), f"located {got}")
-        ms, s_ = _mid(ch, "P", 746); ml, l_ = _mid(ch, "P", 738)
+        check("O1 put 747/744 and call 753/756: nearest strike with delta <= 0.20, long 3 dollars further",
+              got == (747.0, 744.0, 753.0, 756.0), f"located {got}")
+        ms, s_ = _mid(ch, "P", 747); ml, l_ = _mid(ch, "P", 744)
         rows = _rows(st)
         want_credit, want_nat = round(ms - ml, 4), round(s_.bid - l_.ask, 4)
         offer_rows = sorted(k for k in rows if "offer" in k)
@@ -185,8 +188,8 @@ def main():
         prep2 = plan.prepare(price_now=752.2, now_et=_et(9, 47), chain=_chain(752.2, 1.0), gap=GAP, today=DAY,
                              taken=("call",))
         r2 = _rows(st, t1)
-        check("O5 nothing is frozen: at 752.20 the put is 748/740; the TAKEN call is recorded and not ready",
-              prep2.sides["put"].short.strike == 748.0 and prep2.sides["put"].long.strike == 740.0
+        check("O5 nothing is frozen: at 752.20 the put is 749/746; the TAKEN call is recorded and not ready",
+              prep2.sides["put"].short.strike == 749.0 and prep2.sides["put"].long.strike == 746.0
               and prep2.ready == ["put"] and r2.get("call_taken", (0, ""))[1] == "PASS"
               and r2.get("call_ready", (0, ""))[1] == "FAIL" and r2.get("put_ready", (0, ""))[1] == "PASS",
               f"put {prep2.sides['put'].short.strike}/{prep2.sides['put'].long.strike}, ready {prep2.ready}, "
@@ -202,14 +205,14 @@ def main():
     # ── O2 — the implied-move floor binds ───────────────────────────────────
     try:
         st, plan = fresh("b")
-        ch = _chain(750.2, 3.0)                               # straddle ~5.54 -> floor ~6.93: 746 (4.2 out) is too near
+        ch = _chain(750.2, 3.0)                               # straddle ~5.54 -> floor 5.54: 747 (3.2 out) is too near
         P.begin_tick(t0)
         prep = plan.prepare(price_now=750.2, now_et=_et(9, 45), chain=ch, gap=GAP, today=DAY)
         im = prep.im
         p, c = prep.sides["put"], prep.sides["call"]
-        check("O2 with a 5.54 straddle the shorts step out to 743 and 758 (>= 1.25 implied moves)",
-              im is not None and abs(im - 5.54) < 0.02 and p.short and p.short.strike == 743.0
-              and c.short and c.short.strike == 758.0 and p.im_mult >= 1.25,
+        check("O2 with a 5.54 straddle the shorts step out to 744 and 756 (>= one implied move)",
+              im is not None and abs(im - 5.54) < 0.02 and p.short and p.short.strike == 744.0
+              and c.short and c.short.strike == 756.0 and p.im_mult >= 1.0,
               f"im {im}, put {p.short and p.short.strike}, call {c.short and c.short.strike}")
     except Exception as exc:                                  # noqa: BLE001
         check("O2 (did not run)", False, f"{type(exc).__name__}: {exc}")
@@ -242,11 +245,11 @@ def main():
     try:
         import config as C
         got = (tuple(C.ENTRY_WINDOWS["OpeningRangeCreditSpread"][0]), tuple(C.ENTRY_WINDOWS["OpeningRangeCreditSpread"][1]),
-               C.ORCS_SHORT_DELTA_MAX, C.ORCS_MIN_IM_MULT, C.ORCS_WING_PCT, C.ORCS_MIN_CREDIT, C.ORCS_MAX_GAP_PCT)
-        want = ((9, 45), (10, 30), 0.15, 1.25, 0.01, 0.10, 0.90)
-        gone = [n for n in ("ORCS_LIMIT_IMPROVE", "ORCS_REST_MIN") if hasattr(C, n) or hasattr(M, n)]
-        check("O8 config carries the window and five dials, ORCS is ON, and the two offer dials are GONE",
-              got == want and (M.ORCS_START_ET, M.ORCS_SHORT_DELTA_MAX) == ((9, 45), 0.15)
+               C.ORCS_SHORT_DELTA_MAX, C.ORCS_MIN_IM_MULT, C.ORCS_WING_USD, C.ORCS_MIN_CREDIT, C.ORCS_MAX_GAP_PCT)
+        want = ((9, 45), (10, 30), 0.20, 1.0, 3.0, 0.10, 0.90)
+        gone = [n for n in ("ORCS_LIMIT_IMPROVE", "ORCS_REST_MIN", "ORCS_WING_PCT") if hasattr(C, n) or hasattr(M, n)]
+        check("O8 config carries the window and five dials (delta 0.20, wing 3, one implied move), and the retired dials are GONE",
+              got == want and (M.ORCS_START_ET, M.ORCS_SHORT_DELTA_MAX) == ((9, 45), 0.20)
               and C.ORCS_ENABLED is True and not gone, f"{got}, still present {gone}")
     except Exception as exc:                                  # noqa: BLE001
         check("O8 (did not run)", False, f"{type(exc).__name__}: {exc}")
@@ -280,15 +283,15 @@ def main():
         st, sg = strat("t1")
         a = run(sg, 750.2, (9, 45), t0)
         ch0 = _chain(750.2, 1.0)
-        want = {"put": round(_mid(ch0, "P", 746)[0] - _mid(ch0, "P", 738)[0], 4),
-                "call": round(_mid(ch0, "C", 754)[0] - _mid(ch0, "C", 762)[0], 4)}
+        want = {"put": round(_mid(ch0, "P", 747)[0] - _mid(ch0, "P", 744)[0], 4),
+                "call": round(_mid(ch0, "C", 753)[0] - _mid(ch0, "C", 756)[0], 4)}
         got = {x.option_side: x.net_credit for x in a}
         strikes = {x.option_side: ((x.short_put_contract or x.short_call_contract).strike,
                                    (x.long_put_contract or x.long_call_contract).strike) for x in a}
         sig_call = next((x for x in a if x.option_side == "call"), None)
         mark_call = want["call"]
         check("T1 the first ready tick signals a put AND a call, each AT ITS MARK credit, on the located strikes",
-              got == want and strikes == {"put": (746.0, 738.0), "call": (754.0, 762.0)}
+              got == want and strikes == {"put": (747.0, 744.0), "call": (753.0, 756.0)}
               and all(x.strategy_name == "OpeningRangeCreditSpread" for x in a) and _verdict(st)[0] == "TAKE",
               f"credits {got} want {want}; strikes {strikes}")
 
@@ -349,10 +352,10 @@ def main():
             main.get_risk_manager, main.get_alert_manager, main.entries_open, main._post_credit_vertical = saved
         rows = TLM._trade_logger.get_open_trades()
         r = rows[0] if rows else {}
-        check("T3 live is REFUSED; paper books OpeningRangeCreditSpread 754/762 at paper_fill_credit(mark) with stop 0",
+        check("T3 live is REFUSED; paper books OpeningRangeCreditSpread 753/756 at paper_fill_credit(mark) with stop 0",
               live_rows == 0 and not posted and len(rows) == 1 and r.get("strategy") == "OpeningRangeCreditSpread"
               and float(r.get("entry_premium") or 0) == _pfc(mark_call) == mark_call and float(r.get("stop_premium") or 0) == 0.0
-              and float(r.get("short_strike") or 0) == 754.0 and float(r.get("long_strike") or 0) == 762.0
+              and float(r.get("short_strike") or 0) == 753.0 and float(r.get("long_strike") or 0) == 756.0
               and r.get("option_side") == "call",
               f"live rows {live_rows}, broker path reached {len(posted)}, paper rows {len(rows)}, {dict((k, r.get(k)) for k in ('strategy', 'entry_premium', 'stop_premium', 'short_strike'))}")
     except Exception as exc:                                  # noqa: BLE001

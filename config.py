@@ -1,5 +1,9 @@
 """
-config.py  v4.52
+config.py  v4.53
+v4.53 2026-10-03  OTV4TEST r207 (PREM.4) — ORCS RESHAPED BY RULING: delta 0.20, a 3-dollar wing, implied-move floor 1.0. The
+      operator: "why the fuck would I risk $1000 for $25???", then "I want the worst day adjusted for $1050, so
+      use the delta and wing based on that" and "To achieve an over 80% win rate". ORCS_SHORT_DELTA_MAX 0.15 ->
+      0.20; ORCS_WING_PCT (1% of spot) is REPLACED by ORCS_WING_USD = 3.0; ORCS_MIN_IM_MULT 1.25 -> 1.0.
 v4.52 2026-10-03  OTV4TEST r206 (PREM.3) — ORCS_LIMIT_IMPROVE and ORCS_REST_MIN are REMOVED. The operator: "we have a ladder
       for entries. THAT has to govern our entry." ORCS no longer prices or rests its own offer; the house credit
       entry does (paper: the mark; live: the entry ladder).
@@ -1276,9 +1280,9 @@ DEPLOY_CAP_MULT = float(os.environ.get("OT_DEPLOY_CAP_MULT", "2.0"))
 # PRICING IS THE HOUSE ENTRY LADDER'S (r206, his ruling), not a dial here. The
 # window is ENTRY_WINDOWS["OpeningRangeCreditSpread"] (09:45-10:30).
 ORCS_ENABLED         = os.environ.get("OT_ORCS", "1") == "1"   # the TRADE; =0 leaves the plan recording only
-ORCS_SHORT_DELTA_MAX = 0.15       # delta 0.15: R +0.036/+0.029; delta 0.20 lost its holdout half
-ORCS_MIN_IM_MULT     = 1.25       # and at least 1.25 implied moves (ATM straddle) from spot
-ORCS_WING_PCT        = 0.01       # long leg ~1% of spot further out (what every study priced)
+ORCS_SHORT_DELTA_MAX = 0.20       # r207, his ruling: worst day sized to 1,050 and over 80% winning days (X10: 80.4% of 56)
+ORCS_MIN_IM_MULT     = 1.0        # r207: at least ONE implied move (ATM straddle) out; 1.25 would push delta 0.20 further than measured
+ORCS_WING_USD        = 3.0        # r207: the long leg 3 dollars further out - 3 contracts a side at 1,050, max-loss day about -744
 ORCS_MIN_CREDIT      = 0.10       # at the mark; below a dime one cent of slip is over 10%
 ORCS_MAX_GAP_PCT     = 0.90       # |overnight gap| %, the one informer that agreed on both samples
 
