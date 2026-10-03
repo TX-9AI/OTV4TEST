@@ -1,5 +1,6 @@
 """
-utils/math_utils.py  v4.1
+utils/math_utils.py  v4.2
+v4.2  2026-10-03  OTV4TEST r221 (UTIL.1) — find_fvgs: the one Fair Value Gap finder (structure_analyzer and exit_engine each carried the same loop).
 Shared numeric helpers.
 
 v4.1  2026-09-25  OTV4TEST r137 — THE STRIKE HELPERS TRUNCATED A FRACTIONAL INCREMENT.
@@ -316,3 +317,32 @@ def safe_float(v, default=None):
     if not math.isfinite(f):
         return default
     return f
+
+
+def find_fvgs(df, min_size_pct: float) -> list:
+    """Fair Value Gaps (3-candle imbalances) in `df`, in bar order.
+
+    r221 (UTIL.1) — THE ONE FINDER. structure_analyzer and exit_engine each carried
+    the same loop. Bullish: bar[i].low > bar[i-2].high; bearish: bar[i].high <
+    bar[i-2].low; kept when (top - bottom) / the near edge >= min_size_pct.
+    Returns [(top, bottom, size_pct, direction, index), ...] - for each bar the
+    bullish gap (if any) then the bearish one, exactly the order both loops built.
+    """
+    out = []
+    if df is None or len(df) < 3:
+        return out
+    highs, lows = df["high"], df["low"]
+    for i in range(2, len(df)):
+        gap_bot = float(highs.iloc[i - 2])
+        gap_top = float(lows.iloc[i])
+        if gap_top > gap_bot:
+            size_pct = (gap_top - gap_bot) / gap_bot if gap_bot > 0 else 0
+            if size_pct >= min_size_pct:
+                out.append((gap_top, gap_bot, size_pct, "bullish", i))
+        gap_top2 = float(lows.iloc[i - 2])
+        gap_bot2 = float(highs.iloc[i])
+        if gap_bot2 < gap_top2:
+            size_pct = (gap_top2 - gap_bot2) / gap_top2 if gap_top2 > 0 else 0
+            if size_pct >= min_size_pct:
+                out.append((gap_top2, gap_bot2, size_pct, "bearish", i))
+    return out

@@ -1,5 +1,6 @@
 """
-analysis/structure_analyzer.py  v4.0
+analysis/structure_analyzer.py  v4.1
+v4.1  2026-10-03  OTV4TEST r221 (UTIL.1) — _find_fvgs calls utils.math_utils.find_fvgs (its own copy of the loop is gone; same gaps, same order).
 Swing detection and support/resistance mapping.
 
 v4.0  2026-08-19  Ported from options_trader_v3 at the OTV4 split.
@@ -251,30 +252,11 @@ class StructureAnalyzer:
         if len(df) < 3:
             return
 
-        for i in range(2, len(df)):
-            # Bullish FVG
-            gap_bot = float(df["high"].iloc[i - 2])
-            gap_top = float(df["low"].iloc[i])
-            if gap_top > gap_bot:
-                size_pct = (gap_top - gap_bot) / gap_bot
-                if size_pct >= FVG_MIN_SIZE_PCT:
-                    smap.fvgs.append(FairValueGap(
-                        top=gap_top, bottom=gap_bot,
-                        size_pct=size_pct, direction="bullish", index=i
-                    ))
+        from utils.math_utils import find_fvgs                  # r221: the one finder
+        for top, bottom, size_pct, direction, i in find_fvgs(df, FVG_MIN_SIZE_PCT):
+            smap.fvgs.append(FairValueGap(top=top, bottom=bottom, size_pct=size_pct,
+                                          direction=direction, index=i))
 
-            # Bearish FVG
-            gap_top2 = float(df["low"].iloc[i - 2])
-            gap_bot2 = float(df["high"].iloc[i])
-            if gap_bot2 < gap_top2:
-                size_pct = (gap_top2 - gap_bot2) / gap_top2
-                if size_pct >= FVG_MIN_SIZE_PCT:
-                    smap.fvgs.append(FairValueGap(
-                        top=gap_top2, bottom=gap_bot2,
-                        size_pct=size_pct, direction="bearish", index=i
-                    ))
-
-        # Keep only the 10 most recent FVGs
         smap.fvgs = sorted(smap.fvgs, key=lambda f: f.index, reverse=True)[:10]
 
     def _find_order_blocks(self, smap: StructureMap, df: pd.DataFrame, tf: str):

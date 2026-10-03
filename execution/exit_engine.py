@@ -1,5 +1,8 @@
 """
-execution/exit_engine.py  v4.32
+execution/exit_engine.py  v4.33
+v4.33 2026-10-03  OTV4TEST r221 (UTIL.1) — _find_1m_fvgs calls utils.math_utils.find_fvgs (its own copy of the loop is gone; same
+      gaps, same order). The runaway's vwap_recross event names its number honestly in the code (entry_vwap: a
+      since-entry mean, NOT the session VWAP); the event label and the arithmetic are unchanged.
 v4.32 2026-10-03  OTV4TEST r219 (TICK.2, SHARED - MIRROR OF otv4 r461 a407323) — A SINGLE-LEG CLOSE POSTED AT THE MARK LANDS ON THE
       VENUE GRID. _exit_limit priced a floor-policy close and the walk's fallback with limit_at_mark(mark,
       floor=tick) and NO symbol, so the limit was only rounded to cents: an invalid increment LIVE on a
@@ -893,24 +896,9 @@ def _find_1m_fvgs(df_1m: pd.DataFrame) -> List["_SimpleFVG"]:
     if df_1m is None or len(df_1m) < 3:
         return gaps
 
-    for i in range(2, len(df_1m)):
-        # Bullish FVG: candle[i].low > candle[i-2].high
-        gap_bot = float(df_1m["high"].iloc[i - 2])
-        gap_top = float(df_1m["low"].iloc[i])
-        if gap_top > gap_bot:
-            size_pct = (gap_top - gap_bot) / gap_bot if gap_bot > 0 else 0
-            if size_pct >= FVG_MIN_SIZE_PCT:
-                gaps.append(_SimpleFVG(top=gap_top, bottom=gap_bot,
-                                        direction="bullish", index=i))
-
-        # Bearish FVG: candle[i].high < candle[i-2].low
-        gap_top2 = float(df_1m["low"].iloc[i - 2])
-        gap_bot2 = float(df_1m["high"].iloc[i])
-        if gap_bot2 < gap_top2:
-            size_pct = (gap_top2 - gap_bot2) / gap_top2 if gap_top2 > 0 else 0
-            if size_pct >= FVG_MIN_SIZE_PCT:
-                gaps.append(_SimpleFVG(top=gap_top2, bottom=gap_bot2,
-                                        direction="bearish", index=i))
+    from utils.math_utils import find_fvgs                      # r221: the one finder
+    for top, bottom, _size, direction, i in find_fvgs(df_1m, FVG_MIN_SIZE_PCT):
+        gaps.append(_SimpleFVG(top=top, bottom=bottom, direction=direction, index=i))
 
     return sorted(gaps, key=lambda g: g.index, reverse=True)
 
@@ -1826,10 +1814,13 @@ class ExitEngine:
                 if "volume" in bars.columns:
                     v = bars["volume"].astype(float)
                     if float(v.sum()) > 0:
-                        vwap = float((closes * v).sum() / v.sum())
-                        if (direction == "long" and closes.iloc[-1] < vwap) or \
-                           (direction == "short" and closes.iloc[-1] > vwap):
-                            events.append(f"vwap_recross {closes.iloc[-1]:.2f} vs {vwap:.2f}")
+                        # r221 — NOT the session VWAP. This is a volume-weighted mean of the
+                        # closes in the bars handed to this evaluator (since entry). The session
+                        # VWAP is derived.anchors.vwap_now(). The event label is unchanged.
+                        entry_vwap = float((closes * v).sum() / v.sum())
+                        if (direction == "long" and closes.iloc[-1] < entry_vwap) or \
+                           (direction == "short" and closes.iloc[-1] > entry_vwap):
+                            events.append(f"vwap_recross {closes.iloc[-1]:.2f} vs {entry_vwap:.2f}")
                 # DIAL: acceptance decaying
                 try:
                     from analysis.trend_strength import measure

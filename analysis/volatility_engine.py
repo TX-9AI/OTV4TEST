@@ -1,5 +1,6 @@
 """
-analysis/volatility_engine.py  v4.3
+analysis/volatility_engine.py  v4.4
+v4.4  2026-10-03  OTV4TEST r221 (UTIL.1) — comment only: state.vwap is a frame-wide VWAP spanning more than one session, not the session VWAP (derived.anchors.vwap_now); names kept because they are recorded keys.
 v4.3  2026-08-28  r175: VolatilityState carries df_5m (the frame its ATR
       was read from) so TCS can measure the session's realized drift from the
       same series — pop_drift's mu input.
@@ -216,6 +217,10 @@ class VolatilityEngine:
         # BELOW each tick (a false VWAP signal into orb_strategy). Guard the
         # divisor: no volume -> VWAP unavailable, neutral "NONE" label, and the
         # vwap>0 checks downstream correctly skip it.
+        # r221 — WHAT THIS NUMBER IS: the volume-weighted typical price over the WHOLE 5m
+        # frame handed in, which spans more than one session. It is NOT the session VWAP
+        # (that is derived.anchors.vwap_now()). The field names `vwap` / `price_vs_vwap`
+        # are kept because the journal and the fire snapshot record them under those keys.
         vol_cum = float(df_5m["volume"].cumsum().iloc[-1]) if len(df_5m) else 0.0
         if vol_cum > 0:
             try:
