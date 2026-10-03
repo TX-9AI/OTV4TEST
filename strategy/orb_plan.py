@@ -1,5 +1,6 @@
 """
-strategy/orb_plan.py  v1.9
+strategy/orb_plan.py  v1.10
+v1.10  2026-10-03  OTV4TEST r220 (TIME.1) — its private HH:MM parser is utils.time_utils.parse_hm (eight plans carried the same copy), and an UNREADABLE clock is DORMANT - no trade - instead of skipping the window check.
 v1.9  2026-10-02  OTV4TEST r187 (ROSTER.1) — THE ORB TRADE IS RETIRED BY DEFAULT.
       prepare() still narrates the engine every tick, then goes DORMANT at gate
       `enabled` unless OT_ORB_TRADE is the literal "1" (read at CALL time).
@@ -132,12 +133,7 @@ BUDGET_USD         = float(getattr(config, "ORB_BUDGET_USD", 0.0) or 0.0)
 CONTRACT_MULT      = int(getattr(config, "CONTRACT_MULTIPLIER", 100))
 
 
-def _hhmm(now_hhmm: str):
-    try:
-        h, m = str(now_hhmm).split(":")[:2]
-        return int(h), int(m)
-    except (ValueError, AttributeError):
-        return None
+from utils.time_utils import parse_hm as _hhmm    # r220 (TIME.1): the one parser
 
 
 def select_contract(chain, direction: str, target_strike: float):
@@ -270,6 +266,9 @@ class ORBPlan:
         # silent on every identical tick after it; the engine state above is
         # still read every tick, so the plan is watching, not sleeping.
         hm = _hhmm(now_hhmm)
+        if hm is None:                                           # r220: a window that cannot be checked is not open
+            t.dormant("entry_window", "the clock could not be read — no trade")
+            return prep
         if state == ORBState.EXPIRED or (hm is not None and hm >= tuple(CUTOFF_ET)):
             t.dormant("entry_window",
                       f"past the {CUTOFF_ET[0]:02d}:{CUTOFF_ET[1]:02d} ET ORB cutoff "

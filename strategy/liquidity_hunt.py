@@ -1,5 +1,6 @@
 """
-strategy/liquidity_hunt.py  v1.6
+strategy/liquidity_hunt.py  v1.7
+v1.7  2026-10-03  OTV4TEST r220 (TIME.1) — its private HH:MM parser is utils.time_utils.parse_hm (eight plans carried the same copy), and an UNREADABLE clock is DORMANT - no trade - instead of skipping the window check.
 v1.6  2026-10-03  OTV4TEST r193 (CFG.1) — its config dials are read as config.NAME with NO literal fallback; config v4.48 now defines them (they were getattr defaults on names config never had). Values unchanged.
 v1.5  2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged.
 v1.4  2026-09-22  OTV4TEST r104 - THE RAILS NO LONGER OUTRANK A HELD
@@ -101,12 +102,7 @@ MAX_LOSS_PCT   = float(config.HUNT_MAX_LOSS_PCT)
 FINISHED: set = set()          # (direction, boundary) — one hunt per break
 
 
-def _hm(now_et: str):
-    try:
-        h, m = str(now_et).split(":")[:2]
-        return int(h), int(m)
-    except (ValueError, AttributeError):
-        return None
+from utils.time_utils import parse_hm as _hm      # r220 (TIME.1): the one parser
 
 
 class HuntPreparation:
@@ -177,6 +173,9 @@ class LiquidityHunt:
         t = self.planner.tick(price_now)
         prep = HuntPreparation(t)
         hm = _hm(now_et)
+        if hm is None:                                           # r220: a window that cannot be checked is not open
+            t.dormant("entry_window", "the clock could not be read — no trade")
+            return prep
         if hm is not None and hm >= tuple(CUTOFF_ET):
             t.dormant("entry_window", f"past {CUTOFF_ET[0]:02d}:{CUTOFF_ET[1]:02d} ET — observing only")
             return prep

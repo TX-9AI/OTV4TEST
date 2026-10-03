@@ -1,5 +1,6 @@
 """
-utils/time_utils.py  v4.5
+utils/time_utils.py  v4.6
+v4.6  2026-10-03  OTV4TEST r220 (TIME.1) — parse_hm: the one HH:MM parser (a datetime-like or a string; None when unreadable or out of range). Eight plans carried private copies.
 v4.5  2026-09-26  OTV4TEST r149 (EOD.1): HARD_CLOSE reads config.HARD_CLOSE_ET (was a literal 15:45 beside the config value); is_hard_close_time() opens at the first EOD action (15:45); eod_close_due() says when a given position's close begins — assignment risk 15:45, everything else 15:50.
 v4.4  2026-09-07  r304 / DEP.9 - is_rth consults utils/market_calendar; a market holiday is no longer RTH. It failed toward TRADING on holidays, and entries_open wraps it.
 v4.3  2026-08-24  r102: entries_open() defers to is_orb_complete() — the floor
@@ -62,6 +63,22 @@ ORB_END     = dtime(9, 35)   # ORB defined by 9:30–9:35 candle
 # mark-limit phase has time to fill before the order is forced marketable.
 
 from utils import market_calendar   # r304 — the ONE holiday source
+
+
+def parse_hm(value):
+    """(hour, minute) from a datetime-like or an 'HH:MM[:SS]' string; None when unreadable.
+
+    r220 (TIME.1) — THE ONE PARSER. Eight plans each carried a private copy of
+    this (`_hm` / `_hhmm`). A caller that gets None must treat the clock as
+    unreadable and NOT trade: a window that cannot be checked is not open."""
+    try:
+        if hasattr(value, "hour") and hasattr(value, "minute"):
+            return int(value.hour), int(value.minute)
+        h, m = str(value).split(":")[:2]
+        h, m = int(h), int(m)
+        return (h, m) if (0 <= h <= 23 and 0 <= m <= 59) else None
+    except (ValueError, AttributeError, TypeError):
+        return None
 
 
 def now_utc() -> datetime:

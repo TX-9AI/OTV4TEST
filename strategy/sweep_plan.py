@@ -1,5 +1,6 @@
 """
-strategy/sweep_plan.py  v1.15
+strategy/sweep_plan.py  v1.16
+v1.16  2026-10-03  OTV4TEST r220 (TIME.1) — its private HH:MM parser is utils.time_utils.parse_hm (eight plans carried the same copy), and an UNREADABLE clock is DORMANT - no trade - instead of skipping the window check.
 v1.15 2026-10-03  OTV4TEST r193 (CFG.1) — its config dials are read as config.NAME with NO literal fallback; config v4.48 now defines them (they were getattr defaults on names config never had). Values unchanged.
 v1.14 2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged. 🔴 Its fallback END was (14, 0) against a live 15:40 — r81 pre-armed.
 v1.13 2026-09-24  OTV4TEST r129 - "stop_vs_spread" IS RECORDED, WITH ITS RATIO. It
@@ -167,12 +168,7 @@ def _session_open_epoch() -> float:
         return 0.0
 
 
-def _hm(now_et: str):
-    try:
-        h, m = str(now_et).split(":")[:2]
-        return int(h), int(m)
-    except (ValueError, AttributeError):
-        return None
+from utils.time_utils import parse_hm as _hm      # r220 (TIME.1): the one parser
 
 
 class Candidate:
@@ -386,6 +382,9 @@ class SweepPlan:
         prep = SweepPreparation(t)
         LAST_PREP = prep
         hm = _hm(now_et)
+        if hm is None:                                           # r220: a window that cannot be checked is not open
+            t.dormant("entry_window", "the clock could not be read — no trade")
+            return prep
         if hm is not None and hm >= tuple(LATEST_ET):
             t.dormant("entry_window", f"past {LATEST_ET[0]:02d}:{LATEST_ET[1]:02d} ET — observing only")
             return prep

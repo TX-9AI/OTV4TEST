@@ -1,5 +1,6 @@
 """
-strategy/tcs_plan.py  v1.7
+strategy/tcs_plan.py  v1.8
+v1.8  2026-10-03  OTV4TEST r220 (TIME.1) — its private HH:MM parser is utils.time_utils.parse_hm (eight plans carried the same copy), and an UNREADABLE clock is DORMANT - no trade - instead of skipping the window check.
 v1.7  2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged. 🔴 Its fallback END was (14, 0) against a live 15:40 — r81 pre-armed.
 v1.6  2026-09-24  OTV4TEST r129 - "stop_vs_spread" RECORDS THE RATIO THE RULE TESTS.
       It recorded `stop_dist` (DOLLARS) under the ratio's name, and only on a pass,
@@ -144,14 +145,7 @@ def window_end() -> tuple:
     return tuple(TCS_ENTRY_END_ET)
 
 
-def _hm(now_et):
-    try:
-        if hasattr(now_et, "hour"):
-            return int(now_et.hour), int(now_et.minute)
-        h, m = str(now_et).split(":")[:2]
-        return int(h), int(m)
-    except (ValueError, AttributeError, TypeError):
-        return None
+from utils.time_utils import parse_hm as _hm      # r220 (TIME.1): the one parser
 
 
 def _session_open_epoch() -> float:
@@ -348,6 +342,9 @@ class TCSPlan:
                                 "MISSED, never re-entered (§37)", _prior["level_id"], _prior["bar_ts"])
             except Exception as exc:                            # noqa: BLE001
                 logger.warning("[tcs] first-look read failed — no prior event marked: %s", exc)
+        if hm is None:                                           # r220: a window that cannot be checked is not open
+            t.dormant("entry_window", "the clock could not be read — no trade")
+            return prep
         if hm is not None and hm >= tuple(TCS_ENTRY_END_ET):
             t.dormant("entry_window", f"past TCS_ENTRY_END_ET {TCS_ENTRY_END_ET[0]:02d}:{TCS_ENTRY_END_ET[1]:02d} — observing only")
             return prep

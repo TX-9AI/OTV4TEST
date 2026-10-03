@@ -1,5 +1,6 @@
 """
-strategy/breakout_plan.py  v1.8
+strategy/breakout_plan.py  v1.9
+v1.9  2026-10-03  OTV4TEST r220 (TIME.1) — the private parser is utils.time_utils.parse_hm; an unreadable window BOUND now closes the window (it read as 00:00, i.e. open since midnight).
 v1.8  2026-10-03  OTV4TEST r218 (PATH.1) — QUOTE_FLOOR is read from config with no getattr fallback (config now defines it, value unchanged 0.01).
 v1.7  2026-10-03  OTV4TEST r188 (BRK.5) — depth_thin FINALLY HAS A READING. `_depth` read
       `depth_now` / `depth_before`, keys `analysis/order_flow.depth()` has never
@@ -136,18 +137,13 @@ def _f(v) -> Optional[float]:
     return None if f != f else f
 
 
-def _hm(now_et: str):
-    """'HH:MM' -> (h, m), or None when unreadable."""
-    try:
-        h, m = str(now_et).split(":")[:2]
-        return int(h), int(m)
-    except Exception:                                           # noqa: BLE001
-        return None
+from utils.time_utils import parse_hm as _hm      # r220 (TIME.1): the one parser
 
 
 def _et(s: str):
-    p = _hm(s)
-    return p if p else (0, 0)
+    """A window bound. r220: None when unreadable (it was (0, 0), which read an unreadable START as
+    'open since midnight'); the window check treats None as closed."""
+    return _hm(s)
 
 
 # ── r131 readers: the two books the re-fire gate decides on ────────────────
@@ -415,7 +411,8 @@ class BreakoutPlan:
 
         # ── the window. DORMANT writes one row and goes quiet (r41) ─────────
         hm = _hm(now_et)
-        if hm is None or not (_et(B.EARLIEST_ET) <= hm < _et(B.LATEST_ET)):
+        _lo, _hi = _et(B.EARLIEST_ET), _et(B.LATEST_ET)
+        if hm is None or _lo is None or _hi is None or not (_lo <= hm < _hi):
             t.dormant("entry_window",
                       f"outside {B.EARLIEST_ET}-{B.LATEST_ET} ET — observing only")
             return prep

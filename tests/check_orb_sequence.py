@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_orb_sequence.py  v1.4
+tests/check_orb_sequence.py  v1.5
+v1.5  2026-10-03  OTV4TEST r220 (TIME.1) — S4 PASSES A CLOCK (10:00). It called generate_signal with no now_hhmm and relied on the
+      plan skipping its window check when the clock was unreadable; r220 makes an unreadable clock DORMANT. Production
+      always passes one (main: _now_disp = now_et()). The assertion is unchanged.
 v1.4  2026-10-02  OTV4TEST r187 (ROSTER.1) — RE-POINTED BY THE RULING, NOT LOOSENED:
       the strategy is OFF by default from r187; this checker tests its LOGIC,
       so it switches it on for its own run (OT_ORB_TRADE=1). check_trade_switches pins the default.
@@ -194,7 +197,7 @@ def main() -> int:
         P.begin_tick()
         sig = strat.generate_signal(orb=d, ms=None, vol_state=None,
                                     chain=None, macro=None,
-                                    current_price=705.90)
+                                    current_price=705.90, now_hhmm="10:00")   # r220: a plan with no clock is dormant
         P.close_tick(st, "TEST")
         # ⚠️ `sig is None` ALONE IS NOT THE PROOF, and at r206 it passes for an
         # unrelated reason (no chain, so the strike never resolves). The claim

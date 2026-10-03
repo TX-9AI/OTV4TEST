@@ -1,5 +1,6 @@
 """
-strategy/orcs_plan.py  v1.3
+strategy/orcs_plan.py  v1.4
+v1.4  2026-10-03  OTV4TEST r220 (TIME.1) — its private HH:MM parser is utils.time_utils.parse_hm (eight plans carried the same copy), and an UNREADABLE clock is DORMANT - no trade - instead of skipping the window check.
 v1.3  2026-10-03  OTV4TEST r207 (PREM.4) — THE WING IS A DOLLAR WIDTH (ORCS_WING_USD), not 1% of spot. The operator: "why the
       fuck would I risk $1000 for $25???" - the 1% wing was my harness's constant, never varied, and it made
       the credit 4% of the risk. The long is the listed strike nearest ORCS_WING_USD beyond the short. The
@@ -81,14 +82,7 @@ ORCS_MAX_GAP_PCT     = float(config.ORCS_MAX_GAP_PCT)
 SIDES = ("put", "call")
 
 
-def _hm(now_et):
-    try:
-        if hasattr(now_et, "hour"):
-            return int(now_et.hour), int(now_et.minute)
-        h, m = str(now_et).split(":")[:2]
-        return int(h), int(m)
-    except (ValueError, AttributeError, TypeError):
-        return None
+from utils.time_utils import parse_hm as _hm      # r220 (TIME.1): the one parser
 
 
 def mark_of(c):
@@ -220,6 +214,9 @@ class ORCSPlan:
         t = self.planner.tick(price_now)
         prep = ORCSPreparation(t)
         hm = _hm(now_et)
+        if hm is None:                                           # r220: a window that cannot be checked is not open
+            t.dormant("entry_window", "the clock could not be read — no trade")
+            return prep
         if hm is not None and hm < ORCS_START_ET:
             t.dormant("entry_window", f"before {ORCS_START_ET[0]:02d}:{ORCS_START_ET[1]:02d} ET - dormant")
             return prep
