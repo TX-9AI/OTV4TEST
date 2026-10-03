@@ -1,5 +1,6 @@
 # PLAN_SPEC.md — every strategy declares its intent BEFORE the trigger
 
+**v1.31 · 2026-10-03 · OTV4TEST r203 — PREM.1: §41, the opening premium spread - the spec, the trigger components, the preliminary dials, and a RECORD-ONLY plan that searches the chain for them. No order is placed.**
 **v1.30 · 2026-09-30 · OTV4TEST r179 — BFLY.9: the ATP fly qualifies on route A (PINNING, concentration ≥ 0.15; the pin fly keeps 0.25) or, only when A fails, route B (NOT TRENDING and the pin within ±0.05 × EM of VWAP), and its window is 12:00–15:00 in the table as well as in the plan (§39.1).**
 **v1.29 · 2026-09-30 · OTV4TEST r178 — CAP.2: both butterflies are exempt from the daily catastrophic loss cap; §39.1's "one per session" row corrected to one of EACH type (true since r85) and its slot to the configured window.**
 **v1.28 · 2026-09-24 · OTV4TEST r131 — §29 amended by ruling: a close back inside is a new opportunity after a runaway; the break is a close AT or beyond the line; the break bar is never its own retest; the stop is the break candle's extreme inside the range. Breakout re-fires only at a new session extreme; VOLT sizes on Breakout's 1-R curve.**
@@ -1490,3 +1491,43 @@ At 09:10 ET 619 of 624 ledger rows were live, back to 09-08: three `fork1h/*` ra
 
 **As built (OTV4TEST r29):** `derived/level_map.py` v1.0, `derived/levels.py` v5.0, `data/derived_store.py` v4.5, `strategy/sweep_plan.py` v1.5, `main.py` v4.50. Hypotheticals: `check_level_map` M0–M9 on the box's own tape. **Not in this revision:** the S3 seed (SEED.1, awaiting read access) and moving `check_level_rejection`'s fixtures onto a tape (LVL.10).
 
+## 41. OTV4TEST r203 — THE OPENING PREMIUM SPREAD: SPEC, TRIGGER COMPONENTS, PRELIMINARY DIALS (operator 2026-10-03)
+
+*"Build this spec, use it to draft the strategy's trigger components Incorporating derivative informers if it enhances the edge further. After the trigger components are selected, set preliminary dials, then build the plan that searches the chain for our trigger components' location on the chain."* And on fills: *"we get better than mark or we don't trade it."*
+
+**STATE: a record-only plan. No strategy fires it, no order is placed, it has no entry window in `config.ENTRY_WINDOWS` and no admission rule.** Turning it into a trade is a separate delivery and a separate yes.
+
+### 41.1 The spec — what the trade IS
+| part | definition |
+|---|---|
+| the idea | far out-of-the-money 0DTE premium sold shortly after the open decays to nothing most days. No level, no break, no direction: the 10-03 studies found the trigger adds nothing (a spread behind a rejected level, or on the far side of the opening range, earned the same as its control) |
+| instrument | QQQ, the 0DTE chain only. Stocks failed the resting-order fill model inside 1% and have 11 priced days |
+| structure | one put credit spread and one call credit spread, each on its own; together they are an iron condor entered as two orders |
+| entry | the first tick at or after 09:45 ET on which a side's gates pass; nothing after 10:30 |
+| fill | a limit one cent BETTER than the mark, resting ten minutes; unfilled is no trade (his ruling) |
+| exit | held to the scheduled credit close. No premium stop and no stop at the short strike - both were measured and both made it worse |
+| size | max risk per spread = width minus credit; the operator's sizing dial applies when it becomes a trade |
+
+### 41.2 The trigger components — and where each is found on the chain
+| component | rule | measured (QQQ 0DTE, 28 sessions 08-24..10-02, mid fills, R by half) |
+|---|---|---|
+| the clock | 09:45 to 10:30 ET | 09:45 beat 09:36 (a -1,989 day at 09:36); every cell positive to 10:30; gone from 11:00 |
+| the short strike | the nearest OTM strike with delta at or under 0.15 | delta 0.15: 96% winners, R +0.036 / +0.029. Delta 0.20: R +0.050 / +0.009 with a -1,926 day - refused |
+| the implied-move floor | and at least 1.25 implied moves from spot (implied move = the ATM straddle's mark) | 1.25x: R +0.042 / +0.031; 0.75x: R +0.068 / +0.020 with a -1,839 day |
+| the long strike | the listed strike nearest 1% of spot further out | what every study priced |
+| the credit | at the mark, at least 0.10 | below a dime one cent of slip is over 10% of the credit |
+| 0DTE | the chain expires today | 1-4 DTE closed same day was the worst cell in every study |
+
+### 41.3 Informers — tested, and what survived
+Six were tested on the 28 priced sessions and four again on payout over all 56 QQQ sessions from 07-08 (X8). **One agreed on both samples: the overnight gap** - large-gap days paid out more. It is a gate (`OPS_MAX_GAP_PCT`). Richness (implied over realized), opening-range width and put-versus-call each looked better on the priced sessions and did NOT agree on the 56-day sample; they are recorded on every row and gate nothing. The side of the opening drive and the share of the implied move already spent did not agree even on the priced sample. Six informers on 28 days: one passing by chance is expected, so the gap gate is preliminary like every dial here. Dealer gamma was not retested: the 09-2x study found it does not move trade-scale outcomes.
+
+### 41.4 The preliminary dials (`config.py`, `OPS_*`)
+`OPS_START_ET` 09:45 · `OPS_END_ET` 10:30 · `OPS_SHORT_DELTA_MAX` 0.15 · `OPS_MIN_IM_MULT` 1.25 · `OPS_WING_PCT` 0.01 · `OPS_MIN_CREDIT` 0.10 · `OPS_MAX_GAP_PCT` 0.90 · `OPS_LIMIT_IMPROVE` 0.01 · `OPS_REST_MIN` 10 · `OT_OPS_PLAN=0` parks the plan.
+
+### 41.5 What the plan writes, every tick of the window
+Per side: the located short and long strikes, the short's delta, its distance in percent and in implied moves, the width, the credit at the mark and at bid/ask. On the first ready tick the OFFER is frozen (strikes, limit, time) and then watched for ten minutes: `offer_mark` and `offer_natural` are the frozen spread's value now, `offer_filled_mark` records the mark reaching the limit, `offer_filled_natural` the bid/ask reaching it, `offer_expired` ten minutes passing unfilled. A restart inside the window re-reads the offer from these rows. The verdict is HOLD when a side is ready (the reason begins RECORD-ONLY), DECLINE naming the gate otherwise, DORMANT outside the window.
+
+### 41.6 What is NOT proven, and what answers it
+The 28 priced sessions paid out about a third of what the 28 before them did; against all 56, credit at the mark exceeds the payout only thinly (3.2% of width against 2.6% at 0.75% out). This is selling tail risk and the sample has no tail. The forward record answers three things the history could not: the credit on rough days, whether one cent better than the mark fills (with real bid and ask), and the outcome at the close. **Review after 20 recorded sessions; the frozen terms are this section.**
+
+**As built (OTV4TEST r203):** `strategy/open_premium_plan.py` v1.0, `config.py` v4.50, `main.py` v4.81 (`_ask_open_premium`, record-only, both loop branches). Gate `tests/check_open_premium_plan.py` O1-O8. Studies: `/var/tmp/levels_1003/RESULT.md` (X4-X8), terms pre-registered in `PREREG.md` beside it.

@@ -1,5 +1,9 @@
 """
-main.py  v4.80
+main.py  v4.81
+v4.81 2026-10-03  OTV4TEST r203 (PREM.1) — THE OPENING PREMIUM SPREAD PLAN IS ASKED EVERY TICK, RECORD-ONLY.
+      _ask_open_premium(ctx) runs after the entry dispatch on both branches of the loop (position open or
+      flat), hands the plan the chain, the gap and two recorded informers, and never raises. No order, no
+      signal, no admission rule: strategy/open_premium_plan.py only writes its plan rows. OT_OPS_PLAN=0 parks it.
 v4.80 2026-10-03  OTV4TEST r200 (AUD.8, SHARED SHAPE) — vix_at_entry IS STAMPED FOR EVERY STRATEGY. _stamp_vix
       copies ctx["macro"].vix onto the signal at the top of both executors (_execute_entry_signal and
       _execute_condor_leg) when the strategy did not set it. Only ORB and VOLT ever did, and both are off, so
@@ -1521,6 +1525,33 @@ _iron_condor_strategy = IronCondorStrategy()
 # already hard dependencies here, so a guarded import would hide a real
 # breakage rather than tolerate an optional one.
 _trend_credit_strategy = TrendCreditSpread()
+
+
+# r203 (PREM.1) — the opening premium spread's plan. RECORD-ONLY: it searches the
+# chain and writes plan rows; nothing here can place an order.
+_open_premium_plan = None
+try:
+    import config as _ops_cfg
+    if _ops_cfg.OPS_PLAN_ENABLED:
+        from strategy.open_premium_plan import OpenPremiumPlan
+        _open_premium_plan = OpenPremiumPlan()
+except Exception as _ops_exc:                                  # noqa: BLE001
+    logger.warning("[ops] plan not built - nothing recorded this session: %s", _ops_exc)
+
+
+def _ask_open_premium(ctx: dict) -> None:
+    """r203 — ask the record-only opening premium plan. Never raises, returns nothing."""
+    if _open_premium_plan is None:
+        return
+    try:
+        _px = float(ctx.get("price") or 0.0)
+        _hi, _lo = ctx.get("orb_high"), ctx.get("orb_low")
+        _inf = {"vix": getattr(ctx.get("macro"), "vix", None),
+                "or_width_pct": (100.0 * (float(_hi) - float(_lo)) / _px) if _hi and _lo and _px > 0 else None}
+        _open_premium_plan.prepare(price_now=_px, now_et=now_et(), chain=ctx.get("chain"),
+                                   gap=ctx.get("gap"), informers=_inf)
+    except Exception as exc:                                   # noqa: BLE001
+        logger.warning("[ops] plan tick failed - no row this tick: %s", exc)
 
 
 class BotState:
@@ -5924,6 +5955,8 @@ def main_loop(state: BotState):
                 # had a sentence and the other did not.
                 _plan_skip_management("no open position — nothing to manage")
                 attempt_new_entry(ctx, ms, state)
+
+            _ask_open_premium(ctx)        # r203: record-only, both branches
 
             # ── Periodic heartbeat log ────────────────────────────────────
             if state.tick_count % 20 == 0:

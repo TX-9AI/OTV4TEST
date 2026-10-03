@@ -1,5 +1,8 @@
 """
-config.py  v4.49
+config.py  v4.50
+v4.50 2026-10-03  OTV4TEST r203 (PREM.1) — THE OPENING PREMIUM SPREAD PLAN'S DIALS (OPS_*), PRELIMINARY. A record-only
+      plan (strategy/open_premium_plan.py, PLAN_SPEC §41) reads them; no order is placed and no entry window or
+      admission rule is added. OT_OPS_PLAN=0 parks the plan. Values come from the 10-03 studies X5-X8.
 v4.49 2026-10-03  OTV4TEST r194 (BOX.16, SHARED SHAPE) — OT_LOG_FILE. LOG_FILE honours it; unset it is
       ~/options-trader/bot.log exactly as before. main._setup_logging attaches a file handler to LOG_FILE at
       IMPORT, so every checker that imports main logged into the live bot.log (the 10-03 audit counted about
@@ -1251,6 +1254,24 @@ SIZE_ON_RISK_TO_STOP = os.environ.get("OT_SIZE_ON_RISK", "0") == "1"
 # This caps deployment at a multiple of the risk budget: size on risk, but
 # never own more than the operator would accept losing outright.
 DEPLOY_CAP_MULT = float(os.environ.get("OT_DEPLOY_CAP_MULT", "2.0"))
+
+# ── OPENING PREMIUM SPREAD (r203, PREM.1) — RECORD-ONLY PLAN, PRELIMINARY DIALS ──
+# The operator, 2026-10-03: "set preliminary dials, then build the plan that
+# searches the chain for our trigger components' location on the chain." And:
+# "we get better than mark or we don't trade it." Each value below is where the
+# 10-03 studies (X5-X8, QQQ 0DTE, 28 priced sessions) were positive in BOTH
+# halves at mid fills. NOT PROVEN - those sessions were calm; the plan records
+# the forward sample. Nothing here places an order.
+OPS_PLAN_ENABLED    = os.environ.get("OT_OPS_PLAN", "1") == "1"
+OPS_START_ET        = (9, 45)    # 09:45 beat 09:36 (a -1,989 day at 09:36, 0.50% out)
+OPS_END_ET          = (10, 30)   # positive to 10:30; gone from 11:00
+OPS_SHORT_DELTA_MAX = 0.15       # delta 0.15: R +0.036/+0.029; delta 0.20 lost its holdout half
+OPS_MIN_IM_MULT     = 1.25       # and at least 1.25 implied moves (ATM straddle) from spot
+OPS_WING_PCT        = 0.01       # long leg ~1% of spot further out (what every study priced)
+OPS_MIN_CREDIT      = 0.10       # at the mark; below a dime one cent of slip is over 10%
+OPS_MAX_GAP_PCT     = 0.90       # |overnight gap| %, the one informer that agreed on both samples
+OPS_LIMIT_IMPROVE   = 0.01       # the offer rests this much BETTER than the mark (his ruling)
+OPS_REST_MIN        = 10.0       # minutes the offer rests; unfilled = no trade
 
 # ── SWEEP CREDIT SPREAD (v4.0) ─────────────────────────────────────────────
 # Operator's spec, 2026-08-20: *"The only 2 ways I want out of this trade is a
