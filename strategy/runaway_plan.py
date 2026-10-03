@@ -1,5 +1,9 @@
 """
-strategy/runaway_plan.py  v1.3
+strategy/runaway_plan.py  v1.4
+v1.4  2026-10-03  OTV4TEST r189 (RUNW.1) — NAMES THE RUNAWAY END AT IMPORT. When OT_RUNAWAY_END is set it logs
+      the end in force at INFO, and a value config REFUSED (malformed, or outside 09:36..15:40) at WARNING with
+      the 10:30 it kept instead, so a box that meant 11:30 and typed 1130 is told, not silently held at 10:30.
+      The window itself still comes only from config.ENTRY_WINDOWS (r148).
 v1.3  2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged.
 v1.2  2026-09-13  OTV4TEST r24 — THE RUNAWAY CANNOT ENTER BELOW ITS OWN 50, AND ITS BREAK
       STATE IS READ FROM THE BOOKS. (1) `runaway_confirmed` — last closed close
@@ -74,6 +78,13 @@ from strategy.runaway_continuation import (
 from utils.math_utils import safe_float
 
 logger = logging.getLogger(__name__)
+
+# r189 (RUNW.1): say which end is in force when a box set one (WA 0.5).
+if getattr(config, "RUNAWAY_END_ENV_REFUSED", ""):
+    logger.warning("[runaway] OT_RUNAWAY_END=%r REFUSED (needs HH:MM between 09:36 and the entries stop); "
+                   "Runaway's last entry stays before %s", config.RUNAWAY_END_ENV_REFUSED, config.RUNAWAY_CUTOFF_ET)
+elif __import__("os").environ.get("OT_RUNAWAY_END", "").strip():
+    logger.info("[runaway] OT_RUNAWAY_END in force: entries stop at %s", config.RUNAWAY_CUTOFF_ET)
 
 # ── GATE CATEGORIES AS DATA (WA §36) — the plan's own values ────────────────
 GATES = {

@@ -1,5 +1,13 @@
 """
-config.py  v4.46
+config.py  v4.47
+v4.47 2026-10-03  OTV4TEST r189 (RUNW.1) — OT_RUNAWAY_END: RUNAWAY'S ENTRY END IS A PER-BOX SWITCH. Unset, it is
+      r187's (10, 30) exactly. "HH:MM" between 09:36 and the 15:40 entries stop moves the end of
+      ENTRY_WINDOWS["RunawayContinuation"], and with it every reader (admission, RUNAWAY_CUTOFF_ET,
+      runaway_continuation.CUTOFF_ET, runaway_plan). Anything else is REFUSED and named in
+      RUNAWAY_END_ENV_REFUSED, which runaway_plan logs at WARNING - never silently dropped (WA 0.5). The operator,
+      2026-10-03, for a standalone SPX-TEST compared against mainline SPX: "Yes" to the switch. MEASURED that
+      morning: mainline SPX Runaway made +7,894 of its +11,945 on entries at or after 10:30 (X1), and the 10:29
+      cutoff failed for Runaway on 15 unseen symbols (X3). Hunt, Breakout and VOLT keep 10:30.
 v4.46 2026-10-03  OTV4TEST r188 (BRK.5) — BRK_RESEARCH_UNTIL 2026-10-03 -> 2026-10-30. Breakout's informers stay
       at "accept any". The operator, 2026-10-03 09:51 ET: "extend the window for it to accept any and on the
       very next session that it TRADES make sure that we're getting the right data. And then prior to our next
@@ -713,11 +721,40 @@ EOD_SCHEDULE = {
     "cross_at":     (15, 55),   # anything still open crosses
 }
 
+# ── r189 (RUNW.1) — RUNAWAY'S END IS A PER-BOX SWITCH ────────────────────────
+# Unset = r187's 10:30. OT_RUNAWAY_END="HH:MM" (09:36 .. the entries stop)
+# moves ONLY Runaway's end. A malformed or out-of-range value keeps 10:30 - the
+# stricter end - and is named in RUNAWAY_END_ENV_REFUSED for the WARNING
+# runaway_plan logs at import: "refused" must never look like "applied".
+_RUNAWAY_END_DEFAULT = (10, 30)
+RUNAWAY_END_ENV_REFUSED = ""
+
+
+def _runaway_end():
+    global RUNAWAY_END_ENV_REFUSED
+    raw = os.environ.get("OT_RUNAWAY_END", "").strip()
+    if not raw:
+        return _RUNAWAY_END_DEFAULT
+    try:
+        parts = raw.split(":")
+        if len(parts) != 2:
+            raise ValueError(raw)
+        hm = (int(parts[0]), int(parts[1]))
+        if not (0 <= hm[1] < 60 and (9, 36) <= hm <= tuple(EOD_SCHEDULE["entries_stop"])):
+            raise ValueError(raw)
+        return hm
+    except ValueError:
+        RUNAWAY_END_ENV_REFUSED = raw
+        return _RUNAWAY_END_DEFAULT
+
+
+RUNAWAY_END = _runaway_end()
+
 ENTRY_WINDOWS = {
     # r149: directional debits run ALL DAY to the entries stop (operator: "A").
     # Supersedes criteria.py's 2026-08-29 "Debit entries are finished at 1130".
     "ORBStrategy":          ((9, 35),  EOD_SCHEDULE["entries_stop"]),
-    "RunawayContinuation":  ((9, 35),  (10, 30)),   # r187 (ROSTER.1): directional debits stop at 10:29
+    "RunawayContinuation":  ((9, 35),  RUNAWAY_END),   # r187: 10:29 last entry; r189: OT_RUNAWAY_END per box
     "LiquidityHunt":        ((9, 35),  (10, 30)),   # r187
     "Breakout":             ((9, 35),  (10, 30)),   # r187
     "VOLT":                 ((9, 35),  (10, 30)),   # r187 (VOLT is also OFF by default)

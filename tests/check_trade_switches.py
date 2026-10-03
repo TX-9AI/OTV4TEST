@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
-tests/check_trade_switches.py  v1.1
+tests/check_trade_switches.py  v1.2
+v1.2  2026-10-03  OTV4TEST r189 (RUNW.1) — S11: OT_RUNAWAY_END MOVES RUNAWAY'S END AND NOTHING ELSE.
+      In a fresh interpreter per case, every reader of the window - config.ENTRY_WINDOWS, the admission
+      table (position_manager._DEFAULT_RULES), config.RUNAWAY_CUTOFF_ET, runaway_continuation.CUTOFF_ET,
+      runaway_plan._cutoff_hm - says 10:30 unset, 11:30 with "11:30", and 10:30 again (with the value
+      named in RUNAWAY_END_ENV_REFUSED) for "1130", "16:30", "09:30" and "11:75"; Hunt, Breakout and VOLT
+      stay at 10:30 throughout. The operator, 2026-10-03: "Yes" to the switch, for SPX-TEST.
 v1.1  2026-10-02  OTV4TEST r187 — S10: THE ATP BUTTERFLY IS OFF BY DEFAULT. The operator,
       2026-10-02 21:39 ET: "Turn off the ATP". config.ATP_BUTTERFLY_ENABLED now
       defaults "0"; OT_ATP_BUTTERFLY=1 restores it. The pin fly is untouched.
@@ -29,6 +35,10 @@ WHAT IT DRIVES (the REAL plans, on setups that FIRE when the switch is on):
       breakout constants).
   S9  UNCHANGED: the ORBStrategy row, both butterflies and both credit spreads
       keep their windows (the GEX pin fly is exempt by ruling).
+  S11 OT_RUNAWAY_END (r189), FRESH interpreter per case: unset -> every Runaway
+      window reader says 10:30; "11:30" -> all say 11:30; "1130", "16:30",
+      "09:30", "11:75" -> REFUSED (named) and all say 10:30; Hunt, Breakout and
+      VOLT stay at 10:30 in every case.
   S10 THE ATP FLY, in a FRESH interpreter (its plan reads the flag at import):
       switch UNSET -> config.ATP_BUTTERFLY_ENABLED and atp_butterfly_plan.ENABLED
       are both False, and so with "true"; OT_ATP_BUTTERFLY=1 -> both True.
@@ -51,7 +61,7 @@ for _k, _f in (("OT_TRADES_DB", "t.db"), ("OT_DERIVED_DB", "d.db"), ("OT_RESTING
     os.environ.setdefault(_k, os.path.join(_S, _f))
 os.environ.setdefault("OT_SIGNAL_JOURNAL_DIR", os.path.join(_S, "sj"))
 os.environ.setdefault("OT_INSTRUMENT", "QQQ")
-for _k in ("OT_VOLT", "OT_ORB_TRADE"):
+for _k in ("OT_VOLT", "OT_ORB_TRADE", "OT_RUNAWAY_END"):
     os.environ.pop(_k, None)                                 # the default is what is tested first
 
 import pandas as pd
@@ -228,6 +238,31 @@ def main():
         got[label] = (r.stdout.strip().splitlines() or [r.stderr.strip()[-160:]])[-1]
     check("S10 the ATP fly is OFF unset or 'true' (config and its plan), ON only with OT_ATP_BUTTERFLY=1",
           got["unset"] == "False False" and got["true"] == "False False" and got["1"] == "True True", str(got))
+
+    # S11 — OT_RUNAWAY_END, read in a fresh interpreter per case (config resolves it at import)
+    code11 = ("import sys; sys.path[1:1] = %r; sys.path.insert(0, %r); import config as C; "
+              "import execution.position_manager as PM, strategy.runaway_continuation as RC, "
+              "strategy.runaway_plan as RP; "
+              "w = lambda k: '%%d:%%02d' %% tuple(C.ENTRY_WINDOWS[k][1]); "
+              "rules = PM._DEFAULT_RULES; adm = [r for k, r in rules.items() if 'Runaway' in str(k)]; "
+              "a = adm[0].window[1] if adm else None; "
+              "print('|'.join([w('RunawayContinuation'), '%%d:%%02d' %% tuple(a), str(C.RUNAWAY_CUTOFF_ET), "
+              "str(RC.CUTOFF_ET), '%%d:%%02d' %% tuple(RP._cutoff_hm()), w('LiquidityHunt'), w('Breakout'), "
+              "w('VOLT'), repr(getattr(C, 'RUNAWAY_END_ENV_REFUSED', '<absent>'))]))" % (sps, _root))
+    got11 = {}
+    for val in (None, "11:30", "1130", "16:30", "09:30", "11:75"):
+        env = dict(os.environ); env.pop("OT_RUNAWAY_END", None)
+        if val is not None:
+            env["OT_RUNAWAY_END"] = val
+        r = subprocess.run([sys.executable, "-c", code11], cwd=_root, env=env, capture_output=True, text=True)
+        got11[val] = (r.stdout.strip().splitlines() or [r.stderr.strip()[-200:]])[-1]
+    want11 = {None: "10:30|10:30|10:30|10:30|10:30|10:30|10:30|10:30|''",
+              "11:30": "11:30|11:30|11:30|11:30|11:30|10:30|10:30|10:30|''"}
+    for bad in ("1130", "16:30", "09:30", "11:75"):
+        want11[bad] = "10:30|10:30|10:30|10:30|10:30|10:30|10:30|10:30|%r" % bad
+    check("S11 OT_RUNAWAY_END moves Runaway's end in every reader (and nothing else); a bad value is REFUSED and named",
+          all(got11[k] == want11[k] for k in want11),
+          "; ".join(f"{k}: {got11[k]}" for k in want11 if got11[k] != want11[k]) or "all match")
 
     if FAILED:
         print(f"\nRED — {len(FAILED)} check(s): {FAILED}"); return 1
