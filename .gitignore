@@ -112,3 +112,4 @@ data/retention_purge.lock
 data/BOT_HEARTBEAT
 data/emergency_watchdog.json
 data/emergency_watchdog.json.tmp
+cap_counterfactual.jsonl

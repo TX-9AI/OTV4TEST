@@ -1,5 +1,10 @@
 """
-risk/risk_manager.py  v4.11
+risk/risk_manager.py  v4.12
+v4.12 2026-10-03  OTV4TEST r208 (CAP.4) — THE CAP COUNTERFACTUAL, LOG-ONLY. note_entry_risk(record) writes one JSON
+      line to cap_counterfactual.jsonl (beside trades.db, so a checker's scratch DB takes it too) for EVERY entry: its risk at the stop and at max loss, the day's
+      realized net, the limit, the headroom, and whether a rule "refuse an entry whose planned risk would breach
+      the cap" WOULD have refused it. Nothing is refused. The operator, 2026-10-03: "No, allow it. But do a
+      counter factual study with a set review date in 2 weeks" (review 2026-10-17). Never raises.
 v4.11 2026-10-03  OTV4TEST r199 (AUD.7) — A CAP EPISODE IS RECORDED IN circuit_breaker_events. is_halted writes
       one row when the cap is hit (where the page is decided, so once per episode and not again after a
       restart inside it) and one when it re-arms. TradeLogger.log_circuit_breaker had zero callers; query.py
@@ -248,6 +253,18 @@ class CircuitBreakerState:
     @property
     def any_active(self) -> bool:
         return self.session_halted
+
+
+def cap_cf_path() -> str:
+    """r208 — the cap counterfactual's file: BESIDE trades.db, so every checker that points
+    OT_TRADES_DB at a scratch directory writes its fixture lines there and never here."""
+    import os as _os
+    try:                                    # the logger's OWN file, whatever a checker bound it to
+        from database.trade_logger import get_trade_logger
+        _tdb = get_trade_logger().db_path
+    except Exception:                       # noqa: BLE001
+        from config import DB_PATH as _tdb
+    return _os.path.join(_os.path.dirname(_os.path.abspath(_os.path.expanduser(_tdb))), "cap_counterfactual.jsonl")
 
 
 class RiskManager:
@@ -816,6 +833,53 @@ class RiskManager:
                 f"day realized {net:+.2f}; limit {self._daily_loss_limit:.2f}")
         except Exception as exc:                               # noqa: BLE001
             logger.warning(f"[{INSTRUMENT}] cap event NOT recorded ({type(exc).__name__}: {exc})")
+
+    def note_entry_risk(self, record) -> None:
+        """r208 (CAP.4) — THE CAP COUNTERFACTUAL, LOG-ONLY. One JSON line per entry in cap_cf_path().
+
+        The cap halts on REALIZED loss, so the last entry before it can carry the day
+        well past the limit (the 10-03 audit, A9). The operator ruled the entry stays
+        allowed and asked for the study: what would a rule that refuses an entry whose
+        planned risk exceeds the remaining headroom have refused, and what did those
+        trades go on to do? This writes the left half; trades.db holds the right half.
+          risk_stop = (entry - stop) x contracts x multiplier for a long option with a
+                      premium stop; absent for a credit structure or a stopless trade
+          risk_max  = the record's max_loss, else its total_cost
+          headroom  = limit + day realized net (what is left before the halt)
+        REFUSES NOTHING, gates nothing, never raises: a failed write warns."""
+        try:
+            def _f(k):
+                try:
+                    return float(record.get(k) or 0.0)
+                except (TypeError, ValueError):
+                    return 0.0
+            net = self.day_realized_pnl()
+            limit = float(self._daily_loss_limit)
+            headroom = limit + net
+            entry, stop, n = _f("entry_premium"), _f("stop_premium"), _f("contracts")
+            credit = _f("credit_received") > 0 or bool(record.get("is_condor_leg"))
+            risk_max = _f("max_loss") or _f("total_cost")
+            risk_stop = None
+            if not credit and 0 < stop < entry and n > 0:
+                risk_stop = (entry - stop) * n * CONTRACT_MULTIPLIER
+            exempt = 0
+            try:
+                from execution.position_manager import rules as _rules
+                exempt = int(bool(getattr(_rules().get(str(record.get("strategy") or "")), "cap_exempt", False)))
+            except Exception:                                   # noqa: BLE001
+                exempt = 0
+            basis = risk_stop if risk_stop is not None else risk_max
+            import json as _json
+            import time as _time
+            row = {"ts_epoch": round(_time.time(), 3), "trade_id": str(record.get("trade_id") or ""),
+                   "symbol": INSTRUMENT, "strategy": str(record.get("strategy") or ""),
+                   "risk_stop": None if risk_stop is None else round(risk_stop, 2), "risk_max": round(risk_max, 2),
+                   "realized": round(net, 2), "limit": round(limit, 2), "headroom": round(headroom, 2),
+                   "refuse_stop": int(basis > headroom), "refuse_max": int(risk_max > headroom), "exempt": exempt}
+            with open(cap_cf_path(), "a") as fh:
+                fh.write(_json.dumps(row) + "\n")
+        except Exception as exc:                               # noqa: BLE001
+            logger.warning(f"[{INSTRUMENT}] cap counterfactual NOT recorded ({type(exc).__name__}: {exc})")
 
     def is_halted(self) -> bool:
         """Authoritative daily-loss gate. Reads today's realized net P&L from

@@ -1,5 +1,7 @@
 """
-execution/entry_engine.py  v4.10
+execution/entry_engine.py  v4.11
+v4.11 2026-10-03  OTV4TEST r208 (CAP.4) — after log_entry the record is handed to risk_manager.note_entry_risk: one
+      log-only cap-counterfactual row per entry. Wrapped; it cannot affect the entry.
 v4.10 2026-09-13  OTV4TEST r17 — PRE.1: `_record_kwargs` writes `option_symbol` from
       the signal's contract. The shared factory never has; 19 of 21 rows on this
       box carry NULL and no premium-path study can join them. Same one-line fix
@@ -439,6 +441,11 @@ class EntryEngine:
                         record.get("tape_buy_frac_at_level", "n/a"))
 
         self._trade_logger.log_entry(record)
+        try:                                                    # r208 (CAP.4): log-only, never affects the entry
+            from risk.risk_manager import get_risk_manager as _grm
+            _grm().note_entry_risk(record)
+        except Exception as _cfe:                               # noqa: BLE001
+            logger.warning("cap counterfactual skipped: %s", _cfe)
 
         logger.info(
             f"✅ Entry confirmed [{mode}]: "

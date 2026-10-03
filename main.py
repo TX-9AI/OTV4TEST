@@ -1,5 +1,7 @@
 """
-main.py  v4.83
+main.py  v4.84
+v4.84 2026-10-03  OTV4TEST r208 (CAP.4) — _execute_condor_leg hands each new credit leg to risk_manager.note_entry_risk
+      after log_entry (the log-only cap counterfactual; entry_engine does the same for every other entry).
 v4.83 2026-10-03  OTV4TEST r206 (PREM.3) — _attempt_orcs wording only: ORCS signals are priced at the mark and the house
       credit entry (_execute_condor_leg: paper the mark, live the entry ladder) governs the fill. No logic
       change in this file.
@@ -2974,6 +2976,10 @@ def _execute_condor_leg(signal: "OptionsSignal", state: BotState,
         status           = "open",
     )
     get_trade_logger().log_entry(record)
+    try:                                                        # r208 (CAP.4): log-only
+        get_risk_manager().note_entry_risk(record)
+    except Exception as _cfe:                                   # noqa: BLE001
+        logger.warning("cap counterfactual skipped: %s", _cfe)
     # v5.1 — a condor leg is "neutral": no in-favor side, so no trail anchor.
     # The zone inventory is still captured — it bounds where the underlying had
     # room to run toward either short strike. ctx is optional so a caller that
