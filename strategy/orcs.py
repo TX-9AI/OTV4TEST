@@ -1,5 +1,7 @@
 """
-strategy/orcs.py  v1.1
+strategy/orcs.py  v1.2
+v1.2  2026-10-03  OTV4TEST r211 (PLN.2) — ledger_open(sig): ORCS opens its plan_ledger row immediately before each order
+      (it fires without take()), keeping the sibling side's row, so the fill links to the right plan.
 v1.1  2026-10-03  OTV4TEST r206 (PREM.3) — THE ENTRY LADDER GOVERNS THE ENTRY. The operator, 2026-10-03: "No, we have a
       ladder for entries. THAT has to govern our entry. 'One cent better' is not even a valid increment
       on most contracts". The signal is priced at the MARK credit of the spread the plan located on THIS
@@ -72,6 +74,19 @@ class OpeningRangeCreditSpread:
             loc = prep.sides[side]
             out.append(self._build_signal(side, loc.short, loc.long, float(loc.credit), float(price_now or 0.0)))
         return out
+
+    def ledger_open(self, sig) -> None:
+        """r211 — one plan_ledger row for THIS leg, opened right before it is executed."""
+        try:
+            t = self.planner.tick(getattr(sig, "underlying_entry", None), getattr(sig, "option_side", ""))
+            sh = getattr(sig, "short_put_contract", None) or getattr(sig, "short_call_contract", None)
+            lg = getattr(sig, "long_put_contract", None) or getattr(sig, "long_call_contract", None)
+            t.short_strike = float(sh.strike) if sh is not None else None
+            t.long_strike = float(lg.strike) if lg is not None else None
+            t.closed = True                                  # narration only; this tick object writes no plan row
+            self.planner.ledger_open(t, sig, supersede=False)
+        except Exception as exc:                             # noqa: BLE001
+            logger.debug("[orcs] ledger row skipped: %s", exc)
 
     def _build_signal(self, side, short, long_c, credit, price_now):
         from strategy.base_strategy import OptionsSignal

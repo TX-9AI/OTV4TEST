@@ -1,5 +1,6 @@
 """
-main.py  v4.84
+main.py  v4.85
+v4.85 2026-10-03  OTV4TEST r211 (PLN.2) — _attempt_orcs opens each leg's plan_ledger row right before executing it.
 v4.84 2026-10-03  OTV4TEST r208 (CAP.4) — _execute_condor_leg hands each new credit leg to risk_manager.note_entry_risk
       after log_entry (the log-only cap counterfactual; entry_engine does the same for every other entry).
 v4.83 2026-10-03  OTV4TEST r206 (PREM.3) — _attempt_orcs wording only: ORCS signals are priced at the mark and the house
@@ -1573,6 +1574,7 @@ def _attempt_orcs(ctx: dict, state) -> None:
             price_now=_px, now_et=now_et(), chain=ctx.get("chain"), gap=ctx.get("gap"),
             informers=_inf) or None, ctx)
         for _sig in (_sigs or []):
+            _orcs_strategy.ledger_open(_sig)                    # r211: the row the fill links to
             _execute_condor_leg(_sig, state, ctx)
     except Exception as exc:                                   # noqa: BLE001
         logger.warning("[orcs] tick failed - nothing traded or recorded this tick: %s", exc)

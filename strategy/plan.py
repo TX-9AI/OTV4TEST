@@ -1,5 +1,13 @@
 """
-strategy/plan.py  v2.4
+strategy/plan.py  v2.5
+v2.5  2026-10-03  OTV4TEST r211 (PLN.2) — EVERY TAKE OPENS ITS PLAN_LEDGER ROW. The ledger held ORB plans and nothing else
+      (19 of 20 real rows), for two reasons, both in `_ledger_open`: (1) r6 returned whenever a store was BOUND,
+      calling that "tests, not the box" - but the plan board binds the box's own store at start, so the guard
+      switched the ledger off in production too; (2) nine plans pass self_ledgers=True and only two strategies
+      (the ORB via main, the condor) ever open their own rows. Now: the row is written THROUGH THE BOUND STORE
+      (a checker's scratch store takes its own rows; the box's takes the box's), and only the names in
+      OWN_LEDGER skip it. ledger_open() is the public door for a strategy that fires without take() (ORCS).
+      The operator, 2026-10-03: "Gather as much as is available to serve our studies and backtests".
 v2.4  2026-10-03  OTV4TEST r197 (AUD.6) — plan_check GAINS `note TEXT`, AND A CHECK'S TEXT IS STORED IN IT.
       `value` is REAL: write_row cast each reading to float or wrote NULL, and `note=` was appended
       to the tick's reason and stored nowhere per check - so break_dir, pool_name, verdict,
@@ -782,6 +790,11 @@ class PlanTick:
                    f"R {_n(self.r)} · " if self.r is not None else "", reason)
 
 
+# r211 — the strategies that open their OWN plan_ledger rows (main.py for the ORB; the
+# condor's `_plan_id`). Everything else gets its row from take() / ledger_open().
+OWN_LEDGER = frozenset({"ORBStrategy", "IronCondorStrategy", "CondorManagement", "CreditRoll"})
+
+
 class Plan:
     """A strategy's informer. One per strategy instance; registered by name.
 
@@ -854,22 +867,32 @@ class Plan:
         except Exception:                                       # noqa: BLE001
             pass
 
-    def _ledger_open(self, t: PlanTick, signal) -> None:
+    def ledger_open(self, t: "PlanTick", signal, supersede: bool = True) -> None:
+        """r211 — the public door: a strategy that fires WITHOUT take() opens its row here,
+        immediately before the order, so link_trade() attaches the fill to THIS row.
+        supersede=False keeps a sibling's open row (ORCS: a put and a call in one tick)."""
+        self._ledger_open(t, signal, supersede=supersede)
+
+    def _ledger_open(self, t: PlanTick, signal, supersede: bool = True) -> None:
         """Open a plan_ledger row for a fired plan so `link_trade()` has a
         live row to attach the fill to. State TRIGGERED — the strategy has
         fired; the fill (or its absence) is what comes next."""
-        if self.self_ledgers:
-            return
-        if _BOUND_STORE["store"] is not None:
-            # OTV4TEST r6 (HYG.4): a test that bound its own store must not
-            # open rows in the BOX's plan_ledger — TestStrat rows were found in
-            # the live corpus on 2026-09-09, written by the lander's checks.
+        # r211 — only a strategy that really opens its own rows skips this; the
+        # self_ledgers flag was set on nine plans and true of two.
+        if self.strategy in OWN_LEDGER or "/" in self.strategy:
             return
         try:
-            from derived.registry import plan_ledger as _pl
-            led = _pl(self.symbol)
-            if led is None:
+            # r211 — THROUGH THE BOUND STORE. r6 (HYG.4) returned here whenever a
+            # store was bound, to keep the lander's TestStrat rows out of the box's
+            # ledger; but the plan board binds the BOX's store at start, so nothing
+            # was ever opened in production either. Writing through whichever store
+            # is bound gives r6 what it wanted - a checker's rows land in its own
+            # scratch store - without switching the ledger off.
+            store = self._store_ref()
+            if store is None:
                 return
+            from derived.plan_ledger import PlanLedger
+            led = PlanLedger(store, self.symbol)
             # 🔴 r212 — THE PREVIOUS UNFILLED PLAN OF THIS STRATEGY IS CLOSED
             # FIRST. A plan that FIRES but whose entry is then refused (sizing
             # rejection, no priced contract, a failed order) links no trade, so
@@ -881,7 +904,8 @@ class Plan:
             # exit. Collapsing the two would lose the difference between
             # "fired and lost" and "fired and never filled", which is the
             # population this ledger exists to keep.
-            led.close_unfilled(self.strategy, "superseded — never filled")
+            if supersede:
+                led.close_unfilled(self.strategy, "superseded — never filled")
             ctx = {"price": t.spot}
             sp = getattr(signal, "short_put_contract", None)
             lp = getattr(signal, "long_put_contract", None)
