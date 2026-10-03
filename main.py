@@ -1,5 +1,12 @@
 """
-main.py  v4.85
+main.py  v4.86
+v4.86 2026-10-03  OTV4TEST r213 (REC.1) — THE RECORDERS' MISSING INPUTS ARE PUBLISHED. derived/notes, derived/snapshot and the
+      plan ledger read ten ctx keys that nothing ever set (the 10-03 audit, B12), so the note and fire-snapshot
+      fields built from them were NULL on every row. _publish_recorder_keys(ctx), called right after
+      _apply_vol_ports and before the engines, sets each from a value the tick already holds: expected_move
+      (= expected_move_iv), gex_pin and pin_concentration (the GEX snapshot), prev_close (the gap measurement),
+      fork_rails and fork_state (the rail projection), swept_level_price / kind (the session's latest REJECTED
+      event). setdefault only; each wrapped; a value that cannot be read stays absent. Record-only.
 v4.85 2026-10-03  OTV4TEST r211 (PLN.2) — _attempt_orcs opens each leg's plan_ledger row right before executing it.
 v4.84 2026-10-03  OTV4TEST r208 (CAP.4) — _execute_condor_leg hands each new credit leg to risk_manager.note_entry_risk
       after log_entry (the log-only cap counterfactual; entry_engine does the same for every other entry).
@@ -2120,6 +2127,7 @@ def run_analysis(state: BotState, chain=None) -> dict:
         ctx.setdefault("gex", None)
 
     _apply_vol_ports(ctx)      # r196: BEFORE the engines, so the character engine can read them
+    _publish_recorder_keys(ctx)   # r213: the notes / snapshot / ledger inputs nothing ever set
 
     try:
         engines = getattr(state, "derived_engines", None)
@@ -2133,6 +2141,65 @@ def run_analysis(state: BotState, chain=None) -> dict:
     except Exception as exc:                                   # noqa: BLE001
         logger.debug("derived layer skipped this tick: %s", exc)
     return ctx
+
+
+def _publish_recorder_keys(ctx: dict) -> None:
+    """r213 (REC.1) — set the ctx keys the RECORDERS read and nothing wrote.
+
+    derived/notes.py, derived/snapshot.py and derived/plan_ledger.py read these by
+    name; main never published them, so every field built on them was NULL (the
+    10-03 audit, B12). Each comes from a value this tick already holds - nothing
+    is measured here. setdefault only (a real writer, if one ever appears, wins);
+    every read is wrapped; what cannot be read stays ABSENT, never 0.
+    RECORD-ONLY: no strategy and no gate reads any of these keys."""
+    def _put(key, fn):
+        if ctx.get(key) is not None:
+            return
+        try:
+            v = fn()
+            if v is not None:
+                ctx[key] = v
+        except Exception as exc:                               # noqa: BLE001
+            logger.debug("recorder key %s not published: %s", key, exc)
+
+    _gx = ctx.get("gex")
+    _px = ctx.get("price")
+    _put("expected_move", lambda: ctx.get("expected_move_iv"))
+    _put("gex_pin", lambda: (float(_gx.pin_strike) if _gx is not None and float(_gx.pin_strike or 0) > 0 else None))
+    _put("pin_concentration", lambda: (float(_gx.pin_concentration) if _gx is not None
+                                       and getattr(_gx, "pin_concentration", None) is not None else None))
+    _put("prev_close", lambda: (ctx.get("gap") or {}).get("prior_close"))
+
+    def _rails():
+        from derived import anchors as _A
+        rc = _A.rail_context(_px)
+        if not rc:
+            return None
+        return {"upper": rc.get("rail_above_price"), "lower": rc.get("rail_below_price"),
+                "built": bool(rc.get("rail_fork_built")), "slope_per_bar": rc.get("rail_slope_per_bar"),
+                "reject_reason": ctx.get("fork_reject_reason")}
+    _put("fork_rails", _rails)
+
+    def _fork_state():
+        from derived import anchors as _A
+        st = {tf: _A.fork_dir(tf) for tf in ("15m", "1h")}
+        st["reject_reason"] = ctx.get("fork_reject_reason")
+        return st if any(v is not None for v in st.values()) else None
+    _put("fork_state", _fork_state)
+
+    def _swept():
+        from data.derived_store import get_derived_store
+        _n = now_et()
+        _open = _n.replace(hour=9, minute=30, second=0, microsecond=0).timestamp()
+        return get_derived_store().latest_rejection(INSTRUMENT, since_ts=_open)
+    try:
+        if ctx.get("swept_level_price") is None:
+            _ev = _swept()
+            if _ev:
+                ctx["swept_level_price"] = float(_ev["price"])
+                ctx.setdefault("swept_level_kind", _ev.get("kind"))
+    except Exception as exc:                                   # noqa: BLE001
+        logger.debug("recorder key swept_level not published: %s", exc)
 
 
 def _apply_vol_ports(ctx: dict) -> None:

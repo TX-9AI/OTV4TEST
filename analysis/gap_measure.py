@@ -1,5 +1,7 @@
 """
-analysis/gap_measure.py  v4.1
+analysis/gap_measure.py  v4.2
+v4.2  2026-10-03  OTV4TEST r213 (REC.1) — measure_gap also returns prior_close and today_open: the two prices the gap
+      is measured from. derived/notes read ctx["prev_close"], which nothing ever set. Additive; gap_pct unchanged.
 v4.1  2026-08-25  r65 EXORCISM: every mention of the retired classification
       system removed - identifiers, comments, docstrings, schema. The word
       does not appear in this tree. Full accounting: REMOVAL_LOG (delivery).
@@ -89,7 +91,9 @@ def measure_gap(df_5m, prior_dir: int = 0,
             return None
         gap_pct = 100.0 * (today_open - prior_close) / prior_close
         out = {"gap_pct": round(gap_pct, 4),
-               "gap_abs_pct": round(abs(gap_pct), 4)}
+               "gap_abs_pct": round(abs(gap_pct), 4),
+               "prior_close": round(prior_close, 4),     # r213
+               "today_open": round(today_open, 4)}
         if _classify is not None:
             out["gap_class"] = _classify(gap_pct, prior_dir, flat_pct)
         return out
