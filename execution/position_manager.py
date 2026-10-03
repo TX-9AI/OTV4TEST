@@ -1,5 +1,11 @@
 """
-execution/position_manager.py  v5.10
+execution/position_manager.py  v5.11
+v5.11 2026-10-03  OTV4TEST r195 (AUD.4) — THE EXIT QUOTE AND IV ARE WRITTEN AT THE CONFIRMED CLOSE. trade_logger's
+      set_exit_contract had ZERO callers: exit_bid / exit_ask / exit_iv were empty on 237 of 237 closed trades
+      (10-03 audit). _fetch_current_premium now notes the structure's bid, ask and IV on the record each tick
+      under its own keys (_q_bid/_q_ask/_q_iv - NOT the exit ladder's _exit_bid/_exit_ask, so pricing is
+      untouched and a butterfly, which has no ladder quote, is still priced as before), and _execute_exit
+      writes them after log_exit. IV = the single leg's, a credit structure's SHORT leg's, a fly's BODY's.
 v5.10 2026-10-03  OTV4TEST r191 (AUD.2) — THE EOD ATM-IV FALLBACK WAS NEVER SET. flatten_all called chain.atm_iv(),
       but OptionsChain.atm_iv is a PROPERTY: "'float' object is not callable" on every EOD pass for every
       assignment-risk position since r149 (31 warnings 09-30, 78 on 10-02), so _eod_iv_atm stayed unset and a leg
@@ -230,6 +236,9 @@ import config
 from config import PAPER_TRADING, CONTRACT_MULTIPLIER
 
 
+_WARNED_ONCE: set = set()     # r195: one warning per reason per process
+
+
 def _stash_quote(record, bid: float, ask: float) -> None:
     """r105 — put a two-sided quote on the record for the exit ladder.
 
@@ -242,6 +251,23 @@ def _stash_quote(record, bid: float, ask: float) -> None:
         if ask and ask > 0:
             record["_exit_bid"] = round(float(bid), 4)
             record["_exit_ask"] = round(float(ask), 4)
+    except (TypeError, ValueError):
+        pass
+
+
+def _note_quote(record, bid, ask, iv=None) -> None:
+    """r195 (AUD.4) — the structure's two-sided quote and IV at this tick, FOR THE
+    RECORD ONLY: `_execute_exit` writes them to trades.exit_bid / exit_ask / exit_iv
+    at the confirmed close. ⚠️ DELIBERATELY NOT `_stash_quote`'s keys: those feed the
+    exit ladder's pricing (r105), and a butterfly has never had them - recording a
+    fly's quote must not change how its exit is priced. In-memory; the newest tick
+    wins, so at the close it is the quote the exit decision was made on."""
+    try:
+        if ask is not None and float(ask) > 0:
+            record["_q_bid"] = round(float(bid or 0.0), 4)
+            record["_q_ask"] = round(float(ask), 4)
+            _iv = float(iv or 0.0)
+            record["_q_iv"] = round(_iv, 6) if _iv > 0 else None
     except (TypeError, ValueError):
         pass
 
@@ -960,6 +986,8 @@ class PositionManager:
                             ask=max(0.0, (getattr(_sc, "ask", 0.0) or 0.0)
                                     - (getattr(_lc, "bid", 0.0) or 0.0)
                                     - (getattr(_hc, "bid", 0.0) or 0.0)))
+                        _note_quote(record, record.get("_exit_bid"), record.get("_exit_ask"),
+                                    getattr(_sc, "iv", None))        # r195: the SHORT leg's IV
                         return _sc.mark - _lc.mark - _hc.mark
                     return None      # a leg we cannot see is not a price
 
@@ -987,6 +1015,8 @@ class PositionManager:
                                     - (getattr(_lc, "ask", 0.0) or 0.0)),
                             ask=max(0.0, (getattr(_sc, "ask", 0.0) or 0.0)
                                     - (getattr(_lc, "bid", 0.0) or 0.0)))
+                        _note_quote(record, record.get("_exit_bid"), record.get("_exit_ask"),
+                                    getattr(_sc, "iv", None))        # r195: the SHORT leg's IV
                         return short_m - long_m   # current spread value (credit basis)
                 elif is_butterfly:
                     lower_s  = record.get("lower_strike",  0)
@@ -996,6 +1026,19 @@ class PositionManager:
                     center_m = next((c.mark for c in contracts_list if c.strike == center_s and 0 < c.mark < 1e6), None)
                     upper_m  = next((c.mark for c in contracts_list if c.strike == upper_s  and 0 < c.mark < 1e6), None)
                     if None not in (lower_m, center_m, upper_m):
+                        # r195: a composite quote FOR THE RECORD ONLY (see _note_quote) -
+                        # sell the wings at their bids, buy the body back at its ask.
+                        try:
+                            _w = {c.strike: c for c in contracts_list}
+                            _lo, _ce, _up = _w.get(lower_s), _w.get(center_s), _w.get(upper_s)
+                            if None not in (_lo, _ce, _up):
+                                _g = lambda c, k: float(getattr(c, k, 0.0) or 0.0)
+                                _note_quote(record,
+                                            max(0.0, _g(_lo, "bid") + _g(_up, "bid") - 2 * _g(_ce, "ask")),
+                                            max(0.0, _g(_lo, "ask") + _g(_up, "ask") - 2 * _g(_ce, "bid")),
+                                            getattr(_ce, "iv", None))   # the BODY's IV
+                        except Exception as _qe:                  # noqa: BLE001
+                            logger.debug("fly quote not recorded: %s", _qe)
                         return lower_m + upper_m - 2 * center_m
                 else:
                     strike = record.get("strike", 0)
@@ -1016,6 +1059,8 @@ class PositionManager:
                         # theta alone cannot answer "is this position gaining or
                         # bleeding right now". Same stash, same guard.
                         record["current_delta"] = float(getattr(match, "delta", 0.0) or 0.0)
+                        _note_quote(record, getattr(match, "bid", 0.0), getattr(match, "ask", 0.0),
+                                    getattr(match, "iv", None))       # r195
                         return match.mark
             except Exception:
                 pass
@@ -1134,6 +1179,22 @@ class PositionManager:
             exit_reason = decision.exit_reason,
             excursion   = _exc or None,
         )
+        # r195 (AUD.4) — THE EXIT-SIDE QUOTE, FINALLY WRITTEN. set_exit_contract existed
+        # since v3.13 and NOTHING CALLED IT: exit_bid / exit_ask / exit_iv were empty on
+        # 237 of 237 closed trades, so neither the exit's spread cost nor IV crush could
+        # be measured. Record-only; a failure warns once and never blocks the close.
+        try:
+            _qp = {"exit_bid": record.get("_q_bid"), "exit_ask": record.get("_q_ask"),
+                   "exit_iv": record.get("_q_iv")}
+            if not self._trade_logger.set_exit_contract(trade_id, _qp) and "exit_quote" not in _WARNED_ONCE:
+                _WARNED_ONCE.add("exit_quote")
+                logger.warning("exit quote NOT recorded for %s (no quote seen this tick, or the "
+                               "write failed) - warned once", trade_id[:8])
+        except Exception as _xe:                                  # noqa: BLE001
+            if "exit_quote_raised" not in _WARNED_ONCE:
+                _WARNED_ONCE.add("exit_quote_raised")
+                logger.warning("exit quote capture raised (%s: %s) - warned once",
+                               type(_xe).__name__, _xe)
 
         risk_mgr = get_risk_manager()
         if pnl_usd >= 0:
