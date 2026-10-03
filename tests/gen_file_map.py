@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/gen_file_map.py  v4.14
+tests/gen_file_map.py  v4.15
+v4.15 2026-10-03  OTV4TEST r216 (HYG.14) — THE LAST TWO ORPHANS ARE RULED. tools/segregate_nonrth_bars.py is declared an entry point: it is the
+      08-20 repair tool for 24-hour bars landing in the RTH series, kept in case that recurs (the operator: "Sure, why not").
+      execution/fill_model.py is DELETED by this delivery ("That's useless"). The map now reports no orphans.
 v4.14 2026-10-03  OTV4TEST r210 (AUD.9) — tools/manifold_status.py IS AN ENTRY POINT. r202 listed it as an orphan 'for the operator
       to rule' and I called it dead; the operator, 2026-10-03: "manifold status is not 'dead'". It is his hand-run feed
       check - a tool run by hand has no importer by design. One orphan fewer; nothing else changes.
@@ -180,6 +183,7 @@ ENTRY_POINTS = {
     "tools/feed_capabilities.py",  # run THROUGH run_with_bot_env
     "warehouse/counter_pop.py",    # fleet S3 counter repair CLI (WA 38.3 DELETE.1)
     "tools/manifold_status.py",    # r210 — the operator's hand-run feed check ("is the fire hose connected"); NOT dead (his correction, 2026-10-03)
+    "tools/segregate_nonrth_bars.py",  # r216 — a hand-run REPAIR tool (moves overnight bars out of the RTH series); kept by ruling 2026-10-03
     # CLI helpers, run by hand or by a script
     "analysis/get_orb_range.py",
     "utils/check_sdk.py",

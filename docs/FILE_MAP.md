@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-397 Python modules across 12 local packages.
+396 Python modules across 12 local packages.
 
-**Reached by:** 122 imported · 22 declared entry points · 173 referenced from a script, unit or doc but never imported · **80 by nothing here**.
+**Reached by:** 122 imported · 23 declared entry points · 172 referenced from a script, unit or doc but never imported · **79 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -322,10 +322,6 @@ Change these with the most care; a break here reaches everything downstream.
 ### `execution/exit_engine.py`
 - **calls:** `analysis/trend_strength.py`, `config.py`, `data/derived_store.py`, `data/tasty_client.py`, `database/trade_logger.py`, `derived/__init__.py`, `derived/level_rules.py`, `execution/__init__.py`, `execution/broker_reconcile.py`, `execution/handoff.py`, `execution/ladder_registry.py`, `execution/limit_ladder.py`, `notifications/alert_manager.py`, `strategy/structure.py`, `utils/math_utils.py`, `utils/time_utils.py`
 - **called by:** `analysis/entry_snapshot.py`, `execution/position_manager.py`, `strategy/condor_roll.py`, `strategy/management.py`, `tests/check_breakout_exit_line.py`, `tests/check_condor_mgmt.py`, `tests/check_condor_sibling_default.py`, `tests/check_condor_spec.py`, `tests/check_condor_stop_suppression.py`, `tests/check_eod_schedule.py`, `tests/check_exit_executes.py`, `tests/check_exit_pricing.py`, `tests/check_exit_quote.py`, `tests/check_ladder_wired.py`, `tests/check_liquidity_hunt.py`, `tests/check_management_plan.py`, `tests/check_orb_plan.py`, `tests/check_orcs.py`, `tests/check_runaway_plan.py`, `tests/check_spx_tick.py`, `tests/check_structure_stop_ramp.py`, `tests/check_sweep_plan.py`, `tests/check_tcs_plan.py`, `tests/check_volt_plan.py`, `tests/stress_entry_path.py`, `tools/stress_theta_bleed.py`
-
-### `execution/fill_model.py`
-- **calls:** (none)
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `execution/handoff.py`
 - **calls:** `config.py`
@@ -1469,7 +1465,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/scrub_headers.py`
 - **calls:** (none)
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/stop_spread_report.py`
 - **calls:** `strategy/criteria.py`
@@ -1585,7 +1581,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tools/segregate_nonrth_bars.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+- **called by:** (entry point)
 
 ### `tools/stress_theta_bleed.py`
 - **calls:** `config.py`, `execution/exit_engine.py`

@@ -1,5 +1,7 @@
 """
-config.py  v4.54
+config.py  v4.55
+v4.55 2026-10-03  OTV4TEST r216 (HYG.14) — comment only: execution/fill_model.py is deleted (never wired; the operator: "That's
+      useless"); the entry-ladder note keeps its rule - paper never books a fill from an inside-the-spread rung.
 v4.54 2026-10-03  OTV4TEST r209 (EXIT.4) — BUTTERFLY_ENTRY_CUTOFF_ET GATES NOTHING: the session_guard branch that read
       it could never run and is deleted. Value unchanged (check_one_window_table pins it and the guard's constant).
 v4.53 2026-10-03  OTV4TEST r207 (PREM.4) — ORCS RESHAPED BY RULING: delta 0.20, a 3-dollar wing, implied-move floor 1.0. The
@@ -648,8 +650,9 @@ INSTRUMENT          = (os.environ.get("OT_INSTRUMENT") or "").strip() or INSTRUM
 # Terminal rung SITS AT MARK and re-anchors on a fresh quote each tick — his
 # words: "let it sit at Mark in case price comes back and the plan can activate."
 # ⚠️ PRICING ONLY. Posting an aggressive limit and ASSUMING it fills manufactures
-# edge — the better the rung, the larger the fake gain. `execution/fill_model.py`
-# is the other half and must gate any paper fill booked from these prices.
+# edge — the better the rung, the larger the fake gain. PAPER NEVER BOOKS A FILL
+# FROM THESE PRICES - it books the mark. (The unwired fill model that was meant
+# to gate such fills was deleted in r216.)
 # ── TC.6 KILL SWITCH (2026-08-13) ────────────────────────────────────────────
 # TC.6 is the ONLY brand-new FIRING strategy shipped today and was the only one
 # with no env-level off switch — stopping it would have needed a code change and

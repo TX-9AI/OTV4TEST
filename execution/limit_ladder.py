@@ -1,5 +1,6 @@
 """
-execution/limit_ladder.py  v4.1
+execution/limit_ladder.py  v4.2
+v4.2  2026-10-03  OTV4TEST r216 (HYG.14): comments only - the two references to the deleted fill_model are reworded; the rule stays (paper never books a fill from an inside-the-spread rung).
 v4.1  2026-09-26  OTV4TEST r149 (EOD.1): the ladder's two times come from config.EOD_SCHEDULE — limit from 15:50 (EOD_LADDER_AT_ET), market from 15:55 (EOD_CROSS_AT_ET). Were literals 15:40 / 15:45. Assignment-risk positions rest from 15:45 on a best-case price (exit_engine); this function governs the ladder they share at the cross.
 Escalating limit ladder for fills.
 
@@ -226,7 +227,7 @@ def paper_fill_credit(mark: float,
 # DROPPED, so a narrow quote simply has fewer rungs.
 #
 # ⚠️ THIS IS PRICING ONLY. It does not decide whether to trade, and it must NOT
-# be used to book a paper fill on its own — see `fill_model.would_fill()`.
+# be used to book a paper fill on its own: paper books the MARK, never a rung.
 # Posting an aggressive limit and ASSUMING it fills manufactures edge: the
 # better the rung, the larger the fake gain.
 
@@ -267,7 +268,7 @@ def round_to_increment(price: float, symbol: str, side: str) -> float:
     rungs MORE aggressive than the operator specified — on a dime class that is
     a nickel of unrequested aggression per rung, which is a quarter of the very
     edge this ladder exists to capture. Rounding away from the market costs fill
-    probability, and fill probability is measured by `fill_model`; rounding INTO
+    probability, which only the broker's fills measure; rounding INTO
     the market costs money silently.
     """
     import math

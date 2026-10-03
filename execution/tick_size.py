@@ -1,5 +1,6 @@
 """
-execution/tick_size.py  v4.0
+execution/tick_size.py  v4.1
+v4.1  2026-10-03  OTV4TEST r216 (HYG.14) — docstring only: the reference to the deleted fill_model is removed.
 Venue tick-size rules per symbol and price band.
 
 v4.0  2026-08-19  Ported from options_trader_v3 at the OTV4 split.
@@ -183,7 +184,7 @@ def snap(price: float, symbol: str, side: str,
     Directional, not nearest. Nearest-rounding makes roughly half of all limits
     MORE aggressive than specified — on a dime grid that is a nickel of
     unrequested aggression per order. Rounding away from the market costs FILL
-    PROBABILITY, which `fill_model` measures; rounding INTO the market costs
+    PROBABILITY, which the broker's fills measure; rounding INTO the market costs
     money silently, which nothing measures.
     """
     import math
