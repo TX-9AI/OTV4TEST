@@ -1,5 +1,9 @@
 """
-database/trade_logger.py  v4.19
+database/trade_logger.py  v4.20
+v4.20 2026-10-03  OTV4TEST r198 (MEAS.1, SHARED SHAPE) — pnl_pct IS SIGNED BY pnl_usd. log_exit stored (exit - entry) / entry for
+      every trade, so every credit trade's loss read as a gain (11 of 11 SweepCreditSpread rows here; it corrupted a
+      fleet strategy table on 2026-09-17). The magnitude is unchanged; the sign now follows the booked pnl_usd. Ruled
+      2026-09-17; pinned by tests/check_pnl_pct_sign.py. No decision path reads the stored column.
 v4.19 2026-09-27  OTV4TEST r165 (EXP.1) — close_expired_open_trades(settle=...) BOOKS THE
       SETTLEMENT. This is the path an overnight-expired position actually takes (boot Step 1, paper
       AND live), and it forced pnl_usd to 0.0: an exercised ITM winner booked as nothing. A caller
@@ -762,7 +766,15 @@ class TradeLogger:
                   pnl_usd: float, exit_reason: str, excursion: Optional[dict] = None):
         """Update an open trade with exit details."""
         entry_prem = self._get_field(trade_id, "entry_premium") or 0
-        pnl_pct    = (exit_price - entry_prem) / entry_prem if entry_prem > 0 else 0
+        # r198 (MEAS.1) — SIGNED BY THE OUTCOME, NOT BY THE PREMIUM'S DIRECTION. It was
+        # (exit - entry) / entry for every trade, so a credit trade - where premium UP
+        # is a LOSS - stored its losses as gains: 11 of 11 SweepCreditSpread rows
+        # disagreed in sign with their own pnl_usd. pnl_usd arrives here already
+        # direction-aware, so the sign is DERIVED from it (WA 22), never from
+        # is_short_position (0 on every sweep row). SIGN ONLY: the magnitude is still
+        # return on premium - for a credit spread that is return on CREDIT, not on risk.
+        _mag       = abs(exit_price - entry_prem) / entry_prem if entry_prem > 0 else 0
+        pnl_pct    = _mag if (pnl_usd or 0) >= 0 else -_mag
 
         with self._db() as conn:
             conn.execute("""
