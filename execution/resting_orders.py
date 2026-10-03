@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-execution/resting_orders.py  v1.3
+execution/resting_orders.py  v1.4
+v1.4  2026-10-03  OTV4TEST r218 (PATH.1) — _db_path delegates to utils.paths: it imported config.DATA_DIR, which never existed, and always took a ~/options-trader fallback. Same path on the box.
 v1.3  2026-10-03  OTV4TEST r210 (AUD.9) — note_fill_price IS PUBLIC, for the paper filler. fill_price was 0 on 16 of 16
       FILLED rows: only the live poll wrote it and every fill on this box is a paper fill, which closes the
       offer at placement and never polls. entry_engine now notes the price paper booked. No behaviour change.
@@ -126,14 +127,8 @@ _DB_ENV = "OT_RESTING_DB"
 
 
 def _db_path() -> str:
-    if os.environ.get(_DB_ENV):
-        return os.environ[_DB_ENV]
-    try:
-        from config import DATA_DIR
-        base = DATA_DIR
-    except Exception:                                           # noqa: BLE001
-        base = os.path.join(os.path.expanduser("~"), "options-trader", "data")
-    return os.path.join(base, "resting_orders.db")
+    from utils.paths import resting_db_path as _rdp   # r218: was config.DATA_DIR (never defined) then a home-anchored fallback
+    return _rdp()
 
 
 _SCHEMA = """

@@ -1,5 +1,6 @@
 """
-data/derived_store.py  v4.7
+data/derived_store.py  v4.8
+v4.8  2026-10-03  OTV4TEST r218 (PATH.1) — derived_db_path delegates to utils.paths (the default was a hard-coded ~/options-trader). Same path on the box; a scratch clone with no OT_DERIVED_DB now defaults to its OWN data/ dir, not the live store.
 v4.7  2026-09-18  OTV4TEST r52 — `journal_size_limit` pinned at 128 MB. The WAL is
       REUSED IN PLACE and never shrunk, so an unbounded limit (-1, the default)
       lets it sit at its high-water mark forever — measured at 1,581 MB on the
@@ -69,11 +70,9 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT = os.path.expanduser("~/options-trader/data/derived_store.db")
-
-
 def derived_db_path() -> str:
-    return os.environ.get("OT_DERIVED_DB", _DEFAULT)
+    from utils.paths import derived_db_path as _ddp   # r218: the one rule; was a hard-coded ~/options-trader default
+    return _ddp()
 
 
 class DerivedStore:

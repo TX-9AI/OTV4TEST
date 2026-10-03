@@ -1,5 +1,6 @@
 """
-data/options_chain.py  v4.4
+data/options_chain.py  v4.5
+v4.5  2026-10-03  OTV4TEST r218 (PATH.1) — _feed_db_path delegates to utils.paths.feed_db_path: its own copy defaulted to a hard-coded ~/options-trader. Same path on the box.
 v4.4  2026-10-02  OTV4TEST r186 (ZBID.1) — A CONTRACT WITH NO BID IS NEVER SELECTED.
       `two_sided(c)` (bid > 0 and ask > 0) arrives at module level and
       select_orb_strike and select_sweep_strike require it beside their
@@ -149,10 +150,8 @@ OT_CHAIN_BOOTSTRAP_S      = float(os.environ.get("OT_CHAIN_BOOTSTRAP_S",      "3
 def _feed_db_path() -> str:
     """Same resolution as data/candle_feed.feed_db_path (kept import-free so this
     module never drags the feed's SDK surface into the bot process)."""
-    p = os.environ.get("OT_FEED_DB")
-    if p:
-        return os.path.expanduser(p)
-    return os.path.expanduser("~/options-trader/data/feed_store.db")
+    from utils.paths import feed_db_path as _fdp      # r218: the one rule (stdlib only)
+    return _fdp()
 
 
 @dataclass

@@ -1,5 +1,6 @@
 """
-strategy/breakout_plan.py  v1.7
+strategy/breakout_plan.py  v1.8
+v1.8  2026-10-03  OTV4TEST r218 (PATH.1) — QUOTE_FLOOR is read from config with no getattr fallback (config now defines it, value unchanged 0.01).
 v1.7  2026-10-03  OTV4TEST r188 (BRK.5) — depth_thin FINALLY HAS A READING. `_depth` read
       `depth_now` / `depth_before`, keys `analysis/order_flow.depth()` has never
       returned (it returns bid/ask sizes and bid_depth_ratio / ask_depth_ratio), so
@@ -122,7 +123,7 @@ GATES = {
     "QUOTE_FLOOR": "FEASIBILITY",
 }
 
-QUOTE_FLOOR = float(getattr(config, "QUOTE_FLOOR", 0.01))
+QUOTE_FLOOR = float(config.QUOTE_FLOOR)      # r218: the name now exists in config; no silent fallback
 
 
 def _f(v) -> Optional[float]:

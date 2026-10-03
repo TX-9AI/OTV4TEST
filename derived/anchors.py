@@ -1,5 +1,6 @@
 """
-derived/anchors.py  v1.3
+derived/anchors.py  v1.4
+v1.4  2026-10-03  OTV4TEST r218 (PATH.1) — aggressor_share resolves the feed store through utils.paths: it read two config names that do not exist and fell back to a path that ignored OT_FEED_DB.
 v1.3  2026-09-22  OTV4TEST r103 - `nearest_tine` READ A TABLE THAT IS
       GUARANTEED EMPTY AND RETURNED None ON EVERY ROW EVER WRITTEN. It queried
       level_ledger for fork1h/%; r19's clause (1) makes _sources() skip every
@@ -286,10 +287,8 @@ def aggressor_share(level, band: float = 0.05, secs: int = 300) -> Optional[floa
     try:
         import sqlite3
         import config
-        path = getattr(config, "FEED_DB_PATH", None) or getattr(config, "FEED_STORE_PATH", None)
-        if not path:
-            import os
-            path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "feed_store.db")
+        from utils.paths import feed_db_path as _fdp   # r218: was two config names that never existed, then a fallback that ignored OT_FEED_DB
+        path = _fdp()
         conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=1.0)
         lo, hi = float(level) * (1 - band), float(level) * (1 + band)
         since = time.time() - secs

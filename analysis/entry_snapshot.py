@@ -1,5 +1,6 @@
 """
-analysis/entry_snapshot.py  v4.1
+analysis/entry_snapshot.py  v4.2
+v4.2  2026-10-03  OTV4TEST r218 (PATH.1) — _feed_db delegates to utils.paths.feed_db_path (was a hard-coded ~/options-trader default). Same path on the box.
 Captures the decision-time context of an entry.
 
 v4.1  2026-09-30  OTV4TEST r183 (SMA.1) — THE 5-MINUTE 50 SMA AND THE OPENING-CANDLE CROSS
@@ -260,8 +261,8 @@ _ET_TZ = "America/New_York"
 
 def _feed_db() -> str:
     """The same resolution as data/candle_feed.feed_db_path, import-free."""
-    p = os.environ.get("OT_FEED_DB", "").strip()
-    return os.path.expanduser(p) if p else os.path.expanduser("~/options-trader/data/feed_store.db")
+    from utils.paths import feed_db_path as _fdp      # r218: the one rule (stdlib only)
+    return _fdp()
 
 
 def _bars_5m(conn, symbol: str, t_epoch: float, lookback_s: int = 6 * 86400):

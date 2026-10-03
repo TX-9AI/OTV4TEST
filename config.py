@@ -1,5 +1,9 @@
 """
-config.py  v4.55
+config.py  v4.56
+v4.56 2026-10-03  OTV4TEST r218 (PATH.1) — DATA_DIR and QUOTE_FLOOR are DEFINED. resting_orders imported DATA_DIR and breakout_plan
+      read QUOTE_FLOOR by getattr; neither name existed, so both silently took fallbacks (the 10-03 audit, D4).
+      DATA_DIR is this file's own data/ directory, spelled here and NOT imported (configure.sh imports config standalone);
+      QUOTE_FLOOR = 0.01, the value the fallback produced.
 v4.55 2026-10-03  OTV4TEST r216 (HYG.14) — comment only: execution/fill_model.py is deleted (never wired; the operator: "That's
       useless"); the entry-ladder note keeps its rule - paper never books a fill from an inside-the-spread rung.
 v4.54 2026-10-03  OTV4TEST r209 (EXIT.4) — BUTTERFLY_ENTRY_CUTOFF_ET GATES NOTHING: the session_guard branch that read
@@ -2532,6 +2536,12 @@ NOTIFY_ON_CIRCUIT_BREAK     = True
 
 # ─── DATABASE & LOGGING ───────────────────────────────────────────────────────
 
+# r218 (PATH.1) — the store DIRECTORY and the quote floor, defined at last. The three store PATHS are
+# resolved at call time by utils/paths.py (each honours its OT_* variable); do not snapshot them here.
+# ⚠️ NO PROJECT IMPORT HERE: configure.sh runs `python3 -c "import config"` beside a bare copy of this file,
+# so config must import with nothing of ours on the path (check_configure_instrument I1-I5 went red on that).
+DATA_DIR                    = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")   # == utils.paths.data_dir(), pinned by check_store_paths S5
+QUOTE_FLOOR                 = 0.01     # a contract quoted under a penny cannot be bought; breakout_plan reads this (was a getattr fallback of the same value)
 DB_PATH                     = os.environ.get("OT_TRADES_DB") or os.path.expanduser("~/options-trader/trades.db")   # r13: OT_TRADES_DB for checks
 # 🔴 r112 — ENV-OVERRIDABLE, AND THE FLAG BEATS BOTH. This was a bare literal,
 # so the only way to get DEBUG was to EDIT A TRACKED FILE on the box — and the
