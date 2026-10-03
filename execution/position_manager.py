@@ -1,5 +1,10 @@
 """
-execution/position_manager.py  v5.9
+execution/position_manager.py  v5.10
+v5.10 2026-10-03  OTV4TEST r191 (AUD.2) — THE EOD ATM-IV FALLBACK WAS NEVER SET. flatten_all called chain.atm_iv(),
+      but OptionsChain.atm_iv is a PROPERTY: "'float' object is not callable" on every EOD pass for every
+      assignment-risk position since r149 (31 warnings 09-30, 78 on 10-02), so _eod_iv_atm stayed unset and a leg
+      with no streamed IV had no IV for the 15:45 resting close. check_eod_schedule E11 passed because its
+      fixture made atm_iv a lambda; it now builds the REAL OptionsChain. Fork-only (1-REPORTER: no mainline twin).
 v5.9  2026-09-30  OTV4TEST r178 (CAP.2) — THE TWO BUTTERFLIES ARE EXEMPT FROM THE DAILY CATASTROPHIC LOSS CAP. The operator, 2026-09-30: "Allow both flies to fire even if we've hit the cap. Only one of each TYPE per session, not one butterfly per session." `AdmissionRule.cap_exempt` (default False) is True for GEXFLY and ATPFLY only; `decide()` skips the cap universal for a cap-exempt rule and for nothing else, and every other term (orb range, hard close, window, one try per session, one open of its type) still applies to them. `config.ADMISSION_RULES` can turn an exemption OFF and can never GRANT one: main.py's capped branch asks only the butterfly path, so an exemption on any other strategy would read ACTIVE on the board and never be asked.
 v5.8  2026-09-26  OTV4TEST r149 (EOD.1) — flatten_all runs the operator's end of day: an ASSIGNMENT-RISK position (a short leg) closes from 15:45, everything else is HELD (and managed) until 15:50; each close carries its own derived label; the tick's spot is stamped on the record as _eod_spot for the resting best-case price; a close still resting or laddering before 15:55 is not a failure (INFO, not ERROR). The admission hard-close refusal text derives from HARD_CLOSE_ET. it also stamps each leg's chain IV (`_eod_iv`) and the chain's ATM IV (`_eod_iv_atm`) beside `_eod_spot`, so the resting price is the position's ESTIMATED VALUE BY 15:55 (operator: "Can we instead estimate their assumed BY 1555 & rest that?").
 v5.7  2026-09-26  OTV4TEST r148 (WIN.1) — THE TABLE'S WINDOWS COME FROM config.ENTRY_WINDOWS, the one entry-window table; `config.ADMISSION_RULES` can still override caps and tries but NO LONGER a window (a second window source is WIN.1's defect). TrendCreditSpread's row reads 11:31, the minute its plan actually opened (it said 11:30).
@@ -764,7 +769,7 @@ class PositionManager:
                     _legs = [record.get(k) for k in ("option_symbol", "short_symbol", "long_symbol",
                                                      "lower_symbol", "center_symbol", "upper_symbol")]
                     record["_eod_iv"] = {s: _ivs[s] for s in _legs if s and _ivs.get(s)}
-                    record["_eod_iv_atm"] = float(chain.atm_iv() or 0.0)
+                    record["_eod_iv_atm"] = float(chain.atm_iv or 0.0)   # r191: a PROPERTY, not a call
                 except Exception as _ive:                          # noqa: BLE001
                     logger.warning(f"EOD: chain IV unreadable for {trade_id[:8]} ({_ive}) — expiry value")
             reason = _eod_label(record)

@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
-"""tests/check_eod_schedule.py — v1.1
+"""tests/check_eod_schedule.py — v1.2
 THE OPERATOR'S END OF DAY, DRIVEN THROUGH THE REAL CODE UNDER A FROZEN CLOCK.
+
+v1.2  2026-10-03 — OTV4TEST r191 (AUD.2) — E11 BUILDS THE REAL OptionsChain. Its fixture gave the chain
+      `atm_iv=lambda: 0.14`, a METHOD, while the real OptionsChain.atm_iv is a PROPERTY - so
+      position_manager's `chain.atm_iv()` passed here and raised "'float' object is not callable" on
+      every live EOD pass since r149. A fixture built from the code's own belief (WA 0.4). E11 now
+      stamps through the real class and expects the property's own median (0.16).
 
 v1.1  2026-10-02 — OTV4TEST r187 (ROSTER.1) — E1 RE-POINTED BY THE RULING: "let's impose a 1029
       debit cutoff rule, but exempts the GEX pin fly". Runaway, Hunt, Breakout and VOLT end 10:30;
@@ -326,15 +332,19 @@ def main() -> int:
         pm._trade_logger = None
         pm._fetch_current_premium = lambda rec, chain=None: 0.20
         pm._execute_exit = lambda rec, dec, prem: (seen.append((rec.get("_eod_iv"), rec.get("_eod_iv_atm"))) or False)
-        C = lambda sym, iv: _ty.SimpleNamespace(symbol=sym, iv=iv)
-        chain = _ty.SimpleNamespace(calls=[C(VERT["short_symbol"], 0.15), C(VERT["long_symbol"], 0.16), C("QQQ   260928C00760000", 0.3)],
-                                    puts=[], atm_iv=lambda: 0.14)
+        # r191: the REAL chain classes. The old fixture made atm_iv a lambda, so flatten_all's
+        # `chain.atm_iv()` passed here while the real property raised on every live EOD pass.
+        from data.options_chain import OptionContract as _OC, OptionsChain as _OCh
+        C = lambda sym, k, iv: _OC(symbol=sym, strike=k, iv=iv)
+        chain = _OCh(underlying="QQQ", spot_price=749.9,
+                     calls=[C(VERT["short_symbol"], 750.0, 0.15), C(VERT["long_symbol"], 751.0, 0.16),
+                            C("QQQ   260928C00760000", 760.0, 0.3)], puts=[])
         try:
             T.now_et = lambda: at(15, 46)
             pm.flatten_all(chain=chain, spot=749.9)
         finally:
             T.now_et = _real_t
-        want_stamp = [({VERT["short_symbol"]: 0.15, VERT["long_symbol"]: 0.16}, 0.14)]
+        want_stamp = [({VERT["short_symbol"]: 0.15, VERT["long_symbol"]: 0.16}, 0.16)]   # ATM = the real property's median
         check("E11 rest at the 15:55 estimate: fly 1.72 < 1.99, vertical 0.09 > nickel, leg IV wins, flatten_all stamps IVs",
               ok_px and seen == want_stamp, f"prices {got} want {want} (+4th > 0.09); stamp {seen} want {want_stamp}")
     except Exception as exc:                                  # noqa: BLE001

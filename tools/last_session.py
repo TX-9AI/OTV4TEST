@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tools/last_session.py  v1.1 — WHAT THE OPERATOR SAID LAST TIME.
+tools/last_session.py  v1.2 — WHAT THE OPERATOR SAID LAST TIME.
+v1.2  2026-10-03  OTV4TEST r191 (AUD.2) — Eastern time comes from the tz database (zoneinfo), not a fixed
+      UTC-4: from 2026-11-01 (DST ends) every time this digest printed would have been an hour late.
 
 v1.1  2026-09-26  OTV4TEST r151 — THIS SESSION IS KNOWN BY ITS ID, NOT GUESSED BY ITS CLOCK.
       The default pick was "the most recent transcript NOT written in the last 90s", on
@@ -52,7 +54,11 @@ import subprocess
 import sys
 
 DIR = os.path.expanduser("~/.claude/projects/-home-ubuntu-options-trader")
-ET = dt.timezone(dt.timedelta(hours=-4))
+try:
+    from zoneinfo import ZoneInfo
+    ET = ZoneInfo("America/New_York")        # r191: was a fixed UTC-4, an hour wrong from 11-01
+except Exception:                                               # noqa: BLE001
+    ET = dt.timezone(dt.timedelta(hours=-4))
 LIVE_WINDOW_S = 90          # the FALLBACK only: a file touched this recently is THIS session
 
 

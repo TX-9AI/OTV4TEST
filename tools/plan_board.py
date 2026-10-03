@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tools/plan_board.py  v1.0 — WHAT EVERY PLAN IS DOING RIGHT NOW.
+tools/plan_board.py  v1.1 — WHAT EVERY PLAN IS DOING RIGHT NOW.
+v1.1  2026-10-03  OTV4TEST r191 (AUD.2) — Eastern time from zoneinfo, not a fixed UTC-4 (wrong from 11-01).
 
 v1.0  2026-09-18  OTV4TEST r42. Operator: *"can you just have each plan report
       its last known status & a time stamp? For example, Active plan in progress
@@ -29,7 +30,11 @@ import os
 import sqlite3
 import sys
 
-ET = dt.timezone(dt.timedelta(hours=-4))
+try:
+    from zoneinfo import ZoneInfo
+    ET = ZoneInfo("America/New_York")        # r191: was a fixed UTC-4, an hour wrong from 11-01
+except Exception:                                               # noqa: BLE001
+    ET = dt.timezone(dt.timedelta(hours=-4))
 DB = os.environ.get("OT_DERIVED_DB",
                     os.path.expanduser("~/options-trader/data/derived_store.db"))
 

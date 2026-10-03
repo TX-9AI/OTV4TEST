@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""tools/probe_candle_depth.py — v1.0
+"""tools/probe_candle_depth.py — v1.1
+v1.1  2026-10-03 — OTV4TEST r191 (AUD.2): bar times print in real Eastern time (zoneinfo), not a fixed UTC-4.
+
 BOOT.7: HOW MUCH 1m / 5m / 15m HISTORY WILL TASTYTRADE SERVE?
 
 v1.0 (2026-09-29) — OTV4TEST r176. Moved into the repo from /var/tmp so it can
@@ -60,7 +62,11 @@ async def main() -> None:
             if iv in bars and c.time and c.open is not None:
                 bars[iv].add(int(c.time))
                 last = asyncio.get_event_loop().time()
-    et = timezone(timedelta(hours=-4))
+    try:                                         # r191: tz database, not a fixed UTC-4
+        from zoneinfo import ZoneInfo
+        et = ZoneInfo("America/New_York")
+    except Exception:                                           # noqa: BLE001
+        et = timezone(timedelta(hours=-4))
     print(f"{'interval':8} {'bars':>7} {'sessions':>8}  oldest bar (ET)        newest bar (ET)")
     for iv in INTERVALS:
         ts = sorted(bars[iv])

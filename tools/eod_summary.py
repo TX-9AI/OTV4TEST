@@ -1,5 +1,9 @@
 """
-tools/eod_summary.py  v4.4
+tools/eod_summary.py  v4.5
+v4.5  2026-10-03  OTV4TEST r191 (AUD.2) — THE DAY FILTER READS THE REAL EASTERN OFFSET. Both queries used a
+      literal '-4 hours' (EDT) and the fallback clock a fixed UTC-4; query.py fixed the same class at r210 and
+      this file kept it. et_offset_sql() gives "-4 hours" in summer and "-5 hours" from 2026-11-01, from the tz
+      database, and the fallback clock tries zoneinfo before the fixed offset.
 v4.4 2026-09-26  OTV4TEST r146 — the instrument comes from box_instrument() - its timer unit carries no OT_INSTRUMENT, so it was QQQ by default on every box.
 v4.3  2026-09-17  OTV4TEST r34 — `from tools.query import …` becomes `from query
       import …`: query.py moved back to the repo root. ⚠️ THIS IS THE ONE THAT
@@ -76,7 +80,26 @@ except Exception:  # noqa: BLE001
     PAPER_TRADING = os.environ.get("OT_PAPER_TRADING", "True") != "False"
 
     def now_et():
-        return datetime.now(timezone.utc) - timedelta(hours=4)
+        try:                                     # r191: the tz database first
+            from zoneinfo import ZoneInfo
+            return datetime.now(ZoneInfo("America/New_York"))
+        except Exception:                                       # noqa: BLE001
+            return datetime.now(timezone.utc) - timedelta(hours=4)
+
+
+
+def et_offset_sql(now=None) -> str:
+    """The Eastern UTC offset as a sqlite modifier: "-4 hours" (EDT) or "-5 hours" (EST).
+    r191: read from the clock's own utcoffset (query.py r210's rule); a clock with no
+    offset (the no-tzdata fallback) keeps the old -4."""
+    try:
+        off = (now or now_et()).utcoffset()
+        if off is None:
+            return "-4 hours"
+        return f"{int(off.total_seconds() // 3600)} hours"
+    except Exception:                                           # noqa: BLE001
+        return "-4 hours"
+
 
 OUT_DIR = os.path.expanduser("~/eod")
 OUT_PATH = os.path.join(OUT_DIR, "pnl_today.json")
@@ -119,15 +142,14 @@ def compute_summary():
     fee_expr = "COALESCE(fees, 0)" if has_fees else "0"
 
     # Mirror query.py show_today: closed trades whose ET entry date is today.
-    # (The '-4 hours' offset mirrors query.py; it is EDT-correct. During EST
-    #  it should be -5, but at the 15:50 EOD window no trade sits near the
-    #  ET-midnight boundary, so the daily total is unaffected either way.)
+    # r191: the offset is the real Eastern one (et_offset_sql), as query.py
+    # has read it since r210 - -4 in summer, -5 from November.
     rows = conn.execute(
         f"""SELECT pnl_usd, {fee_expr} AS fee
             FROM trades
             WHERE status='closed'
-              AND date(datetime(entry_time, '-4 hours')) = ?""",
-        (today,),
+              AND date(datetime(entry_time, ?)) = ?""",
+        (et_offset_sql(), today),
     ).fetchall()
 
     pnls = [(r["pnl_usd"] or 0.0) for r in rows]
@@ -192,9 +214,9 @@ def dump_trades():
         closed = conn.execute(
             """SELECT * FROM trades
                WHERE status='closed'
-                 AND date(datetime(entry_time, '-4 hours')) = ?
+                 AND date(datetime(entry_time, ?)) = ?
                ORDER BY entry_time""",
-            (today,),
+            (et_offset_sql(), today),
         ).fetchall()
         payload["trades"] = [dict(r) for r in closed]
         # Any still-open positions (orphans) — useful to see what was left.

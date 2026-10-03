@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-380 Python modules across 12 local packages.
+381 Python modules across 12 local packages.
 
-**Reached by:** 120 imported · 12 declared entry points · 165 referenced from a script, unit or doc but never imported · **83 by nothing here**.
+**Reached by:** 120 imported · 12 declared entry points · 166 referenced from a script, unit or doc but never imported · **83 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -212,7 +212,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `data/options_chain.py`
 - **calls:** `analysis/tenor_publish.py`, `config.py`, `data/open_interest.py`, `data/tasty_client.py`, `execution/tick_size.py`, `utils/math_utils.py`, `utils/time_utils.py`
-- **called by:** `analysis/trade_readiness.py`, `data/gex_data.py`, `main.py`, `strategy/base_strategy.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/orb_plan.py`, `strategy/orb_strategy.py`, `strategy/volt_plan.py`, `tests/check_entry_gate.py`, `tests/check_orb_plan.py`, `tests/check_orb_reentry.py`, `tests/check_strike_ladder.py`, `tests/check_sweep_spread.py`, `tests/check_tick_join.py`, `tests/check_trade_switches.py`, `tests/check_zero_bid_refused.py`, `tools/emergency_watchdog.py`
+- **called by:** `analysis/trade_readiness.py`, `data/gex_data.py`, `main.py`, `strategy/base_strategy.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/orb_plan.py`, `strategy/orb_strategy.py`, `strategy/volt_plan.py`, `tests/check_entry_gate.py`, `tests/check_eod_schedule.py`, `tests/check_orb_plan.py`, `tests/check_orb_reentry.py`, `tests/check_strike_ladder.py`, `tests/check_sweep_spread.py`, `tests/check_tick_join.py`, `tests/check_trade_switches.py`, `tests/check_zero_bid_refused.py`, `tools/emergency_watchdog.py`
 
 ### `data/tasty_client.py`
 - **calls:** `config.py`
@@ -755,7 +755,11 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_eod_schedule.py`
-- **calls:** `config.py`, `execution/__init__.py`, `execution/exit_engine.py`, `execution/limit_ladder.py`, `execution/position_manager.py`, `strategy/__init__.py`, `strategy/structure.py`, `utils/__init__.py`, `utils/time_utils.py`
+- **calls:** `config.py`, `data/options_chain.py`, `execution/__init__.py`, `execution/exit_engine.py`, `execution/limit_ladder.py`, `execution/position_manager.py`, `strategy/__init__.py`, `strategy/structure.py`, `utils/__init__.py`, `utils/time_utils.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
+### `tests/check_et_offset.py`
+- **calls:** (none)
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_exit_executes.py`
