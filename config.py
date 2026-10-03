@@ -1,5 +1,13 @@
 """
-config.py  v4.45
+config.py  v4.46
+v4.46 2026-10-03  OTV4TEST r188 (BRK.5) — BRK_RESEARCH_UNTIL 2026-10-03 -> 2026-10-30. Breakout's informers stay
+      at "accept any". The operator, 2026-10-03 09:51 ET: "extend the window for it to accept any and on the
+      very next session that it TRADES make sure that we're getting the right data. And then prior to our next
+      attempt to fit it make sure that it's part of the conversation." MEASURED that morning: the dials were
+      never fitted, and depth_thin's reading was None on 2,153 of 2,153 plan_check rows (strategy/breakout_plan
+      v1.7 fixes the read), so at the old date 0 of the 89 Breakout fills 09-21..10-02 would have cleared the
+      placeholder dials and Breakout would never have planned again. Fork-only constant (Breakout is not a
+      mainline strategy) in a file both trees carry.
 v4.45 2026-10-02  OTV4TEST r187 (ROSTER.1) — DIRECTIONAL DEBIT ENTRIES STOP AT 10:29 ET. ENTRY_WINDOWS ends
       RunawayContinuation, LiquidityHunt, Breakout and VOLT at (10, 30) (every window end is exclusive, so the
       last entry is 10:29). The operator, 2026-10-02 21:24 ET: "let's impose a 1029 debit cutoff rule, but
@@ -1044,7 +1052,10 @@ NOISE_FLOOR_MIN_BARS      = int(os.environ.get("OT_NOISE_FLOOR_MIN_BARS", "3"))
 # force acceptance, which would have left Breakout with NO R floor FOREVER —
 # the research posture leaking into the fitted value it is supposed to restore.
 # The window widens acceptance; it never edits a dial.
-BRK_RESEARCH_UNTIL = os.environ.get("OT_BRK_RESEARCH_UNTIL", "2026-10-03")
+# r188 (2026-10-03): EXTENDED from 2026-10-03 by the operator's ruling - the dials were never fitted and
+# depth_thin had no data. The dials are fitted only after a conversation with him that opens with each
+# informer's data coverage (BACKLOG BRK.5).
+BRK_RESEARCH_UNTIL = os.environ.get("OT_BRK_RESEARCH_UNTIL", "2026-10-30")
 
 # ── r44 — HOW WIDE THE THESIS LINE IS ──────────────────────────────────────
 # 🔑 A LEVEL IS PRECISE TO ABOUT ONE BAR OF NOISE, and the thesis test used to

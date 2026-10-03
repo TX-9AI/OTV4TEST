@@ -1,5 +1,19 @@
 """
-strategy/breakout_plan.py  v1.6
+strategy/breakout_plan.py  v1.7
+v1.7  2026-10-03  OTV4TEST r188 (BRK.5) — depth_thin FINALLY HAS A READING. `_depth` read
+      `depth_now` / `depth_before`, keys `analysis/order_flow.depth()` has never
+      returned (it returns bid/ask sizes and bid_depth_ratio / ask_depth_ratio), so
+      the reading was None on 2,153 of 2,153 plan_check rows 09-21..10-02 and the
+      informer recorded nothing for the whole research window. Now the depletion
+      is read off the side AHEAD of price - the ask for a long, the bid for a
+      short - as 1 - <side>_depth_ratio (positive = thinning, as documented).
+      The operator, 2026-10-03: "on the very next session that it TRADES make
+      sure that we're getting the right data." RECORD-ONLY BY MEASUREMENT on
+      QQQ: acceptance is "any" until 2026-10-30 (config v4.46), and the one
+      fitted-dial reader, `_route`'s `fading`, runs only when a bar is unmet -
+      flow_imbalance was present on 2,153 of 2,153 ticks and 0 DEFER lines are in
+      bot.log since 09-08. On a box whose flow goes missing, a pooled break's
+      routing could now differ (depth no longer reads as failing).
 v1.6  2026-09-25  OTV4TEST r142 — A RE-FIRE IS JUDGED ON A BAR THAT CLOSED AFTER THE
       LAST ENTRY. r131's gate compared the signal bar (df_1m[-2], the last CLOSED
       bar) with every RTH bar BEFORE it - and the signal bar can be the SAME bar
@@ -461,7 +475,7 @@ class BreakoutPlan:
         t.check("regime", reg, None)
         prep.cond("gamma_regime", reg, B.accepts("gamma_regime", reg))
 
-        dep = self._depth(flow_conn, symbol)
+        dep = self._depth(flow_conn, symbol, direction)
         t.check("depth_ratio", dep, None)
         prep.cond("depth_thin", dep, B.accepts("depth_thin", dep))
 
@@ -691,17 +705,25 @@ class BreakoutPlan:
             return None
 
     @staticmethod
-    def _depth(conn, symbol):
-        """Depletion as a signed ratio: positive = thinning ahead of price."""
-        if conn is None:
+    def _depth(conn, symbol, direction=None):
+        """Depletion as a signed ratio: positive = thinning ahead of price.
+
+        r188: AHEAD OF PRICE is the ask for a long and the bid for a short.
+        `order_flow.depth()` gives each side's size now over its size at the
+        start of the window (`ask_depth_ratio`, `bid_depth_ratio`), so the
+        depletion is 1 - that ratio. Until r188 this read `depth_now` /
+        `depth_before`, which depth() never returned: None on every tick.
+        """
+        if conn is None or direction not in ("long", "short"):
             return None
         try:
             from analysis.order_flow import depth
             d = depth(conn, symbol or BreakoutPlan._symbol()) or {}
-            now, then = _f(d.get("depth_now")), _f(d.get("depth_before"))
-            if now is None or not then:
+            ratio = _f(d.get("ask_depth_ratio" if direction == "long"
+                             else "bid_depth_ratio"))
+            if ratio is None:
                 return None
-            return (then - now) / then
+            return 1.0 - ratio
         except Exception as exc:                                # noqa: BLE001
             logger.debug("[breakout] depth unavailable: %s", exc)
             return None
