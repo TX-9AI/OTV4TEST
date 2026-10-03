@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """
-tests/gen_file_map.py  v4.12
+tests/gen_file_map.py  v4.13
+v4.13 2026-10-03  OTV4TEST r202 (MAP.6) — THE MAP'S PROSE IS COUNTED, NOT TYPED, AND NINE REAL ENTRY POINTS ARE
+      DECLARED. The 10-03 audit: the drift check was green while the orientation block said "37 methods on
+      ExitEngine" (55), "the eight standing checks" (210 check_*.py) and a dispatch order naming four
+      strategies the code left long ago. The two numbers are now computed from the tree; the dispatch line
+      points at the code instead of restating it. ENTRY_POINTS gains the agent's and the operator's tools
+      (agent_watch, agent_verdict, last_session, plan_board, run_with_bot_env and its three probes,
+      counter_pop). The orphan report prints EVERY orphan (it stopped at 10 of 12). Left as orphans, on
+      purpose, for the operator to rule: execution/fill_model.py (never wired), tools/manifold_status.py and
+      tools/segregate_nonrth_bars.py (dead).
 v4.12 2026-09-27  OTV4TEST r168 — `tools/emergency_watchdog.py` DECLARED. Launched by
       deploy/install_emergency_watchdog.sh; caught red by check_map_accuracy E1 on the build.
 v4.11 2026-09-24  OTV4TEST r132 — `tools/boot_sweep.py` DECLARED. Its unit now ships
@@ -157,6 +166,16 @@ ENTRY_POINTS = {
     "tools/open_scan.py",          # r130 — launched by deploy/install_open_scan_timer.sh
     "tools/boot_sweep.py",         # r132 — launched by deploy/install_boot_sweep.sh
     "tools/emergency_watchdog.py", # r168 — launched by deploy/install_emergency_watchdog.sh
+    # r202 — run by the agent session or the operator, found unlisted by the 10-03 audit
+    "tools/agent_watch.py",        # the session's alert Monitor (docs/HANDOFF.md)
+    "tools/agent_verdict.py",      # the agent's observe-only loss verdicts (AGT.2)
+    "tools/last_session.py",       # the handoff digest every session reads first
+    "tools/plan_board.py",         # devtools menu
+    "tools/run_with_bot_env.py",   # the operator's one allow rule for credentialed probes (r176)
+    "tools/probe_aux_streams.py",  # run THROUGH run_with_bot_env
+    "tools/probe_candle_depth.py", # run THROUGH run_with_bot_env
+    "tools/feed_capabilities.py",  # run THROUGH run_with_bot_env
+    "warehouse/counter_pop.py",    # fleet S3 counter repair CLI (WA 38.3 DELETE.1)
     # CLI helpers, run by hand or by a script
     "analysis/get_orb_range.py",
     "utils/check_sdk.py",
@@ -333,6 +352,27 @@ def build(root):
     return files, calls, called_by, broken, unparsed
 
 
+def _exit_engine_methods(root) -> int:
+    """r202: COUNTED, not typed. The map said 37 for months while the class grew to 55."""
+    try:
+        tree = ast.parse(open(os.path.join(root, "execution", "exit_engine.py"), encoding="utf-8").read())
+        for n in tree.body:
+            if isinstance(n, ast.ClassDef) and n.name == "ExitEngine":
+                return sum(isinstance(b, (ast.FunctionDef, ast.AsyncFunctionDef)) for b in n.body)
+    except Exception:                                           # noqa: BLE001
+        pass
+    return 0
+
+
+def _standing_checks(root) -> int:
+    """r202: COUNTED. The map said "eight" - the count is every tests/check_*.py."""
+    try:
+        return sum(1 for f in os.listdir(os.path.join(root, "tests"))
+                   if f.startswith("check_") and f.endswith(".py"))
+    except OSError:
+        return 0
+
+
 def render(root, files, calls, called_by, broken, unparsed, absent_block):
     # Computed once per render; the scan is a few dozen small files.
     MENTIONS = _mentions(root, set(files))
@@ -376,16 +416,16 @@ def render(root, files, calls, called_by, broken, unparsed, absent_block):
     L.append("")
     L.append("**Where the decisions live:**")
     L.append("")
-    L.append("- `main.py::attempt_new_entry` - the dispatch chain. ORB, then")
-    L.append("  runaway (it reads ORB's own state, and firing DISARMS the")
-    L.append("  retest), then sweep, then the parked butterfly. **Order is")
-    L.append("  load-bearing.**")
+    L.append("- `main.py::attempt_new_entry` - the dispatch chain. **Order is")
+    L.append("  load-bearing; read it there.** This map does not restate it:")
+    L.append("  the line that did named four strategies in an order the code")
+    L.append("  left long ago (r202).")
     L.append("- `strategy/<name>.py` - one file per setup, each with a `GATES`")
     L.append("  dict naming every constant SELECTION / FOUNDATIONAL /")
     L.append("  FEASIBILITY. **Foundational conditions are tested inline")
     L.append("  against no constant** - the safest form, since there is nothing")
     L.append("  to relax even by mistake.")
-    L.append("- `execution/exit_engine.py` - 37 methods on `ExitEngine`.")
+    L.append(f"- `execution/exit_engine.py` - {_exit_engine_methods(root)} methods on `ExitEngine`.")
     L.append("  ⚠️ **F0: a function inserted at column 0 above a method bisected")
     L.append("  this class and every intraday exit became dead code for seven")
     L.append("  revisions behind a green board.** `check_exit_executes.py`")
@@ -393,8 +433,9 @@ def render(root, files, calls, called_by, broken, unparsed, absent_block):
     L.append("- `analysis/market_state.py` - the structural state assembly.")
     L.append("  **Carries the vocabulary, classifies nothing.**")
     L.append("")
-    L.append("**Where the evidence lives:** `tests/` holds the eight standing")
-    L.append("checks plus the studies that produced every threshold in")
+    L.append(f"**Where the evidence lives:** `tests/` holds {_standing_checks(root)} standing")
+    L.append("checks (`check_*.py`, all run by `tools/boot_sweep.py` at boot)")
+    L.append("plus the studies that produced every threshold in")
     L.append("`docs/TRADES.md`. **A number in a strategy file should be")
     L.append("traceable to a tool in here.**")
     L.append("")
@@ -499,7 +540,7 @@ def main(argv):
                and not p.startswith("tests/")]
     if orphans:
         print(f"  ORPHANS (nothing imports them, not entry points): {len(orphans)}")
-        for p in orphans[:10]:
+        for p in orphans:                       # r202: ALL of them - it printed 10 of 12
             print(f"    {p}")
 
     if a.check:

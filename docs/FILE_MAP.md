@@ -6,7 +6,7 @@ the canary fails on drift (WORKING_AGREEMENT 33).
 
 387 Python modules across 12 local packages.
 
-**Reached by:** 120 imported · 12 declared entry points · 173 referenced from a script, unit or doc but never imported · **82 by nothing here**.
+**Reached by:** 120 imported · 21 declared entry points · 166 referenced from a script, unit or doc but never imported · **80 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -23,16 +23,16 @@ isolated rather than being everywhere at once.
 
 **Where the decisions live:**
 
-- `main.py::attempt_new_entry` - the dispatch chain. ORB, then
-  runaway (it reads ORB's own state, and firing DISARMS the
-  retest), then sweep, then the parked butterfly. **Order is
-  load-bearing.**
+- `main.py::attempt_new_entry` - the dispatch chain. **Order is
+  load-bearing; read it there.** This map does not restate it:
+  the line that did named four strategies in an order the code
+  left long ago (r202).
 - `strategy/<name>.py` - one file per setup, each with a `GATES`
   dict naming every constant SELECTION / FOUNDATIONAL /
   FEASIBILITY. **Foundational conditions are tested inline
   against no constant** - the safest form, since there is nothing
   to relax even by mistake.
-- `execution/exit_engine.py` - 37 methods on `ExitEngine`.
+- `execution/exit_engine.py` - 55 methods on `ExitEngine`.
   ⚠️ **F0: a function inserted at column 0 above a method bisected
   this class and every intraday exit became dead code for seven
   revisions behind a green board.** `check_exit_executes.py`
@@ -40,8 +40,9 @@ isolated rather than being everywhere at once.
 - `analysis/market_state.py` - the structural state assembly.
   **Carries the vocabulary, classifies nothing.**
 
-**Where the evidence lives:** `tests/` holds the eight standing
-checks plus the studies that produced every threshold in
+**Where the evidence lives:** `tests/` holds 210 standing
+checks (`check_*.py`, all run by `tools/boot_sweep.py` at boot)
+plus the studies that produced every threshold in
 `docs/TRADES.md`. **A number in a strategy file should be
 traceable to a tool in here.**
 
@@ -324,7 +325,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `execution/fill_model.py`
 - **calls:** (none)
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `execution/handoff.py`
 - **calls:** `config.py`
@@ -1472,11 +1473,11 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tools/agent_verdict.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/HANDOFF.md`
+- **called by:** (entry point)
 
 ### `tools/agent_watch.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/HANDOFF.md`
+- **called by:** (entry point)
 
 ### `tools/backfill_sma50.py`
 - **calls:** `analysis/entry_snapshot.py`, `config.py`
@@ -1508,11 +1509,11 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tools/feed_capabilities.py`
 - **calls:** `config.py`, `data/tasty_client.py`
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+- **called by:** (entry point)
 
 ### `tools/last_session.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `devtools.sh`, `docs/BACKLOG.md`, `docs/FIRST_BOOT.md`, `docs/HANDOFF.md`
+- **called by:** (entry point)
 
 ### `tools/manifold_health.py`
 - **calls:** `config.py`, `utils/instrument.py`, `utils/time_utils.py`
@@ -1528,23 +1529,23 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tools/plan_board.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `devtools.sh`, `docs/BACKLOG.md`
+- **called by:** (entry point)
 
 ### `tools/probe_aux_streams.py`
 - **calls:** `config.py`, `data/tasty_client.py`
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/HANDOFF.md`
+- **called by:** (entry point)
 
 ### `tools/probe_candle_depth.py`
 - **calls:** `data/tasty_client.py`
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+- **called by:** (entry point)
 
 ### `tools/run_with_bot_env.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+- **called by:** (entry point)
 
 ### `tools/segregate_nonrth_bars.py`
 - **calls:** (none)
-- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tools/stress_theta_bleed.py`
 - **calls:** `config.py`, `execution/exit_engine.py`
@@ -1596,7 +1597,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `warehouse/counter_pop.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/WORKING_AGREEMENT.md`
+- **called by:** (entry point)
 
 ### `warehouse/midnight_halt.py`
 - **calls:** `utils/shutdown_cause.py`

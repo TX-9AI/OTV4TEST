@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
-"""tests/check_map_accuracy.py — v1.1
+"""tests/check_map_accuracy.py — v1.2
 THE GENERATED MAPS ARE CHECKED FOR ACCURACY, NOT ONLY FOR FRESHNESS.
+
+v1.2  2026-10-03 — OTV4TEST r202 (MAP.6). M1-M3: THE FILE MAP'S PROSE. Its drift check was green while
+      it said "37 methods on ExitEngine" (55) and "eight standing checks" (210): a generated file whose
+      generator typed the numbers. M1/M2 compare the map's numbers with the tree; M3 requires the tools
+      the agent and the operator actually run to be declared entry points.
 
 v1.1  2026-09-20 — OTV4TEST r67 (MAP.5). THE READ COLUMN HAD NEVER BEEN
       CHECKED IN EITHER DIRECTION. v1.0 gated writers, entry points and
@@ -194,6 +199,31 @@ def main():
     check("E2 every script tools/land.sh runs is a declared entry point",
           bool(land) and not missing_l,
           "not declared: " + ", ".join(missing_l) if missing_l else ", ".join(sorted(land)) or "none found")
+
+    # ── M (r202, MAP.6): the file map's PROSE numbers are the tree's ─────────
+    try:
+        import ast as _ast
+        import re as _re
+        fmap = open(os.path.join(_root, "docs", "FILE_MAP.md"), encoding="utf-8").read()
+        _t = _ast.parse(open(os.path.join(_root, "execution", "exit_engine.py"), encoding="utf-8").read())
+        real_m = next((sum(isinstance(b, (_ast.FunctionDef, _ast.AsyncFunctionDef)) for b in n.body)
+                       for n in _t.body if isinstance(n, _ast.ClassDef) and n.name == "ExitEngine"), 0)
+        m = _re.search(r"(\d+) methods on `ExitEngine`", fmap)
+        check("M1 the map's ExitEngine method count is the class's own",
+              bool(m) and int(m.group(1)) == real_m and real_m > 0,
+              f"map says {m.group(1) if m else None}, the class has {real_m}")
+        real_c = sum(1 for f in os.listdir(os.path.join(_root, "tests"))
+                     if f.startswith("check_") and f.endswith(".py"))
+        m2 = _re.search(r"holds (\d+) standing", fmap)
+        check("M2 the map's standing-check count is the number of tests/check_*.py",
+              bool(m2) and int(m2.group(1)) == real_c, f"map says {m2.group(1) if m2 else None}, tests/ has {real_c}")
+        tools_run = ["tools/agent_watch.py", "tools/agent_verdict.py", "tools/last_session.py",
+                     "tools/plan_board.py", "tools/run_with_bot_env.py"]
+        undecl = [p for p in tools_run if p not in fm.ENTRY_POINTS]
+        check("M3 the agent's and the operator's tools are declared entry points", not undecl,
+              "not declared: " + ", ".join(undecl))
+    except Exception as exc:                                    # noqa: BLE001
+        check("M1 (did not run)", False, f"{type(exc).__name__}: {exc}")
 
     # ── L: the map against the box's stores (MAP.2) ───────────────────────
     store_root = os.environ.get("OT_MAP_STORE_ROOT") or os.path.expanduser("~/options-trader")
