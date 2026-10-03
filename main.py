@@ -1,5 +1,12 @@
 """
-main.py  v4.81
+main.py  v4.82
+v4.82 2026-10-03  OTV4TEST r204 (PREM.2) — ORCS TRADES ON PAPER; THE SWEEP AND THE TCS ARE RETIRED. The operator: "I want to
+      paper trade it Monday. Retire the sweep & TCS. Call this new one the opening range credit spread ORCS."
+      _attempt_orcs asks strategy/orcs.py inside the entry dispatch (admission, the cap and the entry gate all
+      apply) and executes each offer that filled at its limit through _execute_condor_leg, which books ORCS
+      under its own name with no stop and REFUSES it in live mode (paper only until a live ruling).
+      _safe_strategy skips SweepCreditSpread, SweepForLeg2 and TrendCreditSpread with a `retired` row unless
+      their switch is on. r203's _ask_open_premium is replaced by _attempt_orcs.
 v4.81 2026-10-03  OTV4TEST r203 (PREM.1) — THE OPENING PREMIUM SPREAD PLAN IS ASKED EVERY TICK, RECORD-ONLY.
       _ask_open_premium(ctx) runs after the entry dispatch on both branches of the loop (position open or
       flat), hands the plan the chain, the gap and two recorded informers, and never raises. No order, no
@@ -1527,31 +1534,43 @@ _iron_condor_strategy = IronCondorStrategy()
 _trend_credit_strategy = TrendCreditSpread()
 
 
-# r203 (PREM.1) — the opening premium spread's plan. RECORD-ONLY: it searches the
-# chain and writes plan rows; nothing here can place an order.
-_open_premium_plan = None
+# r204 (PREM.2) — ORCS, the opening range credit spread (PLAN_SPEC §41). The
+# strategy owns its plan; `_attempt_orcs` asks it inside the entry dispatch.
+_orcs_strategy = None
 try:
-    import config as _ops_cfg
-    if _ops_cfg.OPS_PLAN_ENABLED:
-        from strategy.open_premium_plan import OpenPremiumPlan
-        _open_premium_plan = OpenPremiumPlan()
-except Exception as _ops_exc:                                  # noqa: BLE001
-    logger.warning("[ops] plan not built - nothing recorded this session: %s", _ops_exc)
+    from strategy.orcs import OpeningRangeCreditSpread
+    _orcs_strategy = OpeningRangeCreditSpread()
+except Exception as _orcs_exc:                                 # noqa: BLE001
+    logger.warning("[orcs] strategy not built - it will not trade or record this session: %s", _orcs_exc)
 
 
-def _ask_open_premium(ctx: dict) -> None:
-    """r203 — ask the record-only opening premium plan. Never raises, returns nothing."""
-    if _open_premium_plan is None:
+def _retired_reason(name: str) -> str:
+    """r204 — the sweep and the TCS are retired by ruling (2026-10-03: "Retire the sweep & TCS").
+    '' when `name` may be asked. Read at call time so a checker can flip the switch."""
+    import config as _c
+    if name in ("SweepCreditSpread", "SweepForLeg2") and not _c.SWEEP_CS_ENABLED:
+        return "retired by the operator's ruling 2026-10-03 (OT_SWEEP_CS=1 restores it)"
+    if name == "TrendCreditSpread" and not _c.TREND_CREDIT_ACTIVE:
+        return "retired by the operator's ruling 2026-10-03 (OT_TCS_ACTIVE=1 restores it)"
+    return ""
+
+
+def _attempt_orcs(ctx: dict, state) -> None:
+    """r204 — ask ORCS and execute each offer that filled at its limit on this tick. Never raises."""
+    if _orcs_strategy is None:
         return
     try:
         _px = float(ctx.get("price") or 0.0)
         _hi, _lo = ctx.get("orb_high"), ctx.get("orb_low")
         _inf = {"vix": getattr(ctx.get("macro"), "vix", None),
                 "or_width_pct": (100.0 * (float(_hi) - float(_lo)) / _px) if _hi and _lo and _px > 0 else None}
-        _open_premium_plan.prepare(price_now=_px, now_et=now_et(), chain=ctx.get("chain"),
-                                   gap=ctx.get("gap"), informers=_inf)
+        _sigs = _safe_strategy(_orcs_strategy.name, lambda: _orcs_strategy.generate_signals(
+            price_now=_px, now_et=now_et(), chain=ctx.get("chain"), gap=ctx.get("gap"),
+            informers=_inf) or None, ctx)
+        for _sig in (_sigs or []):
+            _execute_condor_leg(_sig, state, ctx)
     except Exception as exc:                                   # noqa: BLE001
-        logger.warning("[ops] plan tick failed - no row this tick: %s", exc)
+        logger.warning("[orcs] tick failed - nothing traded or recorded this tick: %s", exc)
 
 
 class BotState:
@@ -2715,6 +2734,11 @@ def _execute_condor_leg(signal: "OptionsSignal", state: BotState,
 
     net_credit   = signal.net_credit
     spread_width = abs(short_contract.strike - long_contract.strike)
+    # r204 — ORCS: its own name, no stop, PAPER ONLY until a live ruling.
+    _is_orcs = (getattr(signal, "strategy_name", "") == "OpeningRangeCreditSpread")
+    if _is_orcs and not state.paper_trading:
+        logger.warning("[orcs] LIVE entry REFUSED - ORCS is paper-only until the operator rules it live")
+        return
 
     # Size this vertical at HALF the grade budget — each side is independent,
     # so a B-grade $1000 trade becomes two ~$500 verticals.
@@ -2832,6 +2856,7 @@ def _execute_condor_leg(signal: "OptionsSignal", state: BotState,
         trade_id         = str(uuid.uuid4()),
         symbol           = INSTRUMENT,
         strategy         = ("TrendCreditSpread" if _is_tcs
+                            else "OpeningRangeCreditSpread" if _is_orcs
                             else "SweepCreditSpread" if _is_sweep
                             else "IronCondorStrategy"),
         setup_type       = signal.setup_type,
@@ -2861,7 +2886,7 @@ def _execute_condor_leg(signal: "OptionsSignal", state: BotState,
         # TO EXPIRY, UNMANAGED, and its only exits are a breach of the bound or
         # the 15:45 close. Writing a stop here is what made a $0.06 credit
         # closeable on one cent of widening.
-        stop_premium     = (0.0 if _is_tcs
+        stop_premium     = (0.0 if (_is_tcs or _is_orcs)
                             else _sweep_stop_premium(fill_credit, spread_width, _stop_pct)
                             if _is_sweep
                             else fill_credit * (1 + _stop_pct)),
@@ -2983,6 +3008,7 @@ def _execute_condor_leg(signal: "OptionsSignal", state: BotState,
     # caught the last identity bug.
     _exit_desc = (f"exit=breach@{getattr(signal, 'underlying_stop', 0.0):.2f} or 15:45"
                   if _is_tcs else
+                  "held to the end-of-day close, no stop" if _is_orcs else
                   f"stop=${fill_credit * (1 + _stop_pct):.2f} ({_stop_pct:.0%}) | "
                   f"nickel=${CONDOR_NICKEL_CLOSE:.2f}")
     get_alert_manager()._send(
@@ -3156,6 +3182,11 @@ def _safe_strategy(name: str, fn, ctx=None):
     # r40 — NOT ADMITTED THIS TICK: not asked, and nothing journalled.
     if not _admission_allows(name):
         return None
+    # r204 — RETIRED BY RULING: not asked, and the board says why (once).
+    _ret = _retired_reason(name)
+    if _ret:
+        _plan_skip("SweepCreditSpread" if name == "SweepForLeg2" else name, _ret, gate="retired")
+        return None
     try:
         sig = fn()
         # r146 — the plan board learns this strategy was ASKED. AFTER fn().
@@ -3285,7 +3316,8 @@ def _open_credit_legs() -> list:
     try:
         from database.trade_logger import get_trade_logger
         return [t for t in get_trade_logger().get_open_trades()
-                if t.get("is_condor_leg") and t.get("status") == "open"]
+                if t.get("is_condor_leg") and t.get("status") == "open"
+                and t.get("strategy") != "OpeningRangeCreditSpread"]   # r204: ORCS pairs with nothing
     except Exception:                                          # noqa: BLE001
         return []
 
@@ -3301,7 +3333,8 @@ def _open_credit_sides() -> set:
         from database.trade_logger import get_trade_logger
         return {t.get("option_side")
                 for t in get_trade_logger().get_open_trades()
-                if t.get("is_condor_leg") and t.get("status") == "open"}
+                if t.get("is_condor_leg") and t.get("status") == "open"
+                and t.get("strategy") != "OpeningRangeCreditSpread"}   # r204: ORCS pairs with nothing
     except Exception:                                          # noqa: BLE001
         return set()
 
@@ -3656,6 +3689,7 @@ _STRUCTURE_BY_NAME = {
     "ORB":                  "long_debit",
     "RunawayContinuation":  "long_debit",
     "SweepCreditSpread":    "vertical",
+    "OpeningRangeCreditSpread": "vertical",     # r204 (ORCS)
     "GEXPinButterfly":      "butterfly",
     "ATPButterfly":         "butterfly",
     "IronCondorStrategy":   "vertical",
@@ -4540,6 +4574,9 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
                 # are recorded here by hand.
                 _execute_condor_leg(tcs_sig, state, ctx)
                 _fired.append("TrendCreditSpread")
+
+    # ── r204 — ORCS: the opening range credit spread (PLAN_SPEC §41) ─────────
+    _attempt_orcs(ctx, state)
 
 
     # ══ r43 — THE TAIL REPORTS; IT NO LONGER ARBITRATES ══════════════════════
@@ -5955,8 +5992,6 @@ def main_loop(state: BotState):
                 # had a sentence and the other did not.
                 _plan_skip_management("no open position — nothing to manage")
                 attempt_new_entry(ctx, ms, state)
-
-            _ask_open_premium(ctx)        # r203: record-only, both branches
 
             # ── Periodic heartbeat log ────────────────────────────────────
             if state.tick_count % 20 == 0:

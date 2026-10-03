@@ -1,5 +1,8 @@
 """
-strategy/condor_roll.py  v4.8
+strategy/condor_roll.py  v4.9
+v4.9  2026-10-03  OTV4TEST r204 (PREM.2) — ORCS LEGS ARE NEVER ROLLED OR TENTED. Both leg reads skip strategy
+      OpeningRangeCreditSpread: its spec is hold to the close (PLAN_SPEC §41.1), and an ORCS put and call
+      open together would otherwise read as a formed condor and be handed to the ladder.
 v4.8  2026-09-09  OTV4TEST r11 — THE ROLL MAY WIDEN ITS WING (PLAN_SPEC §35 v2).
       Operator's picture: 360/370C breached at 364 -> take the profitable put
       vertical off and SELL 360/337.5P — the short at the tested short's own
@@ -295,7 +298,8 @@ def check_and_execute_roll(pos_mgr, chain, current_price: float, state, df_1m=No
         t.starved("chain")
         return False
 
-    legs = [r for r in pos_mgr.get_open_records() if r.get("is_condor_leg")]
+    legs = [r for r in pos_mgr.get_open_records() if r.get("is_condor_leg")
+            and str(r.get("strategy") or "") != "OpeningRangeCreditSpread"]   # r204: ORCS is never rolled
     t.check("legs", len(legs), len(legs) == 2)
     if len(legs) != 2:
         t.hold(f"{len(legs)} condor leg(s) open — a roll needs a pair")
@@ -676,7 +680,8 @@ def check_and_execute_tent(pos_mgr, chain, current_price: float, state,
 
     if not TENT_ENABLED or chain is None:
         return False
-    legs = [r for r in pos_mgr.get_open_records() if r.get("is_condor_leg")]
+    legs = [r for r in pos_mgr.get_open_records() if r.get("is_condor_leg")
+            and str(r.get("strategy") or "") != "OpeningRangeCreditSpread"]   # r204: ORCS is never rolled
     if len(legs) != 2:
         return False
     # ⚠️ ONLY AFTER A ROLL. The tent is the rung BELOW the roll, not an

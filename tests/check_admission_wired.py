@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_admission_wired.py  v1.2
+tests/check_admission_wired.py  v1.3
 THE ADMISSION TABLE IS LIVE: A STRATEGY OUTSIDE ITS WINDOW IS NEVER ASKED.
 
+v1.3  2026-10-03  OTV4TEST r204 (PREM.2) — A1, A2 and A4 PROBE THE GEX BUTTERFLY, NOT THE TCS. The TCS is retired by
+      ruling ("Retire the sweep & TCS") and _safe_strategy no longer asks it whatever admission says, so it
+      cannot stand in for "an admitted strategy". The assertions are unchanged; only the probe name moved.
 v1.2  2026-09-18  OTV4TEST r43 — A9 INVERTED, which is the point of having
       written it. At r40 it pinned the STATED SCOPE (the gate still stands);
       ADM.1 closed, so the assertion flips to "the gate is gone". A scope pin
@@ -72,9 +75,9 @@ def main():
         return ran["n"] > 0, out
 
     guard("A1 an ADMITTED strategy is asked and its signal returned",
-          lambda: probe("TrendCreditSpread", ["TrendCreditSpread"]) == (True, "SIGNAL"))
+          lambda: probe("GEXPinButterfly", ["GEXPinButterfly"]) == (True, "SIGNAL"))
     guard("A2 a strategy NOT admitted this tick is NEVER ASKED — fn does not run",
-          lambda: probe("TrendCreditSpread", ["SweepCreditSpread"]) == (False, None),
+          lambda: probe("GEXPinButterfly", ["SweepCreditSpread"]) == (False, None),
           "this is what removes the NOT ASKED rows: no ask, so no refusal to journal")
 
     # ── A3 — the ORB dispatches under a label the table does not use ────────
@@ -85,7 +88,7 @@ def main():
 
     # ── A4/A5 — fails OPEN, in both directions ─────────────────────────────
     guard("A4 with NO admission computed, every strategy is asked (pre-r40 exactly)",
-          lambda: probe("TrendCreditSpread", None)[0] is True)
+          lambda: probe("GEXPinButterfly", None)[0] is True)
     guard("A5 a name the table does not carry is asked — admission has no opinion",
           lambda: probe("IronCondorStrategy", ["SweepCreditSpread"])[0] is True,
           "IronCondorStrategy is retired as an entry; a silent veto would hide that")

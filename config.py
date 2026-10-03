@@ -1,5 +1,11 @@
 """
-config.py  v4.50
+config.py  v4.51
+v4.51 2026-10-03  OTV4TEST r204 (PREM.2) — ORCS IS A TRADE; THE SWEEP AND THE TCS ARE RETIRED. The operator, 2026-10-03: "I want
+      to paper trade it Monday. Retire the sweep & TCS. Call this new one the opening range credit spread ORCS."
+      ENTRY_WINDOWS gains OpeningRangeCreditSpread 09:45-10:30; the r203 OPS_* dials are renamed ORCS_* (values
+      unchanged; the two window dials moved into the table); ORCS_ENABLED (OT_ORCS, default ON). SWEEP_CS_ENABLED is
+      new and OFF (OT_SWEEP_CS=1 restores the sweep); TREND_CREDIT_ACTIVE now defaults OFF (OT_TCS_ACTIVE=1 restores
+      it) and is read by main for the first time.
 v4.50 2026-10-03  OTV4TEST r203 (PREM.1) — THE OPENING PREMIUM SPREAD PLAN'S DIALS (OPS_*), PRELIMINARY. A record-only
       plan (strategy/open_premium_plan.py, PLAN_SPEC §41) reads them; no order is placed and no entry window or
       admission rule is added. OT_OPS_PLAN=0 parks the plan. Values come from the 10-03 studies X5-X8.
@@ -676,7 +682,8 @@ TCS_WING_WIDTH_QQQ          = float(os.environ.get("OT_TCS_WING_QQQ", "5"))
 # ⚠️ SPEC.1 CLASS. An operator decision must not live in an env-var default
 # that no surface reports. If TC.6 is ever to be disabled again it is an
 # explicit OT_TCS_ACTIVE=0, not an absence.
-TREND_CREDIT_ACTIVE         = os.environ.get("OT_TCS_ACTIVE", "1") == "1"
+TREND_CREDIT_ACTIVE         = os.environ.get("OT_TCS_ACTIVE", "0") == "1"   # r204: RETIRED by ruling 2026-10-03 ("Retire the sweep & TCS"); =1 restores it
+SWEEP_CS_ENABLED            = os.environ.get("OT_SWEEP_CS", "0") == "1"     # r204: RETIRED by the same ruling; =1 restores it
 # ── TC.6 ENTRY GATES (2026-08-14 HOTFIX — it rapid-fired the whole fleet) ─────
 # Observed 10:02 ET on 08-14: NVDA sold a $5-wide for $0.06, PLTR a $6-wide for
 # $0.08, and every box re-entered seconds after a nickel close.
@@ -776,6 +783,7 @@ ENTRY_WINDOWS = {
     "TrendCreditSpread":    ((11, 31), EOD_SCHEDULE["entries_stop"]),
     "GEXPinButterfly":      ((12, 0),  (15, 0)),
     "ATPButterfly":         ((12, 0),  (15, 0)),   # r179: was 11:30 here while the plan itself stayed dormant until 12:00; the operator, 2026-09-30: "12:00 is fine"
+    "OpeningRangeCreditSpread": ((9, 45), (10, 30)),  # r204 (ORCS): 09:45 beat 09:36; positive to 10:30, gone from 11:00 (X6/X7)
 }
 
 
@@ -1255,23 +1263,22 @@ SIZE_ON_RISK_TO_STOP = os.environ.get("OT_SIZE_ON_RISK", "0") == "1"
 # never own more than the operator would accept losing outright.
 DEPLOY_CAP_MULT = float(os.environ.get("OT_DEPLOY_CAP_MULT", "2.0"))
 
-# ── OPENING PREMIUM SPREAD (r203, PREM.1) — RECORD-ONLY PLAN, PRELIMINARY DIALS ──
+# ── OPENING RANGE CREDIT SPREAD - ORCS (r203 dials, r204 trade) — PRELIMINARY ──
 # The operator, 2026-10-03: "set preliminary dials, then build the plan that
-# searches the chain for our trigger components' location on the chain." And:
-# "we get better than mark or we don't trade it." Each value below is where the
-# 10-03 studies (X5-X8, QQQ 0DTE, 28 priced sessions) were positive in BOTH
-# halves at mid fills. NOT PROVEN - those sessions were calm; the plan records
-# the forward sample. Nothing here places an order.
-OPS_PLAN_ENABLED    = os.environ.get("OT_OPS_PLAN", "1") == "1"
-OPS_START_ET        = (9, 45)    # 09:45 beat 09:36 (a -1,989 day at 09:36, 0.50% out)
-OPS_END_ET          = (10, 30)   # positive to 10:30; gone from 11:00
-OPS_SHORT_DELTA_MAX = 0.15       # delta 0.15: R +0.036/+0.029; delta 0.20 lost its holdout half
-OPS_MIN_IM_MULT     = 1.25       # and at least 1.25 implied moves (ATM straddle) from spot
-OPS_WING_PCT        = 0.01       # long leg ~1% of spot further out (what every study priced)
-OPS_MIN_CREDIT      = 0.10       # at the mark; below a dime one cent of slip is over 10%
-OPS_MAX_GAP_PCT     = 0.90       # |overnight gap| %, the one informer that agreed on both samples
-OPS_LIMIT_IMPROVE   = 0.01       # the offer rests this much BETTER than the mark (his ruling)
-OPS_REST_MIN        = 10.0       # minutes the offer rests; unfilled = no trade
+# searches the chain for our trigger components' location on the chain"; "we get
+# better than mark or we don't trade it"; then "I want to paper trade it Monday
+# ... Call this new one the opening range credit spread ORCS." Each value is
+# where the 10-03 studies (X5-X8, QQQ 0DTE, 28 priced sessions) were positive
+# in BOTH halves at mid fills. NOT PROVEN - those sessions were calm. The
+# window is ENTRY_WINDOWS["OpeningRangeCreditSpread"] (09:45-10:30).
+ORCS_ENABLED         = os.environ.get("OT_ORCS", "1") == "1"   # the TRADE; =0 leaves the plan recording only
+ORCS_SHORT_DELTA_MAX = 0.15       # delta 0.15: R +0.036/+0.029; delta 0.20 lost its holdout half
+ORCS_MIN_IM_MULT     = 1.25       # and at least 1.25 implied moves (ATM straddle) from spot
+ORCS_WING_PCT        = 0.01       # long leg ~1% of spot further out (what every study priced)
+ORCS_MIN_CREDIT      = 0.10       # at the mark; below a dime one cent of slip is over 10%
+ORCS_MAX_GAP_PCT     = 0.90       # |overnight gap| %, the one informer that agreed on both samples
+ORCS_LIMIT_IMPROVE   = 0.01       # the offer rests this much BETTER than the mark (his ruling)
+ORCS_REST_MIN        = 10.0       # minutes the offer rests; unfilled = no trade
 
 # ── SWEEP CREDIT SPREAD (v4.0) ─────────────────────────────────────────────
 # Operator's spec, 2026-08-20: *"The only 2 ways I want out of this trade is a

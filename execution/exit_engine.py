@@ -1,5 +1,9 @@
 """
-execution/exit_engine.py  v4.29
+execution/exit_engine.py  v4.30
+v4.30 2026-10-03  OTV4TEST r204 (PREM.2) — ORCS IS HELD TO THE END-OF-DAY CLOSE AND NOTHING ELSE. _evaluate_condor_leg returns
+      HOLD for strategy OpeningRangeCreditSpread right after the scheduled-close check: no lone stop, no breach,
+      no nickel. The operator, 2026-10-03: "I want to paper trade it Monday"; the spec (PLAN_SPEC §41.1) is
+      hold to the close - a stop at the short strike was measured and was worse in every cell.
 v4.29 2026-10-03  OTV4TEST r190 (AUD.1, SHARED WITH otv4 CND.11 + TICK.1) — TWO FIXES FROM THE 10-03 AUDIT.
       (1) _condor_sibling_open's except returns `default`, not True. Both stop paths (TCS and the credit
       vertical) ask default=False so a probe error keeps the stop ARMED on a lone vertical; they got True,
@@ -2462,6 +2466,12 @@ class ExitEngine:
             # r149 — EVERY end-of-day label in this file now derives from the
             # EOD schedule via _eod_label(); none is typed any more.
             decision.exit_reason = _eod_label(record)          # r149: hard_close_resting_15:45_ET
+            return decision
+
+        # r204 — ORCS IS HELD TO THE CLOSE AND NOTHING ELSE (PLAN_SPEC §41.1). No
+        # premium stop, no lone stop, no breach, no nickel: the 10-03 studies
+        # measured a stop at the short strike and it was worse in every cell.
+        if str(record.get("strategy") or "") == "OpeningRangeCreditSpread":
             return decision
 
         # ── TC.6 TREND CREDIT SPREAD — BREACH OR NICKEL, NOTHING ELSE ────

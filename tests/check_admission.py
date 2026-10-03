@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_admission.py  v1.9
+tests/check_admission.py  v1.10
 THE ADMISSION TABLE, DRIVEN EXHAUSTIVELY (OTV4TEST r35).
 
+v1.10 2026-10-03  OTV4TEST r204 (PREM.2) — ORCS JOINS THE TABLE: 09:45-10:30, cap 2 (one put spread, one call spread).
+      The operator, 2026-10-03: "I want to paper trade it Monday." A0, the window edges and the cap loop
+      cover it; B8 now names the TWO strategies that carry 2 (the sweep and ORCS).
 v1.9  2026-10-02  OTV4TEST r187 (ROSTER.1) — RUNAWAY, HUNT, BREAKOUT and VOLT RE-POINTED 15:40 -> 10:30, by
         ruling: "let's impose a 1029 debit cutoff rule, but exempts the GEX pin fly" (2026-10-02). The ORB row,
         both flies, SWEEP and TCS are unchanged. A8 now asserts those four are IN at 10:29 and OUT at 10:30, the
@@ -85,7 +88,7 @@ def check(name, ok, detail=""):
 
 def main():
     from execution.position_manager import decide, Facts, rules, gates, AdmissionRule
-    from execution.position_manager import ORB, RUNAWAY, HUNT, BREAKOUT, SWEEP, TCS, GEXFLY, ATPFLY, VOLT
+    from execution.position_manager import ORB, RUNAWAY, HUNT, BREAKOUT, SWEEP, TCS, GEXFLY, ATPFLY, VOLT, ORCS
 
     T = rules()
     # ⚠️ r78 — BREAKOUT WAS IN SPEC BUT NOT IN `ALL`, so every B-section cap
@@ -93,7 +96,7 @@ def main():
     #    stacked — 19 positions off one opening range — was the one this
     #    checker never asked about. Added; it is not a new belief, it is the
     #    belief SPEC already held going unexercised since r51.
-    ALL = [ORB, RUNAWAY, HUNT, BREAKOUT, SWEEP, TCS, GEXFLY, ATPFLY, VOLT]
+    ALL = [ORB, RUNAWAY, HUNT, BREAKOUT, SWEEP, TCS, GEXFLY, ATPFLY, VOLT, ORCS]
 
     def ok(strategy, hhmm, **kw):
         return decide(Facts(strategy=strategy, now_et=hhmm, orb_established=True, **kw))
@@ -128,6 +131,7 @@ def main():
         TCS:     (((11, 31), (15, 40)), 1, None),   # r148: the minute its plan opens (AFD.1)
         GEXFLY:  (((12, 0), (15, 0)), 1, 1),
         ATPFLY:  (((12, 0), (15, 0)), 1, 1),     # r179: was 11:30
+        ORCS:    (((9, 45), (10, 30)), 2, None),  # r204
     }
     # ⚠️ r76 — CAPS RESTATED FROM THE OPERATOR'S RULING, 2026-09-21: *"With
     # rare exception, there are no blocking TRADES and no maximum number of
@@ -195,10 +199,10 @@ def main():
     # Breakouts / $78,954 landed off ONE opening range in five minutes. The
     # contract is now the operator's sentence: ONE OF EACH, SWEEP ALONE AT TWO.
     _uncapped = {s for s in ALL if SPEC[s][1] is None}
-    check("B8 EVERY strategy is capped, and SWEEP ALONE carries 2",
+    check("B8 EVERY strategy is capped, and ONLY the sweep and ORCS carry 2",
           not _uncapped
-          and SPEC[SWEEP][1] == 2
-          and {SPEC[s][1] for s in ALL if s != SWEEP} == {1},
+          and SPEC[SWEEP][1] == 2 and SPEC[ORCS][1] == 2      # r204: ORCS is a put spread and a call spread
+          and {SPEC[s][1] for s in ALL if s not in (SWEEP, ORCS)} == {1},
           f"uncapped={sorted(_uncapped)}; "
           f"caps={ {s: SPEC[s][1] for s in ALL} }")
 

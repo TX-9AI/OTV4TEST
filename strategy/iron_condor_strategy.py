@@ -1,5 +1,7 @@
 """
-strategy/iron_condor_strategy.py  v4.12
+strategy/iron_condor_strategy.py  v4.13
+v4.13 2026-10-03  OTV4TEST r204 (PREM.2) — manage() does not count ORCS legs: they are held to the close by spec and the
+      condor ladder never acts on them (condor_roll v4.9), so the management row must not narrate them as a pair.
 v4.12 2026-09-09  OTV4TEST r12 — anchors on the formed row (record only): GEX between the
       shorts, VWAP distance.
 v4.11 2026-09-09  OTV4TEST r11 — THE LADDER IS TWO RUNGS AND THE ROLL IS PREPARED
@@ -396,7 +398,8 @@ class IronCondorStrategy(BaseOptionsStrategy):
         # the first leg of a condor that may form, and its row must say so.
         from strategy.structure import is_credit_vertical as _is_cv
         legs = [r for r in pos_mgr.get_open_records()
-                if r.get("is_condor_leg") or _is_cv(r)]
+                if (r.get("is_condor_leg") or _is_cv(r))
+                and str(r.get("strategy") or "") != "OpeningRangeCreditSpread"]   # r204: ORCS is not managed here
         t.check("legs", len(legs), len(legs) == 2)
         # r166 — the condor's r66 vector (VRP, channel over EM, fork) lives
         # again: written here every tick a leg is open, phase "manage".

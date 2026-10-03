@@ -1,5 +1,7 @@
 """
-execution/position_manager.py  v5.11
+execution/position_manager.py  v5.12
+v5.12 2026-10-03  OTV4TEST r204 (PREM.2) — ORCS JOINS THE ADMISSION TABLE: window config.ENTRY_WINDOWS (09:45-10:30), two of
+      the type (one put spread, one call spread), blocks nothing, NOT cap-exempt.
 v5.11 2026-10-03  OTV4TEST r195 (AUD.4) — THE EXIT QUOTE AND IV ARE WRITTEN AT THE CONFIRMED CLOSE. trade_logger's
       set_exit_contract had ZERO callers: exit_bid / exit_ask / exit_iv were empty on 237 of 237 closed trades
       (10-03 audit). _fetch_current_premium now notes the structure's bid, ask and IV on the record each tick
@@ -299,6 +301,7 @@ SWEEP = "SweepCreditSpread"
 TCS = "TrendCreditSpread"
 GEXFLY = "GEXPinButterfly"
 ATPFLY = "ATPButterfly"
+ORCS = "OpeningRangeCreditSpread"     # r204
 # r72 — VOLT (VOLume Trade), THE CONTROL ARM. Two gates and nothing else, in
 # the same window as the morning four, blocking nothing and blocked by nothing.
 # Its purpose is to make the OTHER strategies' gates measurable: if VOLT keeps
@@ -406,6 +409,8 @@ _DEFAULT_RULES = {
     # of that guard; `mark_pin_played` is the other.
     GEXFLY:  AdmissionRule(config.ENTRY_WINDOWS[GEXFLY], max_open_of_type=1, max_tries_per_session=1, cap_exempt=True),
     ATPFLY:  AdmissionRule(config.ENTRY_WINDOWS[ATPFLY], max_open_of_type=1, max_tries_per_session=1, cap_exempt=True),
+    # r204 — ORCS: one put spread and one call spread, so two of the type; it blocks nothing.
+    ORCS:    AdmissionRule(config.ENTRY_WINDOWS[ORCS], max_open_of_type=2),
 }
 
 
