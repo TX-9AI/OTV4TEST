@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-392 Python modules across 12 local packages.
+393 Python modules across 12 local packages.
 
-**Reached by:** 122 imported · 21 declared entry points · 169 referenced from a script, unit or doc but never imported · **80 by nothing here**.
+**Reached by:** 122 imported · 22 declared entry points · 169 referenced from a script, unit or doc but never imported · **80 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -40,7 +40,7 @@ isolated rather than being everywhere at once.
 - `analysis/market_state.py` - the structural state assembly.
   **Carries the vocabulary, classifies nothing.**
 
-**Where the evidence lives:** `tests/` holds 213 standing
+**Where the evidence lives:** `tests/` holds 214 standing
 checks (`check_*.py`, all run by `tools/boot_sweep.py` at boot)
 plus the studies that produced every threshold in
 `docs/TRADES.md`. **A number in a strategy file should be
@@ -61,8 +61,8 @@ Change these with the most care; a break here reaches everything downstream.
 | `derived/__init__.py` | 26 | atp_butterfly_plan.py, check_anchors.py, check_atp_butterfly.py, check_atp_pin_floor.py |
 | `execution/exit_engine.py` | 26 | check_breakout_exit_line.py, check_condor_mgmt.py, check_condor_sibling_default.py, check_condor_spec.py |
 | `execution/position_manager.py` | 24 | check_admission.py, check_admission_wired.py, check_atp_pin_floor.py, check_breakout.py |
+| `execution/__init__.py` | 23 | check_admission_wired.py, check_atp_pin_floor.py, check_breakout_exit_line.py, check_cap_fly_exempt.py |
 | `strategy/base_strategy.py` | 23 | atp_butterfly.py, breakout_plan.py, check_credit_remainder.py, check_entry_gate.py |
-| `execution/__init__.py` | 22 | check_admission_wired.py, check_atp_pin_floor.py, check_breakout_exit_line.py, check_cap_fly_exempt.py |
 | `data/options_chain.py` | 21 | base_strategy.py, check_entry_gate.py, check_eod_schedule.py, check_exit_quote.py |
 
 ## Every module
@@ -301,7 +301,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `execution/__init__.py`
 - **calls:** (none)
-- **called by:** `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `main.py`, `tests/check_admission_wired.py`, `tests/check_atp_pin_floor.py`, `tests/check_breakout_exit_line.py`, `tests/check_cap_fly_exempt.py`, `tests/check_credit_remainder.py`, `tests/check_db_handles.py`, `tests/check_eod_schedule.py`, `tests/check_exit_quote.py`, `tests/check_expiry_settlement.py`, `tests/check_fill_basis.py`, `tests/check_ladder_wired.py`, `tests/check_liquidity_hunt.py`, `tests/check_no_zero_price.py`, `tests/check_orb_geometry_size.py`, `tests/check_orb_sequence.py`, `tests/check_standing_offer.py`, `tests/check_sweep_stop.py`, `tests/check_vix_stamp.py`
+- **called by:** `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `main.py`, `tests/check_admission_wired.py`, `tests/check_atp_pin_floor.py`, `tests/check_breakout_exit_line.py`, `tests/check_cap_fly_exempt.py`, `tests/check_credit_remainder.py`, `tests/check_db_handles.py`, `tests/check_eod_schedule.py`, `tests/check_exit_quote.py`, `tests/check_expiry_settlement.py`, `tests/check_fill_basis.py`, `tests/check_ladder_wired.py`, `tests/check_liquidity_hunt.py`, `tests/check_no_zero_price.py`, `tests/check_offer_fill_price.py`, `tests/check_orb_geometry_size.py`, `tests/check_orb_sequence.py`, `tests/check_standing_offer.py`, `tests/check_sweep_stop.py`, `tests/check_vix_stamp.py`
 
 ### `execution/broker_reconcile.py`
 - **calls:** `config.py`, `utils/time_utils.py`
@@ -349,7 +349,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `execution/resting_orders.py`
 - **calls:** `analysis/orb_engine.py`, `config.py`, `data/tasty_client.py`, `database/trade_logger.py`, `execution/order_confirm.py`, `utils/time_utils.py`
-- **called by:** `execution/entry_engine.py`, `execution/position_manager.py`, `main.py`, `tests/check_db_handles.py`, `tests/check_orb_sequence.py`, `tests/check_standing_offer.py`
+- **called by:** `execution/entry_engine.py`, `execution/position_manager.py`, `main.py`, `tests/check_db_handles.py`, `tests/check_offer_fill_price.py`, `tests/check_orb_sequence.py`, `tests/check_standing_offer.py`
 
 ### `execution/tick_size.py`
 - **calls:** `config.py`
@@ -1019,6 +1019,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** (none)
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
+### `tests/check_offer_fill_price.py`
+- **calls:** `execution/__init__.py`, `execution/resting_orders.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
 ### `tests/check_oi_retry.py`
 - **calls:** (none)
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
@@ -1541,7 +1545,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tools/manifold_status.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+- **called by:** (entry point)
 
 ### `tools/open_scan.py`
 - **calls:** `utils/market_calendar.py`

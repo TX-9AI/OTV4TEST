@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-execution/resting_orders.py  v1.2
+execution/resting_orders.py  v1.3
+v1.3  2026-10-03  OTV4TEST r210 (AUD.9) — note_fill_price IS PUBLIC, for the paper filler. fill_price was 0 on 16 of 16
+      FILLED rows: only the live poll wrote it and every fill on this box is a paper fill, which closes the
+      offer at placement and never polls. entry_engine now notes the price paper booked. No behaviour change.
 v1.2  2026-09-25  OTV4TEST r143 — EVERY CONNECTION IS CLOSED. The block form committed and
       never closed - AAL held 44 leaked handles on resting_orders.db when it hit
       the 1024 file limit (see database/trade_logger.py v4.18). All 5 sites now
@@ -433,6 +436,11 @@ def _filled_qty(order_id: str, row: dict, *, paper: bool, price: float):
     except Exception as exc:                                    # noqa: BLE001
         logger.debug("[offer] %s poll failed: %s", order_id, exc)
         return None
+
+
+def note_fill_price(order_id: str, net: float) -> None:
+    """r210 — the public name: the paper filler notes the price it booked."""
+    _note_fill_price(order_id, net)
 
 
 def _note_fill_price(order_id: str, net: float) -> None:

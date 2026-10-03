@@ -1,5 +1,7 @@
 """
-execution/entry_engine.py  v4.11
+execution/entry_engine.py  v4.12
+v4.12 2026-10-03  OTV4TEST r210 (AUD.9) — the paper standing offer records the price it filled at (resting_orders.fill_price
+      was 0 on every row: 16 of 16). One call beside close_out; nothing else moves.
 v4.11 2026-10-03  OTV4TEST r208 (CAP.4) — after log_entry the record is handed to risk_manager.note_entry_risk: one
       log-only cap-counterfactual row per entry. Wrapped; it cannot affect the entry.
 v4.10 2026-09-13  OTV4TEST r17 — PRE.1: `_record_kwargs` writes `option_symbol` from
@@ -699,6 +701,7 @@ class EntryEngine:
                 self._record_offer(_ro, signal, contracts, mark, _oid, symbol)
                 _ro.note_seen_qty(_oid, int(contracts))
                 _ro.close_out(_oid, "FILLED", "paper: filled whole at mark")
+                _ro.note_fill_price(_oid, float(_fill))          # r210: the price paper booked
                 _mark_orb_confirmation_spent()
                 logger.info("[offer] PAPER STANDING %s x%d @ %.2f — filled "
                             "whole at the mark", symbol, contracts, _fill)

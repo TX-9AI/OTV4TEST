@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/gen_file_map.py  v4.13
+tests/gen_file_map.py  v4.14
+v4.14 2026-10-03  OTV4TEST r210 (AUD.9) — tools/manifold_status.py IS AN ENTRY POINT. r202 listed it as an orphan 'for the operator
+      to rule' and I called it dead; the operator, 2026-10-03: "manifold status is not 'dead'". It is his hand-run feed
+      check - a tool run by hand has no importer by design. One orphan fewer; nothing else changes.
 v4.13 2026-10-03  OTV4TEST r202 (MAP.6) — THE MAP'S PROSE IS COUNTED, NOT TYPED, AND NINE REAL ENTRY POINTS ARE
       DECLARED. The 10-03 audit: the drift check was green while the orientation block said "37 methods on
       ExitEngine" (55), "the eight standing checks" (210 check_*.py) and a dispatch order naming four
@@ -176,6 +179,7 @@ ENTRY_POINTS = {
     "tools/probe_candle_depth.py", # run THROUGH run_with_bot_env
     "tools/feed_capabilities.py",  # run THROUGH run_with_bot_env
     "warehouse/counter_pop.py",    # fleet S3 counter repair CLI (WA 38.3 DELETE.1)
+    "tools/manifold_status.py",    # r210 — the operator's hand-run feed check ("is the fire hose connected"); NOT dead (his correction, 2026-10-03)
     # CLI helpers, run by hand or by a script
     "analysis/get_orb_range.py",
     "utils/check_sdk.py",

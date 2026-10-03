@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""tests/check_map_accuracy.py — v1.2
+"""tests/check_map_accuracy.py — v1.3
 THE GENERATED MAPS ARE CHECKED FOR ACCURACY, NOT ONLY FOR FRESHNESS.
 
+v1.3  2026-10-03 — OTV4TEST r210 (AUD.9). M3 also requires tools/manifold_status.py - the operator's hand-run feed check,
+      which I had listed as dead ("manifold status is not 'dead'").
 v1.2  2026-10-03 — OTV4TEST r202 (MAP.6). M1-M3: THE FILE MAP'S PROSE. Its drift check was green while
       it said "37 methods on ExitEngine" (55) and "eight standing checks" (210): a generated file whose
       generator typed the numbers. M1/M2 compare the map's numbers with the tree; M3 requires the tools
@@ -218,7 +220,7 @@ def main():
         check("M2 the map's standing-check count is the number of tests/check_*.py",
               bool(m2) and int(m2.group(1)) == real_c, f"map says {m2.group(1) if m2 else None}, tests/ has {real_c}")
         tools_run = ["tools/agent_watch.py", "tools/agent_verdict.py", "tools/last_session.py",
-                     "tools/plan_board.py", "tools/run_with_bot_env.py"]
+                     "tools/plan_board.py", "tools/run_with_bot_env.py", "tools/manifold_status.py"]
         undecl = [p for p in tools_run if p not in fm.ENTRY_POINTS]
         check("M3 the agent's and the operator's tools are declared entry points", not undecl,
               "not declared: " + ", ".join(undecl))

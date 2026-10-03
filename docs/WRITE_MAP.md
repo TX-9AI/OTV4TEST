@@ -51,7 +51,7 @@ Regenerated in the land gate; a stale map fails `--check`.
 
 | table | created by | written by | read by |
 |---|---|---|---|
-| `resting_orders` | `execution/resting_orders.py` | `execution/resting_orders.py` (insert/update) | — |
+| `resting_orders` | `execution/resting_orders.py` | `execution/resting_orders.py` (insert/update) | `tests/check_offer_fill_price.py` |
 
 ## trades.db
 
@@ -63,6 +63,6 @@ Regenerated in the land gate; a stale map fails `--check`.
 ## Flags
 
 - **No writer** (0): none
-- **No external reader** (1): `resting_orders`
+- **No external reader** (0): none
 
 ⚠️ *No external reader* is not automatically a defect — a table written today for a study run in a month is exactly the point of the derived layer. It IS a defect when nobody ever intends to read it, and this list is where that question gets asked.
