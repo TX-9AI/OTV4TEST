@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-396 Python modules across 12 local packages.
+397 Python modules across 12 local packages.
 
-**Reached by:** 122 imported · 22 declared entry points · 172 referenced from a script, unit or doc but never imported · **80 by nothing here**.
+**Reached by:** 122 imported · 22 declared entry points · 173 referenced from a script, unit or doc but never imported · **80 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -40,7 +40,7 @@ isolated rather than being everywhere at once.
 - `analysis/market_state.py` - the structural state assembly.
   **Carries the vocabulary, classifies nothing.**
 
-**Where the evidence lives:** `tests/` holds 217 standing
+**Where the evidence lives:** `tests/` holds 218 standing
 checks (`check_*.py`, all run by `tools/boot_sweep.py` at boot)
 plus the studies that produced every threshold in
 `docs/TRADES.md`. **A number in a strategy file should be
@@ -57,7 +57,7 @@ Change these with the most care; a break here reaches everything downstream.
 | `strategy/plan.py` | 54 | atp_butterfly_plan.py, breakout_plan.py, check_anchors.py, check_atp_butterfly.py |
 | `database/trade_logger.py` | 44 | breakout_plan.py, check_atp_butterfly.py, check_breakout_new_extreme.py, check_cap_counterfactual.py |
 | `utils/time_utils.py` | 41 | alert_manager.py, broker_reconcile.py, check_bfly_vwap_band.py, check_butterfly_foundational.py |
-| `data/derived_store.py` | 31 | anchors.py, breakout_plan.py, check_bfly_vwap_band.py, check_derived_layer.py |
+| `data/derived_store.py` | 32 | anchors.py, breakout_plan.py, check_bfly_vwap_band.py, check_derived_layer.py |
 | `derived/__init__.py` | 27 | atp_butterfly_plan.py, check_anchors.py, check_atp_butterfly.py, check_atp_pin_floor.py |
 | `execution/exit_engine.py` | 26 | check_breakout_exit_line.py, check_condor_mgmt.py, check_condor_sibling_default.py, check_condor_spec.py |
 | `execution/position_manager.py` | 24 | check_admission.py, check_admission_wired.py, check_atp_pin_floor.py, check_breakout.py |
@@ -189,7 +189,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `data/derived_store.py`
 - **calls:** (none)
-- **called by:** `analysis/gate_report.py`, `derived/anchors.py`, `derived/gamma_regime.py`, `derived/registry.py`, `derived/snapshot.py`, `execution/exit_engine.py`, `main.py`, `strategy/breakout_plan.py`, `strategy/liquidity_hunt.py`, `strategy/plan.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_bfly_vwap_band.py`, `tests/check_derived_layer.py`, `tests/check_engine_status.py`, `tests/check_fork_closed_bars.py`, `tests/check_fork_invalidation.py`, `tests/check_indicator_votes.py`, `tests/check_level_engine_book.py`, `tests/check_level_flip.py`, `tests/check_level_source.py`, `tests/check_levels_in_play.py`, `tests/check_liquidity_hunt.py`, `tests/check_plan_heartbeat.py`, `tests/check_plan_prepares.py`, `tests/check_rails_book.py`, `tests/check_runaway_plan.py`, `tests/check_surface_columns.py`, `tests/check_tcs_narrates.py`, `tests/check_tcs_plan.py`, `tests/check_zones.py`
+- **called by:** `analysis/gate_report.py`, `derived/anchors.py`, `derived/gamma_regime.py`, `derived/registry.py`, `derived/snapshot.py`, `execution/exit_engine.py`, `main.py`, `strategy/breakout_plan.py`, `strategy/liquidity_hunt.py`, `strategy/plan.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_bfly_vwap_band.py`, `tests/check_derived_layer.py`, `tests/check_engine_status.py`, `tests/check_fork_closed_bars.py`, `tests/check_fork_invalidation.py`, `tests/check_indicator_votes.py`, `tests/check_level_defences.py`, `tests/check_level_engine_book.py`, `tests/check_level_flip.py`, `tests/check_level_source.py`, `tests/check_levels_in_play.py`, `tests/check_liquidity_hunt.py`, `tests/check_plan_heartbeat.py`, `tests/check_plan_prepares.py`, `tests/check_rails_book.py`, `tests/check_runaway_plan.py`, `tests/check_surface_columns.py`, `tests/check_tcs_narrates.py`, `tests/check_tcs_plan.py`, `tests/check_zones.py`
 
 ### `data/disk_watch.py`
 - **calls:** (none)
@@ -273,7 +273,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `derived/levels.py`
 - **calls:** `config.py`, `data/candle_feed.py`, `derived/__init__.py`, `derived/base.py`, `derived/forks.py`, `derived/level_book.py`, `derived/level_rules.py`, `derived/registry.py`
-- **called by:** `derived/anchors.py`, `derived/registry.py`, `strategy/breakout_plan.py`, `strategy/liquidity_hunt.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_fork_invalidation.py`, `tests/check_level_engine_book.py`, `tests/check_level_flip.py`, `tests/check_level_source.py`, `tests/check_levels_in_play.py`, `tests/check_rails_book.py`, `tests/check_zones.py`
+- **called by:** `derived/anchors.py`, `derived/registry.py`, `strategy/breakout_plan.py`, `strategy/liquidity_hunt.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_fork_invalidation.py`, `tests/check_level_defences.py`, `tests/check_level_engine_book.py`, `tests/check_level_flip.py`, `tests/check_level_source.py`, `tests/check_levels_in_play.py`, `tests/check_rails_book.py`, `tests/check_zones.py`
 
 ### `derived/notes.py`
 - **calls:** `analysis/order_flow.py`, `derived/base.py`, `strategy/plan.py`
@@ -905,6 +905,10 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_level_book.py`
 - **calls:** `derived/__init__.py`, `derived/level_book.py`, `derived/level_rules.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
+### `tests/check_level_defences.py`
+- **calls:** `data/derived_store.py`, `derived/levels.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_level_engine_book.py`

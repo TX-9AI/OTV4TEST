@@ -1,5 +1,13 @@
 """
-derived/levels.py  v6.7
+derived/levels.py  v6.8
+v6.8  2026-10-03  OTV4TEST r214 (LVL.18) — A LEVEL'S DEFENCES AND FAILURES ARE COUNTED, RECORD-ONLY, IN NEW COLUMNS. The
+      operator, 2026-10-03: "a sweep of a level is a successful defense. and any level that historically
+      repeats that process is a higher quality level", and "I would much rather have fewer levels if they're
+      higher quality". `_book_sync` now writes, per level, defended_count (the book's HELD events: price
+      went to or through it and closed back), failed_count (BREACHED), tested_count and last_defended_ts
+      over the tape the book reads. NEW columns, added here by ALTER: touch_count / closes_beyond stay
+      untouched (they have readers; the 10-03 audit B6 found them hard-coded 0 since r126), so NO plan,
+      board or strategy sees these numbers until he rules one should. A zone's event credits every member.
 v6.7  2026-10-01  OTV4TEST FLIP.1 — THE BOOK'S FLIPPED LEVELS ARE RECORDED, AND NO PLAN
       SEES ONE. `_book_sync` writes each flip to `level_ledger` ONCE, live or
       already retired (one that flipped and broke again between two syncs, or
@@ -986,6 +994,55 @@ class LevelEngine(DerivedEngine):
                 return name
         return "overnight"                        # 20:00 onward opens the next overnight
 
+    _DEF_COLS = (("defended_count", "INTEGER DEFAULT 0"), ("failed_count", "INTEGER DEFAULT 0"),
+                 ("tested_count", "INTEGER DEFAULT 0"), ("last_defended_ts", "REAL"))
+
+    def _record_defences(self, store, sym: str, book) -> int:
+        """r214 (LVL.18) — each level's biography in counts, from the book's own events.
+
+        HELD = price went to or through the level and closed back: a DEFENCE (the
+        operator's definition of a sweep). BREACHED = it failed. TESTED = touched.
+        RECORD-ONLY, in columns nothing reads. Rewritten only when a count moves.
+        Never raises: a failed write warns and the ledger is otherwise untouched."""
+        try:
+            if not getattr(self, "_def_ready", False):
+                have = {r[1] for r in store.conn.execute("PRAGMA table_info(level_ledger)")}
+                for col, typ in self._DEF_COLS:
+                    if col not in have:
+                        store.conn.execute(f"ALTER TABLE level_ledger ADD COLUMN {col} {typ}")
+                store.commit()
+                self._def_ready, self._def_written = True, {}
+            counts: dict = {}
+            for e in getattr(book, "events", None) or []:
+                ev = e.get("event")
+                if ev not in ("HELD", "BREACHED", "TESTED"):
+                    continue
+                for lid in e.get("level_ids") or ():
+                    c = counts.setdefault(lid, [0, 0, 0, None])
+                    if ev == "HELD":
+                        c[0] += 1
+                        c[3] = float(e["ts"]) / 1000.0
+                    elif ev == "BREACHED":
+                        c[1] += 1
+                    else:
+                        c[2] += 1
+            n = 0
+            for lid, c in counts.items():
+                t = tuple(c)
+                if self._def_written.get(lid) == t:
+                    continue
+                store.conn.execute(
+                    "UPDATE level_ledger SET defended_count=?, failed_count=?, tested_count=?,"
+                    " last_defended_ts=? WHERE level_id=? AND symbol=?", (c[0], c[1], c[2], c[3], lid, sym))
+                self._def_written[lid] = t
+                n += 1
+            if n:
+                store.commit()
+            return n
+        except Exception as exc:                                # noqa: BLE001
+            logger.warning("[level] defence counts not recorded: %s", exc)
+            return 0
+
     def _book_sync(self, sym: str) -> int:
         from derived import level_book as B
         from data.candle_feed import feed_db_path
@@ -1067,6 +1124,7 @@ class LevelEngine(DerivedEngine):
                 store.retire_level(lid, now, "NOT_A_LEVEL")
             retired += 1
         self._book_live = live_ids | flip_ids
+        self._record_defences(store, sym, book)                 # r214: counts, record-only
 
         # ── 2. fresh events, under the names every plan already reads ──
         import bisect
