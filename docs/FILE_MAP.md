@@ -337,7 +337,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `execution/limit_ladder.py`
 - **calls:** `config.py`, `execution/tick_size.py`
-- **called by:** `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `main.py`, `strategy/condor_roll.py`, `tests/check_eod_schedule.py`, `tests/check_no_zero_price.py`
+- **called by:** `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `main.py`, `strategy/condor_roll.py`, `tests/check_eod_schedule.py`, `tests/check_no_zero_price.py`, `tests/check_orcs.py`
 
 ### `execution/order_confirm.py`
 - **calls:** `config.py`
@@ -1080,7 +1080,7 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_orcs.py`
-- **calls:** `config.py`, `data/options_chain.py`, `database/trade_logger.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `main.py`, `strategy/__init__.py`, `strategy/condor_roll.py`, `strategy/orcs.py`, `strategy/orcs_plan.py`, `strategy/plan.py`
+- **calls:** `config.py`, `data/options_chain.py`, `database/trade_logger.py`, `execution/exit_engine.py`, `execution/limit_ladder.py`, `execution/position_manager.py`, `main.py`, `strategy/__init__.py`, `strategy/condor_roll.py`, `strategy/orcs.py`, `strategy/orcs_plan.py`, `strategy/plan.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/PLAN_SPEC.md`
 
 ### `tests/check_pairing_table.py`

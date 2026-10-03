@@ -1,5 +1,13 @@
 """
-strategy/orcs.py  v1.0
+strategy/orcs.py  v1.1
+v1.1  2026-10-03  OTV4TEST r206 (PREM.3) — THE ENTRY LADDER GOVERNS THE ENTRY. The operator, 2026-10-03: "No, we have a
+      ladder for entries. THAT has to govern our entry. 'One cent better' is not even a valid increment
+      on most contracts". The signal is priced at the MARK credit of the spread the plan located on THIS
+      tick, and the house credit entry prices the order: paper books the mark (limit_ladder.
+      paper_fill_credit), live walks the entry ladder. No frozen offer, no fill test here. A side is
+      signalled on every ready tick until trades.db shows it entered (an unfilled ladder re-signals -
+      the ladder's own doctrine); the plan is told which sides are taken.
+      THE v1.0 TEXT BELOW ABOUT AN OFFER "FILLED ON THIS TICK" AND "AT THE LIMIT" IS NO LONGER TRUE.
 v1.0  2026-10-03  OTV4TEST r204 (PREM.2) — THE OPENING RANGE CREDIT SPREAD (ORCS), THE STRATEGY (PLAN_SPEC §41).
       The operator, 2026-10-03: "I want to paper trade it Monday... Call this new one the opening range
       credit spread ORCS." And: "we get better than mark or we don't trade it."
@@ -48,27 +56,21 @@ class OpeningRangeCreditSpread:
             return True
 
     def generate_signals(self, *, price_now, now_et, chain=None, gap=None, informers=None,
-                         today: str = "", now_epoch: float = 0.0) -> list:
-        """Zero, one or two condor-leg-shaped signals: one per offer that filled on this tick."""
+                         today: str = "") -> list:
+        """Zero, one or two condor-leg-shaped signals: one per ready side, priced at the mark."""
+        taken = tuple(sd for sd in _op.SIDES if self._side_used(sd))
         prep = self.plan.prepare(price_now=price_now, now_et=now_et, chain=chain, gap=gap,
-                                 informers=informers, today=today, now_epoch=now_epoch)
+                                 informers=informers, today=today, taken=taken)
         out = []
-        if not prep.fills:
+        if not prep.ready:
             return out
         if not config.ORCS_ENABLED:
-            logger.info("[orcs] %d offer(s) filled at the mark - the trade is OFF (OT_ORCS=0), recorded only",
-                        len(prep.fills))
+            logger.info("[orcs] %s ready at the mark - the trade is OFF (OT_ORCS=0), recorded only",
+                        ", ".join(prep.ready))
             return out
-        for side, short_k, long_k, limit in prep.fills:
-            if self._side_used(side):
-                logger.info("[orcs] %s offer filled but the side is already used this session - no trade", side)
-                continue
-            short, long_c = _op.contracts_for(chain, side, short_k, long_k)
-            if short is None or long_c is None:
-                logger.warning("[orcs] %s offer filled but %g/%g is not on the chain now - no trade",
-                               side, short_k, long_k)
-                continue
-            out.append(self._build_signal(side, short, long_c, float(limit), float(price_now or 0.0)))
+        for side in prep.ready:
+            loc = prep.sides[side]
+            out.append(self._build_signal(side, loc.short, loc.long, float(loc.credit), float(price_now or 0.0)))
         return out
 
     def _build_signal(self, side, short, long_c, credit, price_now):
@@ -77,7 +79,7 @@ class OpeningRangeCreditSpread:
                             option_side=side, underlying_entry=price_now, underlying_stop=0.0)
         sig.is_credit_vertical = True
         sig.is_orcs = True
-        sig.net_credit = credit              # THE LIMIT: one cent better than the mark, by ruling
+        sig.net_credit = credit              # THE MARK; the entry ladder prices the order (r206)
         sig.entry_premium = credit
         if side == "call":
             sig.short_call_contract, sig.long_call_contract = short, long_c
@@ -86,6 +88,6 @@ class OpeningRangeCreditSpread:
         sig.contract = short
         sig.conviction = 1.0
         sig.condor_trigger_source = "orcs"
-        logger.info("[orcs] %s spread: short %g / long %g at %.2f (the limit) - held to the close, no stop",
+        logger.info("[orcs] %s spread: short %g / long %g, mark credit %.2f, to the entry ladder - held to the close, no stop",
                     side, float(short.strike), float(long_c.strike), credit)
         return sig

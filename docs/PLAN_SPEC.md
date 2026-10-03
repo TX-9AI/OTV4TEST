@@ -1,5 +1,6 @@
 # PLAN_SPEC.md — every strategy declares its intent BEFORE the trigger
 
+**v1.33 · 2026-10-03 · OTV4TEST r206 — PREM.3: ORCS entries are governed by the house entry ladder (§41.8); the plan's own offer (mark + one cent, ten-minute rest) is REMOVED by ruling. Where §41.1-§41.7 say 'offer', 'limit' or 'one cent better', §41.8 governs.**
 **v1.32 · 2026-10-03 · OTV4TEST r204 — PREM.2: §41 is now ORCS, the opening range credit spread, and it TRADES ON PAPER (§41.7); the sweep (§31) and the TCS (§34) are RETIRED by ruling, off behind OT_SWEEP_CS / OT_TCS_ACTIVE.**
 **v1.31 · 2026-10-03 · OTV4TEST r203 — PREM.1: §41, the opening premium spread - the spec, the trigger components, the preliminary dials, and a RECORD-ONLY plan that searches the chain for them. No order is placed.**
 **v1.30 · 2026-09-30 · OTV4TEST r179 — BFLY.9: the ATP fly qualifies on route A (PINNING, concentration ≥ 0.15; the pin fly keeps 0.25) or, only when A fails, route B (NOT TRENDING and the pin within ±0.05 × EM of VWAP), and its window is 12:00–15:00 in the table as well as in the plan (§39.1).**
@@ -1547,3 +1548,16 @@ The 28 priced sessions paid out about a third of what the 28 before them did; ag
 **Retired with it (r204):** the SweepCreditSpread (§31) and the TrendCreditSpread (§34). `main._safe_strategy` does not ask them; the board shows `retired`. `OT_SWEEP_CS=1` / `OT_TCS_ACTIVE=1` restore each exactly as it was. Their record on this box: 11 sweep trades, 11 losses (-1,053); the TCS never fired.
 
 **As built (OTV4TEST r204):** `strategy/orcs_plan.py` v1.1, `strategy/orcs.py` v1.0, `config.py` v4.51, `main.py` v4.82, `execution/exit_engine.py` v4.30, `execution/position_manager.py` v5.12, `strategy/condor_roll.py` v4.9, `strategy/iron_condor_strategy.py` v4.13. Gate `tests/check_orcs.py` O1-O8, T1-T7.
+
+### 41.8 r206 — THE ENTRY LADDER GOVERNS THE ENTRY (operator 2026-10-03; supersedes the offer in §41.1, §41.4, §41.5, §41.7)
+*"No, we have a ladder for entries. THAT has to govern our entry. 'One cent better' is not even a valid increment on most contracts."*
+
+| part | as built |
+|---|---|
+| what the plan does | locates both spreads every tick 09:45-10:30 and marks a side READY at its MARK credit when its gates pass. It prices nothing else and freezes nothing |
+| what prices the order | the house credit entry, `_execute_condor_leg`: PAPER books `limit_ladder.paper_fill_credit(mark)`; LIVE (still refused for ORCS) would walk the entry ladder down from the best credit and stop at the mark, on the contract's valid increments |
+| re-signal | a ready side is signalled every tick until trades.db shows it entered - the ladder's own doctrine: an entry that does not fill is simply not taken and the strategy re-signals |
+| removed | `ORCS_LIMIT_IMPROVE`, `ORCS_REST_MIN`, every `*_offer_*` check, the restart read of the offer, the 10:20 last-offer cutoff (the window is the whole 09:45-10:30) |
+| on the row | `put_taken` / `call_taken` when a side is already entered; the verdict is TAKE on a tick with a ready side |
+
+**As built (OTV4TEST r206):** `strategy/orcs_plan.py` v1.2, `strategy/orcs.py` v1.1, `config.py` v4.52, `main.py` v4.83 (wording). Gate `tests/check_orcs.py` v1.2.

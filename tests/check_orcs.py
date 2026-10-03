@@ -1,6 +1,24 @@
 #!/usr/bin/env python3
 """
-tests/check_orcs.py  v1.1
+tests/check_orcs.py  v1.2
+v1.2  2026-10-03  OTV4TEST r206 (PREM.3) — THE ENTRY LADDER GOVERNS THE ENTRY. The operator: "No, we have a ladder for
+      entries. THAT has to govern our entry. 'One cent better' is not even a valid increment on most
+      contracts". The plan's frozen offer is gone, so O5/O6 (frozen-and-watched, restart) are REPLACED and
+      O3, O4, O8, T1-T3 restated. AS OF v1.2 THE CHECKS ARE:
+  O1  location (unchanged)            O2  the implied-move floor (unchanged)
+  O3  priced at the MARK (mid minus mid), bid/ask credit beside it, both sides READY, the row is TAKE,
+      and NO offer_* check is written
+  O4  day gates: not 0DTE, a big gap, an unmeasured gap, 09:44 and 10:30 leave nothing ready
+  O5  NOTHING IS FROZEN: the located strikes follow spot tick by tick; a TAKEN side is recorded and is
+      not ready again while the other side still is
+  O8  the dials: five, and the two offer dials are GONE from config
+  T1  the first ready tick yields a put AND a call signal, each at its mark credit; once trades.db
+      shows both entered, nothing is signalled
+  T2  one per side from trades.db; ORCS_ENABLED off signals nothing
+  T3  the REAL _execute_condor_leg books paper at limit_ladder.paper_fill_credit(mark) - the house paper
+      rule - with stop 0; live is refused before the broker path
+  T4-T7 unchanged (exit hold, the roll, retired, admission)
+  THE v1.1 AND v1.0 LISTS BELOW DESCRIBE THE OFFER THAT r206 REMOVED.
 v1.1  2026-10-03  OTV4TEST r204 (PREM.2) — ORCS IS A TRADE: THE FILLED OFFER BECOMES ONE PAPER SPREAD, HELD TO THE CLOSE;
       THE SWEEP AND THE TCS ARE RETIRED. Renamed from check_orcs_plan.py (r203), whose O1-O6 and O8
       still drive the plan under its new name. NEW:
@@ -137,13 +155,13 @@ def main():
         P._DORMANT.pop("OpeningRangeCreditSpread", None)
         return st, M.ORCSPlan()
 
-    # ── O1 / O3 — location and pricing at spot 750.20, cheap straddle ───────
+    # ── O1 / O3 / O5 ────────────────────────────────────────────────────────
     st = None
     try:
         st, plan = fresh("a")
         ch = _chain(750.2, 1.0)
         P.begin_tick(t0)
-        prep = plan.prepare(price_now=750.2, now_et=_et(9, 45), chain=ch, gap=GAP, today=DAY, now_epoch=t0)
+        prep = plan.prepare(price_now=750.2, now_et=_et(9, 45), chain=ch, gap=GAP, today=DAY)
         p, c = prep.sides["put"], prep.sides["call"]
         got = (p.short and p.short.strike, p.long and p.long.strike, c.short and c.short.strike, c.long and c.long.strike)
         check("O1 put 746/738 and call 754/762: nearest strike with delta <= 0.15, long ~1% further",
@@ -151,55 +169,33 @@ def main():
         ms, s_ = _mid(ch, "P", 746); ml, l_ = _mid(ch, "P", 738)
         rows = _rows(st)
         want_credit, want_nat = round(ms - ml, 4), round(s_.bid - l_.ask, 4)
-        check("O3 put credit is mid minus mid; bid/ask credit beside it; the offer rests one cent better",
+        offer_rows = sorted(k for k in rows if "offer" in k)
+        check("O3 put credit is mid minus mid, bid/ask beside it, both sides READY, the row is TAKE, no offer rows",
               p.credit == want_credit and p.natural == want_nat
               and rows.get("put_credit") == (want_credit, "PASS")
               and rows.get("put_credit_natural", (None,))[0] == want_nat
-              and rows.get("put_offer_limit", (None,))[0] == round(want_credit + 0.01, 2)
-              and rows.get("put_offer_short", (None,))[0] == 746.0 and rows.get("put_ready", (0, ""))[1] == "PASS"
-              and sorted(prep.ready) == ["call", "put"] and _verdict(st)[0] == "HOLD",
-              f"credit {p.credit} want {want_credit}; natural {p.natural} want {want_nat}; "
-              f"limit {rows.get('put_offer_limit')}; verdict {_verdict(st)[0]}")
+              and rows.get("put_ready", (0, ""))[1] == "PASS" and rows.get("call_ready", (0, ""))[1] == "PASS"
+              and sorted(prep.ready) == ["call", "put"] and _verdict(st)[0] == "TAKE" and not offer_rows
+              and not hasattr(plan, "_offers"),
+              f"credit {p.credit} want {want_credit}; natural {p.natural} want {want_nat}; ready {prep.ready}; "
+              f"verdict {_verdict(st)[0]}; offer rows {offer_rows}")
 
-        # ── O5 — frozen and watched ─────────────────────────────────────────
         t1 = t0 + 120
         P.begin_tick(t1)
-        ch2 = _chain(752.2, 1.0)                              # spot moved 2 up: location moves, the offer must not
-        prep2 = plan.prepare(price_now=752.2, now_et=_et(9, 47), chain=ch2, gap=GAP, today=DAY, now_epoch=t1)
+        prep2 = plan.prepare(price_now=752.2, now_et=_et(9, 47), chain=_chain(752.2, 1.0), gap=GAP, today=DAY,
+                             taken=("call",))
         r2 = _rows(st, t1)
-        moved = prep2.sides["put"].short.strike
-        frozen = (r2.get("put_offer_short", (None,))[0], r2.get("put_offer_long", (None,))[0],
-                  r2.get("put_offer_limit", (None,))[0])
-        call_m = r2.get("call_offer_mark", (None,))[0]
-        call_lim = r2.get("call_offer_limit", (None,))[0]
-        # spot rose toward the call: its frozen spread got dearer and reaches the limit; the put got cheaper
-        ok5a = (moved == 748.0 and frozen == (746.0, 738.0, round(want_credit + 0.01, 2))
-                and call_m is not None and call_m >= call_lim
-                and r2.get("call_offer_filled_mark", (0, ""))[1] == "PASS"
-                and r2.get("put_offer_filled_mark", (0, ""))[1] == "FAIL")
-        t2 = t0 + 11 * 60
-        P.begin_tick(t2)
-        plan.prepare(price_now=750.2, now_et=_et(9, 56), chain=_chain(750.2, 1.0), gap=GAP, today=DAY, now_epoch=t2)
-        r3 = _rows(st, t2)
-        ok5b = (r3.get("put_offer_expired", (0, ""))[1] == "PASS" and r3.get("call_offer_expired", (0, ""))[1] == "FAIL"
-                and r3.get("put_offer_short", (None,))[0] == 746.0)
-        check("O5 the offer stays 746/738 while spot moves; the call fills at the mark; the put expires unfilled",
-              ok5a and ok5b, f"located put now {moved}, frozen {frozen}, call mark {call_m} vs {call_lim}, "
-                             f"filled {r2.get('call_offer_filled_mark')}/{r2.get('put_offer_filled_mark')}, "
-                             f"expired {r3.get('put_offer_expired')}/{r3.get('call_offer_expired')}")
-
-        # ── O6 — restart inside the window ──────────────────────────────────
-        P._DORMANT.pop("OpeningRangeCreditSpread", None)
-        plan_b = M.ORCSPlan()
-        t3 = t0 + 12 * 60
-        P.begin_tick(t3)
-        plan_b.prepare(price_now=753.0, now_et=_et(9, 57), chain=_chain(753.0, 1.0), gap=GAP, today=DAY, now_epoch=t3)
-        o = plan_b._offers
-        check("O6 a new plan on the same store restores 746/738 and 754/762 with the call still filled",
-              o.get("put", {}).get("short") == 746.0 and o.get("put", {}).get("limit") == round(want_credit + 0.01, 2)
-              and abs(o.get("put", {}).get("ts", 0) - t0) < 1 and o.get("call", {}).get("short") == 754.0
-              and o.get("call", {}).get("filled_mark") is True and o.get("put", {}).get("filled_mark") is False,
-              str(o))
+        check("O5 nothing is frozen: at 752.20 the put is 748/740; the TAKEN call is recorded and not ready",
+              prep2.sides["put"].short.strike == 748.0 and prep2.sides["put"].long.strike == 740.0
+              and prep2.ready == ["put"] and r2.get("call_taken", (0, ""))[1] == "PASS"
+              and r2.get("call_ready", (0, ""))[1] == "FAIL" and r2.get("put_ready", (0, ""))[1] == "PASS",
+              f"put {prep2.sides['put'].short.strike}/{prep2.sides['put'].long.strike}, ready {prep2.ready}, "
+              f"call_taken {r2.get('call_taken')}, call_ready {r2.get('call_ready')}")
+        P.begin_tick(t1 + 60)
+        prep3 = plan.prepare(price_now=752.2, now_et=_et(9, 48), chain=_chain(752.2, 1.0), gap=GAP, today=DAY,
+                             taken=("call", "put"))
+        check("O6 both sides taken: nothing ready, the row is HOLD",
+              prep3.ready == [] and _verdict(st)[0] == "HOLD", f"ready {prep3.ready}, verdict {_verdict(st)}")
     except Exception as exc:                                  # noqa: BLE001
         check("O1 (did not run)", False, f"{type(exc).__name__}: {exc}")
 
@@ -208,7 +204,7 @@ def main():
         st, plan = fresh("b")
         ch = _chain(750.2, 3.0)                               # straddle ~5.54 -> floor ~6.93: 746 (4.2 out) is too near
         P.begin_tick(t0)
-        prep = plan.prepare(price_now=750.2, now_et=_et(9, 45), chain=ch, gap=GAP, today=DAY, now_epoch=t0)
+        prep = plan.prepare(price_now=750.2, now_et=_et(9, 45), chain=ch, gap=GAP, today=DAY)
         im = prep.im
         p, c = prep.sides["put"], prep.sides["call"]
         check("O2 with a 5.54 straddle the shorts step out to 743 and 758 (>= 1.25 implied moves)",
@@ -221,24 +217,21 @@ def main():
     # ── O4 — day gates ──────────────────────────────────────────────────────
     try:
         out = []
-        for tag, kw, when, want_v, want_gate in (
-                ("c", {"chain": _chain(750.2, 1.0, expiry="2026-10-06"), "gap": GAP}, (9, 45), "DECLINE", "zero_dte"),
-                ("d", {"chain": _chain(750.2, 1.0), "gap": {"gap_abs_pct": 1.25}}, (9, 45), "DECLINE", "gap_abs_pct"),
-                ("e", {"chain": _chain(750.2, 1.0), "gap": None}, (9, 45), "DECLINE", "gap_abs_pct"),
-                ("f", {"chain": _chain(750.2, 1.0), "gap": GAP}, (9, 44), "DORMANT", "entry_window"),
-                ("g", {"chain": _chain(750.2, 1.0), "gap": GAP}, (10, 21), "HOLD", "no new offer this late; watching the resting offer(s). put 746/738 delta 0.12, 0.56% out, credit 0.18 at mark; call 754/762 delta 0.14, 0.51% out, credit 0.21 at mark (implied move 1.85)")):
+        cases = (("c", {"chain": _chain(750.2, 1.0, expiry="2026-10-06"), "gap": GAP}, (9, 45), "DECLINE", "zero_dte"),
+                 ("d", {"chain": _chain(750.2, 1.0), "gap": {"gap_abs_pct": 1.25}}, (9, 45), "DECLINE", "gap_abs_pct"),
+                 ("e", {"chain": _chain(750.2, 1.0), "gap": None}, (9, 45), "DECLINE", "gap_abs_pct"),
+                 ("f", {"chain": _chain(750.2, 1.0), "gap": GAP}, (9, 44), "DORMANT", "entry_window"),
+                 ("g", {"chain": _chain(750.2, 1.0), "gap": GAP}, (10, 30), "DORMANT", "entry_window"),
+                 ("h", {"chain": _chain(750.2, 1.0), "gap": GAP}, (10, 29), "TAKE", "READY at the mark, to the entry ladder"))
+        for tag, kw, when, want_v, want_gate in cases:
             st, plan = fresh(tag)
             ts = _et(*when).timestamp()
             P.begin_tick(ts)
-            prep = plan.prepare(price_now=750.2, now_et=_et(*when), today=DAY, now_epoch=ts, **kw)
+            prep = plan.prepare(price_now=750.2, now_et=_et(*when), today=DAY, **kw)
             v, why = _verdict(st)
-            out.append((tag, v, (why or "").split(":")[0], bool(plan._offers), bool(prep.ready)))
-        ok = all(v == wv and g == wg and not off and not rdy
-                 for (_t, v, g, off, rdy), (wv, wg) in zip(out, (("DECLINE", "zero_dte"), ("DECLINE", "gap_abs_pct"),
-                                                                ("DECLINE", "gap_abs_pct"), ("DORMANT", "entry_window"),
-                                                                ("HOLD", out[-1][2]))))
-        ok = ok and out[-1][2].startswith("no new offer this late")
-        check("O4 not 0DTE, a 1.25% gap, an unmeasured gap, 09:44 and 10:21 each leave no offer and nothing ready",
+            out.append((tag, v, (why or "").split(":")[0], bool(prep.ready)))
+        ok = all(v == c_[3] and g == c_[4] and rdy == (c_[3] == "TAKE") for (_t, v, g, rdy), c_ in zip(out, cases))
+        check("O4 not 0DTE, a 1.25% gap, an unmeasured gap, 09:44 and 10:30 leave nothing ready; 10:29 is still ready",
               ok, str(out))
     except Exception as exc:                                  # noqa: BLE001
         check("O4 (did not run)", False, f"{type(exc).__name__}: {exc}")
@@ -248,12 +241,13 @@ def main():
     # ── O8 — the dials ──────────────────────────────────────────────────────
     try:
         import config as C
-        got = (tuple(C.ENTRY_WINDOWS["OpeningRangeCreditSpread"][0]), tuple(C.ENTRY_WINDOWS["OpeningRangeCreditSpread"][1]), C.ORCS_SHORT_DELTA_MAX, C.ORCS_MIN_IM_MULT, C.ORCS_WING_PCT,
-               C.ORCS_MIN_CREDIT, C.ORCS_MAX_GAP_PCT, C.ORCS_LIMIT_IMPROVE, C.ORCS_REST_MIN)
-        want = ((9, 45), (10, 30), 0.15, 1.25, 0.01, 0.10, 0.90, 0.01, 10.0)
-        check("O8 config carries the window and the seven dials, ORCS is ON, and the plan reads the same values",
-              got == want and (M.ORCS_START_ET, M.ORCS_SHORT_DELTA_MAX, M.ORCS_REST_MIN) == ((9, 45), 0.15, 10.0)
-              and C.ORCS_ENABLED is True, f"{got}")
+        got = (tuple(C.ENTRY_WINDOWS["OpeningRangeCreditSpread"][0]), tuple(C.ENTRY_WINDOWS["OpeningRangeCreditSpread"][1]),
+               C.ORCS_SHORT_DELTA_MAX, C.ORCS_MIN_IM_MULT, C.ORCS_WING_PCT, C.ORCS_MIN_CREDIT, C.ORCS_MAX_GAP_PCT)
+        want = ((9, 45), (10, 30), 0.15, 1.25, 0.01, 0.10, 0.90)
+        gone = [n for n in ("ORCS_LIMIT_IMPROVE", "ORCS_REST_MIN") if hasattr(C, n) or hasattr(M, n)]
+        check("O8 config carries the window and five dials, ORCS is ON, and the two offer dials are GONE",
+              got == want and (M.ORCS_START_ET, M.ORCS_SHORT_DELTA_MAX) == ((9, 45), 0.15)
+              and C.ORCS_ENABLED is True and not gone, f"{got}, still present {gone}")
     except Exception as exc:                                  # noqa: BLE001
         check("O8 (did not run)", False, f"{type(exc).__name__}: {exc}")
 
@@ -273,48 +267,44 @@ def main():
 
         def run(sg, spot, hm, ts):
             P.begin_tick(ts)
-            return sg.generate_signals(price_now=spot, now_et=_et(*hm), chain=_chain(spot, 1.0), gap=GAP,
-                                       today=DAY, now_epoch=ts)
+            return sg.generate_signals(price_now=spot, now_et=_et(*hm), chain=_chain(spot, 1.0), gap=GAP, today=DAY)
 
-        # T1 — the fill tick
+        def book(tid, side, short, long_):
+            TLM._trade_logger.log_entry(make_record(
+                trade_id=tid, symbol="QQQ", strategy="OpeningRangeCreditSpread", setup_type=f"orcs_{side}",
+                direction="neutral", option_side=side, strike=short, short_strike=short, long_strike=long_,
+                spread_width=8.0, credit_received=0.2, contracts=1, entry_premium=0.2, total_cost=780.0,
+                max_loss=780.0, is_condor_leg=1, paper_trade=1, status="open", expiry=DAY))
+
+        # T1 — the first ready tick
         st, sg = strat("t1")
-        a = run(sg, 750.2, (9, 45), t0)                       # offers frozen: put 746/738, call 754/762
-        b = run(sg, 752.2, (9, 47), t0 + 120)                 # the call's mark reaches its limit
-        c = run(sg, 752.2, (9, 48), t0 + 180)
-        lim = sg.plan._offers["call"]["limit"]
-        ok1 = (a == [] and len(b) == 1 and c == [] and b[0].strategy_name == "OpeningRangeCreditSpread"
-               and b[0].option_side == "call" and b[0].net_credit == lim
-               and b[0].short_call_contract.strike == 754.0 and b[0].long_call_contract.strike == 762.0
-               and _verdict(st)[0] in ("HOLD", "TAKE"))
-        tk = st.conn.execute("SELECT COUNT(*) FROM plan_tick WHERE strategy='OpeningRangeCreditSpread' "
-                             "AND verdict='TAKE'").fetchone()[0]
-        check("T1 the fill tick yields ONE call signal at the limit on 754/762, the plan row is TAKE, then nothing",
-              ok1 and tk == 1, f"signals {len(a)},{len(b)},{len(c)}; take rows {tk}; "
-                               f"{b and (b[0].option_side, b[0].net_credit, lim)}")
-        sig_call = b[0] if b else None
+        a = run(sg, 750.2, (9, 45), t0)
+        ch0 = _chain(750.2, 1.0)
+        want = {"put": round(_mid(ch0, "P", 746)[0] - _mid(ch0, "P", 738)[0], 4),
+                "call": round(_mid(ch0, "C", 754)[0] - _mid(ch0, "C", 762)[0], 4)}
+        got = {x.option_side: x.net_credit for x in a}
+        strikes = {x.option_side: ((x.short_put_contract or x.short_call_contract).strike,
+                                   (x.long_put_contract or x.long_call_contract).strike) for x in a}
+        sig_call = next((x for x in a if x.option_side == "call"), None)
+        mark_call = want["call"]
+        check("T1 the first ready tick signals a put AND a call, each AT ITS MARK credit, on the located strikes",
+              got == want and strikes == {"put": (746.0, 738.0), "call": (754.0, 762.0)}
+              and all(x.strategy_name == "OpeningRangeCreditSpread" for x in a) and _verdict(st)[0] == "TAKE",
+              f"credits {got} want {want}; strikes {strikes}")
 
-        # T2 — one per side, and the switch
-        TLM._trade_logger.log_entry(make_record(
-            trade_id="orcs-open-call", symbol="QQQ", strategy="OpeningRangeCreditSpread", setup_type="orcs_call",
-            direction="neutral", option_side="call", strike=754.0, short_strike=754.0, long_strike=762.0,
-            spread_width=8.0, credit_received=0.2, contracts=1, entry_premium=0.2, total_cost=780.0,
-            max_loss=780.0, is_condor_leg=1, paper_trade=1, status="open", expiry=DAY))
-        st, sg = strat("t2")
-        run(sg, 750.2, (9, 45), t0)
-        used = run(sg, 752.2, (9, 47), t0 + 120)              # the call fills again - but the side is used
-        st, sg = strat("t2b")
-        run(sg, 750.2, (9, 45), t0)
-        putf = run(sg, 748.2, (9, 47), t0 + 120)              # spot falls: the PUT fills, and its side is free
-        st, sg = strat("t2c")
+        # T2 — one per side from trades.db, and the switch
+        book("orcs-open-call", "call", 754.0, 762.0)
+        only_put = run(sg, 750.2, (9, 46), t0 + 60)
         C.ORCS_ENABLED = False
         try:
-            run(sg, 750.2, (9, 45), t0)
-            off = run(sg, 748.2, (9, 47), t0 + 120)
+            off = run(sg, 750.2, (9, 47), t0 + 120)
         finally:
             C.ORCS_ENABLED = True
-        check("T2 an open ORCS call leg stops the call, not the put; ORCS_ENABLED off signals nothing",
-              used == [] and len(putf) == 1 and putf[0].option_side == "put" and off == [],
-              f"call-with-open-call {len(used)}, put {[(x.option_side) for x in putf]}, switched off {len(off)}")
+        book("orcs-open-put", "put", 746.0, 738.0)
+        none = run(sg, 750.2, (9, 48), t0 + 180)
+        check("T2 an open ORCS call leaves only the put; the switch off signals nothing; both open signals nothing",
+              [x.option_side for x in only_put] == ["put"] and off == [] and none == [],
+              f"with call open {[x.option_side for x in only_put]}, switched off {len(off)}, both open {len(none)}")
     except Exception as exc:                                  # noqa: BLE001
         check("T1 (did not run)", False, f"{type(exc).__name__}: {exc}")
         sig_call = None
@@ -326,6 +316,7 @@ def main():
         os.environ["OT_PAPER_TRADING"] = "1"
         import main
         import execution.position_manager as PMM
+        from execution.limit_ladder import paper_fill_credit as _pfc
         TLM._trade_logger = TradeLogger(os.path.join(_S, "exec", "trades.db")) if os.makedirs(
             os.path.join(_S, "exec"), exist_ok=True) is None else None
         PMM._position_manager = None
@@ -358,9 +349,9 @@ def main():
             main.get_risk_manager, main.get_alert_manager, main.entries_open, main._post_credit_vertical = saved
         rows = TLM._trade_logger.get_open_trades()
         r = rows[0] if rows else {}
-        check("T3 live is REFUSED; paper books OpeningRangeCreditSpread 754/762 at the limit with stop 0",
+        check("T3 live is REFUSED; paper books OpeningRangeCreditSpread 754/762 at paper_fill_credit(mark) with stop 0",
               live_rows == 0 and not posted and len(rows) == 1 and r.get("strategy") == "OpeningRangeCreditSpread"
-              and float(r.get("entry_premium") or 0) == sig_call.net_credit and float(r.get("stop_premium") or 0) == 0.0
+              and float(r.get("entry_premium") or 0) == _pfc(mark_call) == mark_call and float(r.get("stop_premium") or 0) == 0.0
               and float(r.get("short_strike") or 0) == 754.0 and float(r.get("long_strike") or 0) == 762.0
               and r.get("option_side") == "call",
               f"live rows {live_rows}, broker path reached {len(posted)}, paper rows {len(rows)}, {dict((k, r.get(k)) for k in ('strategy', 'entry_premium', 'stop_premium', 'short_strike'))}")
@@ -466,7 +457,7 @@ def main():
     if FAILED:
         print(f"\nRED — {len(FAILED)} check(s): {FAILED}")
         return 1
-    print("\nGREEN — ORCS finds its strikes, fills at the limit or not at all, is held to the close; sweep and TCS retired")
+    print("\nGREEN — ORCS finds its strikes, the house entry prices it, it is held to the close; sweep and TCS retired")
     return 0
 
 

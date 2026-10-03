@@ -1,5 +1,15 @@
 """
-strategy/orcs_plan.py  v1.1
+strategy/orcs_plan.py  v1.2
+v1.2  2026-10-03  OTV4TEST r206 (PREM.3) — THE ENTRY LADDER GOVERNS THE ENTRY; THE PLAN'S OWN OFFER IS REMOVED.
+      The operator, 2026-10-03, on r204's "freezes an offer one cent better than the mark": "No, we have a
+      ladder for entries. THAT has to govern our entry. 'One cent better' is not even a valid increment
+      on most contracts". REMOVED: the frozen offer, its limit (mark + ORCS_LIMIT_IMPROVE), the ten-minute
+      rest (ORCS_REST_MIN), the offer_* checks, the restart read of them, and the last-offer cutoff. NOW:
+      a side whose gates pass is READY at the MARK credit and the strategy hands it to the house credit
+      entry (_execute_condor_leg): paper books the mark through limit_ladder.paper_fill_credit; live
+      walks the entry ladder down from the best credit and stops at the mark, on valid increments. A
+      side already entered this session (the strategy reads trades.db) is recorded `taken`, not ready.
+      EVERYTHING BELOW ABOUT AN "OFFER" DESCRIBES r203/r204 AND IS NO LONGER TRUE.
 v1.1  2026-10-03  OTV4TEST r204 (PREM.2) — THE OPENING RANGE CREDIT SPREAD (ORCS): THE PLAN NOW FEEDS A TRADE.
       The operator, 2026-10-03: "No, keep going. I want to paper trade it Monday. Retire the sweep & TCS.
       Call this new one the opening range credit spread ORCS." Renamed from open_premium_plan.py (r203);
@@ -38,7 +48,6 @@ v1.0  2026-10-03  OTV4TEST r203 (PREM.1) — THE OPENING PREMIUM SPREAD PLAN, RE
 from __future__ import annotations
 
 import logging
-import time
 
 import config
 from strategy.plan import Plan
@@ -64,8 +73,6 @@ ORCS_MIN_IM_MULT     = float(config.ORCS_MIN_IM_MULT)
 ORCS_WING_PCT        = float(config.ORCS_WING_PCT)
 ORCS_MIN_CREDIT      = float(config.ORCS_MIN_CREDIT)
 ORCS_MAX_GAP_PCT     = float(config.ORCS_MAX_GAP_PCT)
-ORCS_LIMIT_IMPROVE   = float(config.ORCS_LIMIT_IMPROVE)
-ORCS_REST_MIN        = float(config.ORCS_REST_MIN)
 
 SIDES = ("put", "call")
 
@@ -78,16 +85,6 @@ def _hm(now_et):
         return int(h), int(m)
     except (ValueError, AttributeError, TypeError):
         return None
-
-
-def _session_open_epoch(now_et=None) -> float:
-    try:
-        from datetime import datetime
-        from zoneinfo import ZoneInfo
-        n = now_et if hasattr(now_et, "replace") else datetime.now(ZoneInfo("US/Eastern"))
-        return n.replace(hour=9, minute=30, second=0, microsecond=0).timestamp()
-    except Exception:                                           # noqa: BLE001
-        return 0.0
 
 
 def mark_of(c):
@@ -186,41 +183,20 @@ def locate(side: str, chain, spot: float, im: float) -> Located:
     return loc
 
 
-def spread_value(chain, side: str, short_k: float, long_k: float):
-    """(mark credit, bid/ask credit) of a FROZEN pair of strikes now, or (None, None)."""
-    contracts = list(getattr(chain, "puts" if side == "put" else "calls", None) or [])
-    by = {}
-    for c in contracts:
-        k = safe_float(getattr(c, "strike", None))
-        if k:
-            by[round(k, 4)] = c
-    s, l = by.get(round(float(short_k), 4)), by.get(round(float(long_k), 4))
-    if s is None or l is None:
-        return None, None
-    ms, ml = mark_of(s), mark_of(l)
-    sb, la = safe_float(getattr(s, "bid", None)), safe_float(getattr(l, "ask", None))
-    nat = round(sb - la, 4) if sb is not None and la is not None and la > 0 else None
-    return (round(ms - ml, 4) if ms is not None and ml is not None else None), nat
-
-
 class ORCSPreparation:
-    __slots__ = ("tick", "im", "atm", "sides", "ready", "offers", "why", "fills")
+    __slots__ = ("tick", "im", "atm", "sides", "ready", "why")
 
     def __init__(self, tick):
         self.tick = tick
         self.im = self.atm = None
         self.sides = {}
-        self.ready = []           # sides whose every gate passed this tick
-        self.offers = {}
+        self.ready = []           # sides whose every gate passed this tick and are not yet taken
         self.why = ""
-        self.fills = []           # sides whose offer FILLED ON THIS TICK: (side, short, long, limit)
 
 
 def _checks():
     per = ("short", "long", "delta", "dist_pct", "im_mult", "width", "credit", "credit_natural",
-           "credit_pct_width", "ready", "offer_short", "offer_long", "offer_limit", "offer_ts",
-           "offer_mark", "offer_natural", "offer_age_min", "offer_filled_mark", "offer_filled_natural",
-           "offer_expired")
+           "credit_pct_width", "ready", "taken")
     return tuple(f"{s}_{p}" for s in SIDES for p in per)
 
 
@@ -232,72 +208,21 @@ class ORCSPlan:
     def __init__(self, store=None):
         self.planner = Plan(self.name, self.PLAN_CHECKS, self_ledgers=True)
         self._store = store
-        self._offers: dict = {}           # side -> {"short","long","limit","ts","filled_mark","filled_natural"}
-        self._first_look_done = False
-
-    def _store_(self):
-        if self._store is not None:
-            return self._store
-        try:
-            return self.planner._store_ref()
-        except Exception:                                       # noqa: BLE001
-            return None
-
-    def _restore(self, since: float) -> None:
-        """The first look of this process: re-read today's frozen offers from this plan's own rows."""
-        st = self._store_()
-        if st is None or not since:
-            return
-        try:
-            from strategy.plan import ensure_tables
-            ensure_tables(st)                                   # a fresh store has no rows, not no table
-            rows = st.conn.execute(
-                "SELECT check_name, value, verdict, ts_epoch FROM plan_check WHERE strategy=? AND symbol=? "
-                "AND ts_epoch>=? AND check_name LIKE '%_offer_%' ORDER BY ts_epoch",
-                (self.name, self.planner.symbol, since)).fetchall()
-        except Exception as exc:                                # noqa: BLE001
-            logger.warning("[orcs] first-look read failed - no offer restored: %s", exc)
-            return
-        got = {}
-        for name, value, verdict, _ts in rows:
-            side, _, field = str(name).partition("_offer_")
-            if side not in SIDES:
-                continue
-            o = got.setdefault(side, {})
-            if field in ("short", "long", "limit", "ts") and value is not None:
-                o.setdefault(field, float(value))           # frozen: the FIRST value stands
-            elif field in ("filled_mark", "filled_natural") and verdict == "PASS":
-                o[field] = True
-        for side, o in got.items():
-            if all(k in o for k in ("short", "long", "limit", "ts")):
-                o.setdefault("filled_mark", False)
-                o.setdefault("filled_natural", False)
-                self._offers[side] = o
-                logger.info("[orcs] first look: %s offer %g/%g at %.2f restored from the plan's rows",
-                            side, o["short"], o["long"], o["limit"])
 
     def prepare(self, *, price_now, now_et, chain=None, gap=None, informers=None,
-                today: str = "", now_epoch: float = 0.0) -> ORCSPreparation:
+                today: str = "", taken=()) -> ORCSPreparation:
+        """Locate both spreads. `taken` names the sides already entered this session (the strategy's
+        read of trades.db); a taken side is recorded and is not ready again."""
         t = self.planner.tick(price_now)
         prep = ORCSPreparation(t)
         hm = _hm(now_et)
-        now_epoch = float(now_epoch or time.time())
-        if not self._first_look_done:
-            self._first_look_done = True
-            self._restore(_session_open_epoch(now_et))
         if hm is not None and hm < ORCS_START_ET:
-            t.dormant("entry_window", f"before ORCS_START_ET {ORCS_START_ET[0]:02d}:{ORCS_START_ET[1]:02d} - dormant")
+            t.dormant("entry_window", f"before {ORCS_START_ET[0]:02d}:{ORCS_START_ET[1]:02d} ET - dormant")
             return prep
-        live = [s for s, o in self._offers.items()
-                if not o.get("filled_mark") and (now_epoch - o["ts"]) / 60.0 <= ORCS_REST_MIN]
-        if hm is not None and hm >= ORCS_END_ET and not live:
-            t.dormant("entry_window", f"past ORCS_END_ET {ORCS_END_ET[0]:02d}:{ORCS_END_ET[1]:02d} - observing only")
+        if hm is not None and hm >= ORCS_END_ET:
+            t.dormant("entry_window", f"past {ORCS_END_ET[0]:02d}:{ORCS_END_ET[1]:02d} ET - observing only")
             return prep
-        in_window = hm is None or hm < ORCS_END_ET
-        # r204: a NEW offer only while a full rest still fits inside the window
-        _left = ((ORCS_END_ET[0] * 60 + ORCS_END_ET[1]) - (hm[0] * 60 + hm[1])) if hm is not None else ORCS_REST_MIN
-        may_offer = in_window and _left >= ORCS_REST_MIN
-        t.check("entry_window", None, in_window)
+        t.check("entry_window", None, True)
         spot = safe_float(price_now)
         if not spot or spot <= 0:
             t.starved("price"); return prep
@@ -341,10 +266,12 @@ class ORCSPlan:
 
         # ── the search, each side ────────────────────────────────────────────
         lines = []
+        taken = set(taken or ())
         for side in SIDES:
             loc = locate(side, chain, spot, im)
             prep.sides[side] = loc
-            lines.append(loc.line())
+            lines.append(loc.line() + (" [taken]" if side in taken else ""))
+            t.check(f"{side}_taken", None, None if side not in taken else True)
             if loc.short is not None:
                 t.check(f"{side}_short", float(loc.short.strike), True)
                 t.check(f"{side}_delta", round(loc.delta, 4), True)
@@ -361,42 +288,12 @@ class ORCSPlan:
                 if not rich:
                     loc.why = f"credit {loc.credit:.2f} at mark below the {ORCS_MIN_CREDIT:.2f} floor"
                     loc.why_key = f"{side}_credit"
-                ok = rich and not unmet and may_offer
+                ok = rich and not unmet and side not in taken
             elif loc.why_key:
                 t.check(loc.why_key, None, False, note=loc.why)
             t.check(f"{side}_ready", None, ok)
             if ok:
                 prep.ready.append(side)
-                if side not in self._offers:                    # the first ready tick freezes the offer
-                    self._offers[side] = {"short": float(loc.short.strike), "long": float(loc.long.strike),
-                                          "limit": round(loc.credit + ORCS_LIMIT_IMPROVE, 2), "ts": now_epoch,
-                                          "filled_mark": False, "filled_natural": False}
-                    logger.info("[orcs] %s OFFER: sell %g/%g at %.2f, mark %.2f, "
-                                "resting %g min", side, loc.short.strike, loc.long.strike,
-                                self._offers[side]["limit"], loc.credit, ORCS_REST_MIN)
-
-        # ── the offers: frozen, then watched ─────────────────────────────────
-        for side, o in self._offers.items():
-            age = (now_epoch - o["ts"]) / 60.0
-            t.check(f"{side}_offer_short", o["short"], None)
-            t.check(f"{side}_offer_long", o["long"], None)
-            t.check(f"{side}_offer_limit", o["limit"], None)
-            t.check(f"{side}_offer_ts", o["ts"], None)
-            t.check(f"{side}_offer_age_min", round(age, 2), None)
-            if age <= ORCS_REST_MIN and age > 0:
-                m, nat = spread_value(chain, side, o["short"], o["long"])
-                t.check(f"{side}_offer_mark", m, None)
-                t.check(f"{side}_offer_natural", nat, None)
-                if m is not None and m >= o["limit"] - 1e-9 and not o["filled_mark"]:
-                    o["filled_mark"] = True
-                    if not unmet:                               # r204: the fill the strategy trades
-                        prep.fills.append((side, o["short"], o["long"], o["limit"]))
-                if nat is not None and nat >= o["limit"] - 1e-9:
-                    o["filled_natural"] = True
-            t.check(f"{side}_offer_filled_mark", None, bool(o["filled_mark"]))
-            t.check(f"{side}_offer_filled_natural", None, bool(o["filled_natural"]))
-            t.check(f"{side}_offer_expired", None, age > ORCS_REST_MIN and not o["filled_mark"])
-        prep.offers = {s: dict(o) for s, o in self._offers.items()}
 
         head = "; ".join(lines) + f" (implied move {im:.2f})"
         if unmet:
@@ -405,33 +302,14 @@ class ORCSPlan:
             t.refuse(gate, f"{why}. Located: {head}")
             return prep
         if not prep.ready:
-            first = next((l for l in prep.sides.values() if l.why_key), None)
-            prep.why = first.why if first else "no side ready"
-            if prep.fills:
-                t.hold("FILLED at the limit: " + "; ".join(f"{s} {a:g}/{b:g} at {l:.2f}" for s, a, b, l in prep.fills)
-                       + f". {head}", verdict="TAKE")
-            elif first:
+            first = next((l for s_, l in prep.sides.items() if l.why_key and s_ not in taken), None)
+            if first:
+                prep.why = first.why
                 t.refuse(first.why_key, f"{first.why}. Located: {head}")
             else:
-                t.hold(f"no new offer this late; watching the resting offer(s). {head}")
+                prep.why = "both sides taken" if taken else "no side ready"
+                t.hold(f"{prep.why} - held to the close. {head}")
             return prep
         t.direction = "neutral"
-        offers = "; ".join(f"{s} offer {o['short']:g}/{o['long']:g} at {o['limit']:.2f}"
-                           f"{' FILLED at mark' if o['filled_mark'] else ''}" for s, o in self._offers.items())
-        if prep.fills:
-            t.hold("FILLED at the limit: " + "; ".join(f"{s} {a:g}/{b:g} at {l:.2f}" for s, a, b, l in prep.fills)
-                   + f". {head}", verdict="TAKE")
-            return prep
-        t.hold(f"Ready: {', '.join(prep.ready)}. {head}. {offers}")
+        t.hold(f"READY at the mark, to the entry ladder: {', '.join(prep.ready)}. {head}", verdict="TAKE")
         return prep
-
-
-def contracts_for(chain, side: str, short_k: float, long_k: float):
-    """The two contract objects of a frozen offer, off the live chain, or (None, None)."""
-    contracts = list(getattr(chain, "puts" if side == "put" else "calls", None) or [])
-    by = {}
-    for c in contracts:
-        k = safe_float(getattr(c, "strike", None))
-        if k:
-            by[round(k, 4)] = c
-    return by.get(round(float(short_k), 4)), by.get(round(float(long_k), 4))

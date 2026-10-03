@@ -1,5 +1,8 @@
 """
-config.py  v4.51
+config.py  v4.52
+v4.52 2026-10-03  OTV4TEST r206 (PREM.3) — ORCS_LIMIT_IMPROVE and ORCS_REST_MIN are REMOVED. The operator: "we have a ladder
+      for entries. THAT has to govern our entry." ORCS no longer prices or rests its own offer; the house credit
+      entry does (paper: the mark; live: the entry ladder).
 v4.51 2026-10-03  OTV4TEST r204 (PREM.2) — ORCS IS A TRADE; THE SWEEP AND THE TCS ARE RETIRED. The operator, 2026-10-03: "I want
       to paper trade it Monday. Retire the sweep & TCS. Call this new one the opening range credit spread ORCS."
       ENTRY_WINDOWS gains OpeningRangeCreditSpread 09:45-10:30; the r203 OPS_* dials are renamed ORCS_* (values
@@ -1269,7 +1272,8 @@ DEPLOY_CAP_MULT = float(os.environ.get("OT_DEPLOY_CAP_MULT", "2.0"))
 # better than mark or we don't trade it"; then "I want to paper trade it Monday
 # ... Call this new one the opening range credit spread ORCS." Each value is
 # where the 10-03 studies (X5-X8, QQQ 0DTE, 28 priced sessions) were positive
-# in BOTH halves at mid fills. NOT PROVEN - those sessions were calm. The
+# in BOTH halves at mid fills. NOT PROVEN - those sessions were calm. ENTRY
+# PRICING IS THE HOUSE ENTRY LADDER'S (r206, his ruling), not a dial here. The
 # window is ENTRY_WINDOWS["OpeningRangeCreditSpread"] (09:45-10:30).
 ORCS_ENABLED         = os.environ.get("OT_ORCS", "1") == "1"   # the TRADE; =0 leaves the plan recording only
 ORCS_SHORT_DELTA_MAX = 0.15       # delta 0.15: R +0.036/+0.029; delta 0.20 lost its holdout half
@@ -1277,8 +1281,6 @@ ORCS_MIN_IM_MULT     = 1.25       # and at least 1.25 implied moves (ATM straddl
 ORCS_WING_PCT        = 0.01       # long leg ~1% of spot further out (what every study priced)
 ORCS_MIN_CREDIT      = 0.10       # at the mark; below a dime one cent of slip is over 10%
 ORCS_MAX_GAP_PCT     = 0.90       # |overnight gap| %, the one informer that agreed on both samples
-ORCS_LIMIT_IMPROVE   = 0.01       # the offer rests this much BETTER than the mark (his ruling)
-ORCS_REST_MIN        = 10.0       # minutes the offer rests; unfilled = no trade
 
 # ── SWEEP CREDIT SPREAD (v4.0) ─────────────────────────────────────────────
 # Operator's spec, 2026-08-20: *"The only 2 ways I want out of this trade is a

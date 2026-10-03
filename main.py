@@ -1,5 +1,8 @@
 """
-main.py  v4.82
+main.py  v4.83
+v4.83 2026-10-03  OTV4TEST r206 (PREM.3) — _attempt_orcs wording only: ORCS signals are priced at the mark and the house
+      credit entry (_execute_condor_leg: paper the mark, live the entry ladder) governs the fill. No logic
+      change in this file.
 v4.82 2026-10-03  OTV4TEST r204 (PREM.2) — ORCS TRADES ON PAPER; THE SWEEP AND THE TCS ARE RETIRED. The operator: "I want to
       paper trade it Monday. Retire the sweep & TCS. Call this new one the opening range credit spread ORCS."
       _attempt_orcs asks strategy/orcs.py inside the entry dispatch (admission, the cap and the entry gate all
@@ -1556,7 +1559,7 @@ def _retired_reason(name: str) -> str:
 
 
 def _attempt_orcs(ctx: dict, state) -> None:
-    """r204 — ask ORCS and execute each offer that filled at its limit on this tick. Never raises."""
+    """r204/r206 — ask ORCS and hand each ready side to the house credit entry. Never raises."""
     if _orcs_strategy is None:
         return
     try:
