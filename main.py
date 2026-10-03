@@ -1,5 +1,13 @@
 """
-main.py  v4.78
+main.py  v4.79
+v4.79 2026-10-03  OTV4TEST r196 (AUD.5) — THE VOLATILITY MEASURES ARE ON ctx BEFORE THE DERIVED ENGINES RUN. The
+      realised-vol / VRP / expected-move summary sat in _apply_derived_ports, which runs AFTER run_all, so the
+      character engine sampled realised_vol_cc and realised_vol_parkinson as None on every tick: vol_ratio,
+      close_capture and both realised vols NULL on 3,580 of 3,580 character_axis_sample rows since 09-12 (the
+      10-03 audit) - the data the day-type bands were to be fitted on. The block is MOVED into
+      _apply_vol_ports and called before run_all (r133's fix for the chain and GEX, a third input). The fire
+      snapshot and plan stamps taken inside run_all now see the same values too. Record-only: no gate reads
+      a character state while BANDS_SET is False.
 v4.78 2026-09-30  OTV4TEST r178 (CAP.2) — AT THE DAILY CATASTROPHIC LOSS CAP THE TWO BUTTERFLIES ARE STILL ASKED. The operator, 2026-09-30: "Allow both flies to fire even if we've hit the cap. Only one of each TYPE per session, not one butterfly per session." attempt_new_entry no longer returns at is_halted(): it runs the session gate and the admission table (position_manager v5.9 refuses every strategy but a cap-exempt one on the cap), then asks ONLY `_attempt_butterfly` and returns - no other strategy is reached. FAILS CLOSED: if the admission table cannot be computed while capped, nothing is asked. One of each type per session was already the rule (r85) and is unchanged.
 v4.77 2026-09-29  OTV4TEST r175 (SYM.1) — main() REFUSES A SYMBOL THAT IS NOT ON THE LIST (config.INSTRUMENT_LISTED), exit 78 like r146's unset refusal and before any login or alert. Until now an unlisted OT_INSTRUMENT traded on a silent $1 strike step (STRIKE_INCREMENTS.get(INSTRUMENT, 1)).
 v4.76 2026-09-27  OTV4TEST r168 (EXP.1 item 3) — THE HEARTBEAT. `_touch_heartbeat` writes data/BOT_HEARTBEAT at the top of every main-loop pass (never raises; a failed write warns once), read by the new out-of-process emergency watchdog as its liveness signal. Nothing that trades, sizes or exits is touched.
@@ -2049,6 +2057,8 @@ def run_analysis(state: BotState, chain=None) -> dict:
         logger.debug("pre-analysis gex: %s", exc)
         ctx.setdefault("gex", None)
 
+    _apply_vol_ports(ctx)      # r196: BEFORE the engines, so the character engine can read them
+
     try:
         engines = getattr(state, "derived_engines", None)
         # Published on ctx so the fire-snapshot path can reach them from any
@@ -2063,15 +2073,18 @@ def run_analysis(state: BotState, chain=None) -> dict:
     return ctx
 
 
-def _apply_derived_ports(ctx: dict, state: "BotState", engines) -> None:
-    """Lift derived values into ctx. NEVER raises — see the block above.
+def _apply_vol_ports(ctx: dict) -> None:
+    """Realised vol, VRP and the decaying expected move onto ctx. NEVER raises.
 
-    ⚠️ CHARM, VANNA AND GEX ARE UNIVERSAL PORTS — operator, 2026-08-22: they
-    must contribute to every strategy where they could meaningfully
-    contribute. They are derived ONCE and offered to all engines rather than
-    recomputed per strategy, because two consumers computing the same quantity
-    at different points in a tick can legitimately disagree, and that is a bug
-    nobody would ever find.
+    🔴 r196 (AUD.5) — CALLED BEFORE THE DERIVED ENGINES RUN. It lived at the top
+    of `_apply_derived_ports`, which runs AFTER `run_all(engines, ctx)`, so the
+    character engine read ctx["realised_vol_cc"] / ["realised_vol_parkinson"]
+    while they were still the setdefault(None) above: character_axis_sample's
+    vol_ratio, close_capture and both realised vols were NULL on 3,580 of 3,580
+    rows from 2026-09-12 to 2026-10-03 (the 10-03 audit) - the data the
+    day-type bands were to be fitted on. The same order defect r133 fixed for
+    the chain and GEX. Nothing here reads an engine: bars, spot and atm_iv are
+    all on ctx before the engines run. The block is MOVED, not copied.
     """
     from analysis import volatility_measures as _vm
 
@@ -2092,6 +2105,19 @@ def _apply_derived_ports(ctx: dict, state: "BotState", engines) -> None:
     except Exception as exc:                                   # noqa: BLE001
         logger.debug("vol measures unavailable: %s", exc)
 
+
+def _apply_derived_ports(ctx: dict, state: "BotState", engines) -> None:
+    """Lift derived values into ctx. NEVER raises — see the block above.
+
+    ⚠️ CHARM, VANNA AND GEX ARE UNIVERSAL PORTS — operator, 2026-08-22: they
+    must contribute to every strategy where they could meaningfully
+    contribute. They are derived ONCE and offered to all engines rather than
+    recomputed per strategy, because two consumers computing the same quantity
+    at different points in a tick can legitimately disagree, and that is a bug
+    nobody would ever find.
+    """
+    # r196 (AUD.5): the volatility measures moved to `_apply_vol_ports`, which
+    # run_analysis calls BEFORE the engines run - see its docstring.
     # Fork tilt from the most recent stored row for the condor's anchor frame.
     # ⚠️ READ FROM `fork_series`, NOT REBUILT. The row already carries slope,
     # atr_at_birth and the reject reason, so this survives a restart and costs

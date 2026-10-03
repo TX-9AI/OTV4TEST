@@ -13,7 +13,7 @@ Regenerated in the land gate; a stale map fails `--check`.
 
 | table | created by | written by | read by |
 |---|---|---|---|
-| `character_axis_sample` | `derived/character_engine.py` | `derived/character_engine.py` (insert), `warehouse/retention_purge.py` (delete) | `warehouse/s3_push.py` |
+| `character_axis_sample` | `derived/character_engine.py` | `derived/character_engine.py` (insert), `warehouse/retention_purge.py` (delete) | `tests/check_chain_ordering.py`, `warehouse/s3_push.py` |
 | `character_ledger` | `derived/character_engine.py` | `derived/character_engine.py` (insert/update) | `warehouse/s3_push.py` |
 | `derived_engine_status` | `derived/base.py` | `derived/base.py` (insert) | `tools/manifold_health.py` |
 | `exit_counterfactual` | `derived/counterfactual.py` | `derived/counterfactual.py` (insert) | `warehouse/s3_push.py` |

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""check_chain_ordering.py — v1.2
+"""check_chain_ordering.py — v1.3
+v1.3  2026-10-03  OTV4TEST r196 (AUD.5) — C13/C14: THE VOLATILITY MEASURES REACH THE ENGINES. They were
+      computed after run_all, so character_axis_sample's realised vols, vol_ratio and close_capture were
+      NULL on 3,580 of 3,580 rows. C13 pins the order in run_analysis; C14 drives the real port into the
+      real CharacterEngine on a scratch store and reads the row it writes.
 v1.2  2026-09-18  OTV4TEST r41 — C7 re-pointed: the board's verdict for an
       unasked strategy is now INACTIVE (operator's status ruling), and C7 asserted
       the literal string. The RULE it guards — no strategy vanishes from plan_tick
@@ -188,6 +192,59 @@ def main():
     check("C12 condor_triggers is published BEFORE run_all",
           i_ctm != -1 and i_ra != -1 and i_ctm < i_ra,
           f"set@{i_ctm} run_all@{i_ra}")
+
+    # 🔴 r196 (AUD.5) — AND THE VOLATILITY MEASURES: THE THIRD INPUT WITH THE CHAIN'S
+    # DEFECT. They were computed in _apply_derived_ports, AFTER run_all, so the
+    # character engine sampled realised_vol_cc / parkinson as None on every row.
+    i_vol = _rb.find("_apply_vol_ports(ctx)")
+    check("C13 the volatility measures are put on ctx BEFORE run_all",
+          i_vol != -1 and i_ra != -1 and i_vol < i_ra, f"vol@{i_vol} run_all@{i_ra}")
+
+    # C14 — DRIVEN: the REAL vol port feeds the REAL character engine a sample it
+    # can store. Synthetic 5m bars with real movement; a scratch store.
+    try:
+        import glob as _g
+        for _sp in _g.glob(os.path.join(_root, "venv", "lib", "python*", "site-packages")):
+            if _sp not in sys.path:
+                sys.path.insert(1, _sp)                       # r106 venv bootstrap
+        import tempfile as _tf
+        _d = _tf.mkdtemp(prefix="check_chain_ordering_")
+        for _k, _f in (("OT_TRADES_DB", "trades.db"), ("OT_DERIVED_DB", "d.db"), ("OT_RESTING_DB", "r.db")):
+            os.environ.setdefault(_k, os.path.join(_d, _f))
+        os.environ.setdefault("OT_SIGNAL_JOURNAL_DIR", os.path.join(_d, "sj"))
+        os.environ.setdefault("OT_LOG_FILE", os.path.join(_d, "bot.log"))
+        os.environ.setdefault("OT_INSTRUMENT", "QQQ")
+        import pandas as pd
+        import main as _main
+        from derived.character_engine import CharacterEngine
+
+        class _St:
+            def __init__(self, path):
+                self.conn = sqlite3.connect(path)
+
+            def commit(self):
+                self.conn.commit()
+        px = [100.0 + 0.4 * ((i * 7) % 5) + 0.05 * i for i in range(60)]
+        df = pd.DataFrame({"open": px, "high": [p + 0.3 for p in px], "low": [p - 0.3 for p in px],
+                           "close": [p + 0.1 for p in px], "volume": [1000] * 60})
+        port = getattr(_main, "_apply_vol_ports", None)
+
+        def sample(with_port):
+            st = _St(os.path.join(_d, "axis_%d.db" % int(with_port)))
+            ctx = {"df_5m": df, "price": px[-1], "atm_iv": None,
+                   "realised_vol_cc": None, "realised_vol_parkinson": None}
+            if with_port and port is not None:
+                port(ctx)
+            CharacterEngine(store=st, symbol="QQQ").derive(ctx)
+            return st.conn.execute("SELECT efficiency, realised_vol_cc, realised_vol_parkinson, close_capture"
+                                   " FROM character_axis_sample").fetchone()
+        got, old = sample(True), sample(False)
+        check("C14 DRIVEN: after the vol port the character engine stores realised vol and close_capture",
+              port is not None and got is not None and got[1] is not None and got[2] is not None
+              and got[3] is not None and old is not None and old[1] is None,
+              f"port={'present' if port else 'ABSENT'} with={got} without={old}")
+    except Exception as exc:                                    # noqa: BLE001
+        check("C14 (did not run)", False, f"{type(exc).__name__}: {exc}")
 
     print()
     if _fails:
