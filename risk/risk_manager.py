@@ -1,5 +1,9 @@
 """
-risk/risk_manager.py  v4.9
+risk/risk_manager.py  v4.10
+v4.10 2026-10-03  OTV4TEST r190 (AUD.1, SHARED WITH otv4 CND.12) — _ensure_seeded marks itself seeded
+      only after a successful read, and warns and retries on failure (it set the flag first, swallowed
+      the error and never retried). The halt itself is unaffected: is_halted reads the DB on every call.
+      Function text verbatim with otv4 (getsource b212705d...). Pinned by tests/check_risk_seed_retry.py.
 v4.9 2026-09-30  OTV4TEST r181 (ALRT.2) — THE CAP PAGE IS ONCE PER EPISODE ACROSS A
       RESTART. 2026-09-29 16:01 ET the r175 restart re-sent the 11:08 cap page: a
       fresh process starts un-halted, reads the day's realized loss, sees the
@@ -718,15 +722,20 @@ class RiskManager:
         halt survives restarts within the same session."""
         if self._seeded:
             return
-        self._seeded = True
+        # 🔴 CND.12 — _seeded was set BEFORE the read and the error swallowed,
+        # so one unreadable DB at boot left session P&L at 0 for the whole
+        # session with no retry. It is set only once the read SUCCEEDS; a
+        # failure is logged and retried on the next call. (The daily-loss halt
+        # itself is unaffected: is_halted() re-reads the DB on every call.)
         try:
             from database.trade_logger import get_trade_logger
             summary = get_trade_logger().today_summary()
             self._session_pnl_usd = float(summary.get("total_pnl", 0.0) or 0.0)
             if self._session_pnl_usd <= -self._daily_loss_limit:
                 self._session_halted = True
-        except Exception:
-            pass
+            self._seeded = True
+        except Exception as exc:                                # noqa: BLE001
+            logger.warning(f"risk seed: today's P&L unreadable ({exc}) — will retry")
 
     def record_loss(self, pnl_usd: float = 0.0):
         self._session_losses += 1

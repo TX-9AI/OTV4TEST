@@ -1,5 +1,12 @@
 """
-execution/exit_engine.py  v4.28
+execution/exit_engine.py  v4.29
+v4.29 2026-10-03  OTV4TEST r190 (AUD.1, SHARED WITH otv4 CND.11 + TICK.1) — TWO FIXES FROM THE 10-03 AUDIT.
+      (1) _condor_sibling_open's except returns `default`, not True. Both stop paths (TCS and the credit
+      vertical) ask default=False so a probe error keeps the stop ARMED on a lone vertical; they got True,
+      read "hedged", and the stop was SUPPRESSED. Function text verbatim with otv4 (getsource 2df83d77...).
+      (2) An SPX/SPXW SINGLE-LEG close limit at or above $3.00 rounds to $0.10 (_round_to_tick(...,
+      single_leg=True), only at _close_single_leg). Spreads, flies, XSP and every other symbol unchanged;
+      nothing changes on a QQQ box. Pinned by tests/check_condor_sibling_default.py and tests/check_spx_tick.py.
 v4.28 2026-09-30  OTV4TEST r182 (EXIT.3) — MESSAGE ONLY: A BREAKOUT NO LONGER LOGS "has no exit route
       ... Add a branch." That line is false for Breakout and has been since 2026-09-21: the operator
       ruled its exit stays as it is ("That exit is fucking solid. I actually don't want to change
@@ -2279,8 +2286,13 @@ class ExitEngine:
         standalone (take-profit applies); both open = a real condor (hold for
         the roll — the only reason to close one is the roll). Needs no
         look-ahead; structure state is knowable at every instant.
-        On any error, returns True (treat as condor = do NOT take profit),
-        because wrongly TPing a condor leg is the costlier mistake.
+        On any error, returns `default`. 🔴 CND.11 — the except returned True
+        UNCONDITIONALLY and ignored `default`, so the stop path, which passes
+        default=False precisely so an error leaves the 15% stop ARMED, got
+        True instead: the stop was SUPPRESSED on a lone vertical whenever the
+        probe failed — the stopless ride its own comment calls the worse loss.
+        Found by OTV4TEST's audit (shared). True stays the default for a TP
+        caller, where wrongly TPing a condor leg is the costlier mistake.
         """
         try:
             from database.trade_logger import get_trade_logger
@@ -2296,7 +2308,7 @@ class ExitEngine:
                     return True
             return False
         except Exception:
-            return True
+            return default
 
     def _condor_sibling_id(self, record) -> str:
         """v4.4 — trade_id of the open complementary leg, '' if none/unknown.
@@ -3660,8 +3672,17 @@ class ExitEngine:
         return 0.05 if sym in ("SPX", "SPXW", "XSP") else 0.01
 
     @classmethod
-    def _round_to_tick(cls, price: float, record: TradeRecord) -> float:
+    def _round_to_tick(cls, price: float, record: TradeRecord,
+                       single_leg: bool = False) -> float:
         tick = cls._tick_for(record)
+        # 🔴 TICK.1 — Cboe SPX/SPXW series trade in $0.05 below $3.00 and in
+        # $0.10 AT OR ABOVE it. A single-leg close limit like 12.35 is an
+        # invalid price LIVE (paper fills at the mark and never shows it).
+        # Scoped to the SINGLE-LEG close, the case measured; spreads, flies and
+        # XSP are unchanged until their own increment rules are measured.
+        sym = str(record.get("symbol", "") or "").upper()
+        if single_leg and sym in ("SPX", "SPXW") and price >= 3.0:
+            tick = 0.10
         return max(tick, round(round(price / tick) * tick, 2))
 
     def _place(self, session, account, order, what: str) -> Optional["object"]:
@@ -3715,7 +3736,7 @@ class ExitEngine:
         # from the ask, walk down toward mark, never accept below mark. A FLOOR
         # stop skips the walk and goes to mark (see _exit_limit).
         _lim, _why = self._exit_limit(record, reason, mark_price, "sell", "single")
-        limit = self._round_to_tick(_lim, record)
+        limit = self._round_to_tick(_lim, record, single_leg=True)   # TICK.1
         record["_exit_last_limit"] = limit
         logger.info("[ladder] single CLOSE %s @ %.2f — %s",
                     str(record.get("trade_id", ""))[:8], limit, _why)
