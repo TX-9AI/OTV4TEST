@@ -1,5 +1,9 @@
 """
-analysis/second_order.py  v4.0
+analysis/second_order.py  v4.1
+v4.1  2026-10-03  OTV4TEST r212 (DER.2) — derive_for_symbol also returns WHAT IT DIFFERENCED: iv (the newest clean sample's
+      volatility), dt_seconds and d_vol of the pair charm and vanna were measured on. surface_series has
+      carried those three columns NULL on every row (1.89M on this box) because nothing handed them over.
+      No measurement changes; None stays None.
 CHARM and VANNA from the greeks series. Tier 4 of docs/DERIVED_STORES.md.
 
 v4.0  2026-08-22  Built with the manifold.
@@ -147,6 +151,14 @@ def derive_for_symbol(feed_conn, symbol: str, lookback_s: float = 900.0):
         c, v = charm(rows), vanna(rows)
         if c is None and v is None:
             continue                     # nothing measurable — record nothing
+        # r212 — the pair the two numbers above were measured on, handed over as measured
+        iv = dt = dv = None
+        p = _pair(rows)
+        if p is not None:
+            new, old = p
+            iv = new[2]
+            dt = new[0] - old[0]
+            dv = (new[2] - old[2]) if (new[2] is not None and old[2] is not None) else None
         out.append({"streamer_symbol": sym, "charm": c, "vanna": v,
-                    "samples": len(rows)})
+                    "samples": len(rows), "iv": iv, "dt_seconds": dt, "d_vol": dv})
     return out

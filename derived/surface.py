@@ -1,5 +1,10 @@
 """
-derived/surface.py  v4.0
+derived/surface.py  v4.1
+v4.1  2026-10-03  OTV4TEST r212 (DER.2) — iv, dt_seconds AND d_vol ARE WRITTEN. They were the literal None on every row since
+      this file was written (the 10-03 audit, B7; BACKLOG DER.1 said "cause NOT investigated" - this is the
+      cause). They come from analysis/second_order, per contract, as measured. gamma_flow STAYS NULL: no
+      definition of it exists in this repo or its docs, and a column filled with an invented quantity is
+      worse than an empty one. The operator, 2026-10-03: "Gather as much as is available".
 Owns `surface_series`. Tier 4 — second-order; impossible without a series.
 
 v4.0  2026-08-22  See docs/DERIVED_STORES.md.
@@ -153,6 +158,6 @@ class SurfaceEngine(DerivedEngine):
                 continue
             rows.append((sym, now, k, expiry,
                          _f(m.get("charm")), _f(m.get("vanna")),
-                         gex, None,
-                         None, slope, None, None))
+                         gex, None,                 # gamma_flow: undefined anywhere - stays NULL (r212)
+                         _f(m.get("iv")), slope, _f(m.get("dt_seconds")), _f(m.get("d_vol"))))
         return store.append_surface(rows)
