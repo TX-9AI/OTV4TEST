@@ -1,5 +1,6 @@
 """
-strategy/sweep_credit_spread.py  v6.6
+strategy/sweep_credit_spread.py  v6.7
+v6.7  2026-10-03  OTV4TEST r193 (CFG.1) — its config dials are read as config.NAME with NO literal fallback; config v4.48 now defines them (they were getattr defaults on names config never had). Values unchanged.
 v6.6  2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged.
 v6.5  2026-09-22  OTV4TEST r105 - `sig.sweep_age_bars` REMOVED, not repaired.
       A hardcoded 0 that nothing decided on: its ONLY consumer was
@@ -405,7 +406,7 @@ _AGE_UNMEASURABLE = 999
 # shallow bucket that measured BEST: <0.10% pierces survived on 33%, and
 # 0.10-0.25% on 34%, both above the 30% base. The floor exists only to reject a
 # level that was never really touched, so it belongs far lower.
-MIN_REJECTION_PCT = getattr(config, "SWEEP_CS_MIN_REJECTION_PCT", 0.0002)
+MIN_REJECTION_PCT = config.SWEEP_CS_MIN_REJECTION_PCT
 
 # ── MEASURED 2026-08-20, tests/sweep_discriminator.py ──────────────────────
 # 2,169 PDH/PDL sweep-and-reclaim events across the banked tape, ONE outcome per
@@ -459,7 +460,7 @@ MAX_REJECTION_PCT = getattr(config, "SWEEP_CS_MAX_REJECTION_PCT", 0.0025)
 # received against the stop, which is a chain question and has not been asked.
 # ⚠️ AND POOL TYPE DID NOTHING: PDH 32%, PDL 28%, both at base. The stated grade
 # priors in level_grade.py get NO support from this measurement.
-ATR_MAX_PCT = getattr(config, "SWEEP_CS_ATR_MAX_PCT", 0.20)
+ATR_MAX_PCT = config.SWEEP_CS_ATR_MAX_PCT
 
 # ── EXITS: exactly two, and no others ──────────────────────────────────────
 # Operator, 2026-08-20: *"The only 2 ways I want out of this trade is a 15% loss

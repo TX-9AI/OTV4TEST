@@ -1,7 +1,8 @@
 """
-strategy/breakout.py  v1.6
+strategy/breakout.py  v1.7
 THE SPECIFICATION. The plan searches; this declares what it must find.
 
+v1.7  2026-10-03  OTV4TEST r193 (CFG.1) — its config dials are read as config.NAME with NO literal fallback; config v4.48 now defines them (they were getattr defaults on names config never had). Values unchanged.
 v1.6  2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged. BREAKOUT_LATEST_ET never existed in config; the 11:30 lived here.
 v1.5  2026-09-24  OTV4TEST r131 — `NEW_EXTREME`, THE RE-FIRE RULE, declared
       FOUNDATIONAL. THE OPERATOR, 2026-09-24: *"A new reclaimed level has to
@@ -151,12 +152,12 @@ LATEST_ET = str(config.BREAKOUT_LATEST_ET)     # r148: the name now exists; no l
 # 0.10's 65.1%, so the guess was in the right place and slightly too strict. The
 # dip at 0.15 is almost certainly noise at this sample size; 0.10 is taken
 # because it is the best-supported point, not because the curve is smooth.
-FITTED_FLOW_IMBALANCE_MIN = float(getattr(config, "BRK_FLOW_IMBALANCE_MIN", 0.10))
-FLOW_TAGGED_MIN = float(getattr(config, "BRK_FLOW_TAGGED_MIN", 0.60))
-FITTED_REGIME_MAX = float(getattr(config, "BRK_REGIME_MAX", 0.0))
-FITTED_DEPTH_DEPLETION_MIN = float(getattr(config, "BRK_DEPTH_DEPLETION_MIN", 0.0))
-FITTED_ROOM_MIN_R = float(getattr(config, "BRK_ROOM_MIN_R", 1.0))
-FITTED_R_FLOOR = float(getattr(config, "BRK_R_FLOOR", 1.0))
+FITTED_FLOW_IMBALANCE_MIN = float(config.BRK_FLOW_IMBALANCE_MIN)
+FLOW_TAGGED_MIN = float(config.BRK_FLOW_TAGGED_MIN)
+FITTED_REGIME_MAX = float(config.BRK_REGIME_MAX)
+FITTED_DEPTH_DEPLETION_MIN = float(config.BRK_DEPTH_DEPLETION_MIN)
+FITTED_ROOM_MIN_R = float(config.BRK_ROOM_MIN_R)
+FITTED_R_FLOOR = float(config.BRK_R_FLOOR)
 # 🔑 MEASURED 2026-09-19, n=747 breaks. THE OLD BAND (0.05%-1.25%) WAS THE
 # DOMINANT FILTER AND IT WAS ANTI-SELECTIVE: it refused 38% of breaks and the
 # ones it KEPT did worse than the ones it threw away — 47.3% (0.94x) inside
@@ -166,9 +167,9 @@ FITTED_R_FLOOR = float(getattr(config, "BRK_R_FLOOR", 1.0))
 # prediction. ⚠️ THE ORB HAS NO WIDTH BAND AT ALL — it answers a degenerate
 # range by sizing ONE LOT LOUDLY rather than refusing — so a band here is a
 # divergence from the trade this one is meant to mirror.
-FITTED_RANGE_MIN_PCT = float(getattr(config, "BRK_RANGE_MIN_PCT", 0.0023))
-FITTED_RANGE_MAX_PCT = float(getattr(config, "BRK_RANGE_MAX_PCT", 0.0350))
-FITTED_RANGE_CLEAN_MAX = float(getattr(config, "BRK_RANGE_CLEAN_MAX", 0.0))
+FITTED_RANGE_MIN_PCT = float(config.BRK_RANGE_MIN_PCT)
+FITTED_RANGE_MAX_PCT = float(config.BRK_RANGE_MAX_PCT)
+FITTED_RANGE_CLEAN_MAX = float(config.BRK_RANGE_CLEAN_MAX)
 
 # ── ACCEPTANCE: "ALL", FOR TWO WEEKS (operator, 2026-09-19) ─────────────────
 # *"Have it trade every break that gets a 1-minute candle acceptance beyond the

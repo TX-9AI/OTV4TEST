@@ -1,5 +1,6 @@
 """
-strategy/runaway_plan.py  v1.4
+strategy/runaway_plan.py  v1.5
+v1.5  2026-10-03  OTV4TEST r193 (CFG.1) — its config dials are read as config.NAME with NO literal fallback; config v4.48 now defines them (they were getattr defaults on names config never had). Values unchanged.
 v1.4  2026-10-03  OTV4TEST r189 (RUNW.1) — NAMES THE RUNAWAY END AT IMPORT. When OT_RUNAWAY_END is set it logs
       the end in force at INFO, and a value config REFUSED (malformed, or outside 09:36..15:40) at WARNING with
       the 10:30 it kept instead, so a box that meant 11:30 and typed 1130 is told, not silently held at 10:30.
@@ -97,11 +98,11 @@ GATES = {
 WINDOW_OPEN_ET   = config.ENTRY_OPEN_ET   # r148: no literal fallback
 MAX_LOSS_PCT     = float(getattr(config, "RUNAWAY_MAX_LOSS_PCT", 0.20))
 # the strength → band prior (category 1: a baseline, recorded, unfitted)
-STRENGTH_GRIND   = float(getattr(config, "RUNAWAY_STRENGTH_GRIND", 0.40))
-STRENGTH_RIP     = float(getattr(config, "RUNAWAY_STRENGTH_RIP", 0.70))
-BAND_GRIND       = float(getattr(config, "RUNAWAY_BAND_GRIND", 0.5))
+STRENGTH_GRIND   = float(config.RUNAWAY_STRENGTH_GRIND)
+STRENGTH_RIP     = float(config.RUNAWAY_STRENGTH_RIP)
+BAND_GRIND       = float(config.RUNAWAY_BAND_GRIND)
 BAND_NORMAL      = 1.0
-BAND_RIP         = float(getattr(config, "RUNAWAY_BAND_RIP", 1.5))
+BAND_RIP         = float(config.RUNAWAY_BAND_RIP)
 MEASURE_MIN_BARS = 2                      # a two-bar rip is a reading, not noise
 
 

@@ -1,5 +1,6 @@
 """
-strategy/runaway_continuation.py  v5.2
+strategy/runaway_continuation.py  v5.3
+v5.3  2026-10-03  OTV4TEST r193 (CFG.1) — its config dials are read as config.NAME with NO literal fallback; config v4.48 now defines them (they were getattr defaults on names config never had). Values unchanged.
 v5.2  2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged.
 v5.1  2026-09-13  OTV4TEST r24 — ONE PER BREAK IS READ FROM trades.db. `FINISHED_BREAKS`
       and `finish_break` are DELETED: a per-process set that a restart wiped,
@@ -220,15 +221,15 @@ logger = logging.getLogger(__name__)
 
 # ── measured thresholds. Overridable via config so they can be retuned without
 #    will drift. A constant in strategy code is a constant nobody revisits.
-ATR_FLOOR_PCT = getattr(config, "RUNAWAY_ATR_FLOOR_PCT", 0.08)
-ATR_HARD_VETO_PCT = getattr(config, "RUNAWAY_ATR_VETO_PCT", 0.05)
-ATR_DEEP_PCT = getattr(config, "RUNAWAY_ATR_DEEP_PCT", 0.20)
+ATR_FLOOR_PCT = config.RUNAWAY_ATR_FLOOR_PCT
+ATR_HARD_VETO_PCT = config.RUNAWAY_ATR_VETO_PCT
+ATR_DEEP_PCT = config.RUNAWAY_ATR_DEEP_PCT
 CUTOFF_ET = config.RUNAWAY_CUTOFF_ET          # r148: no literal fallback
 
 # ATR -> target delta. From the reachability table above: at 0.12%+ the tape
 # reaches 0.20-0.35 on 60% of bars; at 0.20%+ it reaches 0.35-0.50 on 85%.
-DELTA_NEAR = getattr(config, "RUNAWAY_DELTA_NEAR", 0.25)
-DELTA_DEEP = getattr(config, "RUNAWAY_DELTA_DEEP", 0.40)
+DELTA_NEAR = config.RUNAWAY_DELTA_NEAR
+DELTA_DEEP = config.RUNAWAY_DELTA_DEEP
 
 # ── GATE CATEGORIES AS DATA (WA §36) ───────────────────────────────────────
 GATES = {

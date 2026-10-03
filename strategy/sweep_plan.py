@@ -1,5 +1,6 @@
 """
-strategy/sweep_plan.py  v1.14
+strategy/sweep_plan.py  v1.15
+v1.15 2026-10-03  OTV4TEST r193 (CFG.1) — its config dials are read as config.NAME with NO literal fallback; config v4.48 now defines them (they were getattr defaults on names config never had). Values unchanged.
 v1.14 2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged. 🔴 Its fallback END was (14, 0) against a live 15:40 — r81 pre-armed.
 v1.13 2026-09-24  OTV4TEST r129 - "stop_vs_spread" IS RECORDED, WITH ITS RATIO. It
       was declared (r128) and never written on a pass. `sv_ratio` = the chosen
@@ -151,7 +152,7 @@ GATES = {
 
 EARLIEST_ET          = config.SWEEP_CS_EARLIEST_ET_FORK     # operator 2026-09-09; r148: no literal fallback
 LATEST_ET            = config.SWEEP_CS_LATEST_ET_FORK       # r148: was a (14, 0) fallback against a live 15:40
-LEVELS_EACH_SIDE     = int(getattr(config, "SWEEP_CS_LEVELS_EACH_SIDE", 3))
+LEVELS_EACH_SIDE     = int(config.SWEEP_CS_LEVELS_EACH_SIDE)
 
 
 def _session_open_epoch() -> float:

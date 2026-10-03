@@ -1,5 +1,11 @@
 """
-config.py  v4.47
+config.py  v4.48
+v4.48 2026-10-03  OTV4TEST r193 (CFG.1) — 29 DIALS THE CODE ALREADY READ FROM config ARE NOW DEFINED IN IT. The
+      10-03 audit found BRK_* (9), GEX_BFLY_* (5), RUNAWAY_* (9), SWEEP_CS_* (3), HANDOFF_TTL_TICKS,
+      HUNT_MAX_LOSS_PCT and ADMISSION_RULES read as getattr(config, name, literal) with no such key here, so
+      every one silently took its module's literal. Each is defined once with that same value and its module
+      reads config.NAME with no fallback (ADMISSION_RULES alone keeps its getattr: checkers stub config). NO VALUE CHANGES (check_attr_fidelity A4 pins all of them; A3 fails
+      any new getattr(config, ...) on a name config does not define). Fork-only block in a shared file.
 v4.47 2026-10-03  OTV4TEST r189 (RUNW.1) — OT_RUNAWAY_END: RUNAWAY'S ENTRY END IS A PER-BOX SWITCH. Unset, it is
       r187's (10, 30) exactly. "HH:MM" between 09:36 and the 15:40 entries stop moves the end of
       ENTRY_WINDOWS["RunawayContinuation"], and with it every reader (admission, RUNAWAY_CUTOFF_ET,
@@ -1155,6 +1161,56 @@ MAX_LOSS_PCT        = float(os.environ.get("OT_MAX_LOSS_PCT", "0.25"))
 # adverse movement amounting to a 20% loss … The runaway needs room to breathe.
 # A few pullbacks in an uptrend are ok." No underlying stop on the runaway.
 RUNAWAY_MAX_LOSS_PCT = float(os.environ.get("OT_RUNAWAY_MAX_LOSS_PCT", "0.20"))
+
+# ══ r193 (CFG.1) — THE DIALS THE CODE ALREADY READ FROM HERE, NOW DEFINED HERE ══
+# Found by the 2026-10-03 audit: 29 names were read as getattr(config, "NAME",
+# <literal>) while config defined none of them, so "retune via config" silently
+# took each module's own literal and a typo'd name could never fail. Each is
+# defined ONCE here with the value its module was using, and the module reads
+# config.NAME with no fallback (r148's rule for the window table). NO VALUE
+# CHANGED: tests/check_attr_fidelity.py A4 pins every one.
+# Breakout's dials (strategy/breakout.py) - they BIND only after
+# BRK_RESEARCH_UNTIL; fitting them is BACKLOG BRK.5 and starts with a
+# conversation about each informer's data coverage.
+BRK_FLOW_IMBALANCE_MIN      = 0.10
+BRK_FLOW_TAGGED_MIN         = 0.60
+BRK_REGIME_MAX              = 0.0
+BRK_DEPTH_DEPLETION_MIN     = 0.0
+BRK_ROOM_MIN_R              = 1.0
+BRK_R_FLOOR                 = 1.0
+BRK_RANGE_MIN_PCT           = 0.0023
+BRK_RANGE_MAX_PCT           = 0.0350
+BRK_RANGE_CLEAN_MAX         = 0.0
+# The GEX pin butterfly (strategy/gex_pin_butterfly.py). The ATP fly's own
+# floor is ATP_BFLY_PIN_CONC_MIN below; this is the pin fly's 0.25.
+GEX_BFLY_PIN_CONC_MIN       = 0.25
+GEX_BFLY_EM_MIN_FRAC        = 0.30
+GEX_BFLY_EM_MAX_FRAC        = 1.00
+GEX_BFLY_SMOOTH_WINDOW      = 12       # ticks (~3 min)
+GEX_BFLY_PERSIST_TICKS      = 8        # ticks (~2 min)
+HANDOFF_TTL_TICKS           = 8        # execution/handoff.py
+# Runaway (strategy/runaway_continuation.py, strategy/runaway_plan.py)
+RUNAWAY_ATR_FLOOR_PCT       = 0.08
+RUNAWAY_ATR_VETO_PCT        = 0.05
+RUNAWAY_ATR_DEEP_PCT        = 0.20
+RUNAWAY_DELTA_NEAR          = 0.25
+RUNAWAY_DELTA_DEEP          = 0.40
+RUNAWAY_STRENGTH_GRIND      = 0.40
+RUNAWAY_STRENGTH_RIP        = 0.70
+RUNAWAY_BAND_GRIND          = 0.5
+RUNAWAY_BAND_RIP            = 1.5
+# The sweep (strategy/sweep_credit_spread.py, strategy/sweep_plan.py)
+SWEEP_CS_MIN_REJECTION_PCT  = 0.0002
+SWEEP_CS_ATR_MAX_PCT        = 0.20
+SWEEP_CS_LEVELS_EACH_SIDE   = 3
+# LiquidityHunt's premium floor. It FOLLOWED Runaway's key through a getattr
+# chain nobody could see; it still follows it unless OT_HUNT_MAX_LOSS_PCT is set.
+HUNT_MAX_LOSS_PCT = float(os.environ.get("OT_HUNT_MAX_LOSS_PCT", str(RUNAWAY_MAX_LOSS_PCT)))
+# execution/position_manager's admission overlay: caps and tries per strategy,
+# never a window (r148). None = the table as written. position_manager KEEPS
+# its getattr default for this one name: two checkers hand it a stub config
+# with no such attribute (the r193 sweep caught my first cut removing it).
+ADMISSION_RULES = None
 
 # ── 🔴 r121 — SIZE ON RISK-TO-STOP, NOT ON PREMIUM ───────────────────────────
 # Operator, 2026-08-25, reading CVX's card: "it's not 'risking' the correct

@@ -1,5 +1,6 @@
 """
-execution/handoff.py  v1.0
+execution/handoff.py  v1.1
+v1.1  2026-10-03  OTV4TEST r193 (CFG.1) — its config dials are read as config.NAME with NO literal fallback; config v4.48 now defines them (they were getattr defaults on names config never had). Values unchanged.
 v1.0  2026-09-10  OTV4TEST r12 — THE HANDOFF GRANT. Operator: the liquidity hunt
       must hand off to the sweep on a rejection even while an ORB is open, and
       an open hunt must never block an ORB→sweep sequence. The slot rule on
@@ -22,7 +23,7 @@ import config
 
 logger = logging.getLogger(__name__)
 
-HANDOFF_TTL_TICKS = int(getattr(config, "HANDOFF_TTL_TICKS", 8))
+HANDOFF_TTL_TICKS = int(config.HANDOFF_TTL_TICKS)
 
 _GRANTS: list = []          # dicts: from, to, level, side, tick_issued, ttl, fired, expired
 _TICK = {"n": 0}

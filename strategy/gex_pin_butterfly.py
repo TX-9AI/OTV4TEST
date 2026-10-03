@@ -1,5 +1,6 @@
 """
-strategy/gex_pin_butterfly.py  v5.7
+strategy/gex_pin_butterfly.py  v5.8
+v5.8  2026-10-03  OTV4TEST r193 (CFG.1) — its config dials are read as config.NAME with NO literal fallback; config v4.48 now defines them (they were getattr defaults on names config never had). Values unchanged.
 v5.7  2026-10-02  OTV4TEST r185 (LADR.1) — `_chain_increment` IS NOW AN ALIAS of
       data/options_chain.chain_increment, where the r198 body moved verbatim
       so every caller reads one ladder reader (shared with otv4). No wing,
@@ -361,18 +362,18 @@ ENABLED = getattr(config, "GEX_BUTTERFLY_ENABLED", True)       # v4.3: ON
 # together require width >= 64 x leg-spread. Nobody ever fitted it.
 # config.GEX_BFLY_WING_EM_FRAC is left in place, unread, so a box carrying the
 # old env var starts cleanly rather than failing on an unknown key.
-PIN_CONC_MIN = getattr(config, "GEX_BFLY_PIN_CONC_MIN", 0.25)
+PIN_CONC_MIN = config.GEX_BFLY_PIN_CONC_MIN
 # OTV4TEST r25 (BFLY.5, operator's ruling): a pin within ±this x EM of today's VWAP
 # meets pin_concentration without the floor. 0.10 above + 0.10 below = 20% of EM.
 VWAP_BAND_EM_FRAC = float(getattr(config, "GEX_BFLY_VWAP_BAND_EM_FRAC", 0.10))
-EM_MIN_FRAC = getattr(config, "GEX_BFLY_EM_MIN_FRAC", 0.30)
-EM_MAX_FRAC = getattr(config, "GEX_BFLY_EM_MAX_FRAC", 1.00)
+EM_MIN_FRAC = config.GEX_BFLY_EM_MIN_FRAC
+EM_MAX_FRAC = config.GEX_BFLY_EM_MAX_FRAC
 EARLIEST_ET = config.GEX_BFLY_EARLIEST_ET       # r148: no literal fallback
 LATEST_ET = config.GEX_BFLY_LATEST_ET           # r148: the name now exists; no literal fallback
 # OTV4TEST r6 — persistence with smoothing (operator 2026-09-09). PRIORS,
 # recorded on every row; the first real pins say what they should be.
-SMOOTH_WINDOW = int(getattr(config, "GEX_BFLY_SMOOTH_WINDOW", 12))    # ticks (~3 min)
-PERSIST_TICKS = int(getattr(config, "GEX_BFLY_PERSIST_TICKS", 8))     # ticks (~2 min)
+SMOOTH_WINDOW = int(config.GEX_BFLY_SMOOTH_WINDOW)    # ticks (~3 min)
+PERSIST_TICKS = int(config.GEX_BFLY_PERSIST_TICKS)     # ticks (~2 min)
 
 # ── GATE CATEGORIES AS DATA (WA §36) ───────────────────────────────────────
 GATES = {

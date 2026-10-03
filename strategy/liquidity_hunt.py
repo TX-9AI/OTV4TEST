@@ -1,5 +1,6 @@
 """
-strategy/liquidity_hunt.py  v1.5
+strategy/liquidity_hunt.py  v1.6
+v1.6  2026-10-03  OTV4TEST r193 (CFG.1) — its config dials are read as config.NAME with NO literal fallback; config v4.48 now defines them (they were getattr defaults on names config never had). Values unchanged.
 v1.5  2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged.
 v1.4  2026-09-22  OTV4TEST r104 - THE RAILS NO LONGER OUTRANK A HELD
       EXTREME. `sorted(b["above"] + tines_up)` was one merged list and
@@ -95,7 +96,7 @@ GATES = {
 
 WINDOW_OPEN_ET = config.ENTRY_OPEN_ET   # r148: no literal fallback
 CUTOFF_ET      = config.HUNT_CUTOFF_ET          # r148: no literal fallback
-MAX_LOSS_PCT   = float(getattr(config, "HUNT_MAX_LOSS_PCT", getattr(config, "RUNAWAY_MAX_LOSS_PCT", 0.20)))
+MAX_LOSS_PCT   = float(config.HUNT_MAX_LOSS_PCT)
 
 FINISHED: set = set()          # (direction, boundary) — one hunt per break
 
