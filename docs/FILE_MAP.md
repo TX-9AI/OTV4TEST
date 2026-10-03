@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-392 Python modules across 12 local packages.
+390 Python modules across 12 local packages.
 
-**Reached by:** 122 imported · 21 declared entry points · 169 referenced from a script, unit or doc but never imported · **80 by nothing here**.
+**Reached by:** 122 imported · 21 declared entry points · 167 referenced from a script, unit or doc but never imported · **80 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -40,7 +40,7 @@ isolated rather than being everywhere at once.
 - `analysis/market_state.py` - the structural state assembly.
   **Carries the vocabulary, classifies nothing.**
 
-**Where the evidence lives:** `tests/` holds 212 standing
+**Where the evidence lives:** `tests/` holds 211 standing
 checks (`check_*.py`, all run by `tools/boot_sweep.py` at boot)
 plus the studies that produced every threshold in
 `docs/TRADES.md`. **A number in a strategy file should be
@@ -443,10 +443,6 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** `config.py`, `execution/exit_engine.py`, `strategy/plan.py`
 - **called by:** `execution/position_manager.py`, `main.py`, `tests/check_atp_butterfly.py`, `tests/check_breakout.py`, `tests/check_breakout_delta_par.py`, `tests/check_breakout_research.py`, `tests/check_management_plan.py`, `tests/check_nearer_stop.py`
 
-### `strategy/open_premium_plan.py`
-- **calls:** `strategy/orcs_plan.py`
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/PLAN_SPEC.md`
-
 ### `strategy/orb_plan.py`
 - **calls:** `analysis/orb_engine.py`, `config.py`, `data/options_chain.py`, `derived/__init__.py`, `derived/anchors.py`, `strategy/orb_strategy.py`, `strategy/plan.py`
 - **called by:** `strategy/breakout_plan.py`, `strategy/orb_strategy.py`, `tests/check_low_price_symbols.py`, `tests/check_one_window_table.py`, `tests/check_orb_plan.py`, `tests/check_orb_reentry.py`, `tests/check_trade_switches.py`, `tests/check_zero_bid_refused.py`
@@ -461,7 +457,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `strategy/orcs_plan.py`
 - **calls:** `config.py`, `strategy/plan.py`, `utils/math_utils.py`
-- **called by:** `strategy/open_premium_plan.py`, `strategy/orcs.py`, `tests/check_orcs.py`
+- **called by:** `strategy/orcs.py`, `tests/check_orcs.py`
 
 ### `strategy/plan.py`
 - **calls:** `analysis/gate_report.py`, `analysis/session_map.py`, `config.py`, `data/derived_store.py`, `derived/registry.py`, `strategy/criteria.py`, `utils/time_utils.py`
@@ -1026,10 +1022,6 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tests/check_one_window_table.py`
 - **calls:** `config.py`, `execution/position_manager.py`, `strategy/__init__.py`, `strategy/breakout.py`, `strategy/gex_pin_butterfly.py`, `strategy/liquidity_hunt.py`, `strategy/orb_plan.py`, `strategy/runaway_continuation.py`, `strategy/runaway_plan.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `strategy/volt_plan.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
-
-### `tests/check_open_premium_plan.py`
-- **calls:** (none)
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/PLAN_SPEC.md`
 
 ### `tests/check_open_scan.py`
 - **calls:** (none)
