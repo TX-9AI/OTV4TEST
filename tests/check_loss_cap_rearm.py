@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """
-tests/check_loss_cap_rearm.py  v1.0
+tests/check_loss_cap_rearm.py  v1.1
 
 The DAILY CATASTROPHIC LOSS CAP stops NEW entries while the day's REALIZED net
 is at or beyond -limit, never touches open positions, and RE-OPENS entries
 once closes bring the loss back under the limit.
+
+v1.1  2026-10-03  OTV4TEST r199 (AUD.7). C9: every cap transition leaves a row in
+      circuit_breaker_events (log_circuit_breaker had zero callers). C10: a cap page
+      that cannot be sent warns instead of passing silently.
 
 v1.0  2026-09-27  OTV4TEST r162 (CAP.1). The operator, 2026-09-27: "Manage
       what's open but no new entries. If the open TRADES put us back under the
@@ -146,6 +150,33 @@ for net, want in ((-5100, True), (-4800, False)):
     check(f"C7 restart at {net}: reset_session and is_halted agree ({want})",
           after_reset is want and fresh.is_halted() is want,
           f"reset={after_reset} is_halted={fresh.is_halted()}")
+
+# ── C9 (r199) — every transition above left a row in circuit_breaker_events ──
+# C2 hit, C4 re-armed, C5 hit again, C6 re-armed: four rows, in that order, each
+# carrying the day's realized figure. Read from the scratch trades.db the REAL
+# TradeLogger wrote.
+try:
+    import sqlite3 as _sq
+    _con = _sq.connect(os.environ["OT_TRADES_DB"])
+    _ev = [(r[0], r[1]) for r in _con.execute(
+        "SELECT reason, notes FROM circuit_breaker_events ORDER BY id")]
+    _con.close()
+except Exception as _exc:                                      # noqa: BLE001
+    _ev = [("<unreadable>", f"{type(_exc).__name__}: {_exc}")]
+check("C9 the cap's transitions are RECORDED: hit, re-armed, hit, re-armed - with the day's figure",
+      [e[0] for e in _ev] == ["daily_cap_hit", "daily_cap_rearmed", "daily_cap_hit", "daily_cap_rearmed"]
+      and "-5000.00" in _ev[0][1] and "-4999.00" in _ev[1][1],
+      f"events={_ev}")
+
+# C10 — a page that fails to send is SAID (it was `except: pass`)
+_fake.get_alert_manager = lambda: (_ for _ in ()).throw(RuntimeError("telegram down"))
+LOGS.lines.clear()
+day(-6000)
+_h10 = RM.is_halted()
+check("C10 a cap page that cannot be sent WARNS, and the halt still holds",
+      _h10 is True and any("cap page NOT sent" in ln for ln in LOGS.lines),
+      f"halted={_h10} lines={[ln[:60] for ln in LOGS.lines][-3:]}")
+_fake.get_alert_manager = lambda: types.SimpleNamespace(_send=lambda msg: PAGES.append(msg))
 
 # ── C8 — HOP 0: only the entry path reads the cap ───────────────────────────
 _t = ast.parse(open(os.path.join(ROOT, "main.py")).read())

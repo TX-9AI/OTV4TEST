@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v1.93
+# BACKLOG.md — OTV4TEST — v1.94
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -21,6 +21,7 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 
 | id | item | state |
 |---|---|---|
+| **AUD.7** | ◐ (r199 BUILT) **A CAP EPISODE LEFT NO ROW: circuit_breaker_events WAS READ AND PUSHED BUT NEVER WRITTEN.** TradeLogger.log_circuit_breaker had zero callers, here and on mainline (1-REPORTER). r199, risk/risk_manager v4.11: is_halted writes 'daily_cap_hit' where the page is decided (once per episode, not again after a restart inside it) and 'daily_cap_rearmed' at the re-arm, each with the day's realized figure and the limit; and a cap page that fails to send now warns (it was `except: pass`). Gate check_loss_cap_rearm v1.1 C9/C10. Relates to ALRT.1 (send_circuit_breaker_alert still has zero callers - the page goes through _send). **OWED:** on the next capped day, read the rows back; the cap counterfactual study (review 2026-10-17) can key on them. | ◐ r199 |
 | **AUD.6** | ◐ (r197 BUILT) **plan_check KEPT ONLY NUMBERS: EVERY TEXT-VALUED CHECK WAS NULL ON EVERY ROW.** write_row cast each reading to float or stored NULL, and a check's note= was never stored per check. Breakout's break_dir / pool_name / verdict / contract, the ORB's engine_state / consequence, the sweep's fork / level_board and Runaway's anchor_fork15 could not be read back from the store. r197, strategy/plan v2.4: plan_check gains `note TEXT` (CREATE + in-place ALTER); the note= wins, else a non-numeric value is kept as its text; value and verdict unchanged. Gate tests/check_plan_check_note.py N1-N5. A streamed table on boxes that push: announced to 1-REPORTER before landing. **OWED:** after Monday's session, count note non-null per check name. | ◐ r197 |
 | **AUD.5** | ◐ (r196 BUILT) **THE DAY-TYPE ENGINE NEVER SAW VOLATILITY: vol_ratio, close_capture AND BOTH REALISED VOLS NULL ON 3,580 OF 3,580 character_axis_sample ROWS (09-12..10-03).** main computed the realised-vol summary in _apply_derived_ports, AFTER run_all, so the character engine read the setdefault(None). The efficiency axis was fine; the volatility axis - half of the day-type read (CHR.1, FWD-C) - was never sampled. r196, main v4.79: the block moves into _apply_vol_ports, called before the engines. Gate check_chain_ordering v1.3 C13 (order) and C14 (the real port into the real CharacterEngine, scratch store). **OWED:** after Monday's session, count the four columns non-null; vol_ratio needs 10 strided baseline samples before it reads, so expect its first values about 20 minutes into the session. The 3,580 old rows cannot be repaired in place but CAN be recomputed from the feed store's 5m bars for a study. | ◐ r196 |
 | **AUD.4** | ◐ (r195 BUILT) **THE EXIT QUOTE AND IV WERE NEVER WRITTEN: exit_bid / exit_ask / exit_iv EMPTY ON 237 OF 237 CLOSED TRADES.** TradeLogger.set_exit_contract (v3.13) had zero callers, so the exit's spread cost and IV crush could not be measured - the two things the columns exist for. r195, execution/position_manager v5.11: _fetch_current_premium notes each structure's bid, ask and IV on the record every tick under its own keys (never the exit ladder's _exit_bid/_exit_ask, so pricing is untouched), and _execute_exit writes them after the confirmed close. IV = the single leg's; a credit structure's SHORT leg's; a butterfly's BODY's. A butterfly's quote is a composite (wings at the bid, body at the ask). It is the quote on the tick the exit was DECIDED, not the fill tick. The operator, 2026-10-03: 'Gather as much as is available to serve our studies and backtests'. Gate tests/check_exit_quote.py Q1-Q5. **OWED:** after the first session with a close, count the three columns non-null. Old rows cannot be backfilled from the store (quotes are purged); the warehouse quote_series could. | ◐ r195 |
@@ -312,6 +313,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v1.94 — 2026-10-03 — OTV4TEST r199 — AUD.7: a cap episode is recorded in circuit_breaker_events (hit and re-arm); a failed cap page warns.** risk/risk_manager v4.11. Gate check_loss_cap_rearm v1.1 C9/C10.
 
 **v1.93 — 2026-10-03 — OTV4TEST r198 — MEAS.1: the stored pnl_pct is signed by pnl_usd.** database/trade_logger v4.20. Gate check_pnl_pct_sign (new). Old rows not rewritten.
 

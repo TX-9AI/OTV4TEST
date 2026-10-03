@@ -1,5 +1,10 @@
 """
-risk/risk_manager.py  v4.10
+risk/risk_manager.py  v4.11
+v4.11 2026-10-03  OTV4TEST r199 (AUD.7) — A CAP EPISODE IS RECORDED IN circuit_breaker_events. is_halted writes
+      one row when the cap is hit (where the page is decided, so once per episode and not again after a
+      restart inside it) and one when it re-arms. TradeLogger.log_circuit_breaker had zero callers; query.py
+      read and s3_push pushed a table nothing wrote. And a cap page that fails to send now WARNS (it was
+      `except: pass`). The halt decision itself is untouched.
 v4.10 2026-10-03  OTV4TEST r190 (AUD.1, SHARED WITH otv4 CND.12) — _ensure_seeded marks itself seeded
       only after a successful read, and warns and retries on failure (it set the flag first, swallowed
       the error and never retried). The halt itself is unaffected: is_halted reads the DB on every call.
@@ -797,6 +802,21 @@ class RiskManager:
             logger.warning(f"[{INSTRUMENT}] cap stamp not written ({type(exc).__name__}: {exc}) "
                            f"- a restart may page this episode again")
 
+    def _log_cap_event(self, reason: str, net: float) -> None:
+        """r199 (AUD.7) — ONE ROW IN circuit_breaker_events PER CAP TRANSITION. The
+        table has existed since v3, query.py shows it and s3_push pushes it, and
+        TradeLogger.log_circuit_breaker had ZERO callers - so the only record of a
+        cap episode was a log line and a page. Written where the page is decided
+        (once per episode) and where the re-arm is logged. Never raises: a failed
+        write warns and the halt decision is unaffected."""
+        try:
+            from database.trade_logger import get_trade_logger
+            get_trade_logger().log_circuit_breaker(
+                reason, int(self._session_losses),
+                f"day realized {net:+.2f}; limit {self._daily_loss_limit:.2f}")
+        except Exception as exc:                               # noqa: BLE001
+            logger.warning(f"[{INSTRUMENT}] cap event NOT recorded ({type(exc).__name__}: {exc})")
+
     def is_halted(self) -> bool:
         """Authoritative daily-loss gate. Reads today's realized net P&L from
         the DB on every call (single source of truth — identical to what
@@ -826,6 +846,7 @@ class RiskManager:
                 f"realized ${net:+.0f} is back under the -${self._daily_loss_limit:.0f} "
                 f"limit. New entries RE-OPENED."
             )
+            self._log_cap_event("daily_cap_rearmed", net)        # r199
         if breached and not self._session_halted:
             self._session_halted = True
             # v-symbol 2026-08-03: NAME THE BOX. One symbol per box and 15 of
@@ -843,6 +864,7 @@ class RiskManager:
                                f"(data/CAP_PAGED) - not paged again after a restart")
                 return self._session_halted
             self._cap_stamp(True)
+            self._log_cap_event("daily_cap_hit", net)            # r199: once per episode, with the page
             try:
                 from notifications.alert_manager import get_alert_manager
                 get_alert_manager()._send(
@@ -851,8 +873,9 @@ class RiskManager:
                     f"entries halted; open positions still managed. Entries re-open "
                     f"if closes bring the loss back under the limit."
                 )
-            except Exception:
-                pass
+            except Exception as exc:                           # noqa: BLE001
+                # r199: was `pass` - a cap page that failed to send said nothing at all.
+                logger.warning(f"[{INSTRUMENT}] cap page NOT sent ({type(exc).__name__}: {exc})")
         return self._session_halted
 
     def consume_reassess_request(self) -> bool:
