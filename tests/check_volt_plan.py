@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """
-tests/check_volt_plan.py  v1.7
+tests/check_volt_plan.py  v1.8
+v1.8  2026-10-02  OTV4TEST r187 (ROSTER.1) — RE-POINTED BY THE RULING, NOT LOOSENED:
+      the strategy is OFF by default from r187; this checker tests its LOGIC,
+      so it switches it on for its own run (OT_VOLT=1). check_trade_switches pins the default.
+      V1 RE-POINTED to the 09:35-10:30 window (the operator's 10:29 debit cutoff) and V1b to
+      'identical to Breakout/Runaway/Hunt': the ORB TRADE is retired and its row is deliberately
+      left unchanged (it drives the ORB engine's expiry), so r72's 'identical to the ORB' no
+      longer names the trades VOLT controls for.
 v1.7  2026-10-02  OTV4TEST r186 (ZBID.1) — the _C
       fixture contract now carries a TWO-SIDED quote (bid/ask around its
       mark), as every live OptionContract does: r186 (ZBID.1) refuses a
@@ -51,7 +58,10 @@ fixtures (WA §21 — a test that reads source text proves nothing about runtime
 
 Run:  python3 tests/check_volt_plan.py
 """
+
 from __future__ import annotations
+import os as _os_r187
+_os_r187.environ["OT_VOLT"] = "1"   # r187: test the strategy's logic switched on
 import os, sys, datetime as dt
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FAIL: list = []
@@ -86,13 +96,14 @@ check("V0b VOLT is in the admission table", VOLT in T, f"keys={sorted(T)}")
 def admits(hhmm, **kw):
     return bool(decide(Facts(strategy=VOLT, now_et=hhmm, orb_established=True, **kw)))
 w = T[VOLT].window
-check("V1 window is 09:35-15:40, half-open at BOTH edges (r149)",
-      w == ((9, 35), (15, 40)) and not admits((9, 34)) and admits((9, 35))
-      and admits((15, 39)) and not admits((15, 40)),
+check("V1 window is 09:35-10:30, half-open at BOTH edges (r187: the 10:29 debit cutoff)",
+      w == ((9, 35), (10, 30)) and not admits((9, 34)) and admits((9, 35))
+      and admits((10, 29)) and not admits((10, 30)),
       f"window={w} 09:34={admits((9,34))} 09:35={admits((9,35))} "
-      f"15:39={admits((15,39))} 15:40={admits((15,40))}")
-check("V1b VOLT's window is IDENTICAL to the ORB's — or it is not a control",
-      T[VOLT].window == T[ORB].window, f"volt={T[VOLT].window} orb={T[ORB].window}")
+      f"10:29={admits((10,29))} 10:30={admits((10,30))}")
+check("V1b VOLT's window is IDENTICAL to the directional debits it controls for (r187: Breakout, Runaway, Hunt)",
+      T[VOLT].window == T["Breakout"].window == T["RunawayContinuation"].window == T["LiquidityHunt"].window,
+      f"volt={T[VOLT].window} brk={T['Breakout'].window}")
 
 # ── V2 — the control property: non-competing ───────────────────────────────
 blocks = set(getattr(T[VOLT], "blocks", ()) or ())

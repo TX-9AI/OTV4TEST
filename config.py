@@ -1,5 +1,17 @@
 """
-config.py  v4.44
+config.py  v4.45
+v4.45 2026-10-02  OTV4TEST r187 (ROSTER.1) — DIRECTIONAL DEBIT ENTRIES STOP AT 10:29 ET. ENTRY_WINDOWS ends
+      RunawayContinuation, LiquidityHunt, Breakout and VOLT at (10, 30) (every window end is exclusive, so the
+      last entry is 10:29). The operator, 2026-10-02 21:24 ET: "let's impose a 1029 debit cutoff rule, but
+      exempts the GEX pin fly". MEASURED (QQQ 09-09..10-02): late entries lost on 7 of 18 days, made money on
+      3; the cutoff passed UNSEEN SOFI/AAL at every cutoff 10:15-11:00 (-41.3 -> -15.6 R at 10:30) and QQQ's
+      09-28 week (-15,784 -> -10,177); it fails only the strict best-day term on 09-21 (-24%). UNCHANGED: the
+      ORBStrategy row (its end also drives the ORB ENGINE's expiry, which Runaway/Breakout/latches read; the
+      ORB TRADE is off by switch instead), both butterflies, both credit spreads. Fork-only value change in a
+      file both trees carry: mainline keeps its windows (announced to 1-REPORTER).
+      AND ATP_BUTTERFLY_ENABLED defaults OFF (OT_ATP_BUTTERFLY=1 restores it). The operator, 2026-10-02 21:39 ET:
+      "Turn off the ATP", after reading that both flies buy the same fly on the same pin (GEX 6 trades +5,350,
+      ATP 4 trades -327, two ATP losses stacked on pins the pin fly had played). The pin fly is unchanged.
 v4.44 2026-09-30  OTV4TEST r179 (BFLY.9) — `ATP_BFLY_PIN_CONC_MIN = 0.15`: THE ATP BUTTERFLY HAS ITS OWN PIN-CONCENTRATION FLOOR. The operator, 2026-09-30, reading the ATP fly HOLD all afternoon on a PINNING tape at the pin: "The ATP fly should be accepting the plan for the EXACT reason GEX pin fly is declining (price too close to pin)", then "Drop the ATP to .19" and, minutes later, "Actually .15 sounds better". The pin (travel) butterfly keeps GEX_BFLY_PIN_CONC_MIN (0.25); only the ATP reads the new key. AND `ATP_BFLY_VWAP_STRICT_EM_FRAC = 0.05`, the ATP's ROUTE B: when route A (PINNING and concentration >= 0.15) fails, a NOT-TRENDING regime qualifies if the pin is within ±0.05 x EM of today's VWAP. The operator, 2026-09-30: "Allow a non-pinning ATP if it qualifies on STRICT VWAP & NOT TRENDING", "Route B for VWAP if A fails", and yes to NEUTRAL and to ±0.05 x EM. ALSO: ENTRY_WINDOWS["ATPButterfly"] 11:30 -> 12:00. The table said 11:30 while the plan used the pin fly's slot and stayed DORMANT until 12:00 (measured 2026-09-30: DORMANT at 11:29:57, first asked 12:00:06), so the table now says what happens; the operator: "12:00 is fine". No entry is gained or lost by it.
 v4.43 2026-09-29  OTV4TEST r177 — COMMENT ONLY: v4.42 below calls the strike-ladder fix "STRK.1"; it is LADR.1. STRK.1 was already the 2026-09-21 row (strike selection scaling with the implied move). No value or behaviour changes.
 v4.42 2026-09-29  OTV4TEST r175 (SYM.1) — THE TRADEABLE UNIVERSE IS THE TOP 75 OPTIONS NAMES, AND A SYMBOL OFF THE LIST IS REFUSED. The operator, 2026-09-29: "probably the 50 most liquid names ... bump it up to 75. Any list that would include AAL and Sofi would be the right number", then "Yes to all" to: rank by options volume, keep only an ATM spread <= 10%, keep every symbol already listed. MEASURED 2026-09-29 ~13:40 ET on Cboe's public delayed chains (181 candidates, 180 read; /var/tmp/option_liquidity_2026-09-29.jsonl on the reference box): 71 pass the spread filter (SOFI #22, AAL #73 by volume); with SPY/QQQ/IWM/SPX that is 75. 50 are new: STRIKE_INCREMENTS gains each at its MEASURED near-money step (the mode of the listed-strike gaps within ~6% of spot on the nearest expiry, four spot-checked against the raw ladder), PENNY_CLASSES gains the 48 measured penny-quoted (APP and ASML quote on the nickel grid and stay out). Existing entries are NOT re-stepped here: 18 disagree with the real ladder (NVDA/AMZN/AAPL... trade 2.5, SMCI 0.5) and that is STRK.1, the shared fix that reads the ladder from the chain. INSTRUMENT_LISTED is new: a symbol not in STRIKE_INCREMENTS used to get a silent $1 step from .get(INSTRUMENT, 1); main.py and data/candle_feed.py now refuse it at startup. The declared (inert) RETENTION_DAYS copy moves 5m 10 -> 30 and 15m 20 -> 30 with warehouse/retention_purge.py, for the 30-day first-boot backfill.
@@ -697,10 +709,10 @@ ENTRY_WINDOWS = {
     # r149: directional debits run ALL DAY to the entries stop (operator: "A").
     # Supersedes criteria.py's 2026-08-29 "Debit entries are finished at 1130".
     "ORBStrategy":          ((9, 35),  EOD_SCHEDULE["entries_stop"]),
-    "RunawayContinuation":  ((9, 35),  EOD_SCHEDULE["entries_stop"]),
-    "LiquidityHunt":        ((9, 35),  EOD_SCHEDULE["entries_stop"]),
-    "Breakout":             ((9, 35),  EOD_SCHEDULE["entries_stop"]),
-    "VOLT":                 ((9, 35),  EOD_SCHEDULE["entries_stop"]),
+    "RunawayContinuation":  ((9, 35),  (10, 30)),   # r187 (ROSTER.1): directional debits stop at 10:29
+    "LiquidityHunt":        ((9, 35),  (10, 30)),   # r187
+    "Breakout":             ((9, 35),  (10, 30)),   # r187
+    "VOLT":                 ((9, 35),  (10, 30)),   # r187 (VOLT is also OFF by default)
     "SweepCreditSpread":    ((9, 35),  EOD_SCHEDULE["entries_stop"]),
     "TrendCreditSpread":    ((11, 31), EOD_SCHEDULE["entries_stop"]),
     "GEXPinButterfly":      ((12, 0),  (15, 0)),
@@ -1165,7 +1177,7 @@ SWEEP_CS_TAKE_PROFIT_PCT = None
 # that routing happens by DERIVATION from persisted columns, not a flag.
 # Debit positions keep the ladder because they decay; verticals do not.
 BUTTERFLY_STOP_LOSS_PCT = 0.40   # OTV4TEST r24, operator: "Widen it to 40%." (was 0.25)
-ATP_BUTTERFLY_ENABLED = os.environ.get("OT_ATP_BUTTERFLY", "1") == "1"   # OTV4TEST r26 (BFLY.6)
+ATP_BUTTERFLY_ENABLED = os.environ.get("OT_ATP_BUTTERFLY", "0") == "1"   # OTV4TEST r26 (BFLY.6); r187 (ROSTER.1): OFF by default - the operator, 2026-10-02: "Turn off the ATP" (OT_ATP_BUTTERFLY=1 restores it)
 ATP_BFLY_AT_PIN_EM_FRAC = 0.30   # ⟨PRIOR⟩ r26: at the pin = spot within this x EM of it
 ATP_BFLY_SETTLED_BARS = 15       # ⟨PRIOR⟩ r26: closed 1m bars all within that band
 ATP_BFLY_VWAP_STRICT_EM_FRAC = 0.05   # r179 (BFLY.9) route B: NOT TRENDING and the pin within ±this x EM of VWAP, only when route A fails. The operator, 2026-09-30: "Allow a non-pinning ATP if it qualifies on STRICT VWAP & NOT TRENDING", "Route B for VWAP if A fails", and yes to NEUTRAL and to ±0.05 x EM.

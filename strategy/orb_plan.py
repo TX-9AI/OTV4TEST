@@ -1,5 +1,12 @@
 """
-strategy/orb_plan.py  v1.8
+strategy/orb_plan.py  v1.9
+v1.9  2026-10-02  OTV4TEST r187 (ROSTER.1) — THE ORB TRADE IS RETIRED BY DEFAULT.
+      prepare() still narrates the engine every tick, then goes DORMANT at gate
+      `enabled` unless OT_ORB_TRADE is the literal "1" (read at CALL time).
+      BRT.1 (10-01): "retire the orb ... The five minute opening range will
+      always serve as our session reference point" - the ENGINE is untouched
+      and select_contract (Breakout's selector) is untouched. The operator,
+      2026-10-02 21:05 ET: "2. CONCUR". Pinned by check_trade_switches.
 v1.8  2026-10-02  OTV4TEST r186 (ZBID.1) — `select_contract` (ORB and Breakout) refuses a contract
       with no bid: data.options_chain.two_sided beside the QUOTE_FLOOR, whose
       FEASIBILITY reason - "a contract with no live quote cannot fill" - a
@@ -99,6 +106,7 @@ v1.0  2026-09-08  OTV4TEST r2 — THE ORB PLAN. Agreed with the operator on
 from __future__ import annotations
 
 import logging
+import os
 
 import config
 from analysis.orb_engine import ORBState
@@ -248,6 +256,12 @@ class ORBPlan:
         t.check("stop_distance_px", getattr(orb, "stop_distance_px", None))
         t.check("target_50pct", getattr(orb, "target_50pct", None))
         t.check("target_100pct", getattr(orb, "target_100pct", None))
+
+        # r187 (ROSTER.1): the ORB TRADE is retired unless OT_ORB_TRADE is "1"
+        if os.environ.get("OT_ORB_TRADE", "0") != "1":
+            t.dormant("enabled", "the ORB trade is RETIRED by the operator's ruling "
+                                 "2026-10-02 (BRT.1); OT_ORB_TRADE=1 restores it")
+            return prep
 
         # ── window: OUTSIDE IT THE PLAN OBSERVES AND DOES NOT WRITE ────
         # Operator, 2026-09-08: *"plans that are outside of their trading

@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_orb_plan.py  v1.5
+tests/check_orb_plan.py  v1.6
+v1.6  2026-10-02  OTV4TEST r187 (ROSTER.1) — RE-POINTED BY THE RULING, NOT LOOSENED:
+      the strategy is OFF by default from r187; this checker tests its LOGIC,
+      so it switches it on for its own run (OT_ORB_TRADE=1). check_trade_switches pins the default.
 v1.5  2026-10-02  OTV4TEST r185 (LADR.1) — P2, P3b and P8 RE-POINTED BY THE RULING,
       not deleted: the plan's target is the RAW 100% projection (709.19 /
       704.72), no longer pre-rounded on config.STRIKE_INCREMENT; the CONTRACT
@@ -60,6 +63,9 @@ own, not hidden behind the missing module.
 
 Run:  python3 tests/check_orb_plan.py
 """
+import os as _os_r187
+_os_r187.environ["OT_ORB_TRADE"] = "1"   # r187: test the strategy's logic switched on
+
 import os
 import sqlite3
 import sys

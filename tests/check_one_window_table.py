@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
-"""tests/check_one_window_table.py — v1.2
+"""tests/check_one_window_table.py — v1.3
 ONE ENTRY-WINDOW TABLE, AND NOTHING READS A WINDOW FROM ANYWHERE ELSE.
+
+v1.3  2026-10-02 — OTV4TEST r187 (ROSTER.1) — W5 pins UPDATED BY RULING: "let's impose a 1029 debit
+      cutoff rule, but exempts the GEX pin fly" (2026-10-02). The admission rows of Runaway, Hunt,
+      Breakout and VOLT and every name derived from them move 15:40 -> 10:30. The ORB row and its
+      derived names, the credit rows, both flies and DEBIT_DIRECTIONAL_CUTOFF_ET are unchanged.
 
 v1.2  2026-09-30 — OTV4TEST r179 (BFLY.9) — ONE W5 pin UPDATED BY RULING: admission.ATPButterfly.window
       11:30 -> 12:00 (marked "# r179"). The plan already stayed dormant until 12:00; the operator: "12:00 is fine".
@@ -60,14 +65,14 @@ def hhmm(t) -> str:
 
 PIN = {   # measured on the r148 build; identical to r147 except the TrendCreditSpread admission row
     "admission.ATPButterfly.window": ((12, 0), (15, 0)),   # r179
-    "admission.Breakout.window": ((9, 35), (15, 40)),   # r149
+    "admission.Breakout.window": ((9, 35), (10, 30)),   # r187
     "admission.GEXPinButterfly.window": ((12, 0), (15, 0)),
-    "admission.LiquidityHunt.window": ((9, 35), (15, 40)),   # r149
+    "admission.LiquidityHunt.window": ((9, 35), (10, 30)),   # r187
     "admission.ORBStrategy.window": ((9, 35), (15, 40)),   # r149
-    "admission.RunawayContinuation.window": ((9, 35), (15, 40)),   # r149
+    "admission.RunawayContinuation.window": ((9, 35), (10, 30)),   # r187
     "admission.SweepCreditSpread.window": ((9, 35), (15, 40)),
     "admission.TrendCreditSpread.window": ((11, 31), (15, 40)),
-    "admission.VOLT.window": ((9, 35), (15, 40)),   # r149
+    "admission.VOLT.window": ((9, 35), (10, 30)),   # r187
     "config.BUTTERFLY_ENTRY_CUTOFF_ET": (14, 0),
     "config.BUTTERFLY_ENTRY_START_ET": (12, 0),
     "config.CONDOR_ENTRY_CUTOFF_ET": (15, 40),
@@ -80,7 +85,7 @@ PIN = {   # measured on the r148 build; identical to r147 except the TrendCredit
     "config.GEX_BFLY_EARLIEST_ET": "12:00",
     "config.HARD_CLOSE_ET": (15, 55),   # r149
     "config.ORB_NO_ENTRY_AFTER_ET": (15, 40),   # r149
-    "config.RUNAWAY_CUTOFF_ET": "15:40",   # r149
+    "config.RUNAWAY_CUTOFF_ET": "10:30",   # r187
     "config.SWEEP_CS_EARLIEST_ET": "11:31",
     "config.SWEEP_CS_EARLIEST_ET_FORK": (9, 35),
     "config.SWEEP_CS_LATEST_ET": "15:40",
@@ -88,27 +93,27 @@ PIN = {   # measured on the r148 build; identical to r147 except the TrendCredit
     "config.TCS_ENTRY_END_ET": (15, 40),
     "config.TCS_START_ET": (11, 31),
     "config.VERTICAL_HOLD_TO_ET": (15, 45),   # r149
-    "config.VOLT_WINDOW_CLOSE_ET": (15, 40),   # r149
+    "config.VOLT_WINDOW_CLOSE_ET": (10, 30),   # r187
     "config.VOLT_WINDOW_OPEN_ET": (9, 35),
     "strategy.breakout.EARLIEST_ET": "09:35",
-    "strategy.breakout.LATEST_ET": "15:40",   # r149
+    "strategy.breakout.LATEST_ET": "10:30",   # r187
     "strategy.liquidity_hunt.WINDOW_OPEN_ET": (9, 35),
     "strategy.orb_plan.WINDOW_OPEN_ET": (9, 35),
     "strategy.runaway_plan.WINDOW_OPEN_ET": (9, 35),
     "risk.session_guard._BUTTERFLY_CUTOFF": "14:00",
     "strategy.gex_pin_butterfly.EARLIEST_ET": "12:00",
     "strategy.gex_pin_butterfly.LATEST_ET": "15:00",
-    "strategy.liquidity_hunt.CUTOFF_ET": (15, 40),   # r149
+    "strategy.liquidity_hunt.CUTOFF_ET": (10, 30),   # r187
     "strategy.orb_plan.CUTOFF_ET": (15, 40),   # r149
-    "strategy.runaway_continuation.CUTOFF_ET": "15:40",   # r149
-    "strategy.runaway_plan._cutoff_hm()": (15, 40),   # r149
+    "strategy.runaway_continuation.CUTOFF_ET": "10:30",   # r187
+    "strategy.runaway_plan._cutoff_hm()": (10, 30),   # r187
     "strategy.sweep_credit_spread.EARLIEST_ET": "11:31",
     "strategy.sweep_credit_spread.LATEST_ET": "15:40",
     "strategy.sweep_plan.EARLIEST_ET": (9, 35),
     "strategy.sweep_plan.LATEST_ET": (15, 40),
     "strategy.tcs_plan.TCS_ENTRY_END_ET": (15, 40),
     "strategy.tcs_plan.TCS_START_ET": (11, 31),
-    "strategy.volt_plan.WINDOW_CLOSE_ET": (15, 40),   # r149
+    "strategy.volt_plan.WINDOW_CLOSE_ET": (10, 30),   # r187
     "strategy.volt_plan.WINDOW_OPEN_ET": (9, 35),
 }
 

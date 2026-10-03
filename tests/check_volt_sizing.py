@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_volt_sizing.py  v1.4
+tests/check_volt_sizing.py  v1.5
+v1.5  2026-10-02  OTV4TEST r187 (ROSTER.1) — RE-POINTED BY THE RULING, NOT LOOSENED:
+      the strategy is OFF by default from r187; this checker tests its LOGIC,
+      so it switches it on for its own run (OT_VOLT=1). check_trade_switches pins the default.
 v1.4  2026-10-02  OTV4TEST r186 (ZBID.1) — the _C
       fixture contract now carries a TWO-SIDED quote (bid/ask around its
       mark), as every live OptionContract does: r186 (ZBID.1) refuses a
@@ -57,7 +60,10 @@ builds. Nothing here re-implements the sizer (WA §21, §0.4).
 
 Run:  python3 tests/check_volt_sizing.py
 """
+
 from __future__ import annotations
+import os as _os_r187
+_os_r187.environ["OT_VOLT"] = "1"   # r187: test the strategy's logic switched on
 
 import atexit
 import datetime as dt

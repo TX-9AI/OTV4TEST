@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_orb_sequence.py  v1.3
+tests/check_orb_sequence.py  v1.4
+v1.4  2026-10-02  OTV4TEST r187 (ROSTER.1) — RE-POINTED BY THE RULING, NOT LOOSENED:
+      the strategy is OFF by default from r187; this checker tests its LOGIC,
+      so it switches it on for its own run (OT_ORB_TRADE=1). check_trade_switches pins the default.
 v1.3  2026-09-13  OTV4TEST r20 — the `liq_map=None` kwarg dropped from every
       `ORBStrategy.generate_signal` call; nothing else changed. The parameter is
       REMOVED rather than ignored, so a harness still passing it raises — which
@@ -39,7 +42,10 @@ over a NameError that crash-looped the fleet. The three source-text checks
 (S7/S8/S9) are pinned to CALL and BRANCH shapes via the AST, never to a string
 that a comment could satisfy — WORKING_AGREEMENT 20.
 """
+
 from __future__ import annotations
+import os as _os_r187
+_os_r187.environ["OT_ORB_TRADE"] = "1"   # r187: test the strategy's logic switched on
 
 import ast
 import os

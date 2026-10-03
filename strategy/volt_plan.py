@@ -1,5 +1,12 @@
 """
-strategy/volt_plan.py  v1.4
+strategy/volt_plan.py  v1.5
+v1.5  2026-10-02  OTV4TEST r187 (ROSTER.1) — VOLT IS OFF BY DEFAULT. prepare() goes
+      DORMANT at gate `enabled` unless os.environ OT_VOLT is the literal "1",
+      read at CALL time. VOLT made -10,236 of QQQ's -15,784 week, lost on every
+      symbol, crossed the daily cap 5 of 6 times, and its direction read drifts
+      with the 60-candle df_1m (bars[0] is not the session open after ~1 h).
+      The operator, 2026-10-02 21:05 ET: "1. CONCUR". OT_VOLT=1 restores it
+      exactly. Pinned by tests/check_trade_switches.py.
 v1.4  2026-10-02  OTV4TEST r186 (ZBID.1) — `select_contract` (VOLT) refuses a contract
       with no bid: data.options_chain.two_sided beside the QUOTE_FLOOR, whose
       FEASIBILITY reason - "a contract with no live quote cannot fill" - a
@@ -91,6 +98,7 @@ floors at 0.96 of entry, so arming the trail could GUARANTEE a loss. The
 from __future__ import annotations
 
 import logging
+import os
 
 import config
 from strategy.plan import Plan, _n
@@ -297,6 +305,11 @@ class VoltPlan:
         t = self.planner.tick(price_now)
         prep = VoltPreparation(t)
         prep.price = price_now
+        # r187 (ROSTER.1): OFF unless OT_VOLT is the literal "1" (read now, not at import)
+        if os.environ.get("OT_VOLT", "0") != "1":
+            t.dormant("enabled", "VOLT is OFF by the operator's ruling 2026-10-02 "
+                                 "(OT_VOLT=1 restores it)")
+            return prep
 
         bars = _bars_1m(df_1m)
         # completed bars only — the forming bar's volume is a partial count and

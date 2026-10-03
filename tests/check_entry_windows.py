@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""check_entry_windows.py — v1.5
+"""check_entry_windows.py — v1.6
+v1.6  2026-10-02  OTV4TEST r187 (ROSTER.1) — W6 RE-POINTED BY THE RULING. The operator,
+      2026-10-02: "let's impose a 1029 debit cutoff rule, but exempts the GEX pin fly".
+      The directional debit cutoff is 10:30 (exclusive; last entry 10:29) and is the
+      Runaway row of ENTRY_WINDOWS; the credit END and EOD_SCHEDULE["entries_stop"]
+      stay ONE minute, 15:40. MOVED, NOT DROPPED: both halves are still pinned.
 v1.5  2026-09-26  OTV4TEST r149 (EOD.1) — W6 RE-POINTED. The 08-24 one-minute daylight between the
       debit cutoff and the credit start is SUPERSEDED by the operator's ruling, 2026-09-26: "I wanna
       extend the debit window to all day" and "Stop entries at 1540". W6 now pins that the debit
@@ -170,8 +175,9 @@ def main():
     # every entry — debit and credit — stops at EOD_SCHEDULE["entries_stop"].
     _dc = _hm(_rc.CUTOFF_ET)
     _es = tuple(C.EOD_SCHEDULE["entries_stop"])
-    check("W6 debit cutoff = credit end = EOD entries_stop (15:40)",
-          _dc == _es == tuple(C.CREDIT_ENTRY_END_ET) == (15, 40),
+    check("W6 debit cutoff 10:30 (r187, the Runaway row); credit end = EOD entries_stop (15:40)",
+          _dc == tuple(C.ENTRY_WINDOWS["RunawayContinuation"][1]) == (10, 30)
+          and _es == tuple(C.CREDIT_ENTRY_END_ET) == (15, 40),
           f"debit cutoff {_dc}, credit end {tuple(C.CREDIT_ENTRY_END_ET)}, entries_stop {_es}")
 
     # ── 🔴 W8 — ONE CREDIT END, THE MIRROR OF W1 ─────────────────────────

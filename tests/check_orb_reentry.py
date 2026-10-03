@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_orb_reentry.py  v1.2
+tests/check_orb_reentry.py  v1.3
+v1.3  2026-10-02  OTV4TEST r187 (ROSTER.1) — RE-POINTED BY THE RULING, NOT LOOSENED:
+      the strategy is OFF by default from r187; this checker tests its LOGIC,
+      so it switches it on for its own run (OT_ORB_TRADE=1). check_trade_switches pins the default.
 v1.2  2026-09-26  OTV4TEST r149 (EOD.1) — R1c RE-POINTED: the flat tape now runs to the ORB cutoff
       READ FROM CONFIG (ORB_NO_ENTRY_AFTER_ET, 15:40 by the operator's all-day debit window) and the
       close inside lands AT it, instead of a typed 11:30. The pinned behaviour is unchanged.
@@ -66,7 +69,10 @@ R6a-R6e.
 Plain script with an exit code (WORKING_AGREEMENT 36).
 Run:  python3 tests/check_orb_reentry.py
 """
+
 from __future__ import annotations
+import os as _os_r187
+_os_r187.environ["OT_ORB_TRADE"] = "1"   # r187: test the strategy's logic switched on
 
 import os
 import sqlite3

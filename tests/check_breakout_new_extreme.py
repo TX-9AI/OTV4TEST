@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
-tests/check_breakout_new_extreme.py  v1.2
+tests/check_breakout_new_extreme.py  v1.3
+v1.3  2026-10-02  OTV4TEST r187 (ROSTER.1) — RE-POINTED BY THE RULING: Breakout's
+      window now ends 10:30 (the operator, 2026-10-02: "let's impose a 1029
+      debit cutoff rule"), and this fixture's re-fires sit at 10:49-11:01. This
+      checker tests the RE-FIRE gate, not the window, so it sets the plan's
+      B.LATEST_ET back to "15:40" for its own process (the plan reads it at call
+      time); check_trade_switches S8 pins the real 10:30. No check changed.
 v1.2  2026-10-02  OTV4TEST r186 (ZBID.1) — the _C
       fixture contract now carries a TWO-SIDED quote (bid/ask around its
       mark), as every live OptionContract does: r186 (ZBID.1) refuses a
@@ -228,6 +234,7 @@ def main():
         get_trade_logger()                                   # the repo's schema
         from strategy.breakout import Breakout
         import strategy.breakout as B
+        B.LATEST_ET = "15:40"                                # r187: re-fire logic, not the window (S8 pins 10:30)
         from strategy.breakout_plan import BreakoutPlan
         BreakoutPlan._flow = staticmethod(lambda conn, symbol: (0.2, 1.0))
         spec = Breakout()
@@ -384,6 +391,8 @@ def _n5_child():
     from datetime import datetime
     day = datetime.now(ZoneInfo(ET)).date()
     from strategy.breakout import Breakout
+    import strategy.breakout as B
+    B.LATEST_ET = "15:40"                                    # r187, as above
     from strategy.breakout_plan import BreakoutPlan
     BreakoutPlan._flow = staticmethod(lambda conn, symbol: (0.2, 1.0))
     spec = Breakout()

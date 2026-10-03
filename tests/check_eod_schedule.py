@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
-"""tests/check_eod_schedule.py — v1.0
+"""tests/check_eod_schedule.py — v1.1
 THE OPERATOR'S END OF DAY, DRIVEN THROUGH THE REAL CODE UNDER A FROZEN CLOCK.
+
+v1.1  2026-10-02 — OTV4TEST r187 (ROSTER.1) — E1 RE-POINTED BY THE RULING: "let's impose a 1029
+      debit cutoff rule, but exempts the GEX pin fly". Runaway, Hunt, Breakout and VOLT end 10:30;
+      the ORB row, SweepCreditSpread and TrendCreditSpread still end 15:40, and so does
+      DEBIT_DIRECTIONAL_CUTOFF_ET (main's structure-keyed afternoon gate, now a later backstop).
+      MOVED, NOT DROPPED: every row and the not-env-movable cutoff are still pinned.
 
 v1.0  2026-09-26 — OTV4TEST r149 (EOD.1). Operator, 2026-09-26: debit window "A" (all day);
       "Stop entries at 1540"; "Resting limit orders at 1545, ladder exits at 1550 if they're
@@ -108,9 +114,10 @@ def main() -> int:
         env = dict(os.environ, OT_DEBIT_CUTOFF_ET="11:30")
         r = subprocess.run([sys.executable, "-c", "import config; print(tuple(config.DEBIT_DIRECTIONAL_CUTOFF_ET))"],
                            cwd=ROOT, env=env, capture_output=True, text=True)
-        check("E1 schedule 15:40/15:45/15:50/15:55, windows end 15:40, debit cutoff 15:40 and not env-movable",
+        check("E1 schedule 15:40/15:45/15:50/15:55, ORB/credit windows end 15:40, the four directional debits 10:30 (r187), afternoon cutoff 15:40 and not env-movable",
               ES == {"entries_stop": (15, 40), "resting_at": (15, 45), "ladder_at": (15, 50), "cross_at": (15, 55)}
-              and all(tuple(EW[n][1]) == (15, 40) for n in six)
+              and all(tuple(EW[n][1]) == ((10, 30) if n in ("RunawayContinuation", "LiquidityHunt", "Breakout", "VOLT")
+                                          else (15, 40)) for n in six)
               and tuple(config.DEBIT_DIRECTIONAL_CUTOFF_ET) == (15, 40) and r.stdout.strip() == "(15, 40)",
               f"ES={ES} ends={[EW[n][1] for n in six]} cutoff={config.DEBIT_DIRECTIONAL_CUTOFF_ET} env-run={r.stdout.strip() or r.stderr[-120:]}")
     except Exception as exc:                                  # noqa: BLE001

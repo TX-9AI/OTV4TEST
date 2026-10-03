@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """
-tests/check_admission.py  v1.8
+tests/check_admission.py  v1.9
 THE ADMISSION TABLE, DRIVEN EXHAUSTIVELY (OTV4TEST r35).
+
+v1.9  2026-10-02  OTV4TEST r187 (ROSTER.1) — RUNAWAY, HUNT, BREAKOUT and VOLT RE-POINTED 15:40 -> 10:30, by
+        ruling: "let's impose a 1029 debit cutoff rule, but exempts the GEX pin fly" (2026-10-02). The ORB row,
+        both flies, SWEEP and TCS are unchanged. A8 now asserts those four are IN at 10:29 and OUT at 10:30, the
+        ORB still IN at 11:30, and at 15:40 every directional and credit entry OUT (unchanged).
 
 v1.8  2026-09-30  OTV4TEST r179 (BFLY.9) — the ATP fly's window RE-POINTED 11:30 -> 12:00, by ruling. The table said 11:30 while the
         plan itself stayed dormant until 12:00 (measured 2026-09-30); the operator: "12:00 is fine". The SPEC row moves and A8 now
@@ -98,12 +103,12 @@ def main():
     #    test cannot fail. These numbers come from his message, not from rules().
     SPEC = {
         ORB:     (((9, 35), (15, 40)), 1, None),   # r149 EOD.1: all day, entries stop 15:40
-        RUNAWAY: (((9, 35), (15, 40)), 1, None),   # r149 EOD.1: all day, entries stop 15:40
-        HUNT:    (((9, 35), (15, 40)), 1, None),   # r149 EOD.1: all day, entries stop 15:40
+        RUNAWAY: (((9, 35), (10, 30)), 1, None),   # r187 ROSTER.1: directional debits stop at 10:29
+        HUNT:    (((9, 35), (10, 30)), 1, None),   # r187 ROSTER.1: directional debits stop at 10:29
         # r51 (BRK.1) — the operator's 2026-09-18 ruling, restated from his own
         # words: *"I want the orb, hunt, breakout & sweep all able to fire &
         # non-competing"*, same opening range, nothing blocking anything.
-        BREAKOUT: (((9, 35), (15, 40)), 1, None),   # r149 EOD.1: all day, entries stop 15:40
+        BREAKOUT: (((9, 35), (10, 30)), 1, None),   # r187 ROSTER.1: directional debits stop at 10:29
         # r71 (LATE.1) — the operator's 2026-09-20 ruling, restated from his own
         # words: *"let's just widen the credit trade window to 1540 for entries
         # & make the credit window flatten at 1550"*, because the late
@@ -118,7 +123,7 @@ def main():
         # ⚠️ ITS WINDOW MUST EQUAL THE ORB'S — a control measured over a
         # different period measures the period. check_volt_plan V1b pins that
         # equality from the other side.
-        VOLT:    (((9, 35), (15, 40)), 1, None),   # r149 EOD.1: all day, entries stop 15:40
+        VOLT:    (((9, 35), (10, 30)), 1, None),   # r187 ROSTER.1: directional debits stop at 10:29
         SWEEP:   (((9, 35), (15, 40)), 2, None),
         TCS:     (((11, 31), (15, 40)), 1, None),   # r148: the minute its plan opens (AFD.1)
         GEXFLY:  (((12, 0), (15, 0)), 1, 1),
@@ -149,11 +154,12 @@ def main():
               f"{before}={bool(ok(s,before))} {at_start}={bool(ok(s,at_start))} "
               f"{before_end}={bool(ok(s,before_end))} {at_end}={bool(ok(s,at_end))}")
 
-    check("A8 r149: at 11:30 the directional five are IN, the TCS OUT until 11:31, the ATP fly OUT until 12:00 (r179); at 15:40 every directional and credit entry is OUT",
-          all(bool(ok(x, (11, 30))) for x in (ORB, RUNAWAY, HUNT, BREAKOUT, VOLT))
+    check("A8 r149/r187: the ORB IN at 11:30, Runaway/Hunt/Breakout/VOLT IN at 10:29 and OUT at 10:30, the TCS OUT until 11:31, the ATP fly OUT until 12:00 (r179); at 15:40 every directional and credit entry is OUT",
+          bool(ok(ORB, (11, 30)))
+          and all(bool(ok(x, (10, 29))) and not ok(x, (10, 30)) for x in (RUNAWAY, HUNT, BREAKOUT, VOLT))
           and not ok(TCS, (11, 30)) and bool(ok(TCS, (11, 31))) and not ok(ATPFLY, (11, 30)) and bool(ok(ATPFLY, (12, 0)))
           and not any(ok(x, (15, 40)) for x in (ORB, RUNAWAY, HUNT, BREAKOUT, VOLT, SWEEP, TCS)),
-          "the debit window runs all day (operator 2026-09-26); the TCS's one-minute gap is its plan's own (AFD.1)")
+          "directional debits stop at 10:29 (operator 2026-10-02); the TCS's one-minute gap is its plan's own (AFD.1)")
 
     check("A9 the GEX fly runs to 15:00 (its 14:00 cutoff was raised by ruling)",
           bool(ok(GEXFLY, (14, 30))) and bool(ok(GEXFLY, (14, 59))) and not ok(GEXFLY, (15, 0)),
