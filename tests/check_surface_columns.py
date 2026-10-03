@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_surface_columns.py  v1.0
+tests/check_surface_columns.py  v1.1
+v1.1  2026-10-03  OTV4TEST r215 (DER.3) — U3 RESTATED, U5 ADDED: gamma_flow is the change in a strike's net GEX since the
+      engine's previous reading ("Concur, populate it"). U3: the FIRST reading writes NULL. U5: the second
+      writes now minus before for a strike in both snapshots, and NULL for one that is not.
 v1.0  2026-10-03  OTV4TEST r212 (DER.2) — surface_series CARRIES iv, dt_seconds AND d_vol; gamma_flow STAYS EMPTY.
 
   The 10-03 audit (B7): the three columns were the literal None on every row
@@ -12,7 +15,8 @@ v1.0  2026-10-03  OTV4TEST r212 (DER.2) — surface_series CARRIES iv, dt_second
       (0.23), the 600 s between the two samples, and the IV change (+0.03)
   U2  a contract whose IV did NOT move: vanna stays NULL (no denominator) and
       d_vol is the measured 0.0 - a flat IV is a reading, not an absence
-  U3  gamma_flow is NULL on every row (no definition exists; none is invented)
+  U3  gamma_flow is NULL on the first reading
+  U5  on the next reading it is the strike's net-GEX change; NULL where either snapshot lacks the strike
   U4  charm and vanna are the numbers second_order returns - nothing else moved
 
 Run:  python3 tests/check_surface_columns.py   (exit 0 green, 1 red)
@@ -60,7 +64,11 @@ def main():
         feed.commit()
         st = DerivedStore()
         eng = SurfaceEngine(st, "QQQ", feed_conn=feed)
-        n = eng.derive({"symbol": "QQQ", "expiry": "2026-10-05", "gex": None})
+        import types
+        def _snap(d):
+            return types.SimpleNamespace(net_gex=sum(d.values()),
+                                         strikes=[types.SimpleNamespace(strike=k, net_gex=v) for k, v in d.items()])
+        n = eng.derive({"symbol": "QQQ", "expiry": "2026-10-05", "gex": _snap({750.0: 1000.0, 745.0: 5.0})})
         got = {r[0]: r[1:] for r in st.conn.execute(
             "SELECT strike, charm, vanna, gamma_flow, iv, dt_seconds, d_vol FROM surface_series")}
         a, b = got.get(750.0), got.get(740.0)
@@ -70,19 +78,27 @@ def main():
         check("U2 the flat-IV contract: vanna NULL, d_vol the measured 0.0, iv 0.25",
               b is not None and b[1] is None and b[5] == 0.0 and abs(b[3] - 0.25) < 1e-9 and abs(b[4] - 600.0) < 1e-6,
               f"740 -> {b}")
-        check("U3 gamma_flow is NULL on every row", all(v[2] is None for v in got.values()) and len(got) == 2, str(got))
+        check("U3 gamma_flow is NULL on the FIRST reading (nothing to difference against)",
+              all(v[2] is None for v in got.values()) and len(got) == 2, str(got))
         ra = [(t, d, v) for s, t, d, v in rows if s == A]
         check("U4 charm and vanna equal second_order's own numbers",
               a is not None and abs(a[0] - so.charm(ra)) < 1e-9 and abs(a[1] - so.vanna(ra)) < 1e-9,
               f"{a and a[:2]} vs {(so.charm(ra), so.vanna(ra))}")
+        time.sleep(1.1)                                       # a new ts_epoch: the table's key includes it
+        eng.derive({"symbol": "QQQ", "expiry": "2026-10-05", "gex": _snap({750.0: 1400.0, 740.0: -300.0})})
+        last = {}
+        for k_, gf, ts_ in st.conn.execute("SELECT strike, gamma_flow, ts_epoch FROM surface_series ORDER BY ts_epoch"):
+            last[k_] = gf
+        check("U5 the second reading: 750 flowed +400 (1400 - 1000); 740, absent from the first snapshot, stays NULL",
+              last.get(750.0) == 400.0 and last.get(740.0) is None, str(last))
     except Exception as exc:                                  # noqa: BLE001
-        for n_ in ("U1", "U2", "U3", "U4"):
+        for n_ in ("U1", "U2", "U3", "U4", "U5"):
             if n_ not in FAILED:
                 check(f"{n_} (did not run)", False, f"{type(exc).__name__}: {exc}")
     if FAILED:
         print(f"\nRED — {len(set(FAILED))} check(s): {sorted(set(FAILED))}")
         return 1
-    print("\nGREEN — the surface rows carry iv, dt_seconds and d_vol as measured; gamma_flow stays empty")
+    print("\nGREEN — the surface rows carry iv, dt_seconds, d_vol and gamma_flow as measured")
     return 0
 
 

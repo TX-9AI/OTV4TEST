@@ -1,5 +1,11 @@
 """
-derived/surface.py  v4.1
+derived/surface.py  v4.2
+v4.2  2026-10-03  OTV4TEST r215 (DER.3) — gamma_flow IS WRITTEN: the change in a strike's NET GEX since this engine's previous
+      reading. docs/DERIVED_STORES.md named the idea ("with a series, gamma flow is measurable - where the wall
+      built and when it moved") and no code ever computed it; r212 left it empty and wrongly said no
+      definition existed. The operator, 2026-10-03, on the definition proposed (the change in net gamma at
+      each strike since the previous reading): "Concur, populate it". The first reading after a start has no
+      previous one and writes NULL; a strike absent from either snapshot writes NULL. Never 0 by default.
 v4.1  2026-10-03  OTV4TEST r212 (DER.2) — iv, dt_seconds AND d_vol ARE WRITTEN. They were the literal None on every row since
       this file was written (the 10-03 audit, B7; BACKLOG DER.1 said "cause NOT investigated" - this is the
       cause). They come from analysis/second_order, per contract, as measured. gamma_flow STAYS NULL: no
@@ -137,6 +143,23 @@ class SurfaceEngine(DerivedEngine):
         _gx = ctx.get("gex")
         gex = _f(getattr(_gx, "net_gex", None) if _gx is not None else None)
 
+        # r215 — GAMMA FLOW: each strike's net GEX now, against this engine's previous
+        # reading of the same strike. No previous reading (the first tick after a start,
+        # or a tick with no snapshot) is NULL, never zero.
+        _now_k = {}
+        try:
+            for _s in (getattr(_gx, "strikes", None) or []):
+                _k, _n = _f(getattr(_s, "strike", None)), _f(getattr(_s, "net_gex", None))
+                if _k is not None and _n is not None:
+                    _now_k[round(_k, 4)] = _n
+        except Exception:                                       # noqa: BLE001
+            _now_k = {}
+        _prev_k = getattr(self, "_prev_gex_by_strike", None) or {}
+
+        def _flow(k):
+            a, b = _now_k.get(round(k, 4)), _prev_k.get(round(k, 4))
+            return (a - b) if (a is not None and b is not None) else None
+
         # Smile slope across the chain at this instant, from the same window.
         try:
             cur = conn.execute(
@@ -158,6 +181,8 @@ class SurfaceEngine(DerivedEngine):
                 continue
             rows.append((sym, now, k, expiry,
                          _f(m.get("charm")), _f(m.get("vanna")),
-                         gex, None,                 # gamma_flow: undefined anywhere - stays NULL (r212)
+                         gex, _flow(k),             # r215: the strike's net-GEX change since the last reading
                          _f(m.get("iv")), slope, _f(m.get("dt_seconds")), _f(m.get("d_vol"))))
+        if _now_k:
+            self._prev_gex_by_strike = _now_k
         return store.append_surface(rows)
