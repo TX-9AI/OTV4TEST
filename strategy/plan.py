@@ -1,5 +1,11 @@
 """
-strategy/plan.py  v2.3
+strategy/plan.py  v2.4
+v2.4  2026-10-03  OTV4TEST r197 (AUD.6) — plan_check GAINS `note TEXT`, AND A CHECK'S TEXT IS STORED IN IT.
+      `value` is REAL: write_row cast each reading to float or wrote NULL, and `note=` was appended
+      to the tick's reason and stored nowhere per check - so break_dir, pool_name, verdict,
+      contract, engine_state, fork... were NULL on every row ever. The column is added by CREATE
+      and by an in-place ALTER (old rows read NULL, as tick_id did in r177). `value` and `verdict`
+      are untouched. Pinned by tests/check_plan_check_note.py.
 v2.3  2026-09-21  OTV4TEST r84 — `skipped_all` carries a gate, forwarded to
       `_SKIP_GATE` exactly as `skipped()` has since r42. Without it the board
       could name only the clock.
@@ -360,6 +366,7 @@ def ensure_tables(store) -> bool:
                 verdict   TEXT,                  -- PASS / FAIL / n/a
                 tick_id   INTEGER DEFAULT 0,     -- r177: the join key
                 direction TEXT NOT NULL DEFAULT '',
+                note      TEXT,                  -- r197: the check's text (verdict, side, contract...)
                 PRIMARY KEY (ts_epoch, symbol, strategy, direction, check_name)
             );""")
         # 🔴 r83 — LIVENESS IS A FACT, NOT AN INFERENCE FROM ROW AGE.
@@ -402,6 +409,12 @@ def ensure_tables(store) -> bool:
                 store.commit()
             except Exception:                                   # noqa: BLE001
                 pass                                            # already present
+        # r197 — the same in-place migration for plan_check.note; old rows read NULL.
+        try:
+            store.conn.execute("ALTER TABLE plan_check ADD COLUMN note TEXT")
+            store.commit()
+        except Exception:                                       # noqa: BLE001
+            pass                                                # already present
         try:
             store._plan_tables_ready = True
         except Exception:                                       # noqa: BLE001
@@ -415,7 +428,8 @@ def ensure_tables(store) -> bool:
 def write_row(store, symbol: str, ts: float, strategy: str, verdict: str,
               reason: str, direction: str = "", trigger=None,
               invalidation=None, underlying=None, r=None,
-              checks: Optional[Dict[str, Tuple[Any, Optional[bool]]]] = None
+              checks: Optional[Dict[str, Tuple[Any, Optional[bool]]]] = None,
+              check_notes: Optional[Dict[str, str]] = None
               ) -> bool:
     """One spine row plus its check rows. Never raises; returns False on a
     failed spine write (and WARNS — a lost row is data lost, r133)."""
@@ -448,12 +462,21 @@ def write_row(store, symbol: str, ts: float, strategy: str, verdict: str,
             except (TypeError, ValueError):
                 v = None
         verdict_c = "n/a" if ok is None else ("PASS" if ok else "FAIL")
+        # r197 (AUD.6) — THE TEXT IS KEPT. `value` is REAL, so a check whose reading is
+        # a word (a side, a verdict, a contract, a level's name) stored NULL and its
+        # note= was never written anywhere: break_dir, pool_name, verdict, contract,
+        # engine_state... were NULL on every row ever. The note= wins; else a value
+        # that would not cast to a number is kept as its own text.
+        note_c = (check_notes or {}).get(name)
+        if not note_c and val is not None and v is None:
+            note_c = str(val)
+        note_c = (str(note_c)[:300] if note_c else None)
         try:
             store.conn.execute(
                 "INSERT OR REPLACE INTO plan_check (ts_epoch, symbol,"
-                " strategy, check_name, value, verdict, direction, tick_id)"
-                " VALUES (?,?,?,?,?,?,?,?)",
-                (ts, symbol, strategy, name, v, verdict_c, direction or "", _TICK["n"]))
+                " strategy, check_name, value, verdict, direction, tick_id, note)"
+                " VALUES (?,?,?,?,?,?,?,?,?)",
+                (ts, symbol, strategy, name, v, verdict_c, direction or "", _TICK["n"], note_c))
         except Exception as exc:                                # noqa: BLE001
             logger.debug("plan_check write failed %s/%s: %s", strategy, name, exc)
     try:
@@ -473,6 +496,7 @@ class PlanTick:
         self.spot = spot
         self.n, self.ts = tick_now()
         self.checks: Dict[str, Tuple[Any, Optional[bool]]] = {}
+        self.check_notes: Dict[str, str] = {}      # r197: each check's own note, for plan_check.note
         self.notes: list = []
         self.trigger: Optional[float] = None
         self.invalidation: Optional[float] = None
@@ -494,6 +518,9 @@ class PlanTick:
         self.checks[name] = (value, ok)
         if note:
             self.notes.append(note)
+            self.check_notes[name] = str(note)     # r197
+        else:
+            self.check_notes.pop(name, None)       # a re-check without a note drops the old one
         return self
 
     def note(self, text: str) -> "PlanTick":
@@ -746,7 +773,7 @@ class PlanTick:
             write_row(self.plan._store_ref(), self.plan.symbol, self.ts,
                       self.strategy, verdict, reason, self.direction,
                       self.trigger, self.invalidation, self.spot, self.r,
-                      self.checks)
+                      self.checks, getattr(self, "check_notes", None))
         except Exception as exc:                                # noqa: BLE001
             logger.warning("[plan] %s row not written: %s", self.strategy, exc)
         lvl = logging.INFO if verdict in ("TAKE", "NO PLAN", "ROLL", "CLOSE") \
