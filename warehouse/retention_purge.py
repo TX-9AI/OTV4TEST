@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-warehouse/retention_purge.py  v1.9
+warehouse/retention_purge.py  v1.10
+v1.10 2026-10-03  OTV4TEST r192 (AUD.3, MIRROR OF otv4 r420 / OPS.43) — THE RECLAIM NAMES THE REAL trades.db.
+      It checkpointed and vacuumed HERE/data/trades.db; the trade record is HERE/trades.db (config.DB_PATH,
+      s3_push.TRADES_DB), so the nightly reclaim never touched it. New module constant TRADES_DB, honouring
+      OT_TRADES_DB like its other owner. Cost was nil (trades.db is 0.5 MB): a correctness fix. Found by
+      the 10-03 audit; mainline fixed it 2026-09-23. Pinned by tests/check_reclaim_paths.py (body identical).
 v1.9  2026-09-29  OTV4TEST r175 (SYM.1) — 5m AND 15m ARE KEPT 30 DAYS (were 10 and
       20), so the ~30-day first-boot backfill the operator asked for on
       2026-09-29 is not deleted by the first nightly purge after it lands.
@@ -205,6 +210,11 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# r192 (otv4 r420 / OPS.43): THE trades.db THE REST OF THE SYSTEM WRITES - the
+# repo root, config.DB_PATH and s3_push.TRADES_DB's file - honouring the same
+# OT_TRADES_DB override. The reclaim list named HERE/data/trades.db, which does
+# not exist on this box, so trades.db was never checkpointed or vacuumed.
+TRADES_DB = os.environ.get("OT_TRADES_DB", os.path.join(HERE, "trades.db"))
 
 # ── r136 (mainline r417) — THE CLAMP: never delete past the confirmed push mark ─
 # ⚠️ AN ABSENT LEDGER FALLS BACK TO AGE-ONLY RATHER THAN REFUSING TO DELETE: a
@@ -726,8 +736,7 @@ def purge(apply: bool = False, feed_db: str = "", derived_db: str = "") -> dict:
     # WAL that the deletes immediately refill, and a vacuum before them would
     # copy rows that are about to go.
     removed["_reclaim"] = reclaim(
-        [feed_db, derived_db,
-         os.path.join(HERE, "data", "trades.db")], apply)
+        [feed_db, derived_db, TRADES_DB], apply)
 
     # ── r255: WHAT REMAINS, so the next tuning decision is a query ──────────
     # ⚠️ THIS IS NOT DECORATION. Nothing in a deletion count explains why MU

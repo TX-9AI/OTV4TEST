@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-381 Python modules across 12 local packages.
+382 Python modules across 12 local packages.
 
-**Reached by:** 120 imported · 12 declared entry points · 166 referenced from a script, unit or doc but never imported · **83 by nothing here**.
+**Reached by:** 120 imported · 12 declared entry points · 167 referenced from a script, unit or doc but never imported · **83 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -1134,6 +1134,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** `data/derived_store.py`, `derived/levels.py`
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
+### `tests/check_reclaim_paths.py`
+- **calls:** `warehouse/__init__.py`, `warehouse/retention_purge.py`, `warehouse/s3_push.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
 ### `tests/check_rehearsal_toggle.py`
 - **calls:** `main.py`, `utils/time_utils.py`
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
@@ -1568,7 +1572,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `warehouse/__init__.py`
 - **calls:** (none)
-- **called by:** `tests/check_audit_20260823.py`, `tests/check_level_tape.py`, `tests/check_lineage.py`, `tests/check_purge_lock.py`, `tests/check_purge_pushed.py`, `tests/check_purge_reclaim.py`, `tests/check_retention_armed.py`, `tests/check_self_close_hold.py`, `tests/check_symbol_universe.py`, `warehouse/self_close.py`
+- **called by:** `tests/check_audit_20260823.py`, `tests/check_level_tape.py`, `tests/check_lineage.py`, `tests/check_purge_lock.py`, `tests/check_purge_pushed.py`, `tests/check_purge_reclaim.py`, `tests/check_reclaim_paths.py`, `tests/check_retention_armed.py`, `tests/check_self_close_hold.py`, `tests/check_symbol_universe.py`, `warehouse/self_close.py`
 
 ### `warehouse/counter_pop.py`
 - **calls:** (none)
@@ -1580,11 +1584,11 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `warehouse/retention_purge.py`
 - **calls:** (none)
-- **called by:** `tests/check_audit_20260823.py`, `tests/check_level_tape.py`, `tests/check_purge_lock.py`, `tests/check_purge_pushed.py`, `tests/check_purge_reclaim.py`, `tests/check_retention_armed.py`, `tests/check_self_close_hold.py`, `tests/check_symbol_universe.py`, `warehouse/self_close.py`
+- **called by:** `tests/check_audit_20260823.py`, `tests/check_level_tape.py`, `tests/check_purge_lock.py`, `tests/check_purge_pushed.py`, `tests/check_purge_reclaim.py`, `tests/check_reclaim_paths.py`, `tests/check_retention_armed.py`, `tests/check_self_close_hold.py`, `tests/check_symbol_universe.py`, `warehouse/self_close.py`
 
 ### `warehouse/s3_push.py`
 - **calls:** (none)
-- **called by:** `tests/check_data_capture.py`, `tests/check_lineage.py`, `tests/check_purge_pushed.py`
+- **called by:** `tests/check_data_capture.py`, `tests/check_lineage.py`, `tests/check_purge_pushed.py`, `tests/check_reclaim_paths.py`
 
 ### `warehouse/self_close.py`
 - **calls:** `notifications/alert_manager.py`, `utils/instrument.py`, `warehouse/__init__.py`, `warehouse/retention_purge.py`
