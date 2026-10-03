@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_boot_sweep.py  v1.2
+tests/check_boot_sweep.py  v1.3
+v1.3  2026-10-03  OTV4TEST r194 (BOX.16) — B3/B3b REQUIRE THE LOG IN SCRATCH TOO, and B3c drives it: a fresh
+      interpreter imports main with OT_LOG_FILE set and the only file handler is the scratch log.
 v1.2  2026-09-25  OTV4TEST r144 — B3/B3b REQUIRE THE SIGNAL JOURNAL IN SCRATCH TOO
       (OT_SIGNAL_JOURNAL_DIR under the same bootsweep- mkdtemp). The sweep wrote
       ~126 retest_check fixtures a day into the live journal; on SOFI/AAL they
@@ -122,6 +124,7 @@ check("B2 it reads MemAvailable and has a floor to skip under",
 check("B3 every checker runs against SCRATCH stores",
       ("OT_TRADES_DB" in _src) and ("OT_DERIVED_DB" in _src)
       and ("OT_RESTING_DB" in _src) and ("OT_SIGNAL_JOURNAL_DIR" in _src)
+      and ("OT_LOG_FILE" in _src)
       and ("mkdtemp" in _src or "TemporaryDirectory" in _src),
       "checkers must never see the live trades/derived/resting stores")
 
@@ -150,7 +153,7 @@ def _b3b():
     finally:
         _m.subprocess.run = _orig
     env = seen.get("env") or {}
-    want = ("OT_TRADES_DB", "OT_DERIVED_DB", "OT_RESTING_DB", "OT_SIGNAL_JOURNAL_DIR")
+    want = ("OT_TRADES_DB", "OT_DERIVED_DB", "OT_RESTING_DB", "OT_SIGNAL_JOURNAL_DIR", "OT_LOG_FILE")
     paths = {k: env.get(k) for k in want}
     parents = {os.path.dirname(v) for v in paths.values() if v}
     ok = (all(paths.values()) and len(parents) == 1
@@ -162,8 +165,48 @@ try:
     _ok3b, _paths3b = _b3b()
 except Exception as _e3b:                                       # noqa: BLE001
     _ok3b, _paths3b = False, f"{type(_e3b).__name__}: {_e3b}"
-check("B3b DRIVEN: run_one hands a checker ONLY scratch stores (trades, derived, resting, journal)",
+check("B3b DRIVEN: run_one hands a checker ONLY scratch stores (trades, derived, resting, journal, log)",
       _ok3b, str(_paths3b))
+
+
+# ── B3c (r194, BOX.16) — THE LOG HANDLER ITSELF, IN A FRESH INTERPRETER ──────
+# main attaches a RotatingFileHandler to config.LOG_FILE at IMPORT. With
+# OT_LOG_FILE set, that handler must open the scratch file and the box's real
+# bot.log must not grow; with it unset, config names the path it always did.
+def _b3c():
+    import glob as _g
+    import subprocess as _sp
+    import tempfile as _tf
+    d = _tf.mkdtemp(prefix="check_boot_sweep_log_")
+    sps = _g.glob(os.path.join(_root, "venv", "lib", "python*", "site-packages"))
+    code = ("import sys; sys.path[1:1] = %r; sys.path.insert(0, %r); import logging, config, main; "
+            "hs = [getattr(h, 'baseFilename', '') for h in logging.getLogger().handlers]; "
+            "print('LOGFILES=' + '|'.join(x for x in hs if x) + ' CFG=' + config.LOG_FILE)" % (sps, _root))
+    env = dict(os.environ)
+    for k, f in (("OT_TRADES_DB", "trades.db"), ("OT_DERIVED_DB", "derived_store.db"),
+                 ("OT_RESTING_DB", "resting_orders.db"), ("OT_SIGNAL_JOURNAL_DIR", "signal_journal")):
+        env[k] = os.path.join(d, f)
+    env.setdefault("OT_INSTRUMENT", "QQQ")
+    scratch_log = os.path.join(d, "bot.log")
+    env["OT_LOG_FILE"] = scratch_log
+    r = _sp.run([sys.executable, "-c", code], cwd=_root, env=env, capture_output=True, text=True, timeout=120)
+    line = ([ln for ln in r.stdout.splitlines() if ln.startswith("LOGFILES=")] or [r.stderr.strip()[-200:]])[-1]
+    env2 = dict(env); env2.pop("OT_LOG_FILE", None)
+    r2 = _sp.run([sys.executable, "-c",
+                  "import sys; sys.path.insert(0, %r); import config; print('CFG=' + config.LOG_FILE)" % _root],
+                 cwd=_root, env=env2, capture_output=True, text=True, timeout=60)
+    unset = (r2.stdout.strip().splitlines() or [r2.stderr.strip()[-120:]])[-1]
+    live = os.path.expanduser("~/options-trader/bot.log")
+    ok = (("LOGFILES=" + scratch_log + " CFG=" + scratch_log) == line and unset == "CFG=" + live)
+    return ok, "set: %s | unset: %s" % (line[-150:], unset)
+
+
+try:
+    _ok3c, _d3c = _b3c()
+except Exception as _e3c:                                       # noqa: BLE001
+    _ok3c, _d3c = False, f"{type(_e3c).__name__}: {_e3c}"
+check("B3c DRIVEN: with OT_LOG_FILE set, importing main opens ONLY the scratch log; unset, config names the live one",
+      _ok3c, _d3c)
 
 # ── B4 — ENV.1. System python3 here is 3.14 with NO pandas, and a systemd unit
 # reads no profile, so PATH cannot be relied on at all. An inherited

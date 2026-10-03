@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tests/check_land_tooling.py  v1.2
+tests/check_land_tooling.py  v1.3
+v1.3  2026-10-03  OTV4TEST r194 (BOX.16) — T6 also requires OT_LOG_FILE under $_scratch on every CHECK line.
 v1.2  2026-09-25  OTV4TEST r144 — T6 also requires OT_SIGNAL_JOURNAL_DIR under $_scratch
       on the line that runs a checker: the journal was the fourth live writer.
 v1.1  2026-09-23  OTV4TEST r109 — T6: THE CHECK STAGE ISOLATES ALL THREE STORES.
@@ -115,9 +116,10 @@ def main():
     _runs = [ln for ln in _ls.splitlines()
              if 'python3 "$chk"' in ln and not ln.lstrip().startswith("#")]
     _need = ('OT_TRADES_DB="$_scratch/', 'OT_DERIVED_DB="$_scratch/',
-             'OT_RESTING_DB="$_scratch/', 'OT_SIGNAL_JOURNAL_DIR="$_scratch/')
+             'OT_RESTING_DB="$_scratch/', 'OT_SIGNAL_JOURNAL_DIR="$_scratch/',
+             'OT_LOG_FILE="$_scratch/')                          # r194 (BOX.16)
     _bad = [ln.strip()[:90] for ln in _runs if not all(n in ln for n in _need)]
-    check("T6 every CHECK invocation isolates the trades, derived, resting stores AND the journal",
+    check("T6 every CHECK invocation isolates the trades, derived, resting stores, the journal AND the log",
           bool(_runs) and not _bad,
           f"{len(_runs)} invocation line(s)" + (f"; missing on: {_bad}" if _bad else ""))
 

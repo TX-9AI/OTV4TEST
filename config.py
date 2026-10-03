@@ -1,5 +1,10 @@
 """
-config.py  v4.48
+config.py  v4.49
+v4.49 2026-10-03  OTV4TEST r194 (BOX.16, SHARED SHAPE) — OT_LOG_FILE. LOG_FILE honours it; unset it is
+      ~/options-trader/bot.log exactly as before. main._setup_logging attaches a file handler to LOG_FILE at
+      IMPORT, so every checker that imports main logged into the live bot.log (the 10-03 audit counted about
+      4,000 fixture lines this week and could not trust a warning without the sweep times). tools/land.sh
+      v1.18 and tools/boot_sweep.py v1.4 set it to each checker's scratch. Approved 2026-09-26 as "r147".
 v4.48 2026-10-03  OTV4TEST r193 (CFG.1) — 29 DIALS THE CODE ALREADY READ FROM config ARE NOW DEFINED IN IT. The
       10-03 audit found BRK_* (9), GEX_BFLY_* (5), RUNAWAY_* (9), SWEEP_CS_* (3), HANDOFF_TTL_TICKS,
       HUNT_MAX_LOSS_PCT and ADMISSION_RULES read as getattr(config, name, literal) with no such key here, so
@@ -2497,7 +2502,11 @@ DB_PATH                     = os.environ.get("OT_TRADES_DB") or os.path.expandus
 # over this, so the level can be changed on a running fleet with no restart
 # and no edit to anything git tracks.
 LOG_LEVEL                   = os.environ.get("OT_LOG_LEVEL", "INFO").upper()
-LOG_FILE                    = os.path.expanduser("~/options-trader/bot.log")
+# r194 (BOX.16): OT_LOG_FILE moves the log for ONE process - the lander and the boot
+# sweep point every checker's at scratch, because main attaches its file handler to
+# this path AT IMPORT and every checker that imports main was writing into the box's
+# live bot.log. Unset (the bot, always) it is the path it always was.
+LOG_FILE                    = os.environ.get("OT_LOG_FILE") or os.path.expanduser("~/options-trader/bot.log")
 LOG_ROTATION_MB             = 50
 
 # ─── BOT IDENTITY ─────────────────────────────────────────────────────────────

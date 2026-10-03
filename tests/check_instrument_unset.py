@@ -1,4 +1,7 @@
-"""tests/check_instrument_unset.py — v1.0
+"""tests/check_instrument_unset.py — v1.1
+v1.1  2026-10-03 — OTV4TEST r194 (BOX.16): the children get OT_LOG_FILE in this check's own scratch. Under the
+      new lander/sweep env they inherited the HARNESS's scratch log, which is not under this check's HOME, and
+      U3b (the children never log to the live file) went red on the build's full sweep. Same property, re-pointed.
 (U3b as landed: WHERE the child logs, not the live log's size - see U3b.)
 NO PROCESS GUESSES QQQ WHEN OT_INSTRUMENT IS UNSET.
 
@@ -57,7 +60,8 @@ def child(code, instrument=None, timeout=90):
     env = {k: v for k, v in os.environ.items() if k not in ("OT_INSTRUMENT", "PYTHONPATH")}
     env.update(HOME=_s, OT_TRADES_DB=os.path.join(_s, "t.db"),
                OT_DERIVED_DB=os.path.join(_s, "d.db"), OT_RESTING_DB=os.path.join(_s, "r.db"),
-               OT_SIGNAL_JOURNAL_DIR=os.path.join(_s, "sj"))
+               OT_SIGNAL_JOURNAL_DIR=os.path.join(_s, "sj"),
+               OT_LOG_FILE=os.path.join(_s, "bot.log"))      # r194: the children's log is THIS check's scratch
     if instrument is not None:
         env["OT_INSTRUMENT"] = instrument
     return subprocess.run([PY, "-c", "import sys; sys.path.insert(0, '.'); " + code],
