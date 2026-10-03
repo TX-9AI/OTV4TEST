@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v1.94
+# BACKLOG.md — OTV4TEST — v1.95
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -21,6 +21,7 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 
 | id | item | state |
 |---|---|---|
+| **AUD.8** | ◐ (r200 BUILT) **vix_at_entry WAS 0.0 ON EVERY TRADE THAT WAS NOT AN ORB OR A VOLT - 141 OF 194 SINCE 09-21.** Only those two strategies set signal.vix_at_signal, and both are off the roster since r187, so from Monday no row would have carried it. r200, main v4.80: _stamp_vix copies ctx['macro'].vix onto the signal at the top of both executors when the strategy did not set it. Record-only. Gate tests/check_vix_stamp.py V1-V5 (V1-V3 drive the function; V4 pins both call sites; V5 reads that the entry engine's record takes the stamped field - a source check, so the real proof is the live count). Mainline has the same shape (1-REPORTER). **OWED:** after Monday's session, count vix_at_entry greater than 0 per strategy. NOT FIXED HERE: is_fed_day - macro_data._check_fed_day has always returned False (two parse bugs); MEAS.3. Past rows can be backfilled from the feed store's VIX 1m bars with the trade's entry time. | ◐ r200 |
 | **AUD.7** | ◐ (r199 BUILT) **A CAP EPISODE LEFT NO ROW: circuit_breaker_events WAS READ AND PUSHED BUT NEVER WRITTEN.** TradeLogger.log_circuit_breaker had zero callers, here and on mainline (1-REPORTER). r199, risk/risk_manager v4.11: is_halted writes 'daily_cap_hit' where the page is decided (once per episode, not again after a restart inside it) and 'daily_cap_rearmed' at the re-arm, each with the day's realized figure and the limit; and a cap page that fails to send now warns (it was `except: pass`). Gate check_loss_cap_rearm v1.1 C9/C10. Relates to ALRT.1 (send_circuit_breaker_alert still has zero callers - the page goes through _send). **OWED:** on the next capped day, read the rows back; the cap counterfactual study (review 2026-10-17) can key on them. | ◐ r199 |
 | **AUD.6** | ◐ (r197 BUILT) **plan_check KEPT ONLY NUMBERS: EVERY TEXT-VALUED CHECK WAS NULL ON EVERY ROW.** write_row cast each reading to float or stored NULL, and a check's note= was never stored per check. Breakout's break_dir / pool_name / verdict / contract, the ORB's engine_state / consequence, the sweep's fork / level_board and Runaway's anchor_fork15 could not be read back from the store. r197, strategy/plan v2.4: plan_check gains `note TEXT` (CREATE + in-place ALTER); the note= wins, else a non-numeric value is kept as its text; value and verdict unchanged. Gate tests/check_plan_check_note.py N1-N5. A streamed table on boxes that push: announced to 1-REPORTER before landing. **OWED:** after Monday's session, count note non-null per check name. | ◐ r197 |
 | **AUD.5** | ◐ (r196 BUILT) **THE DAY-TYPE ENGINE NEVER SAW VOLATILITY: vol_ratio, close_capture AND BOTH REALISED VOLS NULL ON 3,580 OF 3,580 character_axis_sample ROWS (09-12..10-03).** main computed the realised-vol summary in _apply_derived_ports, AFTER run_all, so the character engine read the setdefault(None). The efficiency axis was fine; the volatility axis - half of the day-type read (CHR.1, FWD-C) - was never sampled. r196, main v4.79: the block moves into _apply_vol_ports, called before the engines. Gate check_chain_ordering v1.3 C13 (order) and C14 (the real port into the real CharacterEngine, scratch store). **OWED:** after Monday's session, count the four columns non-null; vol_ratio needs 10 strided baseline samples before it reads, so expect its first values about 20 minutes into the session. The 3,580 old rows cannot be repaired in place but CAN be recomputed from the feed store's 5m bars for a study. | ◐ r196 |
@@ -313,6 +314,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v1.95 — 2026-10-03 — OTV4TEST r200 — AUD.8: vix_at_entry is stamped for every strategy.** main v4.80 (_stamp_vix at the top of both executors). Gate check_vix_stamp (new).
 
 **v1.94 — 2026-10-03 — OTV4TEST r199 — AUD.7: a cap episode is recorded in circuit_breaker_events (hit and re-arm); a failed cap page warns.** risk/risk_manager v4.11. Gate check_loss_cap_rearm v1.1 C9/C10.
 

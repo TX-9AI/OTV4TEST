@@ -1,5 +1,10 @@
 """
-main.py  v4.79
+main.py  v4.80
+v4.80 2026-10-03  OTV4TEST r200 (AUD.8, SHARED SHAPE) — vix_at_entry IS STAMPED FOR EVERY STRATEGY. _stamp_vix
+      copies ctx["macro"].vix onto the signal at the top of both executors (_execute_entry_signal and
+      _execute_condor_leg) when the strategy did not set it. Only ORB and VOLT ever did, and both are off, so
+      vix_at_entry was 0.0 on 141 of 194 closed trades since 09-21. Record-only: nothing gates on the field.
+      is_fed_day is NOT touched - its detector (macro_data._check_fed_day) has always returned False; separate.
 v4.79 2026-10-03  OTV4TEST r196 (AUD.5) — THE VOLATILITY MEASURES ARE ON ctx BEFORE THE DERIVED ENGINES RUN. The
       realised-vol / VRP / expected-move summary sat in _apply_derived_ports, which runs AFTER run_all, so the
       character engine sampled realised_vol_cc and realised_vol_parkinson as None on every tick: vol_ratio,
@@ -2614,6 +2619,23 @@ def _sweep_stop_premium(credit, width, pct_fallback) -> float:
     return float(credit) + float(d)
 
 
+def _stamp_vix(signal, ctx) -> None:
+    """r200 (AUD.8) — VIX AT ENTRY, FOR EVERY STRATEGY. Only ORBStrategy and VOLT set
+    `signal.vix_at_signal` (both are off the roster since r187), so every Breakout,
+    Runaway, Hunt, sweep, trend-credit and butterfly row stored vix_at_entry = 0.0:
+    141 of 194 closed trades since 09-21 (the 10-03 audit). Both executors call this
+    first; the two record builders read the signal's field as they always did. A
+    value a strategy set itself is KEPT. No macro, or no VIX: it stays 0.0. Never raises."""
+    try:
+        if float(getattr(signal, "vix_at_signal", 0.0) or 0.0) > 0:
+            return
+        vix = float(getattr((ctx or {}).get("macro"), "vix", 0.0) or 0.0)
+        if vix > 0:
+            signal.vix_at_signal = vix
+    except Exception as exc:                                    # noqa: BLE001
+        logger.debug("vix stamp skipped: %s", exc)
+
+
 def _execute_condor_leg(signal: "OptionsSignal", state: BotState,
                         ctx: dict = None):
     """
@@ -2629,6 +2651,7 @@ def _execute_condor_leg(signal: "OptionsSignal", state: BotState,
     Paper mode: fills at mid credit. Live mode: places the 2-leg vertical as a
     single CREDIT limit order via TastyTrade (same SDK pattern as entry_engine).
     """
+    _stamp_vix(signal, ctx)                                     # r200: before the record is built
     from config import (CONTRACT_MULTIPLIER, CONDOR_NICKEL_CLOSE,
                         CONDOR_STOP_LOSS_PCT, INSTRUMENT)
     from database.trade_logger import make_record, get_trade_logger
@@ -4870,6 +4893,7 @@ def _execute_entry_signal(signal, ctx, ms, state, _sigj=None, *, additive: bool 
     butterfly can fire from main_loop while another position is open.
     `additive=True` APPENDS the record (add_open_position); False replaces,
     exactly as attempt_new_entry always did."""
+    _stamp_vix(signal, ctx)                                     # r200: before the record is built
     macro = ctx["macro"]
     risk_mgr = get_risk_manager()
     entry_eng = get_entry_engine(state.paper_trading)
