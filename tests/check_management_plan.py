@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_management_plan.py  v1.4  (2026-09-13)
+tests/check_management_plan.py  v1.5  (2026-10-03)
+v1.5  OTV4TEST r209 (EXIT.4): M1, M2b, M3, M4 read `touch < 101.00 -> out (breach)` - the narration names the
+      structure stop a TOUCH (it reads the forming bar and always has; the operator kept it, 2026-10-03).
+      Only the four expected strings moved.
 v1.4  OTV4TEST r25: D12b RE-DERIVED FROM A SOURCE PIN TO THE RULE, AND IT FOUND A HOLE.
       It pinned trade_logger's spent-marking hook (`_is_cv`, the underlying_stop
       read) — deleted by r24, so D12b was RED SINCE r24 AND SHIPPED THAT WAY (not in
@@ -105,7 +108,7 @@ def main():
     r1 = _row(st, "RunawayContinuation/manage", 1.0)
     check("M1 runaway +30%, no condition fired -> HOLD naming the floor, the breach and the target from the record",
           it and it.action == "HOLD" and r1 and r1[0] == "HOLD"
-          and "premium <= 0.75 -> out (floor)" in r1[1] and "1m close < 101.00 -> out (breach)" in r1[1]
+          and "premium <= 0.75 -> out (floor)" in r1[1] and "touch < 101.00 -> out (breach)" in r1[1]
           and "premium >= 2.00 -> out (target)" in r1[1] and "(+30%)" in r1[1], str(r1))
     run["trail_stop"] = 1.12
     P.begin_tick(2.0)
@@ -120,7 +123,7 @@ def main():
     MP.decide(short_run, 1.30, df_1m=None, current_price=99.1, ctx=ctx, exit_engine=None)
     r2b = _row(st, "RunawayContinuation/manage", 2.5)
     check("M2b a SHORT runaway is hurt by a close ABOVE its stop — the row reads '>'",
-          r2b and "1m close > 100.00 -> out (breach)" in r2b[1], str(r2b))
+          r2b and "touch > 100.00 -> out (breach)" in r2b[1], str(r2b))
     sweep = {"trade_id": "sw1", "strategy": "SweepCreditSpread", "option_side": "put",
              "is_credit_vertical": True, "entry_premium": 1.30, "current_premium": 0.90,
              "stop_premium": 1.495, "underlying_stop": 96.0, "excursion_ticks": 8}
@@ -129,7 +132,7 @@ def main():
     r3 = _row(st, "SweepCreditSpread/manage", 3.0)
     check("M3 a credit spread: value fell 1.30 -> 0.90 reads as +31%, the floor reads '>='",
           r3 and "credit" in r3[1] and "(+31%)" in r3[1] and "premium >= 1.50 -> out (floor)" in r3[1]
-          and "1m close < 96.00 -> out (breach)" in r3[1], str(r3))
+          and "touch < 96.00 -> out (breach)" in r3[1], str(r3))
 
     tcs = {"trade_id": "tc1", "strategy": "TrendCreditSpread", "option_side": "put",
            "is_credit_vertical": True, "is_trend_credit": True, "entry_premium": 1.30,
@@ -138,7 +141,7 @@ def main():
     MP.decide(tcs, 1.10, df_1m=None, open_records=[tcs], current_price=353.2, ctx=ctx, exit_engine=None)
     r4 = _row(st, "TrendCreditSpread/manage", 4.0)
     check("M4 TCS -> breach of the bound and the nickel; no premium floor named",
-          r4 and "1m close < 351.88 -> out (breach)" in r4[1] and "nickel" in r4[1]
+          r4 and "touch < 351.88 -> out (breach)" in r4[1] and "nickel" in r4[1]
           and "(floor)" not in r4[1], str(r4))
 
     fly = {"trade_id": "bf1", "strategy": "GEXPinButterfly", "option_side": "call",

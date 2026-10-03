@@ -1,5 +1,11 @@
 """
-risk/session_guard.py  v4.3
+risk/session_guard.py  v4.4
+v4.4  2026-10-03  OTV4TEST r209 (EXIT.4) — THE BUTTERFLY CUTOFF BRANCH IS DELETED. It could never run (no caller has ever
+      passed is_butterfly=True) and its 14:00 contradicted the butterflies' own 12:00-15:00 window in
+      config.ENTRY_WINDOWS, which is what actually bounds them. The parameter stays, accepted and unused, so
+      no caller breaks; config.BUTTERFLY_ENTRY_CUTOFF_ET and _BUTTERFLY_CUTOFF stay defined (check_one_window_table pins
+      both) and gate nothing.
+      The header text below that describes a butterfly cutoff is history.
 v4.3  2026-09-21  OTV4TEST r73 — NO CLOCK IN A REFUSAL REASON. Two strings
       here ended with `fmt_et_short()`, which made every tick a DIFFERENT
       reason and silently defeated r41's edge-triggered INACTIVE row. Measured:
@@ -64,18 +70,20 @@ Entry gates (evaluated in order; first failing gate blocks):
 import logging
 from typing import Optional
 from datetime import datetime, time as dtime
+from config import BUTTERFLY_ENTRY_CUTOFF_ET
 
 from utils.time_utils import (
     is_rth, is_orb_complete, is_hard_close_time,
     now_et, fmt_et_short, seconds_until_rth_open
 )
 from data.macro_data import MacroSnapshot
-from config import BUTTERFLY_ENTRY_CUTOFF_ET
 
 logger = logging.getLogger(__name__)
 
 # Convert config tuple (15, 0) to time object
-_BUTTERFLY_CUTOFF = dtime(BUTTERFLY_ENTRY_CUTOFF_ET[0], BUTTERFLY_ENTRY_CUTOFF_ET[1])
+
+
+_BUTTERFLY_CUTOFF = dtime(BUTTERFLY_ENTRY_CUTOFF_ET[0], BUTTERFLY_ENTRY_CUTOFF_ET[1])   # r209: pinned by check_one_window_table; gates nothing
 
 
 class SessionGuard:
@@ -173,8 +181,8 @@ class SessionGuard:
         # 15-box zero-trade session of 2026-08-21. Each structure's own
         # operator-set window bounds entries now, as designed. The butterfly's
         # cutoff below is ITS OWN reviewed constant and stays.
-        if is_butterfly and now_et().time() >= _BUTTERFLY_CUTOFF:
-            return False, f"past {_BUTTERFLY_CUTOFF.strftime('%H:%M')} ET butterfly cutoff"
+        # r209: the butterfly cutoff that stood here could never run and is deleted;
+        # config.ENTRY_WINDOWS (12:00-15:00) bounds the butterflies.
 
         # ── Macro gates ───────────────────────────────────────────────────────
         if macro and not macro.new_entries_allowed:

@@ -1,5 +1,7 @@
 """
-config.py  v4.53
+config.py  v4.54
+v4.54 2026-10-03  OTV4TEST r209 (EXIT.4) — BUTTERFLY_ENTRY_CUTOFF_ET GATES NOTHING: the session_guard branch that read
+      it could never run and is deleted. Value unchanged (check_one_window_table pins it and the guard's constant).
 v4.53 2026-10-03  OTV4TEST r207 (PREM.4) — ORCS RESHAPED BY RULING: delta 0.20, a 3-dollar wing, implied-move floor 1.0. The
       operator: "why the fuck would I risk $1000 for $25???", then "I want the worst day adjusted for $1050, so
       use the delta and wing based on that" and "To achieve an over 80% win rate". ORCS_SHORT_DELTA_MAX 0.15 ->
@@ -1531,7 +1533,7 @@ _TCS_ENTRY_END_ET_NOTE      = "derived below from CREDIT_ENTRY_END_ET (r81)"  # 
                                         #   is unchanged while TCS is OFF.
                                         #   Operator specs TC.6's real v4
                                         #   window before any activation.
-BUTTERFLY_ENTRY_CUTOFF_ET   = (14, 0)   # was 15:00 and unreachable (see v3.1 header)
+BUTTERFLY_ENTRY_CUTOFF_ET   = (14, 0)   # gates NOTHING since r209 (its session_guard branch could never run and is deleted); ENTRY_WINDOWS bounds the flies
 # 🔴 NOON, AND IT IS NOW ACTUALLY IN FORCE (r142). Operator, 2026-08-26:
 # *"Butterfly is debit & any sooner than noon to reach a pin is unlikely to
 # hold all the way to the closing bell."*

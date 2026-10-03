@@ -1,5 +1,11 @@
 """
-execution/exit_engine.py  v4.30
+execution/exit_engine.py  v4.31
+v4.31 2026-10-03  OTV4TEST r209 (EXIT.4) — (1) _exit_policy READS THE DECLARED PRICING a management intent stamped on the
+      record (floor / walk) when it belongs to THIS reason; the substring table remains only for exits this
+      engine decides itself. No price changes: management.EXIT_PRICING is the old outcome written down.
+      (2) RUN.10: the "would-have-floored (HELD)" branch is the HUNT's alone. For the Runaway it was dead code -
+      its management plan closes at the same 20% floor first - and the operator, 2026-10-03, on the replay
+      (holding cost 499 more on the 9 stopped trades, none recovered): "runaway, concur". The Hunt still holds.
 v4.30 2026-10-03  OTV4TEST r204 (PREM.2) — ORCS IS HELD TO THE END-OF-DAY CLOSE AND NOTHING ELSE. _evaluate_condor_leg returns
       HOLD for strategy OpeningRangeCreditSpread right after the scheduled-close check: no lone stop, no breach,
       no nickel. The operator, 2026-10-03: "I want to paper trade it Monday"; the spec (PLAN_SPEC §41.1) is
@@ -1487,11 +1493,11 @@ class ExitEngine:
                 logger.info("RUNAWAY EXIT: %s %s", trade_id[:8], _rw)
                 return decision
         stop_prem = record.get("stop_premium", 0.0) or (entry_prem * (1 - MAX_LOSS_PCT))
-        if _is_runaway and stop_prem > 0 and current_premium <= stop_prem:
+        if _is_hunt and stop_prem > 0 and current_premium <= stop_prem:      # r209 (RUN.10): the Hunt ALONE holds
             # recorded, never acted on (operator: HOLD)
             if not record.get("_would_have_floored"):
                 record["_would_have_floored"] = f"{current_premium:.2f} <= {stop_prem:.2f} pnl={pnl_pct:.1%}"
-                logger.info("RUNAWAY would-have-floored (HELD): %s %s", trade_id[:8],
+                logger.info("HUNT would-have-floored (HELD): %s %s", trade_id[:8],
                             record["_would_have_floored"])
             stop_prem = 0.0
         if stop_prem > 0 and current_premium <= stop_prem:
@@ -3471,6 +3477,11 @@ class ExitEngine:
                 return ("eod_cross" if hard_close_order_mode(now_et()) == "market"
                         else "eod_resting")
             return "debit_hard_close"
+        # r209 — a management intent DECLARES its pricing; honoured only for its own reason
+        _decl = record.get("_exit_pricing") if hasattr(record, "get") else None
+        if (isinstance(_decl, tuple) and len(_decl) == 2 and _decl[0] == reason
+                and _decl[1] in ("floor", "walk")):
+            return _decl[1]
         if any(k in r for k in cls._FLOOR_REASONS):
             return "floor"
         return "walk"

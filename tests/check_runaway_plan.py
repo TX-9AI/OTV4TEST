@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_runaway_plan.py  v1.2
+tests/check_runaway_plan.py  v1.3
+v1.3  2026-10-03  OTV4TEST r209 (RUN.10) — X2 INVERTED BY RULING. It pinned the engine HOLDING a Runaway at its 20% floor
+      (r3). The management plan has closed Runaways at that floor since r168, so the hold was dead code; the
+      10-03 replay of the 9 stopped trades said holding cost 499 more and none recovered; the operator:
+      "runaway, concur". X2 now requires the stop, and X2b that the HUNT still holds.
 v1.2  2026-09-26  OTV4TEST r149 (EOD.1) — R9 RE-POINTED: "past the cutoff" is read from the plan's
       own _cutoff_hm() (15:40 by the operator's all-day debit window), not a typed 11:31/11:32/13:00.
 v1.1  2026-09-13  OTV4TEST r24 — R7/R8 RE-DERIVED ON THE BOOKS, R14-R18 ADDED. One-per-break
@@ -371,9 +375,19 @@ def main():
         # X2 HOLD at the old floor while price is beyond the 50
         rec = dict(base)
         d = xe._evaluate_orb(rec, 0.78, held)
-        check("X2 🔴 premium at the 20% floor, price beyond the 50 -> HELD, would-have-floored recorded",
-              (not d.should_exit) and rec.get("_would_have_floored"),
+        check("X2 (r209, RUN.10) premium at the 20% floor -> the Runaway is STOPPED; nothing is held",
+              d.should_exit and "hard_stop" in str(d.exit_reason) and not rec.get("_would_have_floored"),
               f"{d.should_exit}:{d.exit_reason} rec={rec.get('_would_have_floored')}")
+        rec_h = dict(base, trade_id="x2-hunt", strategy="LiquidityHunt")
+        _sv_ht = xe._hunt_at_target
+        xe._hunt_at_target = lambda *a, **k: ""
+        try:
+            d_h = xe._evaluate_orb(rec_h, 0.78, held)
+        finally:
+            xe._hunt_at_target = _sv_ht
+        check("X2b the HUNT at the same floor is still HELD, would-have-floored recorded",
+              not (d_h.should_exit and "hard_stop" in str(d_h.exit_reason)) and bool(rec_h.get("_would_have_floored")),
+              f"{d_h.should_exit}:{d_h.exit_reason} rec={rec_h.get('_would_have_floored')}")
         # X3 thesis dead: close back through 101.5
         dead = _frame([(101.8, 101.9, 101.2, 101.3), (101.3, 101.4, 101.2, 101.35)], "10:19")
         d = xe._evaluate_orb(dict(base), 0.95, dead)

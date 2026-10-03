@@ -1,5 +1,13 @@
 """
-strategy/management.py  v2.8
+strategy/management.py  v2.9
+v2.9  2026-10-03  OTV4TEST r209 (EXIT.4) — THE EXIT'S PRICING POLICY IS DECLARED, NOT INFERRED; THE STRUCTURE STOP IS NAMED A
+      TOUCH. (1) EXIT_PRICING maps each condition this plan closes on to how the close is priced - `floor` (at
+      the mark) or `walk` (the exit ladder) - and Intent carries it; exit_engine reads it instead of matching
+      substrings of the reason. The values are EXACTLY what the substrings produced (the operator, 2026-10-03:
+      "why do you say mark? Clearly ladder is more advantageous" - credit and butterfly stops keep the ladder).
+      (2) The structure stop reads the FORMING 1m bar and always has; its reason and its narration now say
+      "touch" instead of "1m close". The operator, 2026-10-03: keep "whichever way was better from the numbers"
+      (the touch exited better, n=12). No behaviour change in this file.
 v2.8  2026-09-22  OTV4TEST r98 — THE NEARER OF THE TWO STOPS GOVERNS, EACH TICK.
       Operator: "use the nearest one... each tick one of the two will be
       closer. Default to the closer one", and what it is FOR: "kill losers
@@ -97,7 +105,7 @@ THE SAME SPLIT AS ENTRIES, ONE POSITION AT A TIME.
     value of each of those conditions off what the exit engine already
     tracks (premium now, stop premium, trail stop, target, underlying stop,
     MFE/MAE, ticks held) and writes ONE row: HOLD "if premium <= 0.66 -> out
-    (hard stop); if 1m close < 101.00 -> out (structure); trail 1.12 armed;
+    (hard stop); if touch < 101.00 -> out (structure); trail 1.12 armed;
     MFE +41%". It also records the r66 DERIVED VECTOR for that strategy
     (aggression at the level, tape, VRP, charm …) into strategy_note with
     phase "manage", so a stop can later be FITTED against what the tape was
@@ -143,17 +151,17 @@ EXIT_CONDITIONS: Dict[str, Dict[str, str]] = {
     },
     "ORBStrategy": {
         "hard_stop":      "premium <= stop_premium",
-        "structure_stop": "a 1m close through underlying_stop (the impulsive-candle extreme)",
+        "structure_stop": "a touch through underlying_stop (the impulsive-candle extreme; the forming 1m bar)",
         "trail":          "premium <= trail_stop, once the trail has armed",
         "target":         "premium >= target_premium",
     },
     "SweepCreditSpread": {
         "premium_stop":   "spread value >= stop_premium (credit + 15% of the risk, width - credit)",
-        "acceptance":     "a 1m close through the swept pool (the level failed)",
+        "acceptance":     "a touch through the swept pool (the level failed; the forming 1m bar)",
         "nickel":         "spread value <= the nickel — let it go",
     },
     "TrendCreditSpread": {
-        "breach":         "a 1m close through the ORB bound (underlying_stop) — no premium stop",
+        "breach":         "a touch through the ORB bound (underlying_stop; the forming 1m bar) — no premium stop",
         "nickel":         "spread value <= the nickel",
     },
     "IronCondorStrategy": {
@@ -195,7 +203,7 @@ EXIT_CONDITIONS: Dict[str, Dict[str, str]] = {
         # trigger a stop, make it HOLD."* That is what the code already does;
         # now it is what the file SAYS. The ORB's structure stop, verbatim —
         # this trade follows the ORB structurally, without the retest.
-        "structure_stop": ("a 1m close through underlying_stop (the impulsive-candle "
+        "structure_stop": ("a touch through underlying_stop (the forming 1m bar; the impulsive-candle "
                            "extreme that registered the break) — a return INTO the "
                            "range with the stop intact is a HOLD, never an exit"),
         "extension":      ("price stretched from the BB midline -> TIGHTEN the trail, "
@@ -249,7 +257,7 @@ def nearer_stop_defers(record, prem, stop_p, entry) -> bool:
     ORB VALID (0.800 vs 0.805) · Breakout VALID (1.094 vs 1.089) · Hunt, VOLT
     and Runaway all invalid.
 
-    ⚠️ THE TWO STOPS ARE IN DIFFERENT UNITS — a 1m close through
+    ⚠️ THE TWO STOPS ARE IN DIFFERENT UNITS — a touch through
     `underlying_stop` versus a PREMIUM level — and `stop_premium` bridges them
     only as a DELTA-LINEAR ESTIMATE. So this first asks whether that bridge was
     actually built for THIS record, by checking that `stop_premium` agrees with
@@ -276,9 +284,27 @@ def nearer_stop_defers(record, prem, stop_p, entry) -> bool:
         return False                          # fail to the structure stop, never past it
 
 
+# r209 (EXIT.4) — HOW EACH CLOSE THIS PLAN DECIDES IS PRICED. `floor` = at the mark, now
+# (a stop the thesis no longer survives); `walk` = the exit ladder. These are the values
+# exit_engine's substring match produced before r209, written down: a long option's
+# hard stop and a structure stop floor; a CREDIT premium stop and a BUTTERFLY stop walk
+# (operator, 2026-10-03: "Clearly ladder is more advantageous"), as do the profit exits.
+EXIT_PRICING = {
+    "hard_stop":      "floor",
+    "structure_stop": "floor",
+    "premium_stop":   "walk",
+    "stop":           "walk",      # the butterflies' stop
+    "breach":         "walk",      # TCS: "breach: ..." never matched `tcs_breach`
+    "acceptance":     "walk",
+    "delta_par":      "walk",
+    "target":         "walk",
+    "nickel":         "walk",
+}
+
+
 class Intent:
     """What the plan decided for the NEXT tick. Executed by position_manager."""
-    __slots__ = ("action", "reason", "condition", "trail", "pnl_pct")
+    __slots__ = ("action", "reason", "condition", "trail", "pnl_pct", "pricing")
 
     def __init__(self, action: str, reason: str = "", condition: str = "",
                  trail: Optional[float] = None, pnl_pct: float = 0.0):
@@ -287,6 +313,9 @@ class Intent:
         self.condition = condition
         self.trail = trail
         self.pnl_pct = pnl_pct
+        # r209 — how THIS close is priced, declared by condition. None = a condition
+        # this table does not name (the engine's own exits): exit_engine decides.
+        self.pricing = EXIT_PRICING.get(condition) if action == "CLOSE" else None
 
     def to_exit_decision(self):
         from execution.exit_engine import ExitDecision
@@ -438,7 +467,8 @@ class ManagementPlan:
                 if breached:
                     name = ("structure_stop" if not credit else
                             ("breach" if strategy == "TrendCreditSpread" else "acceptance"))
-                    intent = Intent("CLOSE", f"{name}: 1m close {last_close:.2f} through "
+                    # r209: a TOUCH - `last_close` is the FORMING 1m bar's last price
+                    intent = Intent("CLOSE", f"{name}: touch {last_close:.2f} through "
                                              f"{ustop:.2f} pnl={pnl:.1%}", name, pnl_pct=pnl)
             # ── r82 — PAR DELTA REPLACES THE TARGET FOR THE BREAKOUT ─────
             # Operator, 2026-09-21: *"the breakout needs the delta stop not the
@@ -567,7 +597,7 @@ class ManagementPlan:
                 thru = "<" if record.get("direction") == "long" else ">"
             else:
                 thru = "<" if side == "put" else ">"
-            outs.append(f"1m close {thru} {ustop:.2f} -> out (breach)")
+            outs.append(f"touch {thru} {ustop:.2f} -> out (breach)")
         if trail:
             outs.append(f"premium <= {trail:.2f} -> out (trail)")
         if target and not credit and str(record.get("strategy", "")) not in BUTTERFLIES:
@@ -672,7 +702,7 @@ class ManagementPlan:
                     thru = "<" if rec.get("direction") == "long" else ">"
                 else:
                     thru = "<" if side == "put" else ">"
-                outs.append(f"1m close {thru} {ustop:.2f} -> out ({name})")
+                outs.append(f"touch {thru} {ustop:.2f} -> out ({name})")
             elif name == "trail":
                 outs.append(f"premium <= {trail:.2f} -> out (trail armed)" if trail
                             else "trail not armed yet")

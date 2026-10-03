@@ -1,5 +1,10 @@
 """
-execution/position_manager.py  v5.12
+execution/position_manager.py  v5.13
+v5.13 2026-10-03  OTV4TEST r209 (EXIT.4) — (1) the management intent's declared pricing is stamped on the record with its
+      reason (`_exit_pricing`), and cleared on every tick the plan does not close, so exit_engine prices the
+      close from the declaration. (2) A DELTA THAT CANNOT BE READ IS SAID: when the single-leg quote is
+      missing or the read raises, current_delta becomes None and a Breakout position (the delta-par exit's
+      only reader) WARNS once, and says once when the delta is back. It was `except Exception: pass`.
 v5.12 2026-10-03  OTV4TEST r204 (PREM.2) — ORCS JOINS THE ADMISSION TABLE: window config.ENTRY_WINDOWS (09:45-10:30), two of
       the type (one put spread, one call spread), blocks nothing, NOT cap-exempt.
 v5.11 2026-10-03  OTV4TEST r195 (AUD.4) — THE EXIT QUOTE AND IV ARE WRITTEN AT THE CONFIRMED CLOSE. trade_logger's
@@ -307,6 +312,27 @@ ORCS = "OpeningRangeCreditSpread"     # r204
 # Its purpose is to make the OTHER strategies' gates measurable: if VOLT keeps
 # pace, the gates are decoration; if it does not, they are earning their keep.
 VOLT = "VOLT"
+
+
+def _delta_readable(record, ok: bool, why: str = "") -> None:
+    """r209 (EXIT.4) — say it ONCE when a single-leg position's delta cannot be read, and once
+    when it can again. Breakout's delta-par exit is the reader (management.DELTA_PAR_STRATEGIES):
+    with no delta it HOLDS by design, so an unreadable delta silently switches that exit off."""
+    try:
+        if ok:
+            if record.pop("_delta_unreadable", None):
+                logger.info("[delta] %s %s: delta is readable again - the delta-par exit is live",
+                            str(record.get("trade_id", ""))[:8], record.get("strategy", ""))
+            return
+        record["current_delta"] = None
+        from strategy.management import DELTA_PAR_STRATEGIES
+        if record.get("strategy") in DELTA_PAR_STRATEGIES and not record.get("_delta_unreadable"):
+            record["_delta_unreadable"] = 1
+            logger.warning("[delta] %s %s: delta UNREADABLE (%s) - the delta-par exit is DARK until it "
+                           "returns; the structure stop and the premium floor still cover the trade",
+                           str(record.get("trade_id", ""))[:8], record.get("strategy", ""), why)
+    except Exception:                                           # noqa: BLE001
+        pass
 
 
 @dataclass(frozen=True)
@@ -913,6 +939,11 @@ class PositionManager:
                 exit_engine=exit_eng)
             if _intent is not None:
                 decision = _intent.to_exit_decision()
+            # r209 — the declared pricing rides with ITS reason; any other tick clears it
+            if _intent is not None and _intent.action == "CLOSE" and getattr(_intent, "pricing", None):
+                record["_exit_pricing"] = (_intent.reason, _intent.pricing)
+            else:
+                record.pop("_exit_pricing", None)
         except Exception as _mp_err:                            # noqa: BLE001
             logger.warning(f"management plan decide() failed for {trade_id[:8]}: "
                            f"{_mp_err} — the exit engine decides")
@@ -1066,9 +1097,12 @@ class PositionManager:
                         record["current_delta"] = float(getattr(match, "delta", 0.0) or 0.0)
                         _note_quote(record, getattr(match, "bid", 0.0), getattr(match, "ask", 0.0),
                                     getattr(match, "iv", None))       # r195
+                        _delta_readable(record, True)                 # r209
                         return match.mark
-            except Exception:
-                pass
+                    _delta_readable(record, False, "no quoted contract at the strike")   # r209
+            except Exception as _dexc:                                # noqa: BLE001
+                # r209 — was `pass`: the delta-par exit went dark and nothing said so
+                _delta_readable(record, False, f"{type(_dexc).__name__}: {_dexc}")
 
         if self.paper_trading:
             # LAST-KNOWN MARK, not entry (v2.1). Falling back to entry premium
