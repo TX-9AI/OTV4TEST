@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_contract_scale.py  v1.1
+tests/check_contract_scale.py  v1.2
+v1.2  2026-10-04  OTV4TEST r236 — AN INTERPRETER THAT CANNOT IMPORT THE REPO IS "NOT RUN", NEVER "FAIL". Under the system
+      python3 (no numpy) every case printed FAIL carrying a ModuleNotFoundError - an exit code dressed as a verdict
+      (SPX-TEST's agent, 2026-10-04; WA 40.1 / 38.9 criterion 3). Now the first case's import failure prints
+      "NOT RUN - <error>" with exit 2 and no case lines. Still non-zero: a NOT RUN is never a pass.
 v1.1  2026-10-04  OTV4TEST r235 — S7: the Service mode line also says ORCS=on/OFF, read from config.ORCS_ENABLED.
 v1.0  2026-10-04  OTV4TEST r234 (SCALE.1) — ORCS'S WING AND CREDIT FLOOR SCALE WITH THE BOX'S CONTRACT PRICE.
 
@@ -62,12 +66,24 @@ def run(inst, spot, step, im, scale=None):
     p = subprocess.run([sys.executable, "-c", _P, _root, str(spot), str(step), str(im)],
                        capture_output=True, text=True, env=env, timeout=120)
     tag = [l for l in p.stdout.splitlines() if l.startswith("@@")]
-    return json.loads(tag[-1][2:]) if tag else {"err": (p.stderr or p.stdout)[-300:]}
+    if tag:
+        return json.loads(tag[-1][2:])
+    err = (p.stderr or p.stdout).strip().splitlines()
+    last = err[-1] if err else "no output"
+    if "ModuleNotFoundError" in last or "ImportError" in last:
+        return {"notrun": last}
+    return {"err": (p.stderr or p.stdout)[-300:]}
+
+
+class NotRun(Exception):
+    pass
 
 
 def main():
     try:
         q = run("QQQ", 750.0, 1.0, 3.0)
+        if "notrun" in q:
+            raise NotRun(q["notrun"])
         check("S1 QQQ: scale 1.0 (default), wing 3.0, floor 0.10 - r207 unchanged",
               q.get("scale") == 1.0 and q.get("src") == "default" and q.get("wing") == 3.0
               and abs(q.get("floor", 0) - 0.10) < 1e-9, q)
@@ -90,6 +106,9 @@ def main():
               and "CONTRACT_SCALE, CONTRACT_SCALE_SOURCE," in src)
         check("S7 the Service mode line says ORCS=on/OFF from config.ORCS_ENABLED (main imports it)",
               "f\" · ORCS={'on' if ORCS_ENABLED else 'OFF'}\"" in src and "    ORCS_ENABLED," in src)
+    except NotRun as nr:
+        print(f"  NOT RUN — this interpreter ({sys.executable}) cannot import the repo: {nr}")
+        print("\nNOT RUN — not a verdict; run it under the venv (the sweep and the lander do)"); return 2
     except Exception as exc:  # noqa: BLE001
         check("S0 (did not run)", False, f"{type(exc).__name__}: {exc}")
     if FAILED:
