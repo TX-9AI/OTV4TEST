@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-413 Python modules across 12 local packages.
+415 Python modules across 12 local packages.
 
-**Reached by:** 123 imported · 25 declared entry points · 182 referenced from a script, unit or doc but never imported · **83 by nothing here**.
+**Reached by:** 123 imported · 26 declared entry points · 183 referenced from a script, unit or doc but never imported · **83 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -40,7 +40,7 @@ isolated rather than being everywhere at once.
 - `analysis/market_state.py` - the structural state assembly.
   **Carries the vocabulary, classifies nothing.**
 
-**Where the evidence lives:** `tests/` holds 232 standing
+**Where the evidence lives:** `tests/` holds 233 standing
 checks (`check_*.py`, all run by `tools/boot_sweep.py` at boot)
 plus the studies that produced every threshold in
 `docs/TRADES.md`. **A number in a strategy file should be
@@ -217,7 +217,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `data/tasty_client.py`
 - **calls:** `config.py`
-- **called by:** `data/candle_feed.py`, `data/market_data.py`, `data/options_chain.py`, `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `main.py`, `strategy/condor_roll.py`, `tests/check_standing_offer.py`, `tools/emergency_watchdog.py`, `tools/feed_capabilities.py`, `tools/probe_aux_streams.py`, `tools/probe_candle_depth.py`
+- **called by:** `data/candle_feed.py`, `data/market_data.py`, `data/options_chain.py`, `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `main.py`, `strategy/condor_roll.py`, `tests/check_standing_offer.py`, `tools/emergency_watchdog.py`, `tools/feed_capabilities.py`, `tools/probe_aux_streams.py`, `tools/probe_candle_depth.py`, `tools/probe_order_dryrun.py`
 
 ### `database/__init__.py`
 - **calls:** (none)
@@ -1187,6 +1187,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** `database/__init__.py`, `database/trade_logger.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
+### `tests/check_probe_dryrun.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
 ### `tests/check_purge_lock.py`
 - **calls:** `warehouse/__init__.py`, `warehouse/retention_purge.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
@@ -1628,6 +1632,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** (entry point)
 
 ### `tools/probe_candle_depth.py`
+- **calls:** `data/tasty_client.py`
+- **called by:** (entry point)
+
+### `tools/probe_order_dryrun.py`
 - **calls:** `data/tasty_client.py`
 - **called by:** (entry point)
 

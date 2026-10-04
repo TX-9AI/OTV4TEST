@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tests/gen_file_map.py  v4.16
+tests/gen_file_map.py  v4.17
+v4.17 2026-10-04  OTV4TEST r239 — tools/probe_order_dryrun.py is an entry point (run THROUGH run_with_bot_env, like the other probes).
 v4.16 2026-10-04  OTV4TEST r233 — TWO NEW HAND-RUN TOOLS ARE ENTRY POINTS: tools/seed_candles_from_warehouse.py (SEED.1) and
       tools/wake_box.py (WAKE.1). Both are run from a shell by design; undeclared they printed as orphans.
 v4.15 2026-10-03  OTV4TEST r216 (HYG.14) — THE LAST TWO ORPHANS ARE RULED. tools/segregate_nonrth_bars.py is declared an entry point: it is the
@@ -182,6 +183,7 @@ ENTRY_POINTS = {
     "tools/run_with_bot_env.py",   # the operator's one allow rule for credentialed probes (r176)
     "tools/probe_aux_streams.py",  # run THROUGH run_with_bot_env
     "tools/probe_candle_depth.py", # run THROUGH run_with_bot_env
+    "tools/probe_order_dryrun.py", # r239 — run THROUGH run_with_bot_env; dry_run=True only
     "tools/feed_capabilities.py",  # run THROUGH run_with_bot_env
     "warehouse/counter_pop.py",    # fleet S3 counter repair CLI (WA 38.3 DELETE.1)
     "tools/manifold_status.py",    # r210 — the operator's hand-run feed check ("is the fire hose connected"); NOT dead (his correction, 2026-10-03)

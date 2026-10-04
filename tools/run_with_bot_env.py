@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""tools/run_with_bot_env.py — v1.0
+"""tools/run_with_bot_env.py — v1.1
 RUN ONE APPROVED, READ-ONLY PROBE WITH THE BOT'S BROKER CREDENTIALS, AND NOTHING ELSE.
 
+v1.1 (2026-10-04) — OTV4TEST r239 (PRB.2) — probe_order_dryrun.py joins PROBES (the operator: "Yes, to the dry
+      run if you can do it without actually spending money"); tests/check_probe_dryrun.py proves it can only dry-run.
 v1.0 (2026-09-29) — OTV4TEST r176 (PRB.1). The operator, 2026-09-29, after the
       permission layer refused the agent loading the bot unit's environment for
       a probe: "Yes, set it up so I can approve it & modify the config." On
@@ -30,7 +32,7 @@ carried no TT_ key.
 Usage (the operator's allow rule names exactly this, with ANY arguments):
     /home/ubuntu/options-trader/venv/bin/python \\
         /home/ubuntu/options-trader/tools/run_with_bot_env.py <probe> [args]
-    probes: feed_capabilities.py  probe_aux_streams.py  probe_candle_depth.py
+    probes: feed_capabilities.py  probe_aux_streams.py  probe_candle_depth.py  probe_order_dryrun.py
 """
 from __future__ import annotations
 
@@ -46,6 +48,7 @@ PROBES = {
     "feed_capabilities.py": "tools/feed_capabilities.py",
     "probe_aux_streams.py": "tools/probe_aux_streams.py",
     "probe_candle_depth.py": "tools/probe_candle_depth.py",
+    "probe_order_dryrun.py": "tools/probe_order_dryrun.py",   # r239 - dry_run=True only (check_probe_dryrun)
 }
 KEEP = re.compile(r"^(TT_[A-Z_]+|OT_INSTRUMENT|OT_FEED_DB)$")
 
