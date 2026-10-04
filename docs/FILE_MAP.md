@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-407 Python modules across 12 local packages.
+408 Python modules across 12 local packages.
 
-**Reached by:** 123 imported · 23 declared entry points · 177 referenced from a script, unit or doc but never imported · **84 by nothing here**.
+**Reached by:** 123 imported · 23 declared entry points · 177 referenced from a script, unit or doc but never imported · **85 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -40,7 +40,7 @@ isolated rather than being everywhere at once.
 - `analysis/market_state.py` - the structural state assembly.
   **Carries the vocabulary, classifies nothing.**
 
-**Where the evidence lives:** `tests/` holds 228 standing
+**Where the evidence lives:** `tests/` holds 229 standing
 checks (`check_*.py`, all run by `tools/boot_sweep.py` at boot)
 plus the studies that produced every threshold in
 `docs/TRADES.md`. **A number in a strategy file should be
@@ -569,6 +569,10 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_bfly_vwap_band.py`
 - **calls:** `data/derived_store.py`, `data/market_data.py`, `derived/__init__.py`, `derived/anchors.py`, `derived/indicators.py`, `strategy/__init__.py`, `strategy/gex_pin_butterfly.py`, `strategy/plan.py`, `utils/time_utils.py`
+- **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+
+### `tests/check_boot_brief.py`
+- **calls:** (none)
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
 
 ### `tests/check_boot_sweep.py`

@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v2.25
+# BACKLOG.md — OTV4TEST — v2.26
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -339,6 +339,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v2.26 — 2026-10-03 — OTV4TEST r231 — BOOT.7 (DONE): OT_BRIEF lets a box boot from its own brief (claude_boot v1.6, install_claude_boot v1.4); docs/HANDOFF_SPX.md is SPX-TEST's, owned by its agent from here. Unset on QQQ-TEST; nothing changes here.**
 
 **v2.25 — 2026-10-03 — OTV4TEST r230 — PREM.5 (DONE): ORCS is defended by the condor logic verbatim, by ruling ('On rolling/defending the ORCS, adopt the condor logic verbatim'). Its four exemptions are removed; nothing new was written. PLAN_SPEC 41.11 states what changes: nickel close, a lone leg's stop (credit + 15% of risk) arming when its sibling closes, and a roll that needs 3.00 cumulative credit on a pair banking ~0.50. OWED ~10-30 with the ORCS review: how often each rung fired and what it did to the day.**
 

@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
-"""tools/claude_boot.py — v1.5
+"""tools/claude_boot.py — v1.6
 RAISE AN AGENT SESSION AT BOOT, AND PROVE IT IS ACTUALLY RUNNING.
+
+v1.6 (2026-10-03) — OTV4TEST r231 (BOOT.7). OT_BRIEF: A BOX CAN HAVE ITS OWN BRIEF. The operator
+      brought up SPX-TEST on this repo and its first session believed it was QQQ-TEST, because
+      docs/HANDOFF.md is written for QQQ and every box read it. OT_BRIEF names a brief under docs/
+      (e.g. docs/HANDOFF_SPX.md); unset, missing, or outside docs/ falls back to HANDOFF.md and says
+      so in the log. FIRST_BOOT.md still wins while the installer's marker exists. QQQ-TEST sets
+      nothing and is unchanged.
 
 v1.5 (2026-09-29) — OTV4TEST r170 (BOOT.6). THE 08:00 SESSION DIED ON ITS FIRST
       TURN TWO MORNINGS RUNNING, AND THE BOOT ALERT SAID "UP" BOTH TIMES. The
@@ -176,7 +183,24 @@ RC_NAME = os.environ.get("OT_RC_NAME") or "qqq-test"
 # trusted. ⚠️ IT UNSETS; IT NEVER READS OR PRINTS A VALUE (§18a).
 ENV_STRIP = ("env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN"
              " -u CLAUDE_API_KEY -u ANTHROPIC_BASE_URL")
-BRIEF = os.path.join(_root, "docs", "HANDOFF.md")
+DEFAULT_BRIEF = os.path.join(_root, "docs", "HANDOFF.md")
+
+
+def _brief_from_env() -> str:
+    """r231 (BOOT.7) — OT_BRIEF, a file under docs/, else HANDOFF.md (said in the log)."""
+    raw = (os.environ.get("OT_BRIEF") or "").strip()
+    if not raw:
+        return DEFAULT_BRIEF
+    docs = os.path.realpath(os.path.join(_root, "docs"))
+    cand = os.path.realpath(raw if os.path.isabs(raw) else os.path.join(_root, raw))
+    if os.path.dirname(cand) == docs and cand.endswith(".md") and os.path.isfile(cand):
+        return cand
+    print("claude_boot: OT_BRIEF=%r is not a readable .md under docs/ - using HANDOFF.md" % raw,
+          file=sys.stderr)
+    return DEFAULT_BRIEF
+
+
+BRIEF = _brief_from_env()
 # r132 — a fresh box's first session is briefed for a fresh box. The installer
 # (setup_ec2.sh) writes the marker; bring_up() consumes it once verified.
 FIRST_BOOT_BRIEF = os.path.join(_root, "docs", "FIRST_BOOT.md")

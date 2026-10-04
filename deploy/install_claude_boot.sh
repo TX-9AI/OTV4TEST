@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# deploy/install_claude_boot.sh  v1.3
+# deploy/install_claude_boot.sh  v1.4
 #
+# v1.4  2026-10-03  OTV4TEST r231 (BOOT.7) — OT_BRIEF, when set at install, rides into the
+#       unit beside OT_RC_NAME so a box reads its own brief (SPX-TEST: docs/HANDOFF_SPX.md).
+#       Unset writes nothing; the brief stays docs/HANDOFF.md.
 # v1.3  2026-09-24  OTV4TEST r133 — the closing message said "NOT started ... start
 #       it deliberately" one line before setup_ec2.sh started it on a fresh box.
 #       It now says what is true in both cases: enabled for every boot, and how to
@@ -82,6 +85,7 @@ User=ubuntu
 # a unit with no HOME finds neither and fails looking like an auth problem.
 Environment=HOME=/home/ubuntu
 ${OT_RC_NAME:+Environment=OT_RC_NAME=$OT_RC_NAME}
+${OT_BRIEF:+Environment=OT_BRIEF=$OT_BRIEF}
 WorkingDirectory=$DIR
 ExecStart=$PY $DIR/tools/claude_boot.py
 # Bounds the delay this can add to the bot. The script's own settle budget
