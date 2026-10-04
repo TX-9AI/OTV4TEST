@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_orcs.py  v1.3
+tests/check_orcs.py  v1.4
+v1.4  2026-10-03  OTV4TEST r229 (EM.2) — THE IMPLIED MOVE IS THE PLATFORM'S EXPECTED MOVE. O2's fixture is unchanged; worked by hand
+      its 5.54 straddle is a 4.80 expected move (0.6 x 5.539 + 0.3 x 4.034 + 0.1 x 2.704), so the shorts are 745 (5.2 out; 746 is 4.2)
+      and 756 (5.8 out; 755 is 4.8, under 4.804) - was 744 and 756.
 v1.3  2026-10-03  OTV4TEST r207 (PREM.4) — THE SHAPE IS DELTA 0.20, A 3-DOLLAR WING, ONE IMPLIED MOVE. The fixture is unchanged;
       the hand-worked strikes move: at 750.20 the put is 747/744 and the call 753/756 (was 746/738, 754/762);
       with the 5.54 straddle 744 and 756 (was 743, 758); at 752.20 the put is 749/746. O8 pins the new dials.
@@ -205,13 +208,13 @@ def main():
     # ── O2 — the implied-move floor binds ───────────────────────────────────
     try:
         st, plan = fresh("b")
-        ch = _chain(750.2, 3.0)                               # straddle ~5.54 -> floor 5.54: 747 (3.2 out) is too near
+        ch = _chain(750.2, 3.0)                               # straddle 5.54 -> platform EM 4.80 (r229): 747 (3.2 out) is too near
         P.begin_tick(t0)
         prep = plan.prepare(price_now=750.2, now_et=_et(9, 45), chain=ch, gap=GAP, today=DAY)
         im = prep.im
         p, c = prep.sides["put"], prep.sides["call"]
-        check("O2 with a 5.54 straddle the shorts step out to 744 and 756 (>= one implied move)",
-              im is not None and abs(im - 5.54) < 0.02 and p.short and p.short.strike == 744.0
+        check("O2 with a 4.80 expected move (a 5.54 straddle) the shorts step out to 745 and 756 (>= one implied move)",
+              im is not None and abs(im - 4.804) < 0.01 and p.short and p.short.strike == 745.0
               and c.short and c.short.strike == 756.0 and p.im_mult >= 1.0,
               f"im {im}, put {p.short and p.short.strike}, call {c.short and c.short.strike}")
     except Exception as exc:                                  # noqa: BLE001

@@ -1,5 +1,6 @@
 """
-strategy/liquidity_hunt.py  v1.7
+strategy/liquidity_hunt.py  v1.8
+v1.8  2026-10-03  OTV4TEST r229 (EM.2) — records em_platform (the tastytrade platform's expected move) beside the session number its above_em / below_em records are measured in. Nothing here ever gated on either.
 v1.7  2026-10-03  OTV4TEST r220 (TIME.1) — its private HH:MM parser is utils.time_utils.parse_hm (eight plans carried the same copy), and an UNREADABLE clock is DORMANT - no trade - instead of skipping the window check.
 v1.6  2026-10-03  OTV4TEST r193 (CFG.1) — its config dials are read as config.NAME with NO literal fallback; config v4.48 now defines them (they were getattr defaults on names config never had). Values unchanged.
 v1.5  2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged.
@@ -138,7 +139,7 @@ class LiquidityHunt:
                    "rails_in_play",                                    # r104
                    "board_above",
                    "board_below", "fork_built", "nearest_above", "nearest_below",
-                   "above_em", "below_em", "bias", "break_state", "fake_seen", "fake_failed",
+                   "above_em", "below_em", "em_platform", "bias", "break_state", "fake_seen", "fake_failed",
                    "entry", "break_finished", "runway", "considered", "spread_rejected",
                    "contract", "leverage", "debit", "stop_premium")
 
@@ -245,6 +246,11 @@ class LiquidityHunt:
         t.check("nearest_below", float(nb["price"]) if nb else None, None)
         t.check("above_em", round(da / em, 3) if (da is not None and em) else None, None)
         t.check("below_em", round(db / em, 3) if (db is not None and em) else None, None)
+        try:                                                    # r229: the platform's number, recorded
+            from analysis.volatility_measures import expected_move_platform
+            t.check("em_platform", expected_move_platform(chain, price_now)[0], None)
+        except Exception:                                       # noqa: BLE001
+            t.check("em_platform", None, None)
         if na is None and nb is None:
             t.hold(f"range {lo:.2f}-{hi:.2f}: NO live level outside the range on either side — nothing to hunt")
             return prep

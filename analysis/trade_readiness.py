@@ -1,5 +1,6 @@
 """
-analysis/trade_readiness.py  v4.5
+analysis/trade_readiness.py  v4.6
+v4.6  2026-10-03  OTV4TEST r229 (EM.2) — _expected_move_now returns the tastytrade platform's expected move (volatility_measures.expected_move_platform), 0.0 when unreadable; the operator's ruling 2026-10-03. Log-only engine; its `em` unit is ~10-25% smaller from this revision on - do not pool across it.
 v4.5  2026-10-03  OTV4TEST r223 (EM.1) — _expected_move_now delegates to analysis.volatility_measures.straddle_nearest (moved verbatim).
 v4.4  2026-09-21  OTV4TEST r77 — the dead `sweep_reversal_strategy` import
       is gone. That module was deleted at r33; the import has raised ever since,
@@ -800,8 +801,8 @@ class TradeReadinessEngine:
         Never raises.
         """
         try:
-            from analysis.volatility_measures import straddle_nearest   # r223: moved verbatim
-            return straddle_nearest(ctx.get("chain"), price)
+            from analysis.volatility_measures import expected_move_platform   # r229 (EM.2): the platform's, by ruling
+            return expected_move_platform(ctx.get("chain"), price)[0] or 0.0
         except Exception:
             return 0.0
 

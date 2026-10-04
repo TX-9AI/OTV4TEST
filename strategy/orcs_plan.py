@@ -1,5 +1,6 @@
 """
-strategy/orcs_plan.py  v1.5
+strategy/orcs_plan.py  v1.6
+v1.6  2026-10-03  OTV4TEST r229 (EM.2) — THE IMPLIED MOVE IS THE TASTYTRADE PLATFORM'S EXPECTED MOVE (analysis.volatility_measures.expected_move_platform: 60% ATM straddle + 30% first strangle + 10% second), no longer the bare ATM straddle. The operator, 2026-10-03: "Use the one that's built into the tasty trade platform." Measured 10-01/10-02 at 09:45-10:29: 0.87-0.91 of the straddle, so the 1.0x distance floor sits 9-13% nearer; the delta cap is unchanged. The straddle is still recorded (atm_straddle).
 v1.5  2026-10-03  OTV4TEST r223 (EM.1) — mark_of and implied_move are analysis.volatility_measures.quote_mark / straddle_same_strike (moved verbatim; the names here are aliases).
 v1.4  2026-10-03  OTV4TEST r220 (TIME.1) — its private HH:MM parser is utils.time_utils.parse_hm (eight plans carried the same copy), and an UNREADABLE clock is DORMANT - no trade - instead of skipping the window check.
 v1.3  2026-10-03  OTV4TEST r207 (PREM.4) — THE WING IS A DOLLAR WIDTH (ORCS_WING_USD), not 1% of spot. The operator: "why the
@@ -87,7 +88,8 @@ from utils.time_utils import parse_hm as _hm      # r220 (TIME.1): the one parse
 
 
 from analysis.volatility_measures import quote_mark as mark_of            # r223 (EM.1): moved verbatim
-from analysis.volatility_measures import straddle_same_strike as implied_move   # r223 (EM.1): moved verbatim
+from analysis.volatility_measures import expected_move_platform as implied_move   # r229 (EM.2): the platform's expected move, by ruling
+from analysis.volatility_measures import straddle_same_strike                       # r229: still RECORDED beside it
 
 
 class Located:
@@ -180,7 +182,7 @@ def _checks():
 
 class ORCSPlan:
     name = NAME
-    PLAN_CHECKS = ("entry_window", "price", "zero_dte", "gap_abs_pct", "implied_move", "im_pct", "atm_strike",
+    PLAN_CHECKS = ("entry_window", "price", "zero_dte", "gap_abs_pct", "implied_move", "im_pct", "atm_straddle", "atm_strike",
                    "or_width_pct", "vix") + _checks()
 
     def __init__(self, store=None):
@@ -243,6 +245,7 @@ class ORCSPlan:
             t.starved("implied_move"); return prep
         prep.im, prep.atm = im, atm
         t.check("im_pct", round(100.0 * im / spot, 4), None)
+        t.check("atm_straddle", straddle_same_strike(chain, spot)[0], None)   # r229: what it read before, recorded
         t.check("atm_strike", atm, None)
 
         # ── the search, each side ────────────────────────────────────────────

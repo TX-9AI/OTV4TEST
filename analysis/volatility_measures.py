@@ -1,5 +1,6 @@
 """
-analysis/volatility_measures.py  v4.1
+analysis/volatility_measures.py  v4.2
+v4.2  2026-10-03  OTV4TEST r229 (EM.2) — expected_move_platform: THE TASTYTRADE PLATFORM'S EXPECTED MOVE (the "± n" beside an expiration): 60% of the ATM straddle + 30% of the first out-of-the-money strangle + 10% of the second, at the marks. The operator, 2026-10-03: "Which expected move? Use the one that's built into the tasty trade platform." ORCS, the condor and readiness read it; the Hunt records it. THE BUTTERFLIES KEEP expected_move_session, BY HIS RULING the same evening ("Don't mess with the butterfly EV then") after the measurement: the session number is 3.0-3.4x the platform's, so the same fractions would have refused every pin butterfly the book has taken.
 v4.1  2026-10-03  OTV4TEST r223 (EM.1) — every expected-move formula lives here: expected_move_session (the butterflies' / TCS / Hunt), straddle_nearest_marked (condor), straddle_nearest (readiness), straddle_same_strike + quote_mark (ORCS), each MOVED VERBATIM. No number changes.
 Realised volatility, implied volatility and EXPECTED MOVE.
 
@@ -222,6 +223,14 @@ def summarise(bars, interval: str, spot: Optional[float] = None,
 #   straddle_same_strike(chain, S)        ONE strike quoted on both sides, two-sided mid; (None, None)
 # Which of these a trade SHOULD use - and whether the 15-minute floor stays - is
 # the operator's ruling, not this file's.
+# r229 (EM.2) - HE RULED, 2026-10-03: "Use the one that's built into the tasty trade
+# platform." expected_move_platform below is that number. ORCS, the condor and
+# readiness now read it; the Hunt records it. THE BUTTERFLIES KEEP
+# expected_move_session, BY HIS RULING ("Don't mess with the butterfly EV then"):
+# measured 10-01/10-02 the session number is 3.0-3.4x the platform's (7.60 / 5.92 /
+# 4.61 against 2.29 / 1.75 / 1.34 at 12:00 / 13:00 / 14:00 on 10-02), so the same
+# fractions would have refused every pin butterfly the book has taken. The TCS
+# (retired) and the ATP butterfly (off) read the butterflies' number too.
 
 def expected_move_session(underlying, atm_iv, now=None) -> Optional[float]:
     """1x expected move for the REMAINING session, from the chain's ATM IV.
@@ -303,3 +312,44 @@ def straddle_same_strike(chain, spot: float):
     except Exception as exc:                                    # noqa: BLE001
         logger.debug("[em] same-strike straddle unavailable: %s", exc)
     return None, None
+
+
+PLATFORM_EM_WEIGHTS = (0.60, 0.30, 0.10)    # ATM straddle, 1st OTM strangle, 2nd OTM strangle
+
+
+def expected_move_platform(chain, spot):
+    """(expected move, ATM strike) the way the tastytrade platform prints it beside an
+    expiration: 60% of the ATM straddle + 30% of the strangle one strike out + 10% of the
+    strangle two strikes out, each leg at its mark (quote_mark). It is the move to THIS
+    chain's expiration, so on a 0DTE chain it shrinks through the day, as the platform's does.
+
+    The ATM strike is the one nearest spot listed on BOTH sides. Every one of the six legs
+    must have a mark; if any is missing the answer is (None, None) - never a partial sum.
+    Checked 2026-10-03 against the operator's screenshot (QQQ 749.53, "± 5.25"): the legs
+    visible on it give 5.2 with the two unseen calls estimated. Never raises."""
+    try:
+        from utils.math_utils import safe_float
+        s = safe_float(spot)
+        if not s or s <= 0:
+            return None, None
+        calls = {float(c.strike): c for c in (chain.calls or [])}
+        puts = {float(p.strike): p for p in (chain.puts or [])}
+        both = set(calls) & set(puts)
+        if not both:
+            return None, None
+        atm = min(both, key=lambda k: (abs(k - s), k))
+        up = sorted(k for k in calls if k > atm)[:2]
+        dn = sorted((k for k in puts if k < atm), reverse=True)[:2]
+        if len(up) < 2 or len(dn) < 2:
+            return None, None
+        legs = [quote_mark(calls[atm]), quote_mark(puts[atm]),
+                quote_mark(calls[up[0]]), quote_mark(puts[dn[0]]),
+                quote_mark(calls[up[1]]), quote_mark(puts[dn[1]])]
+        if any(m is None for m in legs):
+            return None, None
+        w0, w1, w2 = PLATFORM_EM_WEIGHTS
+        em = w0 * (legs[0] + legs[1]) + w1 * (legs[2] + legs[3]) + w2 * (legs[4] + legs[5])
+        return round(em, 4), atm
+    except Exception as exc:                                    # noqa: BLE001
+        logger.debug("[em] platform expected move unavailable: %s", exc)
+        return None, None

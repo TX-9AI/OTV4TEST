@@ -1,5 +1,6 @@
 """
-strategy/iron_condor_strategy.py  v4.14
+strategy/iron_condor_strategy.py  v4.15
+v4.15  2026-10-03  OTV4TEST r229 (EM.2) — _expected_move_from_straddle returns the tastytrade platform's expected move (volatility_measures.expected_move_platform), 0.0 when it cannot be read; by the operator's ruling 2026-10-03. The condor has no entry of its own while both credit entries are retired.
 v4.14  2026-10-03  OTV4TEST r223 (EM.1) — _expected_move_from_straddle delegates to analysis.volatility_measures.straddle_nearest_marked (moved verbatim).
 v4.13 2026-10-03  OTV4TEST r204 (PREM.2) — manage() does not count ORCS legs: they are held to the close by spec and the
       condor ladder never acts on them (condor_roll v4.9), so the management row must not narrate them as a pair.
@@ -311,8 +312,8 @@ class IronCondorStrategy(BaseOptionsStrategy):
 
     def _expected_move_from_straddle(self, chain: OptionsChain,
                                       underlying: float) -> float:
-        from analysis.volatility_measures import straddle_nearest_marked   # r223: moved verbatim
-        return straddle_nearest_marked(chain, underlying)
+        from analysis.volatility_measures import expected_move_platform    # r229 (EM.2): the platform's, by ruling
+        return expected_move_platform(chain, underlying)[0] or 0.0
 
     @staticmethod
     def _liquidity_rank(c):  return cv.liquidity_rank(c)

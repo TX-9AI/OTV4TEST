@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_expected_move_home.py  v1.0
+tests/check_expected_move_home.py  v1.1
+v1.1  2026-10-03  OTV4TEST r229 (EM.2) — E5 RE-POINTED: by the operator's ruling the condor, readiness and ORCS call sites
+      now return expected_move_platform. E1 (the butterflies' number and its 15-minute floor) is unchanged - he ruled it stays.
 v1.0  2026-10-03  OTV4TEST r223 (EM.1) — EVERY EXPECTED-MOVE FORMULA LIVES IN ONE MODULE, AND NO NUMBER MOVED.
 
   The 10-03 audit (C8): five expected-move formulas across the tree (ORCS added
@@ -184,9 +186,9 @@ def main():
         tr_fn = next(getattr(c, "_expected_move_now") for c in vars(TR).values()
                      if isinstance(c, type) and hasattr(c, "_expected_move_now"))
         check("E5 the condor, readiness and ORCS call sites return the module's value",
-              ic._expected_move_from_straddle(ch, s) == VM.straddle_nearest_marked(ch, s)
-              and tr_fn({"chain": ch}, s) == VM.straddle_nearest(ch, s) and tr_fn({}, s) == 0.0
-              and OP.implied_move is VM.straddle_same_strike and OP.mark_of is VM.quote_mark)
+              ic._expected_move_from_straddle(ch, s) == (VM.expected_move_platform(ch, s)[0] or 0.0)
+              and tr_fn({"chain": ch}, s) == (VM.expected_move_platform(ch, s)[0] or 0.0) and tr_fn({}, s) == 0.0
+              and OP.implied_move is VM.expected_move_platform and OP.mark_of is VM.quote_mark)   # r229 (EM.2)
     except Exception as exc:                                  # noqa: BLE001
         check("E5 (did not run)", False, f"{type(exc).__name__}: {exc}")
 

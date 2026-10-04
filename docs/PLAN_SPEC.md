@@ -1,5 +1,7 @@
 # PLAN_SPEC.md — every strategy declares its intent BEFORE the trigger
 
+**v1.35 · 2026-10-03 · OTV4TEST r229 — EM.2: ORCS's implied move is the tastytrade platform's expected move (§41.10); the butterflies keep theirs by ruling.**
+
 **v1.34 · 2026-10-03 · OTV4TEST r207 — PREM.4: ORCS reshaped by ruling (§41.9): short delta 0.20, a 3-dollar wing, one implied move. Where §41.1-§41.7 say delta 0.15, 1.25 implied moves or a 1% wing, §41.9 governs.**
 **v1.33 · 2026-10-03 · OTV4TEST r206 — PREM.3: ORCS entries are governed by the house entry ladder (§41.8); the plan's own offer (mark + one cent, ten-minute rest) is REMOVED by ruling. Where §41.1-§41.7 say 'offer', 'limit' or 'one cent better', §41.8 governs.**
 **v1.32 · 2026-10-03 · OTV4TEST r204 — PREM.2: §41 is now ORCS, the opening range credit spread, and it TRADES ON PAPER (§41.7); the sweep (§31) and the TCS (§34) are RETIRED by ruling, off behind OT_SWEEP_CS / OT_TCS_ACTIVE.**
@@ -1583,3 +1585,8 @@ The 1%-of-spot wing was a constant of the study harness, never varied; with delt
 **What the replay also said, and it is not good news:** NO shape of the 25 was positive in both halves of the 56 sessions. Every one LOST from 07-08 to 08-20 (this shape: -1,962) and won after (+3,212). The replay uses the calm weeks' average credit in the rough weeks, where credits were probably higher, so the first half is understated - by an amount nobody has measured. 80.4% is 45 winning days of 56: one more losing day and it is under his bar. Delta 0.15 with a 2-dollar wing is the safer alternative (86% of days, about 131 a day, max-loss day about -869, 56-day total +830).
 
 **As built (OTV4TEST r207):** `config.py` v4.53, `strategy/orcs_plan.py` v1.3, `tests/check_orcs.py` v1.3. Studies X9, X10 in `/var/tmp/levels_1003/` (terms in PREREG.md; my frozen choice rule for X10 selected NO shape - this one was chosen on his two stated criteria).
+
+### 41.10 r229 — THE IMPLIED MOVE IS THE PLATFORM'S EXPECTED MOVE (operator 2026-10-03; supersedes "the ATM straddle's mark" in §41.2 and §41.9)
+The operator, with a screenshot of the tastytrade chain (QQQ 749.53, "IVx: 12.1% (± 5.25)"): *"Which expected move? Use the one that's built into the tasty trade platform."* That number is **60% of the ATM straddle + 30% of the first out-of-the-money strangle + 10% of the second**, each leg at its mark (`analysis/volatility_measures.expected_move_platform`). All six legs must be quoted or there is no number, and with no number ORCS does not trade. The short strike's distance floor is still `ORCS_MIN_IM_MULT` (1.0) x this number; the delta cap is unchanged.
+**Measured before landing** (the feed's own quotes, 10-01 and 10-02, 09:45 / 10:00 / 10:29): the platform number was 0.87-0.91 of the straddle ORCS read before, so the floor sits 9-13% nearer spot. The straddle is still recorded on every row (`atm_straddle`).
+**The butterflies do NOT read it.** Their session formula ran 3.0-3.4x the platform's on the same two days (7.60 / 5.92 / 4.61 against 2.29 / 1.75 / 1.34 at 12:00 / 13:00 / 14:00 on 10-02): the same fractions on the platform's number would have refused every pin butterfly taken. Shown that, he ruled: *"Don't mess with the butterfly EV then"*. The condor and the log-only readiness engine read the platform number; the Hunt records it (`em_platform`).
