@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_level_tape.py  v2.0
+tests/check_level_tape.py  v2.1
 THE LEVEL BOOK IS BUILT FROM THE HOURLY TAPE, AND ITS BREACHES ARE JUDGED ON 1m.
 
+v2.1  2026-10-03  OTV4TEST r232 — SYMBOL AGNOSTIC: T7 and T2 read the BOX's instrument (the bot unit, then OT_INSTRUMENT) instead of
+      a literal 'QQQ' - red on SPX-TEST for that reason alone (its agent found it). The boot sweep sets OT_INSTRUMENT=QQQ
+      for fixtures, so the unit is read first: this check reads the box's REAL feed store.
 v2.0  2026-09-23  OTV4TEST r126 — derived/level_map and the old mapper are DELETED
       (LVL.15 step 5), so the checks that pinned THEIR internals retire with
       them, and the three that pin the DATA the book depends on stay:
@@ -111,7 +114,9 @@ def main():
 
     # T7 (r126: the book's own loader) — the book reaches more than 30 days back
     from derived import level_book as B
-    h1 = B.load_bars(db, "QQQ", "1h") or []
+    from utils import instrument as _I                          # r232: the box's symbol, not a literal
+    SYM = (_I._from_bot_unit() or os.environ.get("OT_INSTRUMENT") or "QQQ").strip()
+    h1 = B.load_bars(db, SYM, "1h") or []
     span_days = ((h1[-1][0] - h1[0][0]) / 86_400_000.0) if len(h1) >= 2 else 0.0
     check("T7 the book reaches more than 30 days back on the hourly tape",
           span_days > 30, f"{span_days:.1f} days of hourly tape ({len(h1)} bars)")
@@ -133,10 +138,10 @@ def main():
         "SELECT c.symbol, c.ts_epoch_ms, c.high, c.low, m.mh, m.ml, m.n FROM candles c"
         " JOIN (SELECT symbol, (ts_epoch_ms/3600000)*3600000 h, MAX(high) mh, MIN(low) ml,"
         "              COUNT(*) n FROM candles"
-        "       WHERE symbol IN ('QQQ','QQQ_EXT') AND interval='1m'"
+        "       WHERE symbol IN (?, ?) AND interval='1m'"
         "       GROUP BY symbol, h) m"
         "   ON m.symbol=c.symbol AND m.h=c.ts_epoch_ms"
-        " WHERE c.symbol IN ('QQQ','QQQ_EXT') AND c.interval='1h'").fetchall()
+        " WHERE c.symbol IN (?, ?) AND c.interval='1h'", (SYM, SYM + "_EXT", SYM, SYM + "_EXT")).fetchall()
     # an hour the 1m tape only partly covers cannot judge the hourly bar
     judged = [r for r in rows if r[6] >= 30]
     bad = [r for r in judged if r[2] < r[4] - 0.02 or r[3] > r[5] + 0.02]

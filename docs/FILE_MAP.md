@@ -952,7 +952,7 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_level_tape.py`
-- **calls:** `derived/__init__.py`, `derived/level_book.py`, `warehouse/__init__.py`, `warehouse/retention_purge.py`
+- **calls:** `derived/__init__.py`, `derived/level_book.py`, `utils/__init__.py`, `utils/instrument.py`, `warehouse/__init__.py`, `warehouse/retention_purge.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/FIRST_BOOT.md`
 
 ### `tests/check_levels_in_play.py`
@@ -1633,7 +1633,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `utils/__init__.py`
 - **calls:** (none)
-- **called by:** `main.py`, `tests/check_claude_boot.py`, `tests/check_eod_schedule.py`, `tests/check_holiday_aware.py`, `tests/check_instrument_unset.py`, `tests/check_low_price_symbols.py`, `tests/check_market_calendar.py`, `tests/check_shutdown_cause.py`, `tests/check_store_paths.py`, `tests/check_time_parse.py`, `utils/time_utils.py`
+- **called by:** `main.py`, `tests/check_claude_boot.py`, `tests/check_eod_schedule.py`, `tests/check_holiday_aware.py`, `tests/check_instrument_unset.py`, `tests/check_level_tape.py`, `tests/check_low_price_symbols.py`, `tests/check_market_calendar.py`, `tests/check_shutdown_cause.py`, `tests/check_store_paths.py`, `tests/check_time_parse.py`, `utils/time_utils.py`
 
 ### `utils/agent_status.py`
 - **calls:** (none)
@@ -1649,7 +1649,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `utils/instrument.py`
 - **calls:** (none)
-- **called by:** `analysis/get_orb_range.py`, `tests/check_instrument_unset.py`, `tools/eod_summary.py`, `tools/manifold_health.py`, `warehouse/self_close.py`
+- **called by:** `analysis/get_orb_range.py`, `tests/check_instrument_unset.py`, `tests/check_level_tape.py`, `tools/eod_summary.py`, `tools/manifold_health.py`, `warehouse/self_close.py`
 
 ### `utils/market_calendar.py`
 - **calls:** (none)
