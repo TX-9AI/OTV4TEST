@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-"""tools/probe_order_dryrun.py — v1.0
+"""tools/probe_order_dryrun.py — v1.1
 ASK THE BROKER WHAT IT WOULD DO WITH OUR ORDERS — DRY RUN ONLY, NOTHING IS PLACED, NO MONEY MOVES.
 
+v1.1 (2026-10-04) — OTV4TEST r240 (PRB.2) — the two questions v1.0 left open on SPX (SPX-TEST's run, 14:06 ET):
+      the chain listing now adds every third-Friday expiry in the next ~70 days (where SPX lists its AM monthly
+      beside SPXW - the AM literal and both roots on one date), and the vertical is also dry-run at 3.10 and
+      3.05 (does a complex order go to dimes at $3?). Still dry_run=True only; tests/check_probe_dryrun.py unchanged.
 v1.0 (2026-10-04) — OTV4TEST r239 (PRB.2). The operator, 2026-10-04 13:57 ET: "Yes, to the dry run if you
       can do it without actually spending money." Two audits that day (QQQ-TEST generic, SPX-TEST SPX) left
       questions only the broker can answer, and found B0: on tastytrade 13.x every Account method is a
@@ -15,7 +19,7 @@ returns errors / warnings / buying-power effect / fees; it is NOT an order and c
      and do SPX AM and SPXW share a date?)
   2. a 1-lot single BUY_TO_OPEN on a far OTM put at 0.05 (on any grid) and 0.07 (off a 0.05 grid)
   3. the same at 3.10 and 3.05 (the SPX >= 3.00 dime rule)
-  4. a 1-lot debit put vertical at 0.05 and 0.07 (the complex-order increment)
+  4. a 1-lot debit put vertical at 0.05 / 0.07 / 3.10 / 3.05 (the complex-order increment, both sides of $3)
 SAFETY, by construction: the ONLY call to place_order is in _dry(), which passes the literal dry_run=True;
 tests/check_probe_dryrun.py proves by AST that no other place_order call exists and that dry_run is never set to anything but True.
 It prints no account number and no balance - only the CHANGE in buying power, the effect, and fees.
@@ -74,7 +78,9 @@ async def main() -> int:
     account = await Account.get(session, get_tt_account_number())       # AWAITED - the B0 pattern
     print(f"account object: {type(account).__name__} (B0 check: must be 'Account', not 'coroutine')")
     chain = await get_option_chain(session, SYM)
-    dates = sorted(d for d in chain if d >= date.today())[:8]
+    future = sorted(d for d in chain if d >= date.today())
+    third_fri = [d for d in future if d.weekday() == 4 and 15 <= d.day <= 21 and (d - date.today()).days <= 70]
+    dates = sorted(set(future[:8]) | set(third_fri))
     print(f"\n{SYM} chain - roots / settlement by expiry (next {len(dates)}):")
     for d in dates:
         c = Counter((getattr(o, "root_symbol", "?"), getattr(o, "settlement_type", "?")) for o in chain[d])
@@ -96,7 +102,7 @@ async def main() -> int:
             _report(f"single BUY_TO_OPEN @ {px}", await _dry(account, session, o))
         except Exception as exc:  # noqa: BLE001
             _report(f"single BUY_TO_OPEN @ {px}", exc=exc)
-    for px in ("0.05", "0.07"):
+    for px in ("0.05", "0.07", "3.10", "3.05"):
         o = NewOrder(time_in_force=OrderTimeInForce.DAY, order_type=OrderType.LIMIT,
                      price=Decimal("-" + px),
                      legs=[_put_leg(hi.symbol, OrderAction.BUY_TO_OPEN),
