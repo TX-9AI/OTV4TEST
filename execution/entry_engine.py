@@ -1,5 +1,6 @@
 """
-execution/entry_engine.py  v4.14
+execution/entry_engine.py  v4.15
+v4.15 2026-10-04  OTV4TEST r244 (LIVE.1 B2, MIRROR OF otv4 r466 579354d, WA 38.2) — AN ERROR AFTER place_order NO LONGER FORGETS THE ORDER: execution/order_guard (after_failure cancels, records the order as suspect and pages; clear_to_post blocks the intent until the broker says CANCELLED/EXPIRED/REMOVED/PARTIALLY_REMOVED/REJECTED, pages once on FILLED, blocks when unreadable); the failed rung is refused. Code hunks applied verbatim; ONE hunk hand-placed: the butterfly guard sits after _fly_key and before this tree's r224 FLY.1 cap block (mainline's butterfly lines differ).
 v4.14 2026-10-04  OTV4TEST r242 (LIVE.1 B0, MIRROR OF otv4 r463 c912ce7, WA 38.2) — every Account call goes through tasty_client.sdk_result: on tastytrade 13.x the Account methods are coroutines and a bare call placed and closed NOTHING live (paper never calls them). Hunks applied verbatim from c912ce7.
 v4.13 2026-10-03  OTV4TEST r224 (FLY.1) — A BUTTERFLY ENTRY NEVER POSTS ABOVE ITS MARK. The operator, 2026-10-03: "They should still
       not exceed mark on ladder entries, even no bid quotes" and "We won't accept a disadvantaged entry just
@@ -200,6 +201,7 @@ from strategy.base_strategy import OptionsSignal
 from risk.risk_manager import SizingResult
 from database.trade_logger import TradeRecord, make_record, get_trade_logger
 from data.tasty_client import get_session, get_account, TastyClientError, sdk_result
+from execution import order_guard as _guard                          # B2
 from config import (
     PAPER_TRADING, PAPER_FILL_SLIPPAGE_PCT,
     CONTRACT_MULTIPLIER, INSTRUMENT,
@@ -578,6 +580,7 @@ class EntryEngine:
         if self.paper_trading:
             return self._paper_fill_single(signal, contracts)
 
+        _placed = _key = limit = None                                   # B2
         try:
             session  = get_session()
             account  = get_account()
@@ -610,6 +613,10 @@ class EntryEngine:
             from execution import ladder_registry as _lr
             _bid, _ask = self._quote_of(signal.contract)
             _key = _lr.intent_key(symbol, "open", "single")
+            _ok, _gwhy = _guard.clear_to_post(_key, session, account)   # B2
+            if not _ok:
+                logger.warning("[guard] single-leg %s not posted: %s", symbol, _gwhy)
+                return None, "", 0
             limit, _why = self._walk_price(_key, "buy", _bid, _ask, symbol, mid)
             logger.info("[ladder] %s BUY %s @ %.2f — %s (bid %.2f / ask %.2f)",
                         symbol, "single", limit, _why, _bid, _ask)
@@ -623,6 +630,7 @@ class EntryEngine:
             if response.errors:
                 logger.error(f"Order errors: {response.errors}")
                 return None, "", 0
+            _placed = response.order                                    # B2
 
             fill = confirm_order_fill(session, account, response.order,
                                       [(symbol, 1, +1)],
@@ -643,6 +651,9 @@ class EntryEngine:
 
         except Exception as e:
             logger.error(f"Single-leg order failed: {e}")
+            if _placed is not None:                                     # B2
+                self._walk_refused(_key, limit)
+                _guard.after_failure(_key, _placed, session, account, "single-leg entry")
             return None, "", 0
 
     def _record_kwargs(self, signal) -> dict:
@@ -696,6 +707,8 @@ class EntryEngine:
         offer mark on the exact tick the trade fires.
         """
         from execution import resting_orders as _ro
+        _offer_placed = session = account = None                        # B2
+        symbol = getattr(getattr(signal, "contract", None), "symbol", "")
         try:
             symbol  = signal.contract.symbol
             mark    = float(signal.entry_premium or 0.0)
@@ -727,6 +740,10 @@ class EntryEngine:
                 return _fill, _oid, int(contracts)
             session = get_session()
             account = get_account()
+            _ok, _gwhy = _guard.clear_to_post(f"offer|{symbol}", session, account)   # B2
+            if not _ok:
+                logger.warning("[guard] standing offer %s not posted: %s", symbol, _gwhy)
+                return None, "", 0
             leg = Leg(instrument_type=InstrumentType.EQUITY_OPTION,
                       symbol=symbol, action=OrderAction.BUY_TO_OPEN,
                       quantity=contracts)
@@ -738,6 +755,7 @@ class EntryEngine:
             if response.errors:
                 logger.error("[offer] rejected: %s", response.errors)
                 return None, "", 0
+            _offer_placed = response.order                              # B2
             oid = str(getattr(response.order, "id", "") or "")
             if not oid:
                 # 🔴 AN ORDER WITH NO ID CANNOT BE SUPERVISED OR CANCELLED.
@@ -761,6 +779,9 @@ class EntryEngine:
             return None, oid, 0
         except Exception as exc:                                # noqa: BLE001
             logger.error("[offer] placement failed: %s", exc)
+            if _offer_placed is not None:                               # B2
+                _guard.after_failure(f"offer|{symbol}", _offer_placed, session, account,
+                                     "standing ORB offer")
             return None, "", 0
 
     def _record_offer(self, _ro, signal: OptionsSignal, contracts: int,
@@ -821,6 +842,7 @@ class EntryEngine:
         if self.paper_trading:
             return self._paper_fill_butterfly(signal, contracts)
 
+        _fly_placed = _fly_key = limit_price = session = account = None   # B2
         try:
             from execution import ladder_registry as _lr_bf
             session = get_session()
@@ -843,6 +865,10 @@ class EntryEngine:
             _fly_key = _lr_bf.intent_key(
                 getattr(signal.center_contract, "symbol", "fly"),
                 "open", "butterfly")
+            _ok, _gwhy = _guard.clear_to_post(_fly_key, session, account)   # B2
+            if not _ok:
+                logger.warning("[guard] butterfly not posted: %s", _gwhy)
+                return None, "", 0
             # r224 (FLY.1) — THE CAP: the mark, floored to the cent. No attempt posts above it.
             _cap = self._mark_cap(mid)
             if _cap is None:
@@ -886,6 +912,7 @@ class EntryEngine:
                     if attempt == 1:
                         return None, "", 0
                     continue
+                _fly_placed = response.order                            # B2
 
                 fill = confirm_order_fill(session, account, response.order,
                                           basis, what=f"butterfly entry #{attempt+1}")
@@ -908,6 +935,9 @@ class EntryEngine:
 
         except Exception as e:
             logger.error(f"Butterfly order failed: {e}")
+            if _fly_placed is not None and _fly_key is not None:        # B2
+                self._walk_refused(_fly_key, limit_price)
+                _guard.after_failure(_fly_key, _fly_placed, session, account, "butterfly entry")
             return None, "", 0
 
     @staticmethod

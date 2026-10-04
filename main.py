@@ -1,5 +1,6 @@
 """
-main.py  v4.92
+main.py  v4.93
+v4.93 2026-10-04  OTV4TEST r244 (LIVE.1 B2, MIRROR OF otv4 r466 579354d, WA 38.2) — AN ERROR AFTER place_order NO LONGER FORGETS THE ORDER: execution/order_guard (after_failure cancels, records the order as suspect and pages; clear_to_post blocks the intent until the broker says CANCELLED/EXPIRED/REMOVED/PARTIALLY_REMOVED/REJECTED, pages once on FILLED, blocks when unreadable); the failed rung is refused. Code hunks applied verbatim; ONE hunk hand-placed: the butterfly guard sits after _fly_key and before this tree's r224 FLY.1 cap block (mainline's butterfly lines differ).
 v4.92 2026-10-04  OTV4TEST r243 (LIVE.1 B1, MIRROR OF otv4 r465 7562317, WA 38.2) — reconcile reads ONLY this box's instrument family (SPX = SPX+SPXW; '*' = the whole account) and checks EVERY leg at its QUANTITY (summed across rows sharing a leg); a missing leg or a count off the broker is REPORTED (plan.mismatch + an alert), rows are never dropped, the phantom rule unchanged. The operator, 2026-10-04: 'multiple boxes will trade that account but never duplicate symbols ever.' Code hunks applied verbatim from 7562317.
 v4.91 2026-10-04  OTV4TEST r242 (LIVE.1 B0, MIRROR OF otv4 r463 c912ce7, WA 38.2) — every Account call goes through tasty_client.sdk_result: on tastytrade 13.x the Account methods are coroutines and a bare call placed and closed NOTHING live (paper never calls them). Hunks applied verbatim from c912ce7.
 v4.90 2026-10-04  OTV4TEST r235 — the Service mode line also says ORCS=on/OFF (config.ORCS_ENABLED), so whether the trade is armed is read from the log, never from the unit (WA 18a). SPX-TEST's agent could not tell.
@@ -2676,13 +2677,33 @@ def _post_credit_vertical(short_contract, long_contract, contracts: int,
         _legs = [(short_contract.symbol, "SELL_TO_OPEN", contracts),
                  (long_contract.symbol,  "BUY_TO_OPEN",  contracts)]
 
+    # B2 (r466) — never post an intent whose previous order is still in doubt.
+    from execution import order_guard as _guard
+    _sess = locals().get("session"); _acct = locals().get("account")
+    if _acct is not None:
+        _ok, _gwhy = _guard.clear_to_post(lkey, _sess, _acct)
+        if not _ok:
+            logger.warning(f"[guard] credit vertical not posted: {_gwhy}")
+            return EntryFill(filled=False, detail=f"guard: {_gwhy}"), _limit, _lwhy
     response = placer(_legs, _limit)
     if getattr(response, "errors", None):
         logger.error(f"Condor leg order failed: {response.errors}")
         return EntryFill(filled=False, detail=f"rejected: {response.errors}"), _limit, _lwhy
     basis = [(short_contract.symbol, 1, +1),
              (long_contract.symbol,  1, -1)]   # net = short − long (credit)
-    fill = confirmer(getattr(response, "order", response), basis, _deadline)
+    _placed = getattr(response, "order", response)
+    try:
+        fill = confirmer(_placed, basis, _deadline)
+    except Exception:
+        # B2 — the order WAS placed; refuse the rung, cancel, remember, page.
+        try:
+            from execution import ladder_registry as _lr_g
+            _lr_g.refuse(lkey, _limit)
+        except Exception:                                       # noqa: BLE001
+            pass
+        if _acct is not None:
+            _guard.after_failure(lkey, _placed, _sess, _acct, what)
+        raise
 
     from execution import ladder_registry as _lr
     _filled = int(getattr(fill, "quantity", 0) or 0) if getattr(fill, "filled", False) else 0
