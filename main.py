@@ -1,5 +1,6 @@
 """
-main.py  v4.93
+main.py  v4.94
+v4.94 2026-10-04  OTV4TEST r247 (FORK-ONLY, the operator: "Fix the SPXW settlement", "Fix the ORCS ledger rows issue") — _settlement_spot reads SPX's tape for an SPXW root (_SETTLE_TAPE), so an adopted SPXW position settles at the index's 16:00 close instead of a flagged $0.00; _attempt_orcs refuses a LIVE box BEFORE ledger_open, so no orphan plan_ledger row is written (the refusal in _execute_condor_leg stays as the backstop). Both found by SPX-TEST's live-path audit.
 v4.93 2026-10-04  OTV4TEST r244 (LIVE.1 B2, MIRROR OF otv4 r466 579354d, WA 38.2) — AN ERROR AFTER place_order NO LONGER FORGETS THE ORDER: execution/order_guard (after_failure cancels, records the order as suspect and pages; clear_to_post blocks the intent until the broker says CANCELLED/EXPIRED/REMOVED/PARTIALLY_REMOVED/REJECTED, pages once on FILLED, blocks when unreadable); the failed rung is refused. Code hunks applied verbatim; ONE hunk hand-placed: the butterfly guard sits after _fly_key and before this tree's r224 FLY.1 cap block (mainline's butterfly lines differ).
 v4.92 2026-10-04  OTV4TEST r243 (LIVE.1 B1, MIRROR OF otv4 r465 7562317, WA 38.2) — reconcile reads ONLY this box's instrument family (SPX = SPX+SPXW; '*' = the whole account) and checks EVERY leg at its QUANTITY (summed across rows sharing a leg); a missing leg or a count off the broker is REPORTED (plan.mismatch + an alert), rows are never dropped, the phantom rule unchanged. The operator, 2026-10-04: 'multiple boxes will trade that account but never duplicate symbols ever.' Code hunks applied verbatim from 7562317.
 v4.91 2026-10-04  OTV4TEST r242 (LIVE.1 B0, MIRROR OF otv4 r463 c912ce7, WA 38.2) — every Account call goes through tasty_client.sdk_result: on tastytrade 13.x the Account methods are coroutines and a bare call placed and closed NOTHING live (paper never calls them). Hunks applied verbatim from c912ce7.
@@ -1597,6 +1598,14 @@ def _attempt_orcs(ctx: dict, state) -> None:
             price_now=_px, now_et=now_et(), chain=ctx.get("chain"), gap=ctx.get("gap"),
             informers=_inf) or None, ctx)
         for _sig in (_sigs or []):
+            # r247 — THE LIVE REFUSAL COMES FIRST. ORCS is paper-only until the operator rules it
+            # live; the refusal sat in _execute_condor_leg, AFTER ledger_open, so a live box wrote a
+            # plan_ledger row for every ready side that no fill would ever close (SPX-TEST's audit).
+            # The refusal in _execute_condor_leg stays as the backstop.
+            if not getattr(state, "paper_trading", True):
+                logger.warning("[orcs] LIVE: no ledger row and no entry - ORCS is paper-only until "
+                               "the operator rules it live")
+                continue
             _orcs_strategy.ledger_open(_sig)                    # r211: the row the fill links to
             _execute_condor_leg(_sig, state, ctx)
     except Exception as exc:                                   # noqa: BLE001
@@ -6314,6 +6323,11 @@ def _fetch_close_order_history(records: list) -> list:
         return []
 
 
+# r247 — the option ROOT -> the symbol whose tape holds its settlement price. Only roots measured
+# on this account are listed (SPXW, 10-04 dry-run probe); anything else reads its own symbol.
+_SETTLE_TAPE = {"SPXW": "SPX"}
+
+
 def _settlement_spot(symbol: str, expiry: str):
     """r165 (EXP.1): the underlying's 16:00 ET settlement close on `expiry` - the close of the
     last 1m bar that opens before 16:00 that day - from the feed store, read-only. None if the
@@ -6323,6 +6337,10 @@ def _settlement_spot(symbol: str, expiry: str):
         from datetime import datetime as _dt
         from zoneinfo import ZoneInfo as _Z
         from data.candle_feed import feed_db_path
+        # r247 — SPXW (PM-settled weeklies/dailies) settles on the SPX INDEX's 16:00 close: the
+        # store keeps the index's tape under "SPX", so an adopted position whose broker underlying
+        # is "SPXW" found no bars and booked a flagged $0.00 (SPX-TEST's audit, 2026-10-04).
+        symbol = _SETTLE_TAPE.get(str(symbol or "").upper(), symbol)
         y, m, d = (int(x) for x in expiry[:10].split("-"))
         t16 = _dt(y, m, d, 16, 0, tzinfo=_Z("America/New_York")).timestamp() * 1000
         t_open = t16 - 390 * 60 * 1000
