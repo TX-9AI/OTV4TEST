@@ -1,5 +1,6 @@
 """
-database/trade_logger.py  v4.20
+database/trade_logger.py  v4.21
+v4.21 2026-10-04  OTV4TEST r245 (LIVE.1 B3, MIRROR OF otv4 r467 b32c73b, WA 38.2) — A PARTIAL LIVE EXIT SURVIVES A RESTART: the close's state (filled portions, the working order id) is saved to the row's new live_exit_state column after the submit and after every pass, and loaded first; a restart resumes the working order or submits only the REMAINDER, and the booked price is the weighted average of every fill. Code hunks applied verbatim; getsource sha256[:16] of _exit_state_load / _exit_state_save / _confirm_and_book_live_exit identical to b32c73b (a71ca216 / b44de96e / 1819bebc).
 v4.20 2026-10-03  OTV4TEST r198 (MEAS.1, SHARED SHAPE) — pnl_pct IS SIGNED BY pnl_usd. log_exit stored (exit - entry) / entry for
       every trade, so every credit trade's loss read as a gain (11 of 11 SweepCreditSpread rows here; it corrupted a
       fleet strategy table on 2026-09-17). The magnitude is unchanged; the sign now follows the booked pnl_usd. Ruled
@@ -602,6 +603,10 @@ class TradeLogger:
             # DEFAULT, on purpose: existing rows stay NULL rather than being
             # relabelled, because on an in-place supersede they are MAIN's.
             ("lineage",                "TEXT"),
+            # r467 / B3 — a part-filled live close: {"fills": [[qty, net], ...],
+            # "order_id", "last_order_id"}. NULL otherwise. Written only by
+            # exit_engine._exit_state_save.
+            ("live_exit_state",        "TEXT"),
         ]
         for col, definition in _MIGRATION_ADDS:
             try:

@@ -1,5 +1,6 @@
 """
-execution/exit_engine.py  v4.35
+execution/exit_engine.py  v4.36
+v4.36 2026-10-04  OTV4TEST r245 (LIVE.1 B3, MIRROR OF otv4 r467 b32c73b, WA 38.2) — A PARTIAL LIVE EXIT SURVIVES A RESTART: the close's state (filled portions, the working order id) is saved to the row's new live_exit_state column after the submit and after every pass, and loaded first; a restart resumes the working order or submits only the REMAINDER, and the booked price is the weighted average of every fill. Code hunks applied verbatim; getsource sha256[:16] of _exit_state_load / _exit_state_save / _confirm_and_book_live_exit identical to b32c73b (a71ca216 / b44de96e / 1819bebc).
 v4.35 2026-10-04  OTV4TEST r242 (LIVE.1 B0, MIRROR OF otv4 r463 c912ce7, WA 38.2) — every Account call goes through tasty_client.sdk_result: on tastytrade 13.x the Account methods are coroutines and a bare call placed and closed NOTHING live (paper never calls them). Hunks applied verbatim from c912ce7.
 v4.34 2026-10-03  OTV4TEST r230 (PREM.5) — ORCS LEGS TAKE THE CONDOR'S EXITS, VERBATIM. The operator, 2026-10-03 21:21 ET: "On rolling/defending the ORCS, adopt the condor logic verbatim." _evaluate_condor_leg no longer returns early for an ORCS leg: the stop is suppressed while its other side is open, a LONE leg stops at credit + 15% of risk, the nickel closes it, the final-form floor applies after a roll. r204's 'held to the close and nothing else' is superseded.
 v4.33 2026-10-03  OTV4TEST r221 (UTIL.1) — _find_1m_fvgs calls utils.math_utils.find_fvgs (its own copy of the loop is gone; same
@@ -745,6 +746,7 @@ Exit triggers by strategy:
     3. LONG PROFIT TRAIL: standard trail to lock gains; short rides to hard close
 """
 
+import json
 import logging
 import time
 from dataclasses import dataclass
@@ -3201,8 +3203,67 @@ class ExitEngine:
         OrderStatus.REMOVED, OrderStatus.PARTIALLY_REMOVED,
     }
 
+    # ── B3 (r467) — PARTIAL-EXIT MEMORY LIVES IN THE ROW ────────────────────
+    def _exit_state_load(self, record: TradeRecord) -> None:
+        """After a restart the record has no in-memory exit state; adopt what the
+        row kept: the filled portions and the order that may still be working."""
+        if "_live_exit_fills" in record or "_live_exit_order_id" in record:
+            return
+        raw = record.get("live_exit_state")
+        if not raw:
+            return
+        try:
+            st = json.loads(raw)
+            fills = [(float(q), float(p)) for q, p in (st.get("fills") or [])]
+        except Exception as exc:                               # noqa: BLE001
+            self._alert_live_exit_once(
+                record.get("trade_id", ""), "state-unreadable",
+                f"LIVE exit {str(record.get('trade_id', ''))[:8]}: kept partial-exit "
+                f"state unreadable ({exc}) — check the broker before the next close")
+            return
+        if fills:
+            record["_live_exit_fills"] = fills
+        for k in ("order_id", "last_order_id"):
+            if st.get(k):
+                record[f"_live_exit_{k}"] = st[k]
+        logger.warning(f"LIVE exit {record['trade_id'][:8]}: restored partial-exit "
+                       f"state from the row — {sum(q for q, _ in fills):g} already "
+                       f"closed, order {st.get('order_id')}")
+
+    def _exit_state_save(self, record: TradeRecord) -> None:
+        """Write the in-memory exit state to the row; NULL once nothing is left."""
+        fills = [[q, p] for q, p in (record.get("_live_exit_fills") or [])]
+        oid = record.get("_live_exit_order_id")
+        st = None
+        if fills or oid is not None:
+            st = json.dumps({"fills": fills,
+                             "order_id": str(oid) if oid is not None else None,
+                             "last_order_id": (str(record["_live_exit_last_order_id"])
+                                               if record.get("_live_exit_last_order_id")
+                                               is not None else None)})
+        if record.get("live_exit_state") == st:
+            return
+        record["live_exit_state"] = st
+        try:
+            self._trade_logger.update_fields(record["trade_id"], live_exit_state=st)
+        except Exception as exc:                               # noqa: BLE001
+            self._alert_live_exit_once(
+                record.get("trade_id", ""), "state-write",
+                f"LIVE exit {str(record.get('trade_id', ''))[:8]}: partial-exit state "
+                f"NOT saved ({exc}) — a restart now would forget it")
+
     def _confirm_and_book_live_exit(self, record: TradeRecord, reason: str,
                                     mark_price: Optional[float]) -> FillResult:
+        """B3 (r467) — the live close, with its partial-exit memory loaded from
+        and saved to the trade row around every pass."""
+        self._exit_state_load(record)
+        try:
+            return self._confirm_and_book_live_exit_pass(record, reason, mark_price)
+        finally:
+            self._exit_state_save(record)
+
+    def _confirm_and_book_live_exit_pass(self, record: TradeRecord, reason: str,
+                                         mark_price: Optional[float]) -> FillResult:
         """LIVE close with broker fill-confirmation.
 
         Books ONLY on a broker-confirmed fill at the broker's actual fill price.
@@ -3218,8 +3279,9 @@ class ExitEngine:
         resubmits ONLY the remaining quantity at a fresh mark, and booking
         happens once — when cumulative fills cover the full position — at the
         quantity-weighted average net price. A partial is never booked as
-        whole. (A mid-window process restart drops the in-memory stash; the
-        startup broker_reconcile pass owns that path, as it does today.)
+        whole. 🔴 B3 (r467): the stash and the working order id are KEPT IN
+        THE TRADE ROW (`live_exit_state`), so a restart mid-close resumes
+        with the remainder, never the full size — see _confirm_and_book_live_exit.
 
         IDEMPOTENCY / anti-double-submit: the working order id is stashed on
         the record (`_live_exit_order_id`). If a retry tick re-enters while a
@@ -3284,6 +3346,7 @@ class ExitEngine:
             order_id = placed.id
             record["_live_exit_order_id"]      = order_id
             record["_live_exit_last_order_id"] = order_id
+            self._exit_state_save(record)    # B3: a kill mid-poll resumes THIS order
             logger.info(f"LIVE exit {trade_id[:8]}: close submitted, order "
                         f"{order_id}, qty={remaining} — awaiting broker fill")
 
