@@ -1,5 +1,6 @@
 """
-execution/entry_engine.py  v4.13
+execution/entry_engine.py  v4.14
+v4.14 2026-10-04  OTV4TEST r242 (LIVE.1 B0, MIRROR OF otv4 r463 c912ce7, WA 38.2) — every Account call goes through tasty_client.sdk_result: on tastytrade 13.x the Account methods are coroutines and a bare call placed and closed NOTHING live (paper never calls them). Hunks applied verbatim from c912ce7.
 v4.13 2026-10-03  OTV4TEST r224 (FLY.1) — A BUTTERFLY ENTRY NEVER POSTS ABOVE ITS MARK. The operator, 2026-10-03: "They should still
       not exceed mark on ladder entries, even no bid quotes" and "We won't accept a disadvantaged entry just
       because there is low interest". Two live paths could: (1) the retry was posted at mid + LIMIT_IMPROVE_TICKS
@@ -198,7 +199,7 @@ from strategy.base_strategy import OptionsSignal
 # keeps its setup_grade/setup_score columns and writes the constants below.
 from risk.risk_manager import SizingResult
 from database.trade_logger import TradeRecord, make_record, get_trade_logger
-from data.tasty_client import get_session, get_account, TastyClientError
+from data.tasty_client import get_session, get_account, TastyClientError, sdk_result
 from config import (
     PAPER_TRADING, PAPER_FILL_SLIPPAGE_PCT,
     CONTRACT_MULTIPLIER, INSTRUMENT,
@@ -618,7 +619,7 @@ class EntryEngine:
                 price         = Decimal(str(-limit)),   # - = DEBIT paid to open
                 legs          = [leg],
             )
-            response = account.place_order(session, order, dry_run=False)
+            response = sdk_result(account.place_order(session, order, dry_run=False))   # B0
             if response.errors:
                 logger.error(f"Order errors: {response.errors}")
                 return None, "", 0
@@ -733,7 +734,7 @@ class EntryEngine:
                              order_type=OrderType.LIMIT,
                              price=Decimal(str(-mark)),      # - = DEBIT to open
                              legs=[leg])
-            response = account.place_order(session, order, dry_run=False)
+            response = sdk_result(account.place_order(session, order, dry_run=False))   # B0
             if response.errors:
                 logger.error("[offer] rejected: %s", response.errors)
                 return None, "", 0
@@ -878,7 +879,7 @@ class EntryEngine:
                     price         = Decimal(str(-limit_price)),  # − = DEBIT paid
                     legs          = legs,
                 )
-                response = account.place_order(session, order, dry_run=False)
+                response = sdk_result(account.place_order(session, order, dry_run=False))   # B0
                 if response.errors:
                     logger.error(f"Butterfly attempt {attempt+1} order errors: "
                                  f"{response.errors}")

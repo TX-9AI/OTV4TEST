@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tools/emergency_watchdog.py  v1.0 — THE OUT-OF-PROCESS EMERGENCY WATCHDOG.
+tools/emergency_watchdog.py  v1.1 — THE OUT-OF-PROCESS EMERGENCY WATCHDOG.
+
+v1.1  2026-10-04  OTV4TEST r242 (LIVE.1 B0, FORK-ONLY) — cancel_working() called account.get_live_orders /
+      delete_order bare; on tastytrade 13.x those are coroutines, so on a LIVE box the 15:50 watchdog
+      could cancel nothing. Both now go through tasty_client.sdk_result. Found by check_sdk_async A4
+      (mirrored from otv4 r463) - mainline has no watchdog, so this half is this tree's alone.
 
 v1.0  2026-09-27  OTV4TEST r168 (EXP.1 item 3). Operator, 2026-09-27: *"Not a
       bad idea to have one for 'emergencies'"*; asked what it should do when the
@@ -210,18 +215,18 @@ class Real:
         return self.service_state() in ("inactive", "failed")
 
     def cancel_working(self) -> int:
-        from data.tasty_client import get_session, get_account
+        from data.tasty_client import get_session, get_account, sdk_result
         inst = os.environ.get("OT_INSTRUMENT", "")
         session, account = get_session(), get_account()
         n = 0
-        for o in account.get_live_orders(session):
+        for o in sdk_result(account.get_live_orders(session)):            # r242 B0
             st = getattr(getattr(o, "status", None), "value", str(getattr(o, "status", "")))
             if st not in LIVE_STATES:
                 continue
             legs = [str(getattr(lg, "symbol", "")) for lg in (getattr(o, "legs", None) or [])]
             if getattr(o, "underlying_symbol", None) != inst and not any(s.split()[0] == inst for s in legs if s):
                 continue
-            account.delete_order(session, o.id)
+            sdk_result(account.delete_order(session, o.id))                    # r242 B0
             _log(f"cancelled working order {o.id} ({st})")
             n += 1
         return n

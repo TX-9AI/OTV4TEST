@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""tools/probe_order_dryrun.py — v1.1
+"""tools/probe_order_dryrun.py — v1.2
 ASK THE BROKER WHAT IT WOULD DO WITH OUR ORDERS — DRY RUN ONLY, NOTHING IS PLACED, NO MONEY MOVES.
 
+v1.2 (2026-10-04) — OTV4TEST r242 (LIVE.1 B0 mirror) — every broker call goes through data.tasty_client.sdk_result, the helper
+      mainline r463 added (check_sdk_async A4 reads every non-test file): the probe now proves the bot's OWN helper live.
 v1.1 (2026-10-04) — OTV4TEST r240 (PRB.2) — the two questions v1.0 left open on SPX (SPX-TEST's run, 14:06 ET):
       the chain listing now adds every third-Friday expiry in the next ~70 days (where SPX lists its AM monthly
       beside SPXW - the AM literal and both roots on one date), and the vertical is also dry-run at 3.10 and
@@ -26,7 +28,6 @@ It prints no account number and no balance - only the CHANGE in buying power, th
 Run ONLY through the r176 wrapper (it carries the bot's TT_* keys, never prints them):
     /home/ubuntu/options-trader/venv/bin/python /home/ubuntu/options-trader/tools/run_with_bot_env.py probe_order_dryrun.py
 """
-import asyncio
 import os
 import sys
 from collections import Counter
@@ -39,14 +40,14 @@ sys.path.insert(0, ROOT)
 from tastytrade.account import Account                                          # noqa: E402
 from tastytrade.instruments import get_option_chain, OptionType, InstrumentType  # noqa: E402
 from tastytrade.order import NewOrder, Leg, OrderAction, OrderType, OrderTimeInForce  # noqa: E402
-from data.tasty_client import get_session, get_tt_account_number                 # noqa: E402
+from data.tasty_client import get_session, get_tt_account_number, sdk_result     # noqa: E402
 
 SYM = (os.environ.get("OT_INSTRUMENT") or "").strip().upper()
 
 
-async def _dry(account, session, order):
-    """THE ONLY place_order CALL IN THIS FILE. dry_run is the literal True."""
-    return await account.place_order(session, order, dry_run=True)
+def _dry(account, session, order):
+    """THE ONLY place_order CALL IN THIS FILE. dry_run is the literal True. r242: through sdk_result (B0)."""
+    return sdk_result(account.place_order(session, order, dry_run=True))
 
 
 def _put_leg(sym, action):
@@ -70,14 +71,14 @@ def _report(label, resp=None, exc=None):
         print(f"      warning: {str(w)[:160]}")
 
 
-async def main() -> int:
+def main() -> int:
     if not SYM:
         print("probe_order_dryrun: no OT_INSTRUMENT - run it through tools/run_with_bot_env.py")
         return 2
     session = get_session()
-    account = await Account.get(session, get_tt_account_number())       # AWAITED - the B0 pattern
+    account = sdk_result(Account.get(session, get_tt_account_number()))  # the B0 helper, exactly as the bot calls it
     print(f"account object: {type(account).__name__} (B0 check: must be 'Account', not 'coroutine')")
-    chain = await get_option_chain(session, SYM)
+    chain = sdk_result(get_option_chain(session, SYM))
     future = sorted(d for d in chain if d >= date.today())
     third_fri = [d for d in future if d.weekday() == 4 and 15 <= d.day <= 21 and (d - date.today()).days <= 70]
     dates = sorted(set(future[:8]) | set(third_fri))
@@ -99,7 +100,7 @@ async def main() -> int:
         o = NewOrder(time_in_force=OrderTimeInForce.DAY, order_type=OrderType.LIMIT,
                      price=Decimal("-" + px), legs=[_put_leg(hi.symbol, OrderAction.BUY_TO_OPEN)])
         try:
-            _report(f"single BUY_TO_OPEN @ {px}", await _dry(account, session, o))
+            _report(f"single BUY_TO_OPEN @ {px}", _dry(account, session, o))
         except Exception as exc:  # noqa: BLE001
             _report(f"single BUY_TO_OPEN @ {px}", exc=exc)
     for px in ("0.05", "0.07", "3.10", "3.05"):
@@ -108,11 +109,11 @@ async def main() -> int:
                      legs=[_put_leg(hi.symbol, OrderAction.BUY_TO_OPEN),
                            _put_leg(lo.symbol, OrderAction.SELL_TO_OPEN)])
         try:
-            _report(f"vertical debit @ {px}", await _dry(account, session, o))
+            _report(f"vertical debit @ {px}", _dry(account, session, o))
         except Exception as exc:  # noqa: BLE001
             _report(f"vertical debit @ {px}", exc=exc)
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+    sys.exit(main())

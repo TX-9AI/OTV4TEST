@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-416 Python modules across 12 local packages.
+418 Python modules across 12 local packages.
 
-**Reached by:** 123 imported · 26 declared entry points · 184 referenced from a script, unit or doc but never imported · **83 by nothing here**.
+**Reached by:** 123 imported · 26 declared entry points · 186 referenced from a script, unit or doc but never imported · **83 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -40,7 +40,7 @@ isolated rather than being everywhere at once.
 - `analysis/market_state.py` - the structural state assembly.
   **Carries the vocabulary, classifies nothing.**
 
-**Where the evidence lives:** `tests/` holds 234 standing
+**Where the evidence lives:** `tests/` holds 236 standing
 checks (`check_*.py`, all run by `tools/boot_sweep.py` at boot)
 plus the studies that produced every threshold in
 `docs/TRADES.md`. **A number in a strategy file should be
@@ -58,7 +58,7 @@ Change these with the most care; a break here reaches everything downstream.
 | `utils/time_utils.py` | 50 | alert_manager.py, breakout_plan.py, broker_reconcile.py, check_bfly_vwap_band.py |
 | `database/trade_logger.py` | 44 | breakout_plan.py, check_atp_butterfly.py, check_breakout_new_extreme.py, check_cap_counterfactual.py |
 | `data/derived_store.py` | 33 | anchors.py, breakout_plan.py, check_bfly_vwap_band.py, check_derived_layer.py |
-| `execution/exit_engine.py` | 28 | check_breakout_exit_line.py, check_condor_mgmt.py, check_condor_sibling_default.py, check_condor_spec.py |
+| `execution/exit_engine.py` | 29 | check_breakout_exit_line.py, check_condor_mgmt.py, check_condor_sibling_default.py, check_condor_spec.py |
 | `derived/__init__.py` | 27 | atp_butterfly_plan.py, check_anchors.py, check_atp_butterfly.py, check_atp_pin_floor.py |
 | `execution/__init__.py` | 24 | check_admission_wired.py, check_atp_pin_floor.py, check_breakout_exit_line.py, check_cap_fly_exempt.py |
 | `execution/position_manager.py` | 24 | check_admission.py, check_admission_wired.py, check_atp_pin_floor.py, check_breakout.py |
@@ -217,7 +217,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `data/tasty_client.py`
 - **calls:** `config.py`
-- **called by:** `data/candle_feed.py`, `data/market_data.py`, `data/options_chain.py`, `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `main.py`, `strategy/condor_roll.py`, `tests/check_standing_offer.py`, `tools/emergency_watchdog.py`, `tools/feed_capabilities.py`, `tools/probe_aux_streams.py`, `tools/probe_candle_depth.py`, `tools/probe_order_dryrun.py`
+- **called by:** `data/candle_feed.py`, `data/market_data.py`, `data/options_chain.py`, `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/order_confirm.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `main.py`, `strategy/condor_roll.py`, `tests/check_sdk_async.py`, `tests/check_standing_offer.py`, `tools/emergency_watchdog.py`, `tools/feed_capabilities.py`, `tools/probe_aux_streams.py`, `tools/probe_candle_depth.py`, `tools/probe_order_dryrun.py`
 
 ### `database/__init__.py`
 - **calls:** (none)
@@ -321,7 +321,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `execution/exit_engine.py`
 - **calls:** `analysis/trend_strength.py`, `config.py`, `data/derived_store.py`, `data/tasty_client.py`, `database/trade_logger.py`, `derived/__init__.py`, `derived/level_rules.py`, `execution/__init__.py`, `execution/broker_reconcile.py`, `execution/handoff.py`, `execution/ladder_registry.py`, `execution/limit_ladder.py`, `notifications/alert_manager.py`, `strategy/structure.py`, `utils/math_utils.py`, `utils/time_utils.py`
-- **called by:** `analysis/entry_snapshot.py`, `execution/position_manager.py`, `strategy/condor_roll.py`, `strategy/management.py`, `tests/check_breakout_exit_line.py`, `tests/check_condor_mgmt.py`, `tests/check_condor_sibling_default.py`, `tests/check_condor_spec.py`, `tests/check_condor_stop_suppression.py`, `tests/check_eod_schedule.py`, `tests/check_exit_executes.py`, `tests/check_exit_pricing.py`, `tests/check_exit_quote.py`, `tests/check_exit_single_grid.py`, `tests/check_fvg_one_finder.py`, `tests/check_ladder_wired.py`, `tests/check_liquidity_hunt.py`, `tests/check_management_plan.py`, `tests/check_orb_plan.py`, `tests/check_orcs.py`, `tests/check_runaway_plan.py`, `tests/check_spx_tick.py`, `tests/check_structure_stop_ramp.py`, `tests/check_sweep_plan.py`, `tests/check_tcs_plan.py`, `tests/check_volt_plan.py`, `tests/stress_entry_path.py`, `tools/stress_theta_bleed.py`
+- **called by:** `analysis/entry_snapshot.py`, `execution/position_manager.py`, `strategy/condor_roll.py`, `strategy/management.py`, `tests/check_breakout_exit_line.py`, `tests/check_condor_mgmt.py`, `tests/check_condor_sibling_default.py`, `tests/check_condor_spec.py`, `tests/check_condor_stop_suppression.py`, `tests/check_eod_schedule.py`, `tests/check_exit_executes.py`, `tests/check_exit_pricing.py`, `tests/check_exit_quote.py`, `tests/check_exit_single_grid.py`, `tests/check_fvg_one_finder.py`, `tests/check_ladder_wired.py`, `tests/check_liquidity_hunt.py`, `tests/check_management_plan.py`, `tests/check_orb_plan.py`, `tests/check_orcs.py`, `tests/check_runaway_plan.py`, `tests/check_sdk_async.py`, `tests/check_spx_tick.py`, `tests/check_structure_stop_ramp.py`, `tests/check_sweep_plan.py`, `tests/check_tcs_plan.py`, `tests/check_volt_plan.py`, `tests/stress_entry_path.py`, `tools/stress_theta_bleed.py`
 
 ### `execution/handoff.py`
 - **calls:** `config.py`
@@ -336,7 +336,7 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `main.py`, `strategy/condor_roll.py`, `tests/check_eod_schedule.py`, `tests/check_no_zero_price.py`, `tests/check_orcs.py`
 
 ### `execution/order_confirm.py`
-- **calls:** `config.py`
+- **calls:** `config.py`, `data/tasty_client.py`
 - **called by:** `execution/entry_engine.py`, `execution/resting_orders.py`, `main.py`, `strategy/condor_roll.py`, `tests/check_ladder_wired.py`
 
 ### `execution/position_manager.py`
@@ -618,6 +618,10 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tests/check_butterfly_wing_grid.py`
 - **calls:** `strategy/__init__.py`, `strategy/gex_pin_butterfly.py`, `strategy/plan.py`, `utils/time_utils.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/PLAN_SPEC.md`
+
+### `tests/check_candle_closed.py`
+- **calls:** `warehouse/__init__.py`, `warehouse/s3_push.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_cap_counterfactual.py`
 - **calls:** `database/trade_logger.py`, `risk/risk_manager.py`
@@ -1267,6 +1271,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** `main.py`, `risk/risk_manager.py`, `strategy/base_strategy.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
+### `tests/check_sdk_async.py`
+- **calls:** `data/tasty_client.py`, `execution/exit_engine.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
 ### `tests/check_seed_candles.py`
 - **calls:** `data/candle_feed.py`, `utils/instrument.py`, `warehouse/retention_purge.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
@@ -1709,7 +1717,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `warehouse/__init__.py`
 - **calls:** (none)
-- **called by:** `tests/check_audit_20260823.py`, `tests/check_level_tape.py`, `tests/check_lineage.py`, `tests/check_purge_lock.py`, `tests/check_purge_pushed.py`, `tests/check_purge_reclaim.py`, `tests/check_reclaim_paths.py`, `tests/check_retention_armed.py`, `tests/check_self_close_hold.py`, `tests/check_symbol_universe.py`, `warehouse/self_close.py`
+- **called by:** `tests/check_audit_20260823.py`, `tests/check_candle_closed.py`, `tests/check_level_tape.py`, `tests/check_lineage.py`, `tests/check_purge_lock.py`, `tests/check_purge_pushed.py`, `tests/check_purge_reclaim.py`, `tests/check_reclaim_paths.py`, `tests/check_retention_armed.py`, `tests/check_self_close_hold.py`, `tests/check_symbol_universe.py`, `warehouse/self_close.py`
 
 ### `warehouse/counter_pop.py`
 - **calls:** (none)
@@ -1725,7 +1733,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `warehouse/s3_push.py`
 - **calls:** (none)
-- **called by:** `tests/check_data_capture.py`, `tests/check_lineage.py`, `tests/check_purge_pushed.py`, `tests/check_reclaim_paths.py`
+- **called by:** `tests/check_candle_closed.py`, `tests/check_data_capture.py`, `tests/check_lineage.py`, `tests/check_purge_pushed.py`, `tests/check_reclaim_paths.py`
 
 ### `warehouse/self_close.py`
 - **calls:** `notifications/alert_manager.py`, `utils/instrument.py`, `warehouse/__init__.py`, `warehouse/retention_purge.py`

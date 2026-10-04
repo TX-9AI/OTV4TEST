@@ -1,5 +1,6 @@
 """
-data/tasty_client.py  v4.1
+data/tasty_client.py  v4.2
+v4.2  2026-10-04  OTV4TEST r242 (LIVE.1 B0, MIRROR OF otv4 r463 c912ce7, WA 38.2) — every Account call goes through tasty_client.sdk_result: on tastytrade 13.x the Account methods are coroutines and a bare call placed and closed NOTHING live (paper never calls them). Hunks applied verbatim from c912ce7. Adds sdk_result.
 v4.1  2026-09-27  OTV4TEST r165 (EXP.1) — get_open_equity_positions(): the account's SHARE
       positions, the footprint an exercise or assignment leaves. Same read and version handling
       as get_open_option_positions, equities only. LIVE only; raises TastyClientError on failure.
@@ -65,6 +66,17 @@ def get_loop() -> asyncio.AbstractEventLoop:
     return _loop
 
 
+def sdk_result(x):
+    """🔴 B0 (r464) — the SDK's Account methods are COROUTINES on tastytrade
+    13.x (inspect.iscoroutinefunction is True for get, place_order, get_order,
+    delete_order, get_positions, … on the boxes' 13.0.0). Called bare they
+    return an unawaited coroutine, so a LIVE box could place and close nothing
+    (paper never calls them). Every Account call goes through this: a
+    coroutine is run on the background loop, anything else passes through, so
+    it is correct on a sync SDK too."""
+    return run_async(x) if asyncio.iscoroutine(x) else x
+
+
 def run_async(coro):
     """
     Run an async coroutine from synchronous code using the background loop.
@@ -114,7 +126,7 @@ def get_account() -> Account:
         if _account is None:
             session        = get_session()
             account_number = get_tt_account_number()
-            _account       = Account.get(session, account_number)
+            _account       = sdk_result(Account.get(session, account_number))   # B0
             logger.info(f"TastyTrade account loaded: {account_number}")
     return _account
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-execution/resting_orders.py  v1.4
+execution/resting_orders.py  v1.5
+v1.5  2026-10-04  OTV4TEST r242 (LIVE.1 B0, MIRROR OF otv4 r463 c912ce7, WA 38.2) — every Account call goes through tasty_client.sdk_result: on tastytrade 13.x the Account methods are coroutines and a bare call placed and closed NOTHING live (paper never calls them). Hunks applied verbatim from c912ce7.
 v1.4  2026-10-03  OTV4TEST r218 (PATH.1) — _db_path delegates to utils.paths: it imported config.DATA_DIR, which never existed, and always took a ~/options-trader fallback. Same path on the box.
 v1.3  2026-10-03  OTV4TEST r210 (AUD.9) — note_fill_price IS PUBLIC, for the paper filler. fill_price was 0 on 16 of 16
       FILLED rows: only the live poll wrote it and every fill on this box is a paper fill, which closes the
@@ -413,10 +414,10 @@ def _filled_qty(order_id: str, row: dict, *, paper: bool, price: float):
     if paper:
         return int(row["offered_qty"])
     try:
-        from data.tasty_client import get_session, get_account
+        from data.tasty_client import get_session, get_account, sdk_result
         from execution.order_confirm import net_from_fills
         session, account = get_session(), get_account()
-        placed = account.get_order(session, order_id)
+        placed = sdk_result(account.get_order(session, order_id))   # B0
         # 🔑 THE REPO ALREADY HAS A FILL READER, AND ONE IS THE RIGHT NUMBER.
         # `net_from_fills` is what confirm_order_fill uses; a second hand-rolled
         # walk over legs[].fills[] would be a parallel lineage that looks
@@ -458,10 +459,10 @@ def _cancel(order_id: str, *, paper: bool) -> bool:
     if paper:
         return True
     try:
-        from data.tasty_client import get_session, get_account
+        from data.tasty_client import get_session, get_account, sdk_result
         session, account = get_session(), get_account()
         # Same call confirm_order_fill uses at its deadline.
-        account.delete_order(session, order_id)
+        sdk_result(account.delete_order(session, order_id))   # B0
         return True
     except Exception as exc:                                    # noqa: BLE001
         logger.warning("[offer] cancel of %s failed: %s", order_id, exc)

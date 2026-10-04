@@ -1,5 +1,6 @@
 """
-main.py  v4.90
+main.py  v4.91
+v4.91 2026-10-04  OTV4TEST r242 (LIVE.1 B0, MIRROR OF otv4 r463 c912ce7, WA 38.2) — every Account call goes through tasty_client.sdk_result: on tastytrade 13.x the Account methods are coroutines and a bare call placed and closed NOTHING live (paper never calls them). Hunks applied verbatim from c912ce7.
 v4.90 2026-10-04  OTV4TEST r235 — the Service mode line also says ORCS=on/OFF (config.ORCS_ENABLED), so whether the trade is armed is read from the log, never from the unit (WA 18a). SPX-TEST's agent could not tell.
 v4.89 2026-10-04  OTV4TEST r234 (SCALE.1) — the Service mode line ends with the box's contract_scale and where it came from (SPX default / OT_CONTRACT_SCALE / default / IGNORED), so the number ORCS sizes its wing with is on the record at every start. Appended - nothing parses the line.
 v4.88 2026-10-03  OTV4TEST r230 (PREM.5) — AN ORCS LEG IS BOOKED WITH THE CONDOR LEG'S STOP (credit x (1 + CONDOR_LONE_STOP_PCT)) and its alert states the condor's exits. The operator, 2026-10-03 21:21 ET: "On rolling/defending the ORCS, adopt the condor logic verbatim." Still its own strategy name, still paper only. _open_credit_legs / _open_credit_sides still leave ORCS out: they decide which OTHER entry may pair with an open leg (the sweep and the TCS, both retired), not how a pair is defended.
@@ -2648,7 +2649,7 @@ def _post_credit_vertical(short_contract, long_contract, contracts: int,
     _deadline = EntryEngine._rung_deadline()
 
     if placer is None or confirmer is None:
-        from data.tasty_client import get_session, get_account
+        from data.tasty_client import get_session, get_account, sdk_result
         from execution.order_confirm import confirm_order_fill
         from tastytrade.order import (NewOrder, Leg, OrderAction, OrderType,
                                       OrderTimeInForce, InstrumentType)
@@ -2663,7 +2664,7 @@ def _post_credit_vertical(short_contract, long_contract, contracts: int,
                                  legs=[Leg(instrument_type=InstrumentType.EQUITY_OPTION,
                                            symbol=sym, action=act, quantity=q)
                                        for sym, act, q in legs])
-                return account.place_order(session, order, dry_run=False)
+                return sdk_result(account.place_order(session, order, dry_run=False))   # B0
         if confirmer is None:
             def confirmer(placed, basis, deadline_s):
                 return confirm_order_fill(session, account, placed, basis,
@@ -6270,7 +6271,7 @@ def _fetch_close_order_history(records: list) -> list:
     the earliest entry date among the phantom candidates. Fail-safe: any error
     returns [] and the caller books the flagged $0.00 fallback as before."""
     try:
-        from data.tasty_client import get_session, get_account
+        from data.tasty_client import get_session, get_account, sdk_result
         from datetime import date as _date
         from utils.time_utils import now_et as _net
         start = _net().date()      # r125 — ET date, not the box's UTC one
@@ -6283,8 +6284,8 @@ def _fetch_close_order_history(records: list) -> list:
                 pass
         session = get_session()
         account = get_account()
-        return account.get_order_history(session, page_offset=None,
-                                         start_date=start) or []
+        return sdk_result(account.get_order_history(session, page_offset=None,
+                                                    start_date=start)) or []   # B0
     except Exception as e:
         logger.error(f"Phantom P&L recovery: order-history read failed ({e}) — "
                      f"phantoms will book flagged $0.00 this pass.")
