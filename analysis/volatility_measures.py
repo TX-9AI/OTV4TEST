@@ -1,5 +1,6 @@
 """
-analysis/volatility_measures.py  v4.0
+analysis/volatility_measures.py  v4.1
+v4.1  2026-10-03  OTV4TEST r223 (EM.1) — every expected-move formula lives here: expected_move_session (the butterflies' / TCS / Hunt), straddle_nearest_marked (condor), straddle_nearest (readiness), straddle_same_strike + quote_mark (ORCS), each MOVED VERBATIM. No number changes.
 Realised volatility, implied volatility and EXPECTED MOVE.
 
 v4.0  2026-08-22  Built with the manifold. See docs/DERIVED_STORES.md.
@@ -206,3 +207,99 @@ def summarise(bars, interval: str, spot: Optional[float] = None,
                              if spot and atm_iv else None),
         "expected_move_straddle": expected_move_straddle(call_mid, put_mid),
     }
+
+
+# ══ r223 (EM.1) — EVERY EXPECTED-MOVE FORMULA IN THE TREE LIVES HERE ══════════
+# The 10-03 audit (C8) counted five; ORCS added a sixth the same day. They are
+# NOT the same number and none is changed by this move - each keeps its own
+# arithmetic and its own return convention, so no trade sees a different value:
+#   expected_move_iv(spot, iv, frac)      S x sigma x sqrt(session fraction / 252); 0.0 at the bell
+#   expected_move_session(S, iv, now)     the same idea in hours to 16:00, FLOORED at 15 minutes,
+#                                         3.0 h when the clock cannot be read (the butterflies, TCS, Hunt)
+#   expected_move_straddle(call, put)     the two mids, handed in
+#   straddle_nearest_marked(chain, S)     nearest strike WITH A MARK on each side (the sides may differ); 0.0
+#   straddle_nearest(chain, S)            nearest strike on each side, marked or not; 0.0
+#   straddle_same_strike(chain, S)        ONE strike quoted on both sides, two-sided mid; (None, None)
+# Which of these a trade SHOULD use - and whether the 15-minute floor stays - is
+# the operator's ruling, not this file's.
+
+def expected_move_session(underlying, atm_iv, now=None) -> Optional[float]:
+    """1x expected move for the REMAINING session, from the chain's ATM IV.
+
+    MOVED VERBATIM from strategy/gex_pin_butterfly.expected_move (r223): hours to
+    16:00 ET, never under 0.25 h (the 15-minute floor), 3.0 h if the clock cannot
+    be read; S x iv x sqrt(hours / 6.5) / sqrt(252). None when S or iv is unusable."""
+    from utils.math_utils import safe_float
+    underlying = safe_float(underlying)
+    atm_iv = safe_float(atm_iv)
+    if not underlying or not atm_iv or atm_iv <= 0 or underlying <= 0:
+        return None
+    try:
+        from utils.time_utils import ET
+        now = now or datetime.now(ET)
+        close = now.replace(hour=16, minute=0, second=0, microsecond=0)
+        hours = max((close - now).total_seconds() / 3600.0, 0.25)
+    except Exception:                                          # noqa: BLE001
+        hours = 3.0
+    return underlying * atm_iv * math.sqrt(hours / 6.5) / math.sqrt(252)
+
+
+def straddle_nearest_marked(chain, underlying: float) -> float:
+    """ATM call mark + ATM put mark, each the nearest strike WITH mark > 0. 0.0 if unavailable.
+    MOVED VERBATIM from IronCondorStrategy._expected_move_from_straddle (r223)."""
+    try:
+        atm_call = min([c for c in chain.calls if c.mark > 0],
+                       key=lambda c: abs(c.strike - underlying))
+        atm_put = min([c for c in chain.puts if c.mark > 0],
+                      key=lambda c: abs(c.strike - underlying))
+        if atm_call.mark > 0 and atm_put.mark > 0:
+            return atm_call.mark + atm_put.mark
+    except Exception:                                          # noqa: BLE001
+        pass
+    return 0.0
+
+
+def straddle_nearest(chain, price: float) -> float:
+    """Nearest-strike call mark + put mark, marked or not. 0.0 if unavailable.
+    MOVED VERBATIM from analysis/trade_readiness._expected_move_now's body (r223)."""
+    try:
+        if chain is None or price <= 0:
+            return 0.0
+        calls = getattr(chain, "calls", None) or []
+        puts = getattr(chain, "puts", None) or []
+        if not calls or not puts:
+            return 0.0
+        atm_c = min(calls, key=lambda c: abs(getattr(c, "strike", 0.0) - price))
+        atm_p = min(puts, key=lambda c: abs(getattr(c, "strike", 0.0) - price))
+        em = float(getattr(atm_c, "mark", 0.0) or 0.0) + float(getattr(atm_p, "mark", 0.0) or 0.0)
+        return em if em > 0 else 0.0
+    except Exception:                                          # noqa: BLE001
+        return 0.0
+
+
+def quote_mark(c):
+    """A contract's mark: the midpoint of a two-sided quote, else its own mark field, else None.
+    A zero bid with a live ask is a real quote (half the ask); no ask is no quote.
+    MOVED VERBATIM from strategy/orcs_plan.mark_of (r223)."""
+    from utils.math_utils import safe_float
+    b, a = safe_float(getattr(c, "bid", None)), safe_float(getattr(c, "ask", None))
+    if a is not None and a > 0 and b is not None and b >= 0:
+        return (a + b) / 2.0
+    m = safe_float(getattr(c, "mark", None))
+    return m if m is not None and m > 0 else None
+
+
+def straddle_same_strike(chain, spot: float):
+    """(straddle mark, strike): the strike nearest spot listed on BOTH sides, both quoted. (None, None).
+    MOVED VERBATIM from strategy/orcs_plan.implied_move (r223)."""
+    try:
+        calls = {float(c.strike): c for c in (chain.calls or [])}
+        puts = {float(p.strike): p for p in (chain.puts or [])}
+        both = sorted(set(calls) & set(puts), key=lambda k: abs(k - spot))
+        for k in both[:3]:
+            mc, mp = quote_mark(calls[k]), quote_mark(puts[k])
+            if mc is not None and mp is not None:
+                return round(mc + mp, 4), k
+    except Exception as exc:                                    # noqa: BLE001
+        logger.debug("[em] same-strike straddle unavailable: %s", exc)
+    return None, None

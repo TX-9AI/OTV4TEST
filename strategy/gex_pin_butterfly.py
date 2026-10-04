@@ -1,5 +1,6 @@
 """
-strategy/gex_pin_butterfly.py  v5.8
+strategy/gex_pin_butterfly.py  v5.9
+v5.9  2026-10-03  OTV4TEST r223 (EM.1) — expected_move delegates to analysis.volatility_measures.expected_move_session (moved verbatim; the 15-minute floor and the 3 h fallback are unchanged).
 v5.8  2026-10-03  OTV4TEST r193 (CFG.1) — its config dials are read as config.NAME with NO literal fallback; config v4.48 now defines them (they were getattr defaults on names config never had). Values unchanged.
 v5.7  2026-10-02  OTV4TEST r185 (LADR.1) — `_chain_increment` IS NOW AN ALIAS of
       data/options_chain.chain_increment, where the r198 body moved verbatim
@@ -469,26 +470,18 @@ GATES = {
 def expected_move(underlying: float, atm_iv: float, now=None) -> Optional[float]:
     """1x expected move for the REMAINING session, from the chain's ATM IV.
 
-    ⚠️ ATM IV, NOT VIX. v3 used VIX - SPX 30-day implied vol - for every symbol
-    on a 0DTE horizon. The chain publishes the actual implied vol of the actual
-    contract; using an index proxy for a single name is a second-order estimate
-    where a first-order one is sitting right there.
-    The sqrt-of-time scaling is carried from v3 unchanged: it was sound.
-    """
-    underlying = safe_float(underlying)
-    atm_iv = safe_float(atm_iv)
-    if not underlying or not atm_iv or atm_iv <= 0 or underlying <= 0:
-        return None
-    try:
-        from utils.time_utils import ET
-        now = now or datetime.now(ET)
-        close = now.replace(hour=16, minute=0, second=0, microsecond=0)
-        hours = max((close - now).total_seconds() / 3600.0, 0.25)
-    except Exception:                                          # noqa: BLE001
-        hours = 3.0
-    return underlying * atm_iv * math.sqrt(hours / 6.5) / math.sqrt(252)
-
-
+    r223 (EM.1): the arithmetic lives in analysis.volatility_measures.expected_move_session,
+    moved verbatim (hours to 16:00, 15-minute floor, 3.0 h fallback). This wrapper keeps the
+    name every caller imports and reads the clock HERE, so a checker that pins this module's
+    `datetime` still pins it."""
+    if now is None:
+        try:
+            from utils.time_utils import ET
+            now = datetime.now(ET)
+        except Exception:                                      # noqa: BLE001
+            now = None
+    from analysis.volatility_measures import expected_move_session
+    return expected_move_session(underlying, atm_iv, now)
 
 
 def _structure_quote(lower, center, upper):

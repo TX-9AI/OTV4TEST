@@ -1,5 +1,6 @@
 """
-strategy/iron_condor_strategy.py  v4.13
+strategy/iron_condor_strategy.py  v4.14
+v4.14  2026-10-03  OTV4TEST r223 (EM.1) — _expected_move_from_straddle delegates to analysis.volatility_measures.straddle_nearest_marked (moved verbatim).
 v4.13 2026-10-03  OTV4TEST r204 (PREM.2) — manage() does not count ORCS legs: they are held to the close by spec and the
       condor ladder never acts on them (condor_roll v4.9), so the management row must not narrate them as a pair.
 v4.12 2026-09-09  OTV4TEST r12 — anchors on the formed row (record only): GEX between the
@@ -310,16 +311,8 @@ class IronCondorStrategy(BaseOptionsStrategy):
 
     def _expected_move_from_straddle(self, chain: OptionsChain,
                                       underlying: float) -> float:
-        try:
-            atm_call = min([c for c in chain.calls if c.mark > 0],
-                           key=lambda c: abs(c.strike - underlying))
-            atm_put  = min([c for c in chain.puts  if c.mark > 0],
-                           key=lambda c: abs(c.strike - underlying))
-            if atm_call.mark > 0 and atm_put.mark > 0:
-                return atm_call.mark + atm_put.mark
-        except Exception:
-            pass
-        return 0.0
+        from analysis.volatility_measures import straddle_nearest_marked   # r223: moved verbatim
+        return straddle_nearest_marked(chain, underlying)
 
     @staticmethod
     def _liquidity_rank(c):  return cv.liquidity_rank(c)

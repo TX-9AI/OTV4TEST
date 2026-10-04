@@ -1,5 +1,6 @@
 """
-analysis/trade_readiness.py  v4.4
+analysis/trade_readiness.py  v4.5
+v4.5  2026-10-03  OTV4TEST r223 (EM.1) — _expected_move_now delegates to analysis.volatility_measures.straddle_nearest (moved verbatim).
 v4.4  2026-09-21  OTV4TEST r77 — the dead `sweep_reversal_strategy` import
       is gone. That module was deleted at r33; the import has raised ever since,
       been swallowed, and `target = 0.20` has been the real behaviour. NO
@@ -799,17 +800,8 @@ class TradeReadinessEngine:
         Never raises.
         """
         try:
-            chain = ctx.get("chain")
-            if chain is None or price <= 0:
-                return 0.0
-            calls = getattr(chain, "calls", None) or []
-            puts  = getattr(chain, "puts", None) or []
-            if not calls or not puts:
-                return 0.0
-            atm_c = min(calls, key=lambda c: abs(getattr(c, "strike", 0.0) - price))
-            atm_p = min(puts,  key=lambda c: abs(getattr(c, "strike", 0.0) - price))
-            em = float(getattr(atm_c, "mark", 0.0) or 0.0) + float(getattr(atm_p, "mark", 0.0) or 0.0)
-            return em if em > 0 else 0.0
+            from analysis.volatility_measures import straddle_nearest   # r223: moved verbatim
+            return straddle_nearest(ctx.get("chain"), price)
         except Exception:
             return 0.0
 

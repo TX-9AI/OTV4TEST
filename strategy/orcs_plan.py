@@ -1,5 +1,6 @@
 """
-strategy/orcs_plan.py  v1.4
+strategy/orcs_plan.py  v1.5
+v1.5  2026-10-03  OTV4TEST r223 (EM.1) — mark_of and implied_move are analysis.volatility_measures.quote_mark / straddle_same_strike (moved verbatim; the names here are aliases).
 v1.4  2026-10-03  OTV4TEST r220 (TIME.1) — its private HH:MM parser is utils.time_utils.parse_hm (eight plans carried the same copy), and an UNREADABLE clock is DORMANT - no trade - instead of skipping the window check.
 v1.3  2026-10-03  OTV4TEST r207 (PREM.4) — THE WING IS A DOLLAR WIDTH (ORCS_WING_USD), not 1% of spot. The operator: "why the
       fuck would I risk $1000 for $25???" - the 1% wing was my harness's constant, never varied, and it made
@@ -85,29 +86,8 @@ SIDES = ("put", "call")
 from utils.time_utils import parse_hm as _hm      # r220 (TIME.1): the one parser
 
 
-def mark_of(c):
-    """A contract's mark: the midpoint of a two-sided quote, else its own mark field, else None.
-    A zero bid with a live ask is a real quote (half the ask); no ask is no quote."""
-    b, a = safe_float(getattr(c, "bid", None)), safe_float(getattr(c, "ask", None))
-    if a is not None and a > 0 and b is not None and b >= 0:
-        return (a + b) / 2.0
-    m = safe_float(getattr(c, "mark", None))
-    return m if m is not None and m > 0 else None
-
-
-def implied_move(chain, spot: float):
-    """The ATM straddle's mark, in dollars: the strike nearest spot listed on BOTH sides."""
-    try:
-        calls = {float(c.strike): c for c in (chain.calls or [])}
-        puts = {float(p.strike): p for p in (chain.puts or [])}
-        both = sorted(set(calls) & set(puts), key=lambda k: abs(k - spot))
-        for k in both[:3]:
-            mc, mp = mark_of(calls[k]), mark_of(puts[k])
-            if mc is not None and mp is not None:
-                return round(mc + mp, 4), k
-    except Exception as exc:                                    # noqa: BLE001
-        logger.debug("[orcs] implied move unavailable: %s", exc)
-    return None, None
+from analysis.volatility_measures import quote_mark as mark_of            # r223 (EM.1): moved verbatim
+from analysis.volatility_measures import straddle_same_strike as implied_move   # r223 (EM.1): moved verbatim
 
 
 class Located:
