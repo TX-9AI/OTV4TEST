@@ -1,4 +1,8 @@
-"""tests/check_bootstrap.py — v1.9
+"""tests/check_bootstrap.py — v1.10
+
+v1.10 2026-10-03 — OTV4TEST r228. G17 RE-POINTED (section 38.4): the ORB and VOLT scaling
+      items left configure.sh; Breakout scaling is item 9, and the two lines that lost their
+      item must say so rather than name a number.
 
 v1.9  2026-09-29 — OTV4TEST r170. G10 RE-POINTED (section 38.4): claude_boot's
       auth_ok() reads the login FILE instead of running `claude auth status`
@@ -804,10 +808,10 @@ guard("G17 each sizing line names its configure.sh item",
       lambda: all(re.search(r"%s=.*configure\.sh item %s\s+%s" % (v, n, lbl), _b17)
                   for v, n, lbl in (("OT_RISK_USD", "2", "Risk per trade / ramp MIN"),
                                     ("OT_ORB_BUDGET_USD", "8", r"Ramp TOP \(MAX\)"),
-                                    ("OT_SCALE_ORB", "9", "ORB scaling"),
-                                    ("OT_SCALE_BREAKOUT", "10", "Breakout scaling"),
-                                    ("OT_SCALE_VOLT", "11", "VOLT scaling"),
-                                    ("OT_DAILY_LOSS_LIMIT", "6", "Daily catastrophic loss cap"))))
+                                    ("OT_SCALE_BREAKOUT", "9", "Breakout scaling"),
+                                    ("OT_DAILY_LOSS_LIMIT", "6", "Daily catastrophic loss cap")))
+      and all(re.search(r"%s=.*no configure\.sh item since r228" % v, _b17)
+              for v in ("OT_SCALE_ORB", "OT_SCALE_VOLT")))
 
 # ── G0 ────────────────────────────────────────────────────────────────────────
 for d in _TMP:

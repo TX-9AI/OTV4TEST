@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v2.22
+# BACKLOG.md — OTV4TEST — v2.23
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -339,6 +339,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v2.23 — 2026-10-03 — OTV4TEST r228 — CFG.4 (DONE, no open row): configure.sh v4.15 drops the ORB and VOLT scaling items; the ramp (items 2 and 8) and Breakout scaling (now item 9) stay; Data capture 10, Done 11. The operator: 'Yes to the configure change'. Stored OT_SCALE_ORB / OT_SCALE_VOLT values are left as they are. To bring an item back: restore its menu line and dispatch line.**
 
 **v2.22 — 2026-10-03 — OTV4TEST r227 — DOC.31: TRADES sections 7 (Breakout) and 8 (VOLT); the full rewrite is ruled out ('Only add the new trades').**
 

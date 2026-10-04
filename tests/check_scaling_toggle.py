@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_scaling_toggle.py  v1.0
+tests/check_scaling_toggle.py  v1.1
+v1.1  2026-10-03  OTV4TEST r228 (CFG.4) — S9 RE-POINTED: the menu carries ONE scaling item, 9 =
+      Breakout; no menu line dispatches the ORB or VOLT switch (both trades are off; the operator:
+      "Yes to the configure change"). change_scaling itself is still driven for all three keys,
+      and the switches still reach the sizer (S1-S8 unchanged).
 
 ORB, Breakout and VOLT each have a scaling switch. OFF sizes that trade FLAT
 while its structure stop, its exits and the r93 noise floor stay exactly as
@@ -317,9 +321,12 @@ else:
     for item, key, attr, name in (("9", "OT_SCALE_ORB", "SCALE_ORB", "ORB"),
                                   ("10", "OT_SCALE_BREAKOUT", "SCALE_BREAKOUT", "Breakout"),
                                   ("11", "OT_SCALE_VOLT", "SCALE_VOLT", "VOLT")):
-        disp = re.findall(r"^\s*%s\)\s*change_scaling (\S+) (\S+)" % item, _src, re.M)
-        check(f"S9 item {item} dispatches change_scaling {key} {attr}",
-              disp == [(key, attr)], f"{item}) -> {disp}")
+        disp = re.findall(r"^\s*\d+\)\s*change_scaling %s (\S+)" % key, _src, re.M)
+        if name == "Breakout":
+            d9 = re.findall(r"^\s*9\)\s*change_scaling (\S+) (\S+)", _src, re.M)
+            check(f"S9 item 9 dispatches change_scaling {key} {attr}", d9 == [(key, attr)], f"9) -> {d9}")
+        else:
+            check(f"S9 NO menu item dispatches {key} (r228: the {name} trade is off)", disp == [], f"{disp}")
         off, p_off = _run(f'change_scaling {key} {attr} "{name}"', {key: "1"}, "n\n")
         on, p_on = _run(f'change_scaling {key} {attr} "{name}"', {key: "0"}, "y\n")
         c_off = _cfg({key: off.get(key, "")}, f"config.{attr}")

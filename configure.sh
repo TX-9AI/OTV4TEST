@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# configure.sh  v4.14
+# configure.sh  v4.15
+# v4.15 2026-10-03  OTV4TEST r228 (CFG.4) — THE ORB AND VOLT SCALING ITEMS LEAVE THE
+#       MENU; THE RAMP STAYS. Both trades are off (r187) and each switch is read
+#       only when its own trade fires. The operator, 2026-10-03: "Is it safe to
+#       remove the orb and volt from configure, but keep the sizing ramp?" - then
+#       "Yes to the configure change". Item 9 is Breakout scaling, 10 Data capture,
+#       11 Done; the summary's Scaling line shows Breakout alone. NOTHING IS
+#       WRITTEN OR REMOVED in the unit: a stored OT_SCALE_ORB / OT_SCALE_VOLT
+#       stays as it is, and change_scaling still works for any key.
 # v4.14 2026-09-29  OTV4TEST r175 (SYM.1) — ITEM 1's SYMBOL LIST WRAPS AT 72
 #       COLUMNS. It is 82 symbols since r175 and printed as one line, which
 #       the phone (Termius, 76 columns) broke mid-ticker.
@@ -289,7 +297,7 @@ show_config() {
     local dll=$(get_env "OT_DAILY_LOSS_LIMIT")
     echo -e "  Loss cap:       ${BOLD}$(fmt_declared "$dll")${RESET} (daily catastrophic)"
     echo -e "  Pin gate:       ${BOLD}$(pin_gate_label)${RESET}"
-    echo -e "  Scaling:        ${BOLD}ORB $(scaling_short OT_SCALE_ORB SCALE_ORB) · BRK $(scaling_short OT_SCALE_BREAKOUT SCALE_BREAKOUT) · VOLT $(scaling_short OT_SCALE_VOLT SCALE_VOLT)${RESET}"
+    echo -e "  Scaling:        ${BOLD}Breakout $(scaling_short OT_SCALE_BREAKOUT SCALE_BREAKOUT)${RESET}"
     local old_start=$(get_env "OT_ORB_RISK_USD")
     [[ -n "$old_start" ]] && print_warn "OT_ORB_RISK_USD=${old_start} is NOT read (merged into risk per trade) - item 2 removes it."
     echo -e "  Data capture:   ${BOLD}$(data_capture_label)${RESET}"
@@ -789,13 +797,11 @@ while true; do
     echo -e "  ${BOLD}6.${RESET}  Catastrophic cap    (currently: \$$(dll=$(get_env OT_DAILY_LOSS_LIMIT); echo ${dll:-$(get_env OT_RISK_USD)}))"
     echo -e "  ${BOLD}7.${RESET}  Pin-proximity gate  (currently: $(pin_gate_label))"
     echo -e "  ${BOLD}8.${RESET}  Ramp TOP (MAX)      (currently: $(fmt_declared "$(get_env OT_ORB_BUDGET_USD)"))"
-    echo -e "  ${BOLD}9.${RESET}  ORB scaling         (currently: $(scaling_label OT_SCALE_ORB SCALE_ORB))"
-    echo -e "  ${BOLD}10.${RESET} Breakout scaling    (currently: $(scaling_label OT_SCALE_BREAKOUT SCALE_BREAKOUT))"
-    echo -e "  ${BOLD}11.${RESET} VOLT scaling        (currently: $(scaling_label OT_SCALE_VOLT SCALE_VOLT))"
-    echo -e "  ${BOLD}12.${RESET} Data capture        (currently: $(data_capture_label))"
-    echo -e "  ${BOLD}13.${RESET} Done"
+    echo -e "  ${BOLD}9.${RESET}  Breakout scaling    (currently: $(scaling_label OT_SCALE_BREAKOUT SCALE_BREAKOUT))"
+    echo -e "  ${BOLD}10.${RESET} Data capture        (currently: $(data_capture_label))"
+    echo -e "  ${BOLD}11.${RESET} Done"
     echo ""
-    read -p "    Select [1-13]: " menu_choice
+    read -p "    Select [1-11]: " menu_choice
 
     case "$menu_choice" in
         1) change_instrument; CHANGED=true ;;
@@ -806,12 +812,10 @@ while true; do
         6) change_daily_loss;     CHANGED=true ;;
         7) change_pin_gate;       CHANGED=true ;;
         8) change_orb_budget;     CHANGED=true ;;
-        9) change_scaling OT_SCALE_ORB SCALE_ORB "ORB";                CHANGED=true ;;
-        10) change_scaling OT_SCALE_BREAKOUT SCALE_BREAKOUT "Breakout"; CHANGED=true ;;
-        11) change_scaling OT_SCALE_VOLT SCALE_VOLT "VOLT";             CHANGED=true ;;
-        12) change_data_capture ;;
-        13) break ;;
-        *) print_warn "Please enter a number between 1 and 13." ;;
+        9) change_scaling OT_SCALE_BREAKOUT SCALE_BREAKOUT "Breakout"; CHANGED=true ;;
+        10) change_data_capture ;;
+        11) break ;;
+        *) print_warn "Please enter a number between 1 and 11." ;;
     esac
     echo ""
 done
