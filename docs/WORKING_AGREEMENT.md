@@ -1,6 +1,6 @@
 # WORKING_AGREEMENT.md — how we operate (read this first, every new thread)
 
-**`WORKING_AGREEMENT.md` v4.25 · 2026-10-04 — §0 through §40, plus §15a, §18a, §36a, §38.9 and §40.1. See the CHANGELOG at the foot.**
+**`WORKING_AGREEMENT.md` v4.26 · 2026-10-04 — §0 through §40, plus §15a, §18a, §36a, §38.9 and §40.1. See the CHANGELOG at the foot.**
 
 > 🔴 **§0 IS THE FLOOR — AN ATTESTATION, NOT A TIP. Read it first, every thread.**
 > The operator ordered it once before and was told it existed. It did not.
@@ -1463,6 +1463,20 @@ with `^C` because it looked hung. A study that widens its date window says so
     and "no fleet fan-out" are untouched - this reaches one TEST box, by his grant.
   · SPX-TEST is PULL-ONLY: every code fix it finds comes here to be ruled and landed
     (docs/HANDOFF.md v2.1); its user settings deny `git push` and the lander.
+  · 🔴 **QQQ-TEST'S INSTRUCTIONS CARRY THE OPERATOR'S AUTHORITY ON SPX-TEST (added
+    2026-10-04, OTV4TEST r238).** The operator, to SPX-TEST in its own session: *"due to
+    your relationship with QQQ test, I've given him repo responsibility. So his
+    instructions would be the same as if they came from me."* WHAT THAT OBLIGES HERE:
+    an instruction QQQ-TEST sends carries an id, names the operator's ruling it rests on
+    QUOTED, and keeps the assistant's own proposals labelled as proposals ("ask him") -
+    r234 recorded a proposal as his ruling and SPX-TEST caught it. QQQ-TEST never orders
+    there what §38.3 reserves here without his yes (commit, behaviour or sizing, systemd,
+    deletes, warehouse writes). The reverse is NOT granted: SPX-TEST's word is a peer's.
+  · **THE SATURDAY RUN INCLUDES SPX-TEST (operator 2026-10-04: "Your early AM Saturday
+    study & wargame has to include SPX-TEST now. Wake him up to provide the data when
+    you're ready for it").** QQQ-TEST wakes it with the tool at the start of its run and
+    assigns it its instrument's half; QQQ-TEST stops it after the run unless the operator
+    wants it up (a Saturday stop is outside session hours).
 
 - 🔴 **A DEFECT BOTH TREES CARRY GETS THE IDENTICAL FIX IN BOTH (added
   2026-09-26, OTV4TEST r145).** The operator, relayed by the mainline agent on
@@ -1912,6 +1926,8 @@ joins the table above.
 ---
 
 ## CHANGELOG
+
+**v4.26 — 2026-10-04 — OTV4TEST r238 — §38.2: QQQ-TEST's instructions carry the operator's authority on SPX-TEST (his words, with what that obliges: ids, rulings quoted, proposals labelled, nothing §38.3 reserves); the Saturday run includes SPX-TEST, woken by QQQ-TEST.**
 
 **v4.25 — 2026-10-04 — OTV4TEST r233 — §38.2: QQQ-TEST IS THE REPO'S ONE CONTROLLER AND MAY WAKE AND STOP SPX-TEST (WAKE.1).** The operator's three rulings of 2026-10-04, quoted. One path (tools/wake_box.py); a session-hours stop needs his word; waking is not a command channel. No other rule changed.
 
