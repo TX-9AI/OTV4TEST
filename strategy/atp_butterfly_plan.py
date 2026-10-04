@@ -1,5 +1,6 @@
 """
-strategy/atp_butterfly_plan.py  v1.3
+strategy/atp_butterfly_plan.py  v1.4
+v1.4  2026-10-03  OTV4TEST r225 (FLY.2) — records the same three leg-quote facts as the pin butterfly on the wings it picks (gex_pin_butterfly.leg_quote_facts). Log-only.
 v1.3  2026-09-30  OTV4TEST r179 (BFLY.9) — THE ATP FLY'S OWN PIN-CONCENTRATION FLOOR, 0.15.
       The operator, 2026-09-30, reading the ATP fly HOLD all afternoon on a PINNING tape at the pin: "The ATP fly should be accepting the plan for the EXACT reason GEX pin fly is declining (price too close to pin)", then "Drop the ATP to .19" and, minutes later, "Actually .15 sounds better".
       MEASURED that day: PINNING at 745, spot 0.5-1.5 off the pin, a 743/745/747 fly PREPARED at
@@ -181,7 +182,8 @@ class ATPButterflyPlan:
     STRUCTURAL = ("legs", "wing_search")
     PLAN_CHECKS = tuple(CONDITIONS) + STRUCTURAL + (
         "gex", "open_interest", "pin_vwap_dist", "wing_candidates", "r",
-        "stop_vs_spread", "width", "debit")
+        "stop_vs_spread", "width", "debit",
+        "quote_wings_no_bid", "quote_strict_would_refuse", "quote_role_would_refuse")
 
     def __init__(self):
         self.planner = Plan(NAME, self.PLAN_CHECKS)
@@ -370,6 +372,8 @@ class ATPButterflyPlan:
         prep.side, prep.wing, prep.width = side, w, w
         prep.lower, prep.center, prep.upper = lo, center, up
         prep.debit, prep.r, prep.ratio = d, r, ratio
+        for _qk, _qv in _gpb.leg_quote_facts(lo, center, up).items():
+            t.check(f"quote_{_qk}", _qv, None)                          # r225: recorded, never gating
         t.direction = side
         t.check("width", w)
         t.check("debit", d)

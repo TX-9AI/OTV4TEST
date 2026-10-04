@@ -1,5 +1,6 @@
 """
-strategy/gex_pin_butterfly.py  v5.9
+strategy/gex_pin_butterfly.py  v5.10
+v5.10  2026-10-03  OTV4TEST r225 (FLY.2) — leg_quote_facts: on the wings it picks, the plan RECORDS how many bought wings had no bid and whether a strict (all three two-sided) or a role (wings need an ask, the sold body a bid) rule would have refused. Log-only for two weeks by ruling; nothing is gated.
 v5.9  2026-10-03  OTV4TEST r223 (EM.1) — expected_move delegates to analysis.volatility_measures.expected_move_session (moved verbatim; the 15-minute floor and the 3 h fallback are unchanged).
 v5.8  2026-10-03  OTV4TEST r193 (CFG.1) — its config dials are read as config.NAME with NO literal fallback; config v4.48 now defines them (they were getattr defaults on names config never had). Values unchanged.
 v5.7  2026-10-02  OTV4TEST r185 (LADR.1) — `_chain_increment` IS NOW AN ALIAS of
@@ -484,6 +485,31 @@ def expected_move(underlying: float, atm_iv: float, now=None) -> Optional[float]
     return expected_move_session(underlying, atm_iv, now)
 
 
+def leg_quote_facts(lower, center, upper) -> dict:
+    """r225 (FLY.2) — WHAT THE THREE LEGS' QUOTES LOOKED LIKE WHEN THE WINGS WERE PICKED. RECORDED, GATING NOTHING.
+
+    The operator, 2026-10-03: a no-bid contract CAN be bought at the mark ("I'm not saying it
+    isn't risky - only that it's possible"). So both readings are recorded, for two weeks, and he
+    rules after:
+      wings_no_bid          how many of the two BOUGHT wings had no bid (the risk marker)
+      strict_would_refuse   1 if a rule 'all three legs have a bid and an ask' would refuse
+      role_would_refuse     1 if a rule 'the wings need an ask, the SOLD body needs a bid' would
+    """
+    def _q(c):
+        try:
+            return (float(getattr(c, "bid", 0.0) or 0.0), float(getattr(c, "ask", 0.0) or 0.0))
+        except (TypeError, ValueError):
+            return (0.0, 0.0)
+    lb, la = _q(lower)
+    cb, ca = _q(center)
+    ub, ua = _q(upper)
+    strict_ok = min(lb, cb, ub) > 0 and min(la, ca, ua) > 0
+    role_ok = la > 0 and ua > 0 and cb > 0
+    return {"wings_no_bid": float((lb <= 0) + (ub <= 0)),
+            "strict_would_refuse": 0.0 if strict_ok else 1.0,
+            "role_would_refuse": 0.0 if role_ok else 1.0}
+
+
 def _structure_quote(lower, center, upper):
     """(bid, ask) for the FLY ITSELF, built per leg and conservatively.
 
@@ -574,7 +600,9 @@ class GEXPinButterflyStrategy:
     PLAN_CHECKS = tuple(CONDITIONS) + STRUCTURAL + ("gex", "wing_width", "width",
                                                     "debit_pct_width", "stop_vs_spread",
                                                     "r_muted", "pin_dist_pct",
-                                                    "pin_strike_raw", "pin_vwap_dist")
+                                                    "pin_strike_raw", "pin_vwap_dist",
+                                                    "quote_wings_no_bid", "quote_strict_would_refuse",
+                                                    "quote_role_would_refuse")
 
     def __init__(self):
         self.planner = Plan(self.name, self.PLAN_CHECKS)
@@ -871,6 +899,8 @@ class GEXPinButterflyStrategy:
                         prep.wing_stretch = None
                         t.check("wing_width", wing, True)
                         t.check("legs", 3, True)
+                        for _qk, _qv in leg_quote_facts(lower, center, upper).items():
+                            t.check(f"quote_{_qk}", _qv, None)          # r225: recorded, never gating
                         t.butterfly(debit, width, trigger=pin)
                         _pct = debit / width if width else None
                         _dcap = float(getattr(config, "BUTTERFLY_MAX_DEBIT_PCT_WIDTH", 0.33))
