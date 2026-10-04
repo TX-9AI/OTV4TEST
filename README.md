@@ -1,6 +1,6 @@
 # OTV4TEST — the plan/strategy untangle, in isolation
 
-**`README.md` v2.2 · 2026-10-03 (OTV4TEST r226) — what this repo is, how it is laid out, how work lands. Supersedes the mainline README (v1.1) the fork inherited.**
+**`README.md` v2.3 · 2026-10-03 (OTV4TEST r227) — what this repo is, how it is laid out, how work lands. Supersedes the mainline README (v1.1) the fork inherited.**
 
 **What this repo is.** A fork of `TX-9AI/options_trader_v4` (from `e955020`, mainline r322)
 where the trading path is being re-wired so that **plans decide and strategies execute** —
@@ -22,12 +22,12 @@ action satisfies the plan's completed vectors. A strategy holds no chain and pic
 | trade | state | plan | strategy | spec |
 |---|---|---|---|---|
 | Runaway (momentum) | ON | `strategy/runaway_plan.py` | `strategy/runaway_continuation.py` | §30 |
-| Breakout | ON | `strategy/breakout_plan.py` | same file | TRADES §0 |
+| Breakout | ON | `strategy/breakout_plan.py` | `strategy/breakout.py` (the spec) | TRADES §7 |
 | Liquidity hunt | ON | `strategy/liquidity_hunt.py` | same file | §37 |
 | ORCS (opening range credit spread) | ON, paper only | `strategy/orcs_plan.py` | `strategy/orcs.py` | §41 |
 | GEX pin butterfly | ON | inside `strategy/gex_pin_butterfly.py` | same file | §32 |
 | ATP butterfly | off (`OT_ATP_BUTTERFLY=1`) | `strategy/atp_butterfly_plan.py` | same file | §39 |
-| VOLT | off (`OT_VOLT=1`) | `strategy/volt_plan.py` | `strategy/volt_strategy.py` | TRADES §0 |
+| VOLT | off (`OT_VOLT=1`) | `strategy/volt_plan.py` | `strategy/volt_strategy.py` | TRADES §8 |
 | ORB break + retest | retired (`OT_ORB_TRADE=1`); the opening-range ENGINE stays | `strategy/orb_plan.py` | `strategy/orb_strategy.py` | §29 |
 | Sweep credit spread | retired 2026-10-03 (`OT_SWEEP_CS=1`) | `strategy/sweep_plan.py` | `strategy/sweep_credit_spread.py` | §31 |
 | Trend credit spread | retired 2026-10-03 (`OT_TCS_ACTIVE=1`) | `strategy/tcs_plan.py` | `strategy/trend_credit_spread.py` | §34 |
@@ -81,6 +81,8 @@ A NO PLAN or NOT ASKED for an in-window strategy is a wiring defect, not a marke
 ---
 
 ## Changelog
+
+**v2.3 — 2026-10-03 — OTV4TEST r227.** Breakout and VOLT point at their new sections, TRADES §7 and §8.
 
 **v2.2 — 2026-10-03 — OTV4TEST r226.** The trade table is the roster as it runs (r187, r204): Runaway, Breakout, Hunt, ORCS and the pin butterfly on; ATP and VOLT off; the ORB trade, the sweep and the TCS retired. `shadow/` is gone (r125). The layout block matches the tree: the three hand-run files at the root, the lander in `tools/`, every doc named.
 

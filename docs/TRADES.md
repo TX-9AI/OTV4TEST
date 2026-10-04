@@ -17,12 +17,12 @@ is its `docs/PLAN_SPEC.md` section.
 | trade | key | default | switch | entries (ET) | spec |
 |---|---|---|---|---|---|
 | Runaway | `RunawayContinuation` | ON | none (`OT_RUNAWAY_END` moves its end) | 09:35-10:30 | PLAN_SPEC §30 |
-| Breakout | `Breakout` | ON | none | 09:35-10:30 | `strategy/breakout_plan.py` header |
+| Breakout | `Breakout` | ON | none | 09:35-10:30 | section 7 below |
 | Liquidity hunt | `LiquidityHunt` | ON | none | 09:35-10:30 | PLAN_SPEC §37 |
 | ORCS | `OpeningRangeCreditSpread` | ON | `OT_ORCS` | 09:45-10:30 | PLAN_SPEC §41 |
 | GEX pin butterfly | `GEXPinButterfly` | ON | `OT_GEX_BUTTERFLY` | 12:00-15:00 | PLAN_SPEC §32 |
 | ATP butterfly | `ATPButterfly` | OFF | `OT_ATP_BUTTERFLY` | 12:00-15:00 | PLAN_SPEC §39 |
-| VOLT | `VOLT` | OFF | `OT_VOLT` | 09:35-10:30 | `strategy/volt_plan.py` header |
+| VOLT | `VOLT` | OFF | `OT_VOLT` | 09:35-10:30 | section 8 below |
 | ORB break + retest | `ORBStrategy` | OFF | `OT_ORB_TRADE` | 09:35-15:40 | PLAN_SPEC §29 |
 | Sweep credit spread | `SweepCreditSpread` | OFF | `OT_SWEEP_CS` | 09:35-15:40 | PLAN_SPEC §31 |
 | Trend credit spread | `TrendCreditSpread` | OFF | `OT_TCS_ACTIVE` | 11:31-15:40 | PLAN_SPEC §34 |
@@ -39,7 +39,9 @@ from **15:50**. Whatever is still open CROSSES at **15:55** (r149 - this superse
 ever crosses" and the "15:45 hard close" wherever they appear below).
 
 **The stops that are one number in `config.py`.** Runaway: a **20%** premium floor
-(`RUNAWAY_MAX_LOSS_PCT`). Hunt: the same number unless `OT_HUNT_MAX_LOSS_PCT` is set.
+(`RUNAWAY_MAX_LOSS_PCT`). Hunt: NO premium stop - it RECORDS the same floor
+(`HUNT_MAX_LOSS_PCT`, also used to pick its contract) and the exit engine HOLDS through it,
+logging "would-have-floored" (r209; corrected r227 - r226 wrote this line as if it stopped).
 Other single legs: **25%** (`MAX_LOSS_PCT`). Butterflies: **40%** of the debit
 (`BUTTERFLY_STOP_LOSS_PCT`; section 3's 15% is stale). ORCS: no stop - held to the 15:45
 close (PLAN_SPEC §41). Every other exit rule lives in `strategy/management.py` and
@@ -626,6 +628,96 @@ column, and WORKING_AGREEMENT 22 says state that must survive a restart does.
   moving tape restarted the walk at the 25% opener on every strike.
 · **No positive price, no order.** An unusable structure quote posts nothing;
   it never falls to a bare mark.
+
+---
+
+## 7. Breakout — `breakout.py` (the spec) + `breakout_plan.py` (the plan)
+
+**Written 2026-10-03 (OTV4TEST r227) from the code as it runs. ON.**
+
+**What it is.** The ORB without the retest (operator, 2026-09-19: *"Make it follow the orb
+structurally, but without a retest. And with better informers."*). It buys a call on a break
+above the 5-minute opening range, a put on a break below, the moment a 1m bar CLOSES beyond
+the edge.
+
+**Entry, 09:35-10:30 ET (last entry 10:29).** Every condition is recorded on the plan row:
+
+| condition | what must be true | category |
+|---|---|---|
+| `entry_window` | inside the window; an unreadable clock is no trade (r220) | FOUNDATIONAL |
+| `break_close` | the last CLOSED 1m bar closed above the range high (long) or below the low (short) - bodies decide, wicks test | FOUNDATIONAL |
+| `new_extreme` | the first entry per side per session needs only the break. Every later entry on that side needs a 1m close beyond every prior RTH bar's high (long) / low (short) since 09:30 (r131). Read from trades.db and the feed store; unreadable is a refusal | FOUNDATIONAL, no knob |
+| `orb_range`, `range_clean`, `flow_commit`, `gamma_regime`, `depth_thin`, `room_to_run`, `r` | the informers: range width, no live level inside the range, aggressor imbalance with the break, a non-pinning regime, thinning depth ahead, open air or a pool at least 1R away, R at or above the floor | **accept "any" until `OT_BRK_RESEARCH_UNTIL` (2026-10-30)** - recorded on every row, refusing nothing |
+| `contract`, `premium` | a listed strike at the reach with a live quote above `QUOTE_FLOOR` | FEASIBILITY |
+
+The informers' fitted dials are the `BRK_*` constants in `config.py`; they bind only after
+the research window ends, and fitting them is BACKLOG BRK.5. Volume on the break bar is
+recorded and never gated (measured useless, n=736).
+
+**Geometry.** Stop: the breaking bar's low (long) or high (short). Risk: break close to that
+stop. Reach: the nearer of the measured move (break close plus or minus the range width)
+and the nearest named pool. The contract is chosen at the reach by the ORB's selector.
+It sizes on that geometry (`sizes_on_geometry`), scaled when `OT_SCALE_BREAKOUT=1` (default).
+
+**The strategy confirms, it does not search.** On the tick it fires, price must still be
+beyond the edge and the persistent conditions must still read true, or it holds.
+
+**One at a time** (admission: `max_open_of_type=1`). It runs beside the Hunt and the Runaway
+and blocks neither.
+
+**Exits (`strategy/management.py`, first match wins).**
+1. `hard_stop` - premium at or below the record's stop premium. Priced at the mark, now.
+2. `structure_stop` - a TOUCH through the breaking bar's extreme, unless the trail is nearer.
+   A return INTO the range with that stop intact is a HOLD (operator, 2026-09-19).
+3. `delta_par` - delta at or above `DELTA_PAR` (0.98): it is stock now, get out.
+4. `exhaustion` - a new favourable extreme on WEAKER 5m momentum. This is the trade's
+   real exit: it has no target.
+5. the exit engine's trail, as a floor under the trade, and the close schedule in section 0.
+
+**Open:** the dials are unfitted (BRK.5); no exit candidate beat this stack on 266 days.
+
+---
+
+## 8. VOLT — `volt_plan.py` + `volt_strategy.py`
+
+**Written 2026-10-03 (OTV4TEST r227) from the code as it runs. OFF since r187 (operator,
+2026-10-02); `OT_VOLT=1` restores it exactly as described here.**
+
+**What it is.** A volume-expansion trade with two selection gates and nothing else, kept
+deliberately short: a third gate belongs in a new strategy.
+
+**Entry, 09:35-10:30 ET, on completed 1m bars** (it needs `VOLT_MIN_BARS` + 1 = 4 of them):
+1. **Direction** - the last completed bar's close against the session's first open. Above is
+   long (a call), below is short (a put). No threshold, nothing to tune.
+2. **Volume** - the last completed bar's volume is at least `VOLT_VOL_MULT` (1.25x) the mean
+   of the `VOLT_VOL_LOOKBACK_BARS` (5) bars before it.
+
+The contract is the first out-of-the-money strike from the current price with a quote; the
+budget (`OT_VOLT_BUDGET_USD`) must buy at least one. **One at a time.**
+
+**The stop is the entry** (operator, 2026-09-21: *"Use a structural stop. A close beyond
+where the trade opened is a dead thesis."*). `underlying_stop` equals the entry price by
+design.
+
+**Exits (`exit_engine._evaluate_volt`, first match wins).**
+1. The close schedule in section 0.
+2. Premium floor - premium at or below the stop premium (else `MAX_LOSS_PCT`, 25%).
+3. Par delta - delta at or above 0.98.
+4. Structure stop - the last COMPLETED 5m bar that POSTDATES the entry closes back through
+   the entry price. With no such bar yet, it holds on the premium floor alone.
+5. Trail - arms once the 5m close has travelled `VOLT_TRAIL_ARM_R` (0.50) of the
+   entry-to-target distance; then exits on a 5m close through entry plus
+   `VOLT_TRAIL_LOCK_FRAC` (0.50) of the peak gain. The floor is never below entry.
+
+**Two things in the code that disagree with the above and are NOT fixed here** (VOLT is
+off; BACKLOG DOC.31): the exit reason text says "1m close" while the bar read is 5m, and
+`_evaluate_volt`'s docstring still describes a "3x5m structural extreme" stop.
+
+---
+
+**The Liquidity Hunt** is PLAN_SPEC §37 and **ORCS** is PLAN_SPEC §41; section 0 above
+carries where each now differs (the Hunt's window ends 10:30, not 11:30; its premium floor
+is recorded and never acted on, as §37 says: "no premium stop").
 
 ---
 
