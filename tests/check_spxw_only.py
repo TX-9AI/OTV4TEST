@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_spxw_only.py  v1.0
+tests/check_spxw_only.py  v1.1
+v1.1  2026-10-04  otv4 r464 — W4 SKIPS where strategy.orcs_plan is absent (ORCS is
+      fork-only), as check_zero_bid_refused's Z6 does; nothing else changed.
+      OTV4TEST r241's v1.0 (sha 63499c5b) is the source.
 NEVER TRADE THE MORNING EXPIRATION. A chain that lists an AM-settled series beside a PM one on the
 same date yields ONLY the PM series to every selector.
 
@@ -142,14 +145,19 @@ def run():
               orb is not None and swp is not None
               and orb.symbol.startswith("SPXW") and swp.symbol.startswith("SPXW"),
               f"orb={getattr(orb, 'symbol', None)!r} sweep={getattr(swp, 'symbol', None)!r}")
-        from strategy import orcs_plan as OP
-        res = {s: OP.locate(s, ch, SPOT, 10.0) for s in ("put", "call")}
-        bad = {s: (getattr(l.short, "symbol", None), getattr(l.long, "symbol", None), l.why)
-               for s, l in res.items()
-               if not (l.short is not None and l.long is not None
-                       and l.short.symbol.startswith("SPXW") and l.long.symbol.startswith("SPXW"))}
-        check("W4 ORCS's real locate() picks an SPXW short AND an SPXW wing on both sides", not bad,
-              f"{bad}")
+        try:                                   # ORCS is FORK-ONLY: SKIP where absent (as Z6)
+            from strategy import orcs_plan as OP
+        except ImportError:
+            OP = None
+            print("  SKIP  W4 strategy.orcs_plan is not in this tree")
+        if OP is not None:
+            res = {s: OP.locate(s, ch, SPOT, 10.0) for s in ("put", "call")}
+            bad = {s: (getattr(l.short, "symbol", None), getattr(l.long, "symbol", None), l.why)
+                   for s, l in res.items()
+                   if not (l.short is not None and l.long is not None
+                           and l.short.symbol.startswith("SPXW") and l.long.symbol.startswith("SPXW"))}
+            check("W4 ORCS's real locate() picks an SPXW short AND an SPXW wing on both sides", not bad,
+                  f"{bad}")
     else:
         check("W3 select_orb_strike and select_sweep_strike return SPXW contracts", False, "no chain")
         check("W4 ORCS's real locate() picks an SPXW short AND an SPXW wing on both sides", False, "no chain")

@@ -1,5 +1,6 @@
 """
-execution/broker_reconcile.py  v4.1
+execution/broker_reconcile.py  v4.2
+v4.2  2026-10-04  OTV4TEST r243 (LIVE.1 B1, MIRROR OF otv4 r465 7562317, WA 38.2) — reconcile reads ONLY this box's instrument family (SPX = SPX+SPXW; '*' = the whole account) and checks EVERY leg at its QUANTITY (summed across rows sharing a leg); a missing leg or a count off the broker is REPORTED (plan.mismatch + an alert), rows are never dropped, the phantom rule unchanged. The operator, 2026-10-04: 'multiple boxes will trade that account but never duplicate symbols ever.' Code hunks applied verbatim from 7562317.
 v4.1  2026-09-27  OTV4TEST r165 (EXP.1) — AN EXPIRED POSITION IS BOOKED AT ITS SETTLEMENT VALUE,
       NOT A FLAGGED $0.00. The operator, 2026-09-27, approving EXP.1's booking fix. QQQ is
       physically settled and American-style: a long ITM 0DTE held to 16:00 is EXERCISED into
@@ -87,6 +88,7 @@ class ReconcilePlan:
     adopt: List[dict]           = field(default_factory=list)  # synthesized records to manage+journal
     close_phantom: List[str]    = field(default_factory=list)  # DB trade_ids absent at broker
     anomalies: List[str]        = field(default_factory=list)  # adopted trade_ids that are lone shorts
+    mismatch: List[dict]        = field(default_factory=list)  # B1: kept rows whose legs/qty disagree
 
 
 # ── OCC option symbol parsing ────────────────────────────────────────────────
@@ -165,6 +167,20 @@ def _db_leg_symbols(row: dict) -> set:
     return {row.get(k) for k in keys if row.get(k)}
 
 
+def _db_leg_quantities(row: dict) -> dict:
+    """B1 — {leg symbol: contracts the row expects at the broker}. A butterfly's
+    body is held twice; every other leg once per contract."""
+    n = abs(int(float(row.get("contracts", 0) or 0)))
+    out = {}
+    for k in ("option_symbol", "short_symbol", "long_symbol",
+              "lower_symbol", "upper_symbol"):
+        if row.get(k):
+            out[row[k]] = out.get(row[k], 0) + n
+    if row.get("center_symbol"):
+        out[row["center_symbol"]] = out.get(row["center_symbol"], 0) + 2 * n
+    return out
+
+
 def build_plan(broker_positions: List[dict], db_live_rows: List[dict]) -> ReconcilePlan:
     """Pure reconciliation. Inputs:
         broker_positions — normalized dicts (see _adopt_record) for OPEN option
@@ -179,6 +195,16 @@ def build_plan(broker_positions: List[dict], db_live_rows: List[dict]) -> Reconc
 
     # 1) KEEP vs PHANTOM: each DB live row must have at least one leg present at
     #    the broker, else it no longer exists -> phantom, close it.
+    # 🔴 B1 (r465) — PRESENT IS NOT HEALTHY. A row used to be kept if ANY one of
+    # its legs was at the broker, and quantity was never read: 2N against N, or
+    # a vertical missing its long, read as fine. Each kept row is now checked
+    # leg by leg against the broker's quantity (summed over every row that
+    # expects that symbol); a missing leg or a wrong count is KEPT (it still
+    # needs managing) and REPORTED in plan.mismatch — never silently healthy.
+    expected_total = {}
+    for row in db_live_rows:
+        for sym, q in _db_leg_quantities(row).items():
+            expected_total[sym] = expected_total.get(sym, 0) + q
     matched_broker_symbols = set()
     for row in db_live_rows:
         legs = _db_leg_symbols(row)
@@ -186,6 +212,16 @@ def build_plan(broker_positions: List[dict], db_live_rows: List[dict]) -> Reconc
         if present:
             plan.keep.append(row)
             matched_broker_symbols |= present
+            missing = sorted(legs - broker_symbols)
+            wrong = {}
+            for sym in sorted(present):
+                have = abs(int(float(broker_by_symbol[sym].get("quantity", 0) or 0)))
+                want = expected_total.get(sym, 0)
+                if want and have != want:
+                    wrong[sym] = {"expected": want, "broker": have}
+            if missing or wrong:
+                plan.mismatch.append({"trade_id": row.get("trade_id", ""),
+                                      "missing": missing, "quantity": wrong})
         else:
             plan.close_phantom.append(row.get("trade_id", ""))
 

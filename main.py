@@ -1,5 +1,6 @@
 """
-main.py  v4.91
+main.py  v4.92
+v4.92 2026-10-04  OTV4TEST r243 (LIVE.1 B1, MIRROR OF otv4 r465 7562317, WA 38.2) — reconcile reads ONLY this box's instrument family (SPX = SPX+SPXW; '*' = the whole account) and checks EVERY leg at its QUANTITY (summed across rows sharing a leg); a missing leg or a count off the broker is REPORTED (plan.mismatch + an alert), rows are never dropped, the phantom rule unchanged. The operator, 2026-10-04: 'multiple boxes will trade that account but never duplicate symbols ever.' Code hunks applied verbatim from 7562317.
 v4.91 2026-10-04  OTV4TEST r242 (LIVE.1 B0, MIRROR OF otv4 r463 c912ce7, WA 38.2) — every Account call goes through tasty_client.sdk_result: on tastytrade 13.x the Account methods are coroutines and a bare call placed and closed NOTHING live (paper never calls them). Hunks applied verbatim from c912ce7.
 v4.90 2026-10-04  OTV4TEST r235 — the Service mode line also says ORCS=on/OFF (config.ORCS_ENABLED), so whether the trade is armed is read from the log, never from the unit (WA 18a). SPX-TEST's agent could not tell.
 v4.89 2026-10-04  OTV4TEST r234 (SCALE.1) — the Service mode line ends with the box's contract_scale and where it came from (SPX default / OT_CONTRACT_SCALE / default / IGNORED), so the number ORCS sizes its wing with is on the record at every start. Appended - nothing parses the line.
@@ -6496,6 +6497,17 @@ def _reconcile_with_broker(state: BotState, live_rows: list,
             descs.append(_close_phantom_with_recovery(
                 trade_logger, rec, history, reason="phantom_closed_at_broker"))
         get_alert_manager().send_phantom_closed_alert(instrument, descs)
+
+    # B1 (r465): kept rows whose legs or quantities disagree with the broker.
+    for mm in getattr(plan, "mismatch", []) or []:
+        _desc = (f"{mm.get('trade_id','')[:8]} missing={mm.get('missing')} "
+                 f"qty={mm.get('quantity')}")
+        logger.warning(f"RECONCILE MISMATCH [{instrument}] {_desc} — kept and managed; check the broker")
+        try:
+            get_alert_manager()._send(f"⚠️ {instrument} RECONCILE MISMATCH — {_desc}. "
+                                      f"Kept and managed; the DB and the broker disagree.")
+        except Exception:                                      # noqa: BLE001
+            pass
 
     # Adopts: journal into our system of record + alert (loud for a lone short).
     anomaly_ids = set(plan.anomalies)
