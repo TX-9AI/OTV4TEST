@@ -1,5 +1,12 @@
 """
-config.py  v4.56
+config.py  v4.57
+v4.57 2026-10-04  OTV4TEST r234 (SCALE.1) — CONTRACT_SCALE: ONE NUMBER PER BOX FOR WHAT ITS CONTRACTS COST AGAINST QQQ'S. The operator,
+      2026-10-04: "SPX cap, ramp & wing search CANNOT be the same as QQQ. The math doesn't work. It needs to scale with the contract
+      price differences"; on the measured proposal: "Perfect." MEASURED (/var/tmp/spx_scale_1004, mainline chain_snapshots, 14 sessions
+      09-14..10-02, 09:45/10:00/10:29): SPX/QQQ platform expected move median 7.57 (6.2-9.1), ATM straddle 7.30, the 0.20-delta short
+      7.4-7.7; spot 10.44 OVERSTATES it (SPX implied vol is lower). SPX = 7.5, every other instrument 1.0; OT_CONTRACT_SCALE overrides
+      (a positive number; anything else is ignored and SAID). ORCS reads it (wing and minimum credit); the box's dollar dials (risk,
+      TOP, cap) stay literal dollars set per box. QQQ unchanged.
 v4.56 2026-10-03  OTV4TEST r218 (PATH.1) — DATA_DIR and QUOTE_FLOOR are DEFINED. resting_orders imported DATA_DIR and breakout_plan
       read QUOTE_FLOOR by getattr; neither name existed, so both silently took fallbacks (the 10-03 audit, D4).
       DATA_DIR is this file's own data/ directory, spelled here and NOT imported (configure.sh imports config standalone);
@@ -1294,6 +1301,30 @@ ORCS_MIN_IM_MULT     = 1.0        # r207: at least ONE implied move (ATM straddl
 ORCS_WING_USD        = 3.0        # r207: the long leg 3 dollars further out - 3 contracts a side at 1,050, max-loss day about -744
 ORCS_MIN_CREDIT      = 0.10       # at the mark; below a dime one cent of slip is over 10%
 ORCS_MAX_GAP_PCT     = 0.90       # |overnight gap| %, the one informer that agreed on both samples
+
+# ── SCALE.1 (r234) — WHAT THIS BOX'S CONTRACTS COST AGAINST QQQ'S ─────────────
+# The ORCS dials above are QQQ dollars (r207 was priced on QQQ). Measured
+# 2026-10-04: an SPX 0DTE contract costs ~7.5x the matching QQQ one (platform
+# expected move 7.57 median, 6.2-9.1 across 14 sessions); spot (10.4x) would
+# overstate it. One number per box; QQQ is the unit. Re-measured on Saturdays.
+CONTRACT_SCALE_BY_INSTRUMENT = {"SPX": 7.5}
+
+
+def _contract_scale():
+    base = CONTRACT_SCALE_BY_INSTRUMENT.get(INSTRUMENT, 1.0)
+    raw = (os.environ.get("OT_CONTRACT_SCALE") or "").strip()
+    if not raw:
+        return base, ("%s default" % INSTRUMENT) if INSTRUMENT in CONTRACT_SCALE_BY_INSTRUMENT else "default"
+    try:
+        v = float(raw)
+    except ValueError:
+        v = 0.0
+    if v > 0 and v == v and v != float("inf"):
+        return v, "OT_CONTRACT_SCALE"
+    return base, "OT_CONTRACT_SCALE=%r IGNORED (not a positive number)" % raw
+
+
+CONTRACT_SCALE, CONTRACT_SCALE_SOURCE = _contract_scale()
 
 # ── SWEEP CREDIT SPREAD (v4.0) ─────────────────────────────────────────────
 # Operator's spec, 2026-08-20: *"The only 2 ways I want out of this trade is a

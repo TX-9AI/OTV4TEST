@@ -1,6 +1,6 @@
 # PLAN_SPEC.md — every strategy declares its intent BEFORE the trigger
 
-**v1.36 · 2026-10-03 · OTV4TEST r230 — PREM.5: ORCS is defended by the condor logic, verbatim (§41.11); 'held to the close, no stop' is superseded.**
+**v1.37 · 2026-10-04 · OTV4TEST r234 — SCALE.1: ORCS's wing and credit floor scale with the box's contract price (§41.12); QQQ unchanged, SPX x7.5.**
 
 **v1.35 · 2026-10-03 · OTV4TEST r229 — EM.2: ORCS's implied move is the tastytrade platform's expected move (§41.10); the butterflies keep theirs by ruling.**
 
@@ -1605,3 +1605,15 @@ The operator: *"On rolling/defending the ORCS, adopt the condor logic verbatim."
 | the close | section 0 of TRADES: short-leg positions rest from 15:45, cross at 15:55 |
 **What this changes against §41.1, said plainly.** (1) A leg that decays to a nickel is closed, and from that moment the OTHER leg is lone and its stop is armed. On the r207 shape (a 3-dollar wing, about 0.25 credit) that stop is about 0.41 above the credit, roughly $125 a side at 3 contracts. (2) A risk-free roll needs cumulative credit of 3.00 on a pair that banks about 0.50, so on this shape the roll will rarely if ever clear; a tested pair with both sides open is held. (3) The 10-03 studies (X7-X10) measured hold-to-close with no stop; this is not that trade any more and those numbers do not describe it. The paper weeks to ~10-30 are the measurement.
 `_open_credit_legs` / `_open_credit_sides` still leave ORCS out: they decide which OTHER entry may pair with an open leg (the sweep and the TCS, both retired).
+
+
+### 41.12 r234 — THE WING AND THE CREDIT FLOOR SCALE WITH THE BOX'S CONTRACT PRICE (operator 2026-10-04; extends §41.9 to other instruments)
+*"SPX cap, ramp & wing search CANNOT be the same as QQQ. The math doesn't work. It needs to scale with the contract price differences."* - and, on the measured proposal, *"Perfect."*
+**Measured** (mainline chain_snapshots, 14 sessions 09-14..10-02, 09:45 / 10:00 / 10:29; `/var/tmp/spx_scale_1004`): SPX ÷ QQQ platform expected move median **7.57** (6.2-9.1 by day, rising 7.34 -> 7.78 through the morning), ATM straddle 7.30, the ~0.20-delta short 7.4-7.7. Spot (10.44) overstates it - SPX implied volatility is lower. SPX strikes are 5 apart near the money, QQQ's 1.
+| dial | QQQ (unit, unchanged) | SPX (x7.5) | where |
+|---|---|---|---|
+| ORCS wing target | 3.00 | 22.50 -> the listed strike nearest it, 20 (a 20/25 tie goes to the NARROWER wing, both sides) | `config.CONTRACT_SCALE` x `ORCS_WING_USD` |
+| ORCS minimum credit | 0.10 | 0.75 | x `ORCS_MIN_CREDIT` |
+| risk / ramp MIN, ramp TOP, daily cap | the box's own dollars | the box's own dollars - his ruling: 8,250 / 37,500 / 11,250 (QQQ-TEST's 1,100 / 5,000 / 1,500 x 7.5) | configure.sh on that box |
+`CONTRACT_SCALE` is SPX 7.5, every other instrument 1.0; `OT_CONTRACT_SCALE` overrides (anything not a positive number is ignored and said). The Service mode line ends with it. Already scale-free and untouched: the butterflies (debit ratio, expected-move wings), the condor defence (percent of credit), and every trade that sizes off the risk dollars. **Not proven:** no ORCS shape has been priced on SPX history; the paper weeks are the measurement, as on QQQ. Re-measured every Saturday (BACKLOG SCALE.1, SAT-RUN).
+**As built (OTV4TEST r234):** `config.py` v4.57, `strategy/orcs_plan.py` v1.8, `main.py` v4.89. Gate `tests/check_contract_scale.py` S1-S6.

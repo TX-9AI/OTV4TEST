@@ -1,5 +1,6 @@
 """
-strategy/orcs_plan.py  v1.7
+strategy/orcs_plan.py  v1.8
+v1.8  2026-10-04  OTV4TEST r234 (SCALE.1) — THE WING AND THE CREDIT FLOOR SCALE WITH THE BOX'S CONTRACT PRICE. ORCS_WING_USD and ORCS_MIN_CREDIT here are config's QQQ dollars x config.CONTRACT_SCALE (QQQ 1.0 - unchanged; SPX 7.5 - a 22.50 target wing, so the listed strike nearest it, 20 or 25 on a 5-dollar chain, and a 0.75 floor). The operator, 2026-10-04: "SPX cap, ramp & wing search CANNOT be the same as QQQ ... It needs to scale with the contract price differences."
 v1.7  2026-10-03  OTV4TEST r230 (PREM.5) — the HOLD row's text says 'defended as a condor' (was 'held to the close'); nothing else.
 v1.6  2026-10-03  OTV4TEST r229 (EM.2) — THE IMPLIED MOVE IS THE TASTYTRADE PLATFORM'S EXPECTED MOVE (analysis.volatility_measures.expected_move_platform: 60% ATM straddle + 30% first strangle + 10% second), no longer the bare ATM straddle. The operator, 2026-10-03: "Use the one that's built into the tasty trade platform." Measured 10-01/10-02 at 09:45-10:29: 0.87-0.91 of the straddle, so the 1.0x distance floor sits 9-13% nearer; the delta cap is unchanged. The straddle is still recorded (atm_straddle).
 v1.5  2026-10-03  OTV4TEST r223 (EM.1) — mark_of and implied_move are analysis.volatility_measures.quote_mark / straddle_same_strike (moved verbatim; the names here are aliases).
@@ -78,8 +79,9 @@ ORCS_START_ET        = tuple(config.ENTRY_WINDOWS[NAME][0])     # one window tab
 ORCS_END_ET          = tuple(config.ENTRY_WINDOWS[NAME][1])
 ORCS_SHORT_DELTA_MAX = float(config.ORCS_SHORT_DELTA_MAX)
 ORCS_MIN_IM_MULT     = float(config.ORCS_MIN_IM_MULT)
-ORCS_WING_USD        = float(config.ORCS_WING_USD)
-ORCS_MIN_CREDIT      = float(config.ORCS_MIN_CREDIT)
+ORCS_CONTRACT_SCALE  = float(getattr(config, "CONTRACT_SCALE", 1.0))      # r234: QQQ = 1.0
+ORCS_WING_USD        = float(config.ORCS_WING_USD) * ORCS_CONTRACT_SCALE    # this box's dollars
+ORCS_MIN_CREDIT      = float(config.ORCS_MIN_CREDIT) * ORCS_CONTRACT_SCALE
 ORCS_MAX_GAP_PCT     = float(config.ORCS_MAX_GAP_PCT)
 
 SIDES = ("put", "call")
@@ -146,13 +148,13 @@ def locate(side: str, chain, spot: float, im: float) -> Located:
     loc.short, loc.delta, loc.dist = short, abs(float(short.delta)), round(d, 4)
     loc.dist_pct = round(100.0 * d / spot, 4)
     loc.im_mult = round(d / im, 4) if im else None
-    want = ORCS_WING_USD                       # r207: dollars, not a fraction of spot
+    want = ORCS_WING_USD                       # r207: dollars, not a fraction of spot; r234: x CONTRACT_SCALE
     wings = [(abs(abs(kk - k) - want), kk, c) for _d, kk, c in otm
              if (kk < k if side == "put" else kk > k) and mark_of(c) is not None]
     if not wings:
         loc.why, loc.why_key = f"no quoted strike beyond {k:g} for the long leg", f"{side}_long"
         return loc
-    _x, kk, long_c = min(wings, key=lambda x: (x[0], x[1]))
+    _x, kk, long_c = min(wings, key=lambda x: (x[0], abs(x[1] - k)))   # r234: a tie goes to the NARROWER wing, both sides
     ms, ml = mark_of(short), mark_of(long_c)
     if ms is None:
         loc.why, loc.why_key = f"short {k:g} has no quote", f"{side}_credit"
