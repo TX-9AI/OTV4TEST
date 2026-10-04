@@ -1,6 +1,6 @@
 # PLAN_SPEC.md — every strategy declares its intent BEFORE the trigger
 
-**v1.37 · 2026-10-04 · OTV4TEST r234 — SCALE.1: ORCS's wing and credit floor scale with the box's contract price (§41.12); QQQ unchanged, SPX x7.5.**
+**v1.38 · 2026-10-04 · OTV4TEST r235 — §41.12 CORRECTED: SPX-TEST's dollars are NOT x7.5; the operator ruled 2,500 / 5,000 / 3,000 after seeing mainline SPX's real risk per trade.**
 
 **v1.35 · 2026-10-03 · OTV4TEST r229 — EM.2: ORCS's implied move is the tastytrade platform's expected move (§41.10); the butterflies keep theirs by ruling.**
 
@@ -1614,6 +1614,6 @@ The operator: *"On rolling/defending the ORCS, adopt the condor logic verbatim."
 |---|---|---|---|
 | ORCS wing target | 3.00 | 22.50 -> the listed strike nearest it, 20 (a 20/25 tie goes to the NARROWER wing, both sides) | `config.CONTRACT_SCALE` x `ORCS_WING_USD` |
 | ORCS minimum credit | 0.10 | 0.75 | x `ORCS_MIN_CREDIT` |
-| risk / ramp MIN, ramp TOP, daily cap | the box's own dollars | the box's own dollars - his ruling: 8,250 / 37,500 / 11,250 (QQQ-TEST's 1,100 / 5,000 / 1,500 x 7.5) | configure.sh on that box |
+| risk / ramp MIN, ramp TOP, daily cap | the box's own dollars | the box's own dollars, NOT scaled: ~~8,250 / 37,500 / 11,250 (x7.5)~~ **CORRECTED r235** - r234 recorded the x7.5 dollars as ruled; they were a proposal, and the operator, shown mainline SPX (OT_RISK_USD 2,100: ~$1,840 deployed a Runaway trade, ~$400 real loss at the 20% stop, avg win $1,017, 2.56:1, +$11,945 over 34 trades), ruled *"Maybe $2500/5000/3000?"* and *"I don't think we need to get crazy with our sizing to make money"* | configure.sh on that box |
 `CONTRACT_SCALE` is SPX 7.5, every other instrument 1.0; `OT_CONTRACT_SCALE` overrides (anything not a positive number is ignored and said). The Service mode line ends with it. Already scale-free and untouched: the butterflies (debit ratio, expected-move wings), the condor defence (percent of credit), and every trade that sizes off the risk dollars. **Not proven:** no ORCS shape has been priced on SPX history; the paper weeks are the measurement, as on QQQ. Re-measured every Saturday (BACKLOG SCALE.1, SAT-RUN).
 **As built (OTV4TEST r234):** `config.py` v4.57, `strategy/orcs_plan.py` v1.8, `main.py` v4.89. Gate `tests/check_contract_scale.py` S1-S6.

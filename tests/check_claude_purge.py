@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""tests/check_claude_purge.py — v1.1
+"""tests/check_claude_purge.py — v1.2
+v1.2  2026-10-04  OTV4TEST r235 — P11: a purge that archives NOTHING still says so ("scratch purge: archived 0"),
+      driven through the real main() with the raiser, the recorder and the purge itself stubbed (nothing real
+      is purged or raised). Silent-on-zero hid a run from SPX-TEST's agent (§0.5).
 tmpfs IS PURGED BEFORE A THREAD STARTS, AND CLAUDE LAUNCHES ON THE SUBSCRIPTION.
 
 v1.1  2026-09-23 — OTV4TEST r107. P9 RE-DERIVED TO THE STRONGER CONTRACT, NOT
@@ -276,6 +279,28 @@ def _p10():
 
 
 guard("P10 the retention sweep is the only deleting path, and it is bounded", _p10)
+
+def _p11():
+    import contextlib, io
+    saved = {k: getattr(cb, k) for k in ("agent_alive", "live_claude_pids", "purge_scratch",
+                                         "bring_up", "record", "tmpfs_free_mb")}
+    try:
+        cb.agent_alive = lambda: False
+        cb.live_claude_pids = lambda: []
+        cb.purge_scratch = lambda root=None: (0, 123)
+        cb.bring_up = lambda dry=False: (True, "up (fixture)")
+        cb.record = lambda text: None
+        cb.tmpfs_free_mb = lambda: 123
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = cb.main([])
+        return rc == 0 and "scratch purge: archived 0 stale scratch dir(s)" in buf.getvalue()
+    finally:
+        for k, v in saved.items():
+            setattr(cb, k, v)
+
+
+guard("P11 a purge that archives NOTHING still says so (0 is printed, through the real main())", _p11)
 
 guard("P7 CONTROL: the box's real scratch root is untouched",
       lambda: (sorted(os.listdir(REAL_ROOT)) if os.path.isdir(REAL_ROOT) else None)

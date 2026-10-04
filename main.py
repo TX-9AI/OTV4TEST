@@ -1,5 +1,6 @@
 """
-main.py  v4.89
+main.py  v4.90
+v4.90 2026-10-04  OTV4TEST r235 — the Service mode line also says ORCS=on/OFF (config.ORCS_ENABLED), so whether the trade is armed is read from the log, never from the unit (WA 18a). SPX-TEST's agent could not tell.
 v4.89 2026-10-04  OTV4TEST r234 (SCALE.1) — the Service mode line ends with the box's contract_scale and where it came from (SPX default / OT_CONTRACT_SCALE / default / IGNORED), so the number ORCS sizes its wing with is on the record at every start. Appended - nothing parses the line.
 v4.88 2026-10-03  OTV4TEST r230 (PREM.5) — AN ORCS LEG IS BOOKED WITH THE CONDOR LEG'S STOP (credit x (1 + CONDOR_LONE_STOP_PCT)) and its alert states the condor's exits. The operator, 2026-10-03 21:21 ET: "On rolling/defending the ORCS, adopt the condor logic verbatim." Still its own strategy name, still paper only. _open_credit_legs / _open_credit_sides still leave ORCS out: they decide which OTHER entry may pair with an open leg (the sweep and the TCS, both retired), not how a pair is defended.
 v4.87 2026-10-03  OTV4TEST r222 (ORP.1) — THE OPENING RANGE HAS AN OFFICIAL PRINT, AND EVERYTHING REFERS TO IT. The operator,
@@ -1318,6 +1319,7 @@ from config import (
     ORB_BUDGET_USD, ORB_BUDGET_IS_DEFAULT,
     SCALE_ORB, SCALE_BREAKOUT, SCALE_VOLT, ORB_RISK_ENV_IGNORED,   # r161
     CONTRACT_SCALE, CONTRACT_SCALE_SOURCE,                          # r234
+    ORCS_ENABLED,                                                   # r235
     NOISE_FLOOR_BAR_MULT, NOISE_FLOOR_LOOKBACK_BARS, NOISE_FLOOR_MIN_BARS,
     PIN_PROXIMITY_ACTIVE, PIN_PROXIMITY_MIN_FRAC,
     REASSESS_MINUTES, INSTRUMENT, INSTRUMENT_UNSET, INSTRUMENT_LISTED, SessionConfig, DIRECTIONAL_ONLY,
@@ -6715,6 +6717,8 @@ def main():
             f" VOLT={'on' if SCALE_VOLT else 'OFF'}"
             # r234 — the contract-price scale ORCS's wing and credit floor ride.
             f" · contract_scale={CONTRACT_SCALE:g} ({CONTRACT_SCALE_SOURCE})"
+            # r235 — whether ORCS is armed, so no one has to read the unit.
+            f" · ORCS={'on' if ORCS_ENABLED else 'OFF'}"
         )
         if ORB_RISK_ENV_IGNORED:
             logger.warning(

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tests/check_contract_scale.py  v1.0
+tests/check_contract_scale.py  v1.1
+v1.1  2026-10-04  OTV4TEST r235 — S7: the Service mode line also says ORCS=on/OFF, read from config.ORCS_ENABLED.
 v1.0  2026-10-04  OTV4TEST r234 (SCALE.1) — ORCS'S WING AND CREDIT FLOOR SCALE WITH THE BOX'S CONTRACT PRICE.
 
   The operator, 2026-10-04: "SPX cap, ramp & wing search CANNOT be the same as QQQ. The math doesn't work. It
@@ -87,6 +88,8 @@ def main():
         check("S6 the Service mode line ends with contract_scale and its source (main imports both from config)",
               'contract_scale={CONTRACT_SCALE:g} ({CONTRACT_SCALE_SOURCE})' in src
               and "CONTRACT_SCALE, CONTRACT_SCALE_SOURCE," in src)
+        check("S7 the Service mode line says ORCS=on/OFF from config.ORCS_ENABLED (main imports it)",
+              "f\" · ORCS={'on' if ORCS_ENABLED else 'OFF'}\"" in src and "    ORCS_ENABLED," in src)
     except Exception as exc:  # noqa: BLE001
         check("S0 (did not run)", False, f"{type(exc).__name__}: {exc}")
     if FAILED:

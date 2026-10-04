@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-"""tools/claude_boot.py — v1.6
+"""tools/claude_boot.py — v1.7
 RAISE AN AGENT SESSION AT BOOT, AND PROVE IT IS ACTUALLY RUNNING.
 
+v1.7 (2026-10-04) — OTV4TEST r235 — THE PURGE SAYS ZERO. It printed only when it archived something, so a
+      purge that ran and found nothing stale looked like one that never ran (SPX-TEST's agent, 2026-10-04,
+      §0.5). It now prints "scratch purge: archived N stale scratch dir(s)" every time it runs, 0 included.
+      Gate: tests/check_claude_purge.py P10.
 v1.6 (2026-10-03) — OTV4TEST r231 (BOOT.7). OT_BRIEF: A BOX CAN HAVE ITS OWN BRIEF. The operator
       brought up SPX-TEST on this repo and its first session believed it was QQQ-TEST, because
       docs/HANDOFF.md is written for QQQ and every box read it. OT_BRIEF names a brief under docs/
@@ -838,8 +842,7 @@ def main(argv=None) -> int:
             # nothing. `purge_scratch` refuses any root that is not the real
             # one or a `scratchtest` path, so this cannot widen the target.
             n, freed = purge_scratch(os.environ.get("OT_CLAUDE_SCRATCH_ROOT") or None)
-            if n:
-                print("claude_boot: archived %d stale scratch dir(s)" % n)
+            print("claude_boot: scratch purge: archived %d stale scratch dir(s)" % n)   # r235: 0 is said too
         except Exception as exc:                                # noqa: BLE001
             print("claude_boot: scratch purge skipped (%s)" % type(exc).__name__)
 
