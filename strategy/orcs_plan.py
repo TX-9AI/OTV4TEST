@@ -1,5 +1,6 @@
 """
-strategy/orcs_plan.py  v1.6
+strategy/orcs_plan.py  v1.7
+v1.7  2026-10-03  OTV4TEST r230 (PREM.5) — the HOLD row's text says 'defended as a condor' (was 'held to the close'); nothing else.
 v1.6  2026-10-03  OTV4TEST r229 (EM.2) — THE IMPLIED MOVE IS THE TASTYTRADE PLATFORM'S EXPECTED MOVE (analysis.volatility_measures.expected_move_platform: 60% ATM straddle + 30% first strangle + 10% second), no longer the bare ATM straddle. The operator, 2026-10-03: "Use the one that's built into the tasty trade platform." Measured 10-01/10-02 at 09:45-10:29: 0.87-0.91 of the straddle, so the 1.0x distance floor sits 9-13% nearer; the delta cap is unchanged. The straddle is still recorded (atm_straddle).
 v1.5  2026-10-03  OTV4TEST r223 (EM.1) — mark_of and implied_move are analysis.volatility_measures.quote_mark / straddle_same_strike (moved verbatim; the names here are aliases).
 v1.4  2026-10-03  OTV4TEST r220 (TIME.1) — its private HH:MM parser is utils.time_utils.parse_hm (eight plans carried the same copy), and an UNREADABLE clock is DORMANT - no trade - instead of skipping the window check.
@@ -292,7 +293,7 @@ class ORCSPlan:
                 t.refuse(first.why_key, f"{first.why}. Located: {head}")
             else:
                 prep.why = "both sides taken" if taken else "no side ready"
-                t.hold(f"{prep.why} - held to the close. {head}")
+                t.hold(f"{prep.why} - defended as a condor. {head}")
             return prep
         t.direction = "neutral"
         t.hold(f"READY at the mark, to the entry ladder: {', '.join(prep.ready)}. {head}", verdict="TAKE")

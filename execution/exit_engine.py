@@ -1,5 +1,6 @@
 """
-execution/exit_engine.py  v4.33
+execution/exit_engine.py  v4.34
+v4.34 2026-10-03  OTV4TEST r230 (PREM.5) — ORCS LEGS TAKE THE CONDOR'S EXITS, VERBATIM. The operator, 2026-10-03 21:21 ET: "On rolling/defending the ORCS, adopt the condor logic verbatim." _evaluate_condor_leg no longer returns early for an ORCS leg: the stop is suppressed while its other side is open, a LONE leg stops at credit + 15% of risk, the nickel closes it, the final-form floor applies after a roll. r204's 'held to the close and nothing else' is superseded.
 v4.33 2026-10-03  OTV4TEST r221 (UTIL.1) — _find_1m_fvgs calls utils.math_utils.find_fvgs (its own copy of the loop is gone; same
       gaps, same order). The runaway's vwap_recross event names its number honestly in the code (entry_vwap: a
       since-entry mean, NOT the session VWAP); the event label and the arithmetic are unchanged.
@@ -2472,11 +2473,8 @@ class ExitEngine:
             decision.exit_reason = _eod_label(record)          # r149: hard_close_resting_15:45_ET
             return decision
 
-        # r204 — ORCS IS HELD TO THE CLOSE AND NOTHING ELSE (PLAN_SPEC §41.1). No
-        # premium stop, no lone stop, no breach, no nickel: the 10-03 studies
-        # measured a stop at the short strike and it was worse in every cell.
-        if str(record.get("strategy") or "") == "OpeningRangeCreditSpread":
-            return decision
+        # r230 — ORCS legs are condor legs here, VERBATIM (the operator, 2026-10-03; PLAN_SPEC §41.11).
+        # r204's early return for them is gone.
 
         # ── TC.6 TREND CREDIT SPREAD — BREACH OR NICKEL, NOTHING ELSE ────
         # Operator's spec: "Exit should be breached (loss) or nickel close

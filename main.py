@@ -1,5 +1,6 @@
 """
-main.py  v4.87
+main.py  v4.88
+v4.88 2026-10-03  OTV4TEST r230 (PREM.5) — AN ORCS LEG IS BOOKED WITH THE CONDOR LEG'S STOP (credit x (1 + CONDOR_LONE_STOP_PCT)) and its alert states the condor's exits. The operator, 2026-10-03 21:21 ET: "On rolling/defending the ORCS, adopt the condor logic verbatim." Still its own strategy name, still paper only. _open_credit_legs / _open_credit_sides still leave ORCS out: they decide which OTHER entry may pair with an open leg (the sweep and the TCS, both retired), not how a pair is defended.
 v4.87 2026-10-03  OTV4TEST r222 (ORP.1) — THE OPENING RANGE HAS AN OFFICIAL PRINT, AND EVERYTHING REFERS TO IT. The operator,
       2026-10-03: "On a blind start, agree. Yes, make it the official print & refer everything to it."
       _verify_official_print(state) runs each tick once the range is established: when all five 1m bars
@@ -2816,7 +2817,7 @@ def _execute_condor_leg(signal: "OptionsSignal", state: BotState,
 
     net_credit   = signal.net_credit
     spread_width = abs(short_contract.strike - long_contract.strike)
-    # r204 — ORCS: its own name, no stop, PAPER ONLY until a live ruling.
+    # r204 — ORCS: its own name, PAPER ONLY until a live ruling. r230: the condor leg's stop and exits.
     _is_orcs = (getattr(signal, "strategy_name", "") == "OpeningRangeCreditSpread")
     if _is_orcs and not state.paper_trading:
         logger.warning("[orcs] LIVE entry REFUSED - ORCS is paper-only until the operator rules it live")
@@ -2968,7 +2969,7 @@ def _execute_condor_leg(signal: "OptionsSignal", state: BotState,
         # TO EXPIRY, UNMANAGED, and its only exits are a breach of the bound or
         # the 15:45 close. Writing a stop here is what made a $0.06 credit
         # closeable on one cent of widening.
-        stop_premium     = (0.0 if (_is_tcs or _is_orcs)
+        stop_premium     = (0.0 if _is_tcs                 # r230: an ORCS leg takes the condor leg's stop
                             else _sweep_stop_premium(fill_credit, spread_width, _stop_pct)
                             if _is_sweep
                             else fill_credit * (1 + _stop_pct)),
@@ -3094,7 +3095,6 @@ def _execute_condor_leg(signal: "OptionsSignal", state: BotState,
     # caught the last identity bug.
     _exit_desc = (f"exit=breach@{getattr(signal, 'underlying_stop', 0.0):.2f} or 15:45"
                   if _is_tcs else
-                  "held to the end-of-day close, no stop" if _is_orcs else
                   f"stop=${fill_credit * (1 + _stop_pct):.2f} ({_stop_pct:.0%}) | "
                   f"nickel=${CONDOR_NICKEL_CLOSE:.2f}")
     get_alert_manager()._send(

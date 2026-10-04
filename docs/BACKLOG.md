@@ -1,4 +1,4 @@
-# BACKLOG.md — OTV4TEST — v2.24
+# BACKLOG.md — OTV4TEST — v2.25
 
 **The fork's own backlog. Started BLANK on 2026-09-08 by the operator's ruling:**
 *"If you think we could benefit from a backlog it should start BLANK and be
@@ -339,6 +339,8 @@ isolated QQQ instance with the operator watching the plan ledger daily.
 ---
 
 ## PART 3 — CHANGELOG
+
+**v2.25 — 2026-10-03 — OTV4TEST r230 — PREM.5 (DONE): ORCS is defended by the condor logic verbatim, by ruling ('On rolling/defending the ORCS, adopt the condor logic verbatim'). Its four exemptions are removed; nothing new was written. PLAN_SPEC 41.11 states what changes: nickel close, a lone leg's stop (credit + 15% of risk) arming when its sibling closes, and a roll that needs 3.00 cumulative credit on a pair banking ~0.50. OWED ~10-30 with the ORCS review: how often each rung fired and what it did to the day.**
 
 **v2.24 — 2026-10-03 — OTV4TEST r229 — EM.2 (DONE): the expected move is the tastytrade platform's (60/30/10) for ORCS, the condor and readiness; the Hunt records it; THE BUTTERFLIES KEEP THEIR SESSION FORMULA by ruling ('Don't mess with the butterfly EV then') - it runs 3.0-3.4x the platform's. OWED MONDAY 10-05: compare em_platform / ORCS implied_move with the platform's own ± figure during the session. ORZ.1 (the 5m opening range as a reversal zone) is DROPPED by ruling the same evening: 'I don't think we have a workable thesis'.**
 

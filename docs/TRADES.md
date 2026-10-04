@@ -43,8 +43,9 @@ ever crosses" and the "15:45 hard close" wherever they appear below).
 (`HUNT_MAX_LOSS_PCT`, also used to pick its contract) and the exit engine HOLDS through it,
 logging "would-have-floored" (r209; corrected r227 - r226 wrote this line as if it stopped).
 Other single legs: **25%** (`MAX_LOSS_PCT`). Butterflies: **40%** of the debit
-(`BUTTERFLY_STOP_LOSS_PCT`; section 3's 15% is stale). ORCS: no stop - held to the 15:45
-close (PLAN_SPEC §41). Every other exit rule lives in `strategy/management.py` and
+(`BUTTERFLY_STOP_LOSS_PCT`; section 3's 15% is stale). ORCS: the condor's rules since r230
+(PLAN_SPEC §41.11) - no stop while both sides are open, a lone leg stops at credit + 15% of
+its risk, a nickel closes a leg. Every other exit rule lives in `strategy/management.py` and
 `execution/exit_engine.py`, not in a number that can be quoted here.
 
 **The day.** New entries stop while the day's net loss is at or past the daily catastrophic

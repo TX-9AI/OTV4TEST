@@ -1,5 +1,6 @@
 """
-strategy/orcs.py  v1.2
+strategy/orcs.py  v1.3
+v1.3  2026-10-03  OTV4TEST r230 (PREM.5) — EXITS ARE THE CONDOR'S, VERBATIM (the operator, 2026-10-03: "On rolling/defending the ORCS, adopt the condor logic verbatim."). This file still has no exit of its own; the 'held to the close, no stop' wording is superseded (PLAN_SPEC §41.11).
 v1.2  2026-10-03  OTV4TEST r211 (PLN.2) — ledger_open(sig): ORCS opens its plan_ledger row immediately before each order
       (it fires without take()), keeping the sibling side's row, so the fill links to the right plan.
 v1.1  2026-10-03  OTV4TEST r206 (PREM.3) — THE ENTRY LADDER GOVERNS THE ENTRY. The operator, 2026-10-03: "No, we have a
@@ -19,8 +20,8 @@ v1.0  2026-10-03  OTV4TEST r204 (PREM.2) — THE OPENING RANGE CREDIT SPREAD (OR
       THIS TICK into one credit-vertical signal priced AT THE LIMIT. It selects nothing itself.
       One spread per side per session: a side with an open ORCS leg, or a session that has already
       entered two, signals nothing (read from trades.db, fails closed).
-      EXITS: none of its own. The leg is held to the scheduled end-of-day close (exit_engine);
-      no premium stop, no stop at the short strike - both were measured and both made it worse.
+      EXITS: none of its own. Since r230 its legs are defended as condor legs (exit_engine
+      _evaluate_condor_leg, condor_roll) - PLAN_SPEC §41.11. (r204 held them to the close with no stop.)
       OFF unless config.ORCS_ENABLED (OT_ORCS=0 parks the trade; the plan still records).
 """
 from __future__ import annotations
@@ -103,6 +104,6 @@ class OpeningRangeCreditSpread:
         sig.contract = short
         sig.conviction = 1.0
         sig.condor_trigger_source = "orcs"
-        logger.info("[orcs] %s spread: short %g / long %g, mark credit %.2f, to the entry ladder - held to the close, no stop",
+        logger.info("[orcs] %s spread: short %g / long %g, mark credit %.2f, to the entry ladder - defended as a condor leg",
                     side, float(short.strike), float(long_c.strike), credit)
         return sig

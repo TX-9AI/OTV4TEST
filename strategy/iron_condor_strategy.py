@@ -1,5 +1,6 @@
 """
-strategy/iron_condor_strategy.py  v4.15
+strategy/iron_condor_strategy.py  v4.16
+v4.16  2026-10-03  OTV4TEST r230 (PREM.5) — manage() narrates ORCS legs like any credit vertical: The operator, 2026-10-03 21:21 ET: "On rolling/defending the ORCS, adopt the condor logic verbatim."
 v4.15  2026-10-03  OTV4TEST r229 (EM.2) — _expected_move_from_straddle returns the tastytrade platform's expected move (volatility_measures.expected_move_platform), 0.0 when it cannot be read; by the operator's ruling 2026-10-03. The condor has no entry of its own while both credit entries are retired.
 v4.14  2026-10-03  OTV4TEST r223 (EM.1) — _expected_move_from_straddle delegates to analysis.volatility_measures.straddle_nearest_marked (moved verbatim).
 v4.13 2026-10-03  OTV4TEST r204 (PREM.2) — manage() does not count ORCS legs: they are held to the close by spec and the
@@ -392,8 +393,7 @@ class IronCondorStrategy(BaseOptionsStrategy):
         # the first leg of a condor that may form, and its row must say so.
         from strategy.structure import is_credit_vertical as _is_cv
         legs = [r for r in pos_mgr.get_open_records()
-                if (r.get("is_condor_leg") or _is_cv(r))
-                and str(r.get("strategy") or "") != "OpeningRangeCreditSpread"]   # r204: ORCS is not managed here
+                if (r.get("is_condor_leg") or _is_cv(r))]            # r230: ORCS legs included, by ruling
         t.check("legs", len(legs), len(legs) == 2)
         # r166 — the condor's r66 vector (VRP, channel over EM, fork) lives
         # again: written here every tick a leg is open, phase "manage".

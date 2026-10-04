@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_orcs.py  v1.4
+tests/check_orcs.py  v1.5
+v1.5  2026-10-03  OTV4TEST r230 (PREM.5) — T3, T4, T5 INVERTED BY RULING: "On rolling/defending the ORCS, adopt the condor logic
+      verbatim." T3: the leg is booked with the condor leg's stop (credit x 1.15), not 0. T4: over a grid of premiums, lone and
+      hedged, an ORCS leg and the same leg named IronCondorStrategy get the SAME exit decision (stop when lone, hold when hedged,
+      nickel, EOD). T5: two ORCS legs reach the roll's tested-side read exactly as two condor legs do.
 v1.4  2026-10-03  OTV4TEST r229 (EM.2) — THE IMPLIED MOVE IS THE PLATFORM'S EXPECTED MOVE. O2's fixture is unchanged; worked by hand
       its 5.54 straddle is a 4.80 expected move (0.6 x 5.539 + 0.3 x 4.034 + 0.1 x 2.704), so the shorts are 745 (5.2 out; 746 is 4.2)
       and 756 (5.8 out; 755 is 4.8, under 4.804) - was 744 and 756.
@@ -355,9 +359,9 @@ def main():
             main.get_risk_manager, main.get_alert_manager, main.entries_open, main._post_credit_vertical = saved
         rows = TLM._trade_logger.get_open_trades()
         r = rows[0] if rows else {}
-        check("T3 live is REFUSED; paper books OpeningRangeCreditSpread 753/756 at paper_fill_credit(mark) with stop 0",
+        check("T3 live is REFUSED; paper books OpeningRangeCreditSpread 753/756 at paper_fill_credit(mark) with the condor leg's stop (credit x 1.15)",
               live_rows == 0 and not posted and len(rows) == 1 and r.get("strategy") == "OpeningRangeCreditSpread"
-              and float(r.get("entry_premium") or 0) == _pfc(mark_call) == mark_call and float(r.get("stop_premium") or 0) == 0.0
+              and float(r.get("entry_premium") or 0) == _pfc(mark_call) == mark_call and abs(float(r.get("stop_premium") or 0) - mark_call * (1 + float(__import__('config').CONDOR_LONE_STOP_PCT))) < 1e-6
               and float(r.get("short_strike") or 0) == 753.0 and float(r.get("long_strike") or 0) == 756.0
               and r.get("option_side") == "call",
               f"live rows {live_rows}, broker path reached {len(posted)}, paper rows {len(rows)}, {dict((k, r.get(k)) for k in ('strategy', 'entry_premium', 'stop_premium', 'short_strike'))}")
@@ -376,11 +380,18 @@ def main():
                                is_condor_leg=1, paper_trade=1, status="open", underlying_stop=0.0)
         sv = (XE.is_hard_close_time, eng._condor_sibling_open)
         XE.is_hard_close_time = lambda: False
-        eng._condor_sibling_open = lambda record, default=False: False
+        diffs, seen = [], {}
         try:
-            held = eng._evaluate_condor_leg(leg("OpeningRangeCreditSpread"), 2.00)
-            nick = eng._evaluate_condor_leg(leg("OpeningRangeCreditSpread"), 0.01)
-            ctrl = eng._evaluate_condor_leg(leg("IronCondorStrategy"), 2.00)
+            for hedged in (False, True):
+                eng._condor_sibling_open = lambda record, default=False, _h=hedged: _h
+                for prem in (0.01, 0.05, 0.10, 0.20, 0.50, 1.36, 1.38, 2.00, 7.90):
+                    a = eng._evaluate_condor_leg(leg("OpeningRangeCreditSpread"), prem)
+                    b = eng._evaluate_condor_leg(leg("IronCondorStrategy"), prem)
+                    ra = (a.should_exit, str(a.exit_reason or "").split(" ")[0])
+                    rb = (b.should_exit, str(b.exit_reason or "").split(" ")[0])
+                    seen[(hedged, prem)] = ra
+                    if ra != rb:
+                        diffs.append((hedged, prem, ra, rb))
             XE.is_hard_close_time = lambda: True
             sv2 = XE.eod_close_due
             XE.eod_close_due = lambda *a, **k: True
@@ -390,10 +401,14 @@ def main():
                 XE.eod_close_due = sv2
         finally:
             XE.is_hard_close_time, eng._condor_sibling_open = sv
-        check("T4 ORCS at ten times its credit HOLDS (no stop) and at a penny HOLDS (no nickel); the condor control stops; EOD closes it",
-              held.should_exit is False and nick.should_exit is False and ctrl.should_exit is True
+        # the leg: credit 0.20 on an 8-wide spread -> lone stop at 0.20 + 0.15 x 7.80 = 1.37
+        check("T4 an ORCS leg gets the condor leg's decision at every premium, lone and hedged: lone stops at 1.37, hedged holds, the nickel closes, EOD closes",
+              not diffs and seen[(False, 1.36)][0] is False and seen[(False, 1.38)] == (True, "condor_stop")
+              and seen[(True, 7.90)][0] is False and seen[(True, 0.05)] == (True, "nickel_close")
+              and seen[(False, 0.01)] == (True, "nickel_close") and seen[(False, 0.20)][0] is False
               and eod.should_exit is True and "hard_close" in str(eod.exit_reason),
-              f"orcs {held.should_exit}/{nick.should_exit}, control {ctrl.should_exit} ({ctrl.exit_reason}), eod {eod.should_exit} ({eod.exit_reason})")
+              f"differs {diffs[:3]}; lone 1.36 {seen.get((False, 1.36))} 1.38 {seen.get((False, 1.38))}; hedged 7.90 {seen.get((True, 7.90))} "
+              f"nickel {seen.get((True, 0.05))}; eod {eod.should_exit} ({eod.exit_reason})")
     except Exception as exc:                                  # noqa: BLE001
         check("T4 (did not run)", False, f"{type(exc).__name__}: {exc}")
 
@@ -421,8 +436,8 @@ def main():
             n_ctrl = seen.pop("n", 0)
         finally:
             CR.classify_tested = sv
-        check("T5 two ORCS legs never reach the roll's tested-side read; two condor legs do (the control)",
-              r_orcs is False and n_orcs == 0 and n_ctrl == 2, f"orcs legs seen {n_orcs}, control {n_ctrl}")
+        check("T5 two ORCS legs reach the roll's tested-side read exactly as two condor legs do (the control)",
+              r_orcs is False and n_orcs == 2 and n_ctrl == 2, f"orcs legs seen {n_orcs}, control {n_ctrl}")
     except Exception as exc:                                  # noqa: BLE001
         check("T5 (did not run)", False, f"{type(exc).__name__}: {exc}")
 
@@ -463,7 +478,7 @@ def main():
     if FAILED:
         print(f"\nRED — {len(FAILED)} check(s): {FAILED}")
         return 1
-    print("\nGREEN — ORCS finds its strikes, the house entry prices it, it is held to the close; sweep and TCS retired")
+    print("\nGREEN — ORCS finds its strikes, the house entry prices it, it is defended as a condor; sweep and TCS retired")
     return 0
 
 

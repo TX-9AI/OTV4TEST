@@ -1,5 +1,7 @@
 # PLAN_SPEC.md — every strategy declares its intent BEFORE the trigger
 
+**v1.36 · 2026-10-03 · OTV4TEST r230 — PREM.5: ORCS is defended by the condor logic, verbatim (§41.11); 'held to the close, no stop' is superseded.**
+
 **v1.35 · 2026-10-03 · OTV4TEST r229 — EM.2: ORCS's implied move is the tastytrade platform's expected move (§41.10); the butterflies keep theirs by ruling.**
 
 **v1.34 · 2026-10-03 · OTV4TEST r207 — PREM.4: ORCS reshaped by ruling (§41.9): short delta 0.20, a 3-dollar wing, one implied move. Where §41.1-§41.7 say delta 0.15, 1.25 implied moves or a 1% wing, §41.9 governs.**
@@ -1590,3 +1592,16 @@ The 1%-of-spot wing was a constant of the study harness, never varied; with delt
 The operator, with a screenshot of the tastytrade chain (QQQ 749.53, "IVx: 12.1% (± 5.25)"): *"Which expected move? Use the one that's built into the tasty trade platform."* That number is **60% of the ATM straddle + 30% of the first out-of-the-money strangle + 10% of the second**, each leg at its mark (`analysis/volatility_measures.expected_move_platform`). All six legs must be quoted or there is no number, and with no number ORCS does not trade. The short strike's distance floor is still `ORCS_MIN_IM_MULT` (1.0) x this number; the delta cap is unchanged.
 **Measured before landing** (the feed's own quotes, 10-01 and 10-02, 09:45 / 10:00 / 10:29): the platform number was 0.87-0.91 of the straddle ORCS read before, so the floor sits 9-13% nearer spot. The straddle is still recorded on every row (`atm_straddle`).
 **The butterflies do NOT read it.** Their session formula ran 3.0-3.4x the platform's on the same two days (7.60 / 5.92 / 4.61 against 2.29 / 1.75 / 1.34 at 12:00 / 13:00 / 14:00 on 10-02): the same fractions on the platform's number would have refused every pin butterfly taken. Shown that, he ruled: *"Don't mess with the butterfly EV then"*. The condor and the log-only readiness engine read the platform number; the Hunt records it (`em_platform`).
+
+### 41.11 r230 — DEFENDED BY THE CONDOR LOGIC, VERBATIM (operator 2026-10-03; supersedes "held to the close, no stop" in §41.1, §41.7 and §41.9)
+The operator: *"On rolling/defending the ORCS, adopt the condor logic verbatim."* Nothing was written for ORCS: its four exemptions from the condor's code were removed, so an ORCS leg and a condor leg now get the same decision from the same lines (`exit_engine._evaluate_condor_leg`, `condor_roll`, `IronCondorStrategy.manage`, the booking in `main._execute_condor_leg`). What that logic is, as it runs:
+| state | what happens |
+|---|---|
+| both sides open | no premium stop on either leg (suppressed while the sibling is open). Neither short tested: hold |
+| a short is tested | the UNTESTED side is rolled toward price, but only if the roll makes the tested side risk-free: banked credit + the roll's net credit must reach the tested spread's width. Otherwise it holds; the management row says so |
+| after a roll | final form: no further roll; the floor (basis + 15%) is the exit |
+| one side only | a lone leg stops at credit + 15% of its risk (width - credit) |
+| either leg at a nickel | closed (0.05) |
+| the close | section 0 of TRADES: short-leg positions rest from 15:45, cross at 15:55 |
+**What this changes against §41.1, said plainly.** (1) A leg that decays to a nickel is closed, and from that moment the OTHER leg is lone and its stop is armed. On the r207 shape (a 3-dollar wing, about 0.25 credit) that stop is about 0.41 above the credit, roughly $125 a side at 3 contracts. (2) A risk-free roll needs cumulative credit of 3.00 on a pair that banks about 0.50, so on this shape the roll will rarely if ever clear; a tested pair with both sides open is held. (3) The 10-03 studies (X7-X10) measured hold-to-close with no stop; this is not that trade any more and those numbers do not describe it. The paper weeks to ~10-30 are the measurement.
+`_open_credit_legs` / `_open_credit_sides` still leave ORCS out: they decide which OTHER entry may pair with an open leg (the sweep and the TCS, both retired).
