@@ -6,6 +6,50 @@ authority and `tests/check_gates.py` enforces the categories mechanically.**
 
 ---
 
+## 0. AS RUNNING — the roster, the windows, the close (OTV4TEST r226, 2026-10-03)
+
+**This section is the current state and governs wherever a section below disagrees.**
+`tests/check_docs_roster.py` reads this table and fails the sweep if a window, a default
+or a number here stops matching `config.py`. Sections 1-6 below are the 2026-08-20 specs:
+the reasoning stands, several numbers and the windows do not. Each trade's full contract
+is its `docs/PLAN_SPEC.md` section.
+
+| trade | key | default | switch | entries (ET) | spec |
+|---|---|---|---|---|---|
+| Runaway | `RunawayContinuation` | ON | none (`OT_RUNAWAY_END` moves its end) | 09:35-10:30 | PLAN_SPEC §30 |
+| Breakout | `Breakout` | ON | none | 09:35-10:30 | `strategy/breakout_plan.py` header |
+| Liquidity hunt | `LiquidityHunt` | ON | none | 09:35-10:30 | PLAN_SPEC §37 |
+| ORCS | `OpeningRangeCreditSpread` | ON | `OT_ORCS` | 09:45-10:30 | PLAN_SPEC §41 |
+| GEX pin butterfly | `GEXPinButterfly` | ON | `OT_GEX_BUTTERFLY` | 12:00-15:00 | PLAN_SPEC §32 |
+| ATP butterfly | `ATPButterfly` | OFF | `OT_ATP_BUTTERFLY` | 12:00-15:00 | PLAN_SPEC §39 |
+| VOLT | `VOLT` | OFF | `OT_VOLT` | 09:35-10:30 | `strategy/volt_plan.py` header |
+| ORB break + retest | `ORBStrategy` | OFF | `OT_ORB_TRADE` | 09:35-15:40 | PLAN_SPEC §29 |
+| Sweep credit spread | `SweepCreditSpread` | OFF | `OT_SWEEP_CS` | 09:35-15:40 | PLAN_SPEC §31 |
+| Trend credit spread | `TrendCreditSpread` | OFF | `OT_TCS_ACTIVE` | 11:31-15:40 | PLAN_SPEC §34 |
+
+A window's end is exclusive: 10:30 means the last entry is 10:29. A switch is on only at
+the literal `1`. ORCS is PAPER ONLY (a live box refuses it). The ORB trade is retired but
+the opening-range ENGINE is not: Runaway, Breakout and the Hunt read it, and since r222 its
+range is checked against the official print. The condor is a management plan with no entry
+of its own; with both credit entries retired it has nothing to manage.
+
+**The close (`config.EOD_SCHEDULE`).** No new entry at or after **15:40**. Anything with
+a short leg rests a best-case close from **15:45**. Everything else walks the mark ladder
+from **15:50**. Whatever is still open CROSSES at **15:55** (r149 - this supersedes "nothing
+ever crosses" and the "15:45 hard close" wherever they appear below).
+
+**The stops that are one number in `config.py`.** Runaway: a **20%** premium floor
+(`RUNAWAY_MAX_LOSS_PCT`). Hunt: the same number unless `OT_HUNT_MAX_LOSS_PCT` is set.
+Other single legs: **25%** (`MAX_LOSS_PCT`). Butterflies: **40%** of the debit
+(`BUTTERFLY_STOP_LOSS_PCT`; section 3's 15% is stale). ORCS: no stop - held to the 15:45
+close (PLAN_SPEC §41). Every other exit rule lives in `strategy/management.py` and
+`execution/exit_engine.py`, not in a number that can be quoted here.
+
+**The day.** New entries stop while the day's net loss is at or past the daily catastrophic
+loss cap (`OT_DAILY_LOSS_LIMIT`), and it re-arms if the day recovers (r162).
+
+---
+
 ## How to read this
 
 Each spec declares its gates in three categories (WA §36):

@@ -1,5 +1,7 @@
 # FORK BRIEF — implement PLAN_SPEC §10 on an isolated instance
 
+> 🔴 **SUPERSEDED SNAPSHOT (marked 2026-10-03, OTV4TEST r226).** Kept for the record it is; it does not describe this fork as it runs. Current state: `docs/TRADES.md` §0 (roster), `docs/BACKLOG.md` (work), `docs/GENESIS-TEST.md` (ledger).
+
 **For:** Fable
 **From:** the 2026-09-08 session, options_trader_v4 @ `ac3f1d8` (r321)
 **Status of every claim here:** read from the repo at that revision, or quoted

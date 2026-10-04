@@ -33,29 +33,8 @@ THEN START THE ALERT WATCH (r171, AGT.1/AGT.2) — arm a Monitor on `python3 too
 - **LOSS**: read the tape (the 1m/5m bars around the loss, the levels, the trade), then within a couple of minutes record ONE verdict — `python3 tools/agent_verdict.py --trade <id> --event <id> --forbid long|short|both|none --until "<what resolves it>" --note "<your read>"`. My words: *"wire it as observe and comment only ... just put down whether you would forbid long entries, short entries, or both. That way we can timestamp your decision with whatever followed on the tape to see if it would've helped."* The bot never reads it. Record a verdict even when the answer is `none` — the misses count as much as the hits.
 - **WATCH-ERROR**: the watcher itself is failing — say so; silence from it is not green.
 
-🔴 **THE PROBE BELOW RUNS ONLY ON A TRADING DAY, BETWEEN 15:30 AND 16:00 ET, WITH NO OPEN
-POSITIONS** (the operator's ruling, 2026-09-25: *"Don't run it unless we have no open positions
-on a Trading day between 1530 and 1600."* — it opens its own streamer, and on 2026-09-22 he ruled
-*"I don't want that probe interfering with trading behavior."*). ⚠️ OTV4TEST r100 already answered
-most of it from the server's own FEED_CONFIG replies (BACKLOG FEED.3): the probe CONFIRMS, it is
-not the first measurement. Inside that window: RUN `venv/bin/python tools/probe_aux_streams.py`
-AND TELL ME THE ANSWER.
-I need to know whether the dxFeed `Underlying` event is CARRIED ON OUR PLAN for QQQ.
-`underlying_series` has **0 rows** and it is the one stream that publishes
-`front_volatility`, `back_volatility` and `put_call_ratio` — term structure and flow
-skew straight from the vendor, which is what an expected-move model for strike
-selection should be built on. r113 already narrowed it to two candidates and the probe
-decides between them: **(a)** wrong symbol space — the aux events subscribe to the
-plain ticker while Greeks/Quote subscribe to the CHAIN's streamer symbols, and a
-subscription to a symbol with no publisher is accepted and then silent forever; **(b)**
-not carried — Trade/TimeAndSale/Summary are exchange prints and populate, while
-Underlying/TheoPrice are dxFeed-COMPUTED analytics a plan may not include. ⚠️ **THEY
-MAY HAVE DIFFERENT ANSWERS AND r113 LUMPED THEM:** (a) is a strong explanation for
-TheoPrice, which is a PER-CONTRACT analytic pointed at a ticker — but it cannot explain
-`Underlying`, whose correct symbol space IS the plain ticker. Report them separately.
-⚠️ The probe writes no tables, touches no service and holds no locks — but r118 reverted
-a subscription change that cost SPX its per-contract feed, so **PROBE ONLY; change no
-subscription without telling me first.** This is blocking STRK.1 and the late-day work.
+THE AUX-STREAM QUESTION IS ANSWERED (OTV4TEST r100, BACKLOG FEED.3): the server's own FEED_CONFIG replies DECLINED the dxFeed `Underlying` event in both symbol spaces (so it is not carried on our plan); `TheoPrice` IS carried, per option contract only, and is subscribed nowhere.
+`tools/probe_aux_streams.py` is the confirmation of that and has NOT been run. My rulings on it stand if it is ever run: a trading day, 15:30-16:00 ET, no open positions; PROBE ONLY - change no subscription without telling me first.
 
 Then start with the WORKING AGREEMENT, then review the past week's changes to GENESIS, then VERIFY if the WRITE MAP is current/accurate. Next VERIFY if the FILE MAP is current/accurate. Our task is to make radical changes to the OTV4 that are not possible to do on an active fleet of 15 trading servers to optimize our strategies and P&L by identifying and employing edge, and using data analysis to propose novel predictive adaptations to capture market moves.
 

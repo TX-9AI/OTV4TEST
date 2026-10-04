@@ -1,4 +1,8 @@
-# docs/PORT_STATE.md  v4.3  — where the project actually stands
+# docs/PORT_STATE.md  v4.4  — where the project actually stands
+
+> 🔴 **SUPERSEDED SNAPSHOT (marked 2026-10-03, OTV4TEST r226).** Kept for the record it is; it does not describe this fork as it runs. Current state: `docs/TRADES.md` §0 (roster), `docs/BACKLOG.md` (work), `docs/GENESIS-TEST.md` (ledger).
+
+**v4.4 — 2026-10-03 — OTV4TEST r226 — bannered as a superseded snapshot; nothing below was changed.**
 
 **Updated 2026-08-25. HEAD is r73. The fleet is 15 boxes, live and stopped
 between sessions.**

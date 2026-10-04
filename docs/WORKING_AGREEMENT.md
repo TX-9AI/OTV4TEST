@@ -1,6 +1,6 @@
 # WORKING_AGREEMENT.md — how we operate (read this first, every new thread)
 
-**`WORKING_AGREEMENT.md` v4.23 · 2026-09-26 — §0 through §40, plus §15a, §18a, §36a, §38.9 and §40.1. See the CHANGELOG at the foot.**
+**`WORKING_AGREEMENT.md` v4.24 · 2026-10-03 — §0 through §40, plus §15a, §18a, §36a, §38.9 and §40.1. See the CHANGELOG at the foot.**
 
 > 🔴 **§0 IS THE FLOOR — AN ATTESTATION, NOT A TIP. Read it first, every thread.**
 > The operator ordered it once before and was told it existed. It did not.
@@ -247,7 +247,12 @@ layer** vs. a direct prompt. Nested quotes collide with that wrapping.
   the box now has **two timers, both by ruling** — `optbot-midnight-halt.timer`
   (00:00 ET, r21, BOX.2: the backstop in case it is left up) and
   `optbot-retention-purge.timer` (**nightly 16:05 ET**, r53; originally Saturday
-  08:30 ET at r27, BOX.4/BOX.7). It still has no
+  08:30 ET at r27, BOX.4/BOX.7).
+  🔑 **RE-MEASURED 2026-10-03 (OTV4TEST r226), same command: THREE timers and two
+  boot services.** The third timer is `optbot-emergency-watchdog.timer` (r168,
+  EXP.1: page and close at 15:50, positions only); the boot services are
+  `optbot-boot-sweep` (the full checker sweep) and `optbot-claude-boot` (the
+  08:00 session). It still has no
   `ot-eod`, `candle-logger`, `eod-bot`, `self-close` or shadow units, and `s3-push`
   stays masked. The box is started at **08:00 ET daily by an AWS EventBridge
   schedule that lives outside this repo** — a failed wake is invisible from here,
@@ -335,7 +340,7 @@ on this fork; `OBSERVATIONS.md` was never here) and let it stack.
 THE FORK BOX CANNOT REACH IT.** QQQ-TEST is segregated from `day_trader_pro` by
 design (r1), so every number and label below is unreachable from here and citing
 one to the operator while he is on this box is the §3 trap wearing a menu. **On
-this box the menu is `./devtools.sh` in the repo root (v3.5 as of r67; v3.0 at
+this box the menu is `./devtools.sh` in the repo root (read its header for the version; v3.5 at r67, v3.0 at
 r17 — §24: a doctrine line pinned to a version string rots on the next bump)** — SENSORS,
 DEBUG / LOGS, the R SUITE, GIT & LAND and CLAUDE CODE, all running locally
 against this box's own stores. The rule below still holds in its general form:
@@ -918,7 +923,7 @@ afterwards. ~~Pruning is disabled specifically so it accumulates.~~
 MAINLINE r162**, which armed `warehouse/retention_purge.py`. The purge exists to
 keep disk available and removes only rows past its windows — the minimum the
 tenors' ramps need (1m candles ~~5 days~~ **60 days since OTV4TEST r108** — the level
-book judges breaches on 1m as far back as it builds levels on 1h — 5m 10, 15m 20,
+book judges breaches on 1m as far back as it builds levels on 1h — 5m ~~10~~ **30**, 15m ~~20~~ **30** (r175),
 1h 60, daily never) — and
 `trades` and every ledger are `NEVER_PURGE`. On the fleet it rides `self_close`
 after an S3 drain; on this box it runs from its own **nightly 16:05 ET** timer
@@ -1041,6 +1046,9 @@ Added 2026-08-19, operator's instruction.
                      notifications/ utils/ warehouse/ shadow/ deploy/
                      main.py config.py + install scripts
     CONTROL ONLY     tests/ — every harness, probe and replay tool
+
+🔴 **`shadow/` NO LONGER EXISTS IN THIS FORK (deleted OTV4TEST r125; corrected here r226).** The two
+mentions in this section describe the fleet layout it was written for.
 
 🔴 **SCOPE, ADDED 2026-09-14 (OTV4TEST r28): NOT THIS BOX.** QQQ-TEST is its own
 control (§3): `tests/` is checked out here (`core.sparseCheckout` is unset,
@@ -1622,7 +1630,11 @@ not hold surfaces at the worst moment: *after* the work and *after* the approval
   assumed three timers that never existed here. As of r27 the box has exactly
   two, both ruled — the midnight halt (BOX.2) and the **nightly 16:05 ET**
   purge (BOX.4, moved off Saturday by r53) —
-  and §3 lists them as measured.
+  and §3 lists them as measured (three since r168: the 15:50 watchdog).
+  🔑 **AMENDED 2026-10-03 (r226): ONE THING NOW DOES WATCH WHILE A SESSION IS UP** —
+  the alert watch (r171, AGT.1: `tools/agent_watch.py --follow`, re-armed every
+  30 minutes by the session). It ends when the session ends; "does not run
+  continuously" still holds for everything else and for every hour no session is up.
 - **REPORT OUTCOMES FAITHFULLY.** BUILT, PUSHED and BAKED are three claims and
   are never merged (§18). **A check that could not run is reported as NOT RUN,
   never as passed.** Reds are shown, not tidied away (§0.5).
@@ -1881,6 +1893,8 @@ joins the table above.
 ---
 
 ## CHANGELOG
+
+**v4.24 — 2026-10-03 — OTV4TEST r226 — FIVE STALE FACTS CORRECTED (audit D5).** §3: three timers and two boot services, re-measured (the 15:50 watchdog, r168). §33: 5m/15m candle retention is 30/30 days (r175), not 10/20. §19: the menu's version is read from its header, not quoted here. §34: `shadow/` was deleted at r125. §38.7: the alert watch (r171) runs while a session is up. No rule changes.
 
 **v4.23 — 2026-09-26 — OTV4TEST r154 — §38.9 CITES otv4 r450 BACK.** otv4 WA §38.11 now cites
 §38.9 and adopted two of its four additions (hash-verified transfer; checksum only stores no

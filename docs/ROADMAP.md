@@ -1,4 +1,8 @@
-# docs/ROADMAP.md — v4.0 — options_trader v4
+# docs/ROADMAP.md — v4.1 — options_trader v4
+
+> 🔴 **SUPERSEDED SNAPSHOT (marked 2026-10-03, OTV4TEST r226).** Kept for the record it is; it does not describe this fork as it runs. Current state: `docs/TRADES.md` §0 (roster), `docs/BACKLOG.md` (work), `docs/GENESIS-TEST.md` (ledger).
+
+**v4.1 — 2026-10-03 — OTV4TEST r226 — bannered as a superseded snapshot; nothing below was changed.**
 
 **Opened 2026-08-19. This is the governing plan.**
 

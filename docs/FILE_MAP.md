@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-405 Python modules across 12 local packages.
+406 Python modules across 12 local packages.
 
-**Reached by:** 123 imported · 23 declared entry points · 176 referenced from a script, unit or doc but never imported · **83 by nothing here**.
+**Reached by:** 123 imported · 23 declared entry points · 177 referenced from a script, unit or doc but never imported · **83 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -40,7 +40,7 @@ isolated rather than being everywhere at once.
 - `analysis/market_state.py` - the structural state assembly.
   **Carries the vocabulary, classifies nothing.**
 
-**Where the evidence lives:** `tests/` holds 226 standing
+**Where the evidence lives:** `tests/` holds 227 standing
 checks (`check_*.py`, all run by `tools/boot_sweep.py` at boot)
 plus the studies that produced every threshold in
 `docs/TRADES.md`. **A number in a strategy file should be
@@ -501,7 +501,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/butterfly_plan.py`
 - **calls:** (none)
-- **called by:** (not imported) — referenced in `BACKLOG.md`, `docs/BACKLOG.md`, `docs/PLAN_SPEC.md`
+- **called by:** (not imported) — referenced in `BACKLOG.md`, `README.md`, `docs/BACKLOG.md`, `docs/PLAN_SPEC.md`
 
 ### `tests/cascade_harness.py`
 - **calls:** (none)
@@ -734,6 +734,10 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tests/check_dispatch.py`
 - **calls:** `strategy/gex_pin_butterfly.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/PORT_STATE.md`
+
+### `tests/check_docs_roster.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/TRADES.md`
 
 ### `tests/check_drift_verdict.py`
 - **calls:** (none)
