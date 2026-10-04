@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-403 Python modules across 12 local packages.
+404 Python modules across 12 local packages.
 
-**Reached by:** 123 imported · 23 declared entry points · 174 referenced from a script, unit or doc but never imported · **83 by nothing here**.
+**Reached by:** 123 imported · 23 declared entry points · 175 referenced from a script, unit or doc but never imported · **83 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -40,7 +40,7 @@ isolated rather than being everywhere at once.
 - `analysis/market_state.py` - the structural state assembly.
   **Carries the vocabulary, classifies nothing.**
 
-**Where the evidence lives:** `tests/` holds 224 standing
+**Where the evidence lives:** `tests/` holds 225 standing
 checks (`check_*.py`, all run by `tools/boot_sweep.py` at boot)
 plus the studies that produced every threshold in
 `docs/TRADES.md`. **A number in a strategy file should be
@@ -60,9 +60,9 @@ Change these with the most care; a break here reaches everything downstream.
 | `data/derived_store.py` | 33 | anchors.py, breakout_plan.py, check_bfly_vwap_band.py, check_derived_layer.py |
 | `execution/exit_engine.py` | 28 | check_breakout_exit_line.py, check_condor_mgmt.py, check_condor_sibling_default.py, check_condor_spec.py |
 | `derived/__init__.py` | 27 | atp_butterfly_plan.py, check_anchors.py, check_atp_butterfly.py, check_atp_pin_floor.py |
+| `execution/__init__.py` | 24 | check_admission_wired.py, check_atp_pin_floor.py, check_breakout_exit_line.py, check_cap_fly_exempt.py |
 | `execution/position_manager.py` | 24 | check_admission.py, check_admission_wired.py, check_atp_pin_floor.py, check_breakout.py |
 | `utils/math_utils.py` | 24 | atp_butterfly_plan.py, check_expected_move_home.py, check_fvg_one_finder.py, check_low_price_symbols.py |
-| `execution/__init__.py` | 23 | check_admission_wired.py, check_atp_pin_floor.py, check_breakout_exit_line.py, check_cap_fly_exempt.py |
 | `strategy/base_strategy.py` | 23 | atp_butterfly.py, breakout_plan.py, check_credit_remainder.py, check_entry_gate.py |
 
 ## Every module
@@ -301,7 +301,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `execution/__init__.py`
 - **calls:** (none)
-- **called by:** `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `main.py`, `tests/check_admission_wired.py`, `tests/check_atp_pin_floor.py`, `tests/check_breakout_exit_line.py`, `tests/check_cap_fly_exempt.py`, `tests/check_credit_remainder.py`, `tests/check_db_handles.py`, `tests/check_eod_schedule.py`, `tests/check_exit_quote.py`, `tests/check_expiry_settlement.py`, `tests/check_fill_basis.py`, `tests/check_ladder_wired.py`, `tests/check_liquidity_hunt.py`, `tests/check_no_zero_price.py`, `tests/check_offer_fill_price.py`, `tests/check_orb_geometry_size.py`, `tests/check_orb_sequence.py`, `tests/check_standing_offer.py`, `tests/check_sweep_stop.py`, `tests/check_vix_stamp.py`
+- **called by:** `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `main.py`, `tests/check_admission_wired.py`, `tests/check_atp_pin_floor.py`, `tests/check_breakout_exit_line.py`, `tests/check_cap_fly_exempt.py`, `tests/check_credit_remainder.py`, `tests/check_db_handles.py`, `tests/check_eod_schedule.py`, `tests/check_exit_quote.py`, `tests/check_expiry_settlement.py`, `tests/check_fill_basis.py`, `tests/check_fly_mark_cap.py`, `tests/check_ladder_wired.py`, `tests/check_liquidity_hunt.py`, `tests/check_no_zero_price.py`, `tests/check_offer_fill_price.py`, `tests/check_orb_geometry_size.py`, `tests/check_orb_sequence.py`, `tests/check_standing_offer.py`, `tests/check_sweep_stop.py`, `tests/check_vix_stamp.py`
 
 ### `execution/broker_reconcile.py`
 - **calls:** `config.py`, `utils/time_utils.py`
@@ -313,11 +313,11 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `execution/entry_engine.py`
 - **calls:** `analysis/orb_engine.py`, `analysis/tape_at_level.py`, `config.py`, `data/tasty_client.py`, `database/trade_logger.py`, `execution/__init__.py`, `execution/ladder_registry.py`, `execution/limit_ladder.py`, `execution/order_confirm.py`, `execution/resting_orders.py`, `notifications/alert_manager.py`, `risk/risk_manager.py`, `strategy/base_strategy.py`, `utils/time_utils.py`
-- **called by:** `main.py`, `tests/check_credit_remainder.py`, `tests/check_entry_gate.py`, `tests/check_ladder_wired.py`, `tests/check_option_symbol.py`, `tests/check_orb_geometry_size.py`, `tests/check_standing_offer.py`, `tests/check_vix_stamp.py`
+- **called by:** `main.py`, `tests/check_credit_remainder.py`, `tests/check_entry_gate.py`, `tests/check_fly_mark_cap.py`, `tests/check_ladder_wired.py`, `tests/check_option_symbol.py`, `tests/check_orb_geometry_size.py`, `tests/check_standing_offer.py`, `tests/check_vix_stamp.py`
 
 ### `execution/entry_ladder.py`
 - **calls:** `execution/tick_size.py`, `utils/math_utils.py`
-- **called by:** `execution/ladder_registry.py`, `strategy/condor_roll.py`, `tests/check_credit_remainder.py`, `tests/check_fill_basis.py`, `tests/check_no_zero_price.py`, `tests/stress_entry_path.py`
+- **called by:** `execution/ladder_registry.py`, `strategy/condor_roll.py`, `tests/check_credit_remainder.py`, `tests/check_fill_basis.py`, `tests/check_fly_mark_cap.py`, `tests/check_no_zero_price.py`, `tests/stress_entry_path.py`
 
 ### `execution/exit_engine.py`
 - **calls:** `analysis/trend_strength.py`, `config.py`, `data/derived_store.py`, `data/tasty_client.py`, `database/trade_logger.py`, `derived/__init__.py`, `derived/level_rules.py`, `execution/__init__.py`, `execution/broker_reconcile.py`, `execution/handoff.py`, `execution/ladder_registry.py`, `execution/limit_ladder.py`, `notifications/alert_manager.py`, `strategy/structure.py`, `utils/math_utils.py`, `utils/time_utils.py`
@@ -329,7 +329,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `execution/ladder_registry.py`
 - **calls:** `execution/entry_ladder.py`
-- **called by:** `execution/entry_engine.py`, `execution/exit_engine.py`, `main.py`, `tests/check_credit_remainder.py`, `tests/check_fill_basis.py`, `tests/check_ladder_wired.py`, `tests/check_no_zero_price.py`, `tests/check_sweep_stop.py`
+- **called by:** `execution/entry_engine.py`, `execution/exit_engine.py`, `main.py`, `tests/check_credit_remainder.py`, `tests/check_fill_basis.py`, `tests/check_fly_mark_cap.py`, `tests/check_ladder_wired.py`, `tests/check_no_zero_price.py`, `tests/check_sweep_stop.py`
 
 ### `execution/limit_ladder.py`
 - **calls:** `config.py`, `execution/tick_size.py`
@@ -825,6 +825,10 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_fill_basis.py`
 - **calls:** `config.py`, `execution/__init__.py`, `execution/entry_ladder.py`, `execution/ladder_registry.py`, `main.py`, `strategy/credit_vertical.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
+### `tests/check_fly_mark_cap.py`
+- **calls:** `execution/__init__.py`, `execution/entry_engine.py`, `execution/entry_ladder.py`, `execution/ladder_registry.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_fork_closed_bars.py`

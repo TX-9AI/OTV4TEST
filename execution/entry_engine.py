@@ -1,5 +1,13 @@
 """
-execution/entry_engine.py  v4.12
+execution/entry_engine.py  v4.13
+v4.13 2026-10-03  OTV4TEST r224 (FLY.1) — A BUTTERFLY ENTRY NEVER POSTS ABOVE ITS MARK. The operator, 2026-10-03: "They should still
+      not exceed mark on ladder entries, even no bid quotes" and "We won't accept a disadvantaged entry just
+      because there is low interest". Two live paths could: (1) the retry was posted at mid + LIMIT_IMPROVE_TICKS
+      (one cent over, by design since v3.7); (2) the walk is priced on the structure's quote with its bid
+      floored at zero, so when the true structure bid is negative (wide legs, no-bid wings) the ladder's own
+      midpoint sits above the true mark. Now every attempt is capped at the mark (net_debit, floored to the
+      cent), the retry re-posts at the cap, and a mark under one cent posts nothing. Paper is unchanged (it
+      books the mark). Single-leg entries were measured: the ladder never passes the mark, bid or no bid.
 v4.12 2026-10-03  OTV4TEST r210 (AUD.9) — the paper standing offer records the price it filled at (resting_orders.fill_price
       was 0 on every row: 16 of 16). One call beside close_out; nothing else moves.
 v4.11 2026-10-03  OTV4TEST r208 (CAP.4) — after log_entry the record is handed to risk_manager.note_entry_risk: one
@@ -506,6 +514,16 @@ class EntryEngine:
         except (TypeError, ValueError):
             return (0.0, 0.0)
 
+    @staticmethod
+    def _mark_cap(mark) -> Optional[float]:
+        """r224 (FLY.1) — the most a BUY may post: the mark, floored to the cent. None when
+        even one cent would exceed it (no valid price at or under the mark exists)."""
+        try:
+            cap = int(float(mark) * 100.0 + 1e-9) / 100.0
+        except (TypeError, ValueError):
+            return None
+        return cap if cap >= 0.01 else None
+
     def _walk_price(self, key: str, side: str, bid: float, ask: float,
                     symbol: str, mark_fallback: float) -> Tuple[float, str]:
         """The price to post THIS attempt, and why. Falls back to the mark when
@@ -793,7 +811,7 @@ class EntryEngine:
           price demanded a CREDIT to open a debit fly and could never fill);
         - each attempt is confirmed via a bounded poll, not an instant
           status peek;
-        - attempt 2 (mid improved by LIMIT_IMPROVE_TICKS) is placed ONLY
+        - attempt 2 (r224: RE-POSTED AT THE MARK, never above it - it was mid + LIMIT_IMPROVE_TICKS) is placed ONLY
           after attempt 1 is confirmed DEAD with ZERO fills. A partial fill
           on attempt 1 is booked as the position (no re-place — that would
           risk overfilling). An uncancellable order stops the ladder, pages,
@@ -824,6 +842,12 @@ class EntryEngine:
             _fly_key = _lr_bf.intent_key(
                 getattr(signal.center_contract, "symbol", "fly"),
                 "open", "butterfly")
+            # r224 (FLY.1) — THE CAP: the mark, floored to the cent. No attempt posts above it.
+            _cap = self._mark_cap(mid)
+            if _cap is None:
+                logger.info("[ladder] BUTTERFLY not posted: mark %.4f is under one cent - "
+                            "any valid limit would exceed it", float(mid or 0.0))
+                return None, "", 0
             for attempt in range(2):
                 if attempt == 0 and _fly_ask > 0:
                     limit_price, _bwhy = self._walk_price(
@@ -833,7 +857,10 @@ class EntryEngine:
                                 "%.2f / %.2f, mark %.2f)", limit_price, _bwhy,
                                 _fly_bid, _fly_ask, mid)
                 else:
-                    limit_price = round(mid + attempt * LIMIT_IMPROVE_TICKS * 0.01, 2)
+                    limit_price = _cap                 # r224: the retry RE-POSTS at the mark; it was mid + a tick
+                if limit_price > _cap:
+                    logger.info("[ladder] BUTTERFLY capped at the mark: %.2f -> %.2f", limit_price, _cap)
+                    limit_price = _cap                 # r224: never above the mark, whatever the walk said
                 legs = [
                     Leg(instrument_type=InstrumentType.EQUITY_OPTION,
                         symbol=signal.lower_contract.symbol,
@@ -874,7 +901,7 @@ class EntryEngine:
                     return None, "", 0
                 logger.info(f"Butterfly attempt {attempt+1} confirmed dead "
                             f"unfilled ({fill.detail})"
-                            + (" — improving 1 tick and retrying" if attempt == 0
+                            + (" — re-posting at the mark" if attempt == 0
                                else " — giving up"))
             return None, "", 0
 
