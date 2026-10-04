@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-401 Python modules across 12 local packages.
+402 Python modules across 12 local packages.
 
-**Reached by:** 123 imported · 23 declared entry points · 173 referenced from a script, unit or doc but never imported · **82 by nothing here**.
+**Reached by:** 123 imported · 23 declared entry points · 174 referenced from a script, unit or doc but never imported · **82 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -40,7 +40,7 @@ isolated rather than being everywhere at once.
 - `analysis/market_state.py` - the structural state assembly.
   **Carries the vocabulary, classifies nothing.**
 
-**Where the evidence lives:** `tests/` holds 222 standing
+**Where the evidence lives:** `tests/` holds 223 standing
 checks (`check_*.py`, all run by `tools/boot_sweep.py` at boot)
 plus the studies that produced every threshold in
 `docs/TRADES.md`. **A number in a strategy file should be
@@ -105,7 +105,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `analysis/orb_engine.py`
 - **calls:** `analysis/signal_journal.py`, `config.py`, `utils/math_utils.py`, `utils/time_utils.py`
-- **called by:** `execution/entry_engine.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `main.py`, `strategy/base_strategy.py`, `strategy/orb_plan.py`, `strategy/orb_strategy.py`, `tests/check_orb_one_order.py`, `tests/check_orb_plan.py`, `tests/check_orb_rearm_zone.py`, `tests/check_orb_reentry.py`, `tests/check_orb_restart.py`, `tests/check_orb_resume.py`, `tests/check_orb_sequence.py`, `tests/check_plan_signal.py`, `tests/check_runaway_plan.py`, `tests/check_standing_offer.py`, `tests/check_strike_ladder.py`, `tests/check_trade_switches.py`
+- **called by:** `execution/entry_engine.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `main.py`, `strategy/base_strategy.py`, `strategy/orb_plan.py`, `strategy/orb_strategy.py`, `tests/check_official_print.py`, `tests/check_orb_one_order.py`, `tests/check_orb_plan.py`, `tests/check_orb_rearm_zone.py`, `tests/check_orb_reentry.py`, `tests/check_orb_restart.py`, `tests/check_orb_resume.py`, `tests/check_orb_sequence.py`, `tests/check_plan_signal.py`, `tests/check_runaway_plan.py`, `tests/check_standing_offer.py`, `tests/check_strike_ladder.py`, `tests/check_trade_switches.py`
 
 ### `analysis/order_flow.py`
 - **calls:** (none)
@@ -353,7 +353,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `main.py`
 - **calls:** `analysis/__init__.py`, `analysis/chain_snapshot.py`, `analysis/condor_trigger_map.py`, `analysis/entry_snapshot.py`, `analysis/gap_measure.py`, `analysis/gate_report.py`, `analysis/market_state.py`, `analysis/orb_engine.py`, `analysis/pitchfork.py`, `analysis/pitchfork_observer.py`, `analysis/signal_journal.py`, `analysis/structure_analyzer.py`, `analysis/trade_readiness.py`, `analysis/trend_engine.py`, `analysis/volatility_engine.py`, `analysis/volatility_measures.py`, `config.py`, `data/__init__.py`, `data/candle_feed.py`, `data/data_cache.py`, `data/derived_store.py`, `data/disk_watch.py`, `data/gex_data.py`, `data/macro_data.py`, `data/market_data.py`, `data/options_chain.py`, `data/tasty_client.py`, `database/trade_logger.py`, `derived/__init__.py`, `derived/anchors.py`, `derived/base.py`, `derived/registry.py`, `execution/__init__.py`, `execution/broker_reconcile.py`, `execution/credit_remainder.py`, `execution/entry_engine.py`, `execution/handoff.py`, `execution/ladder_registry.py`, `execution/limit_ladder.py`, `execution/order_confirm.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `notifications/alert_manager.py`, `notifications/telegram_sender.py`, `risk/risk_manager.py`, `risk/session_guard.py`, `strategy/__init__.py`, `strategy/atp_butterfly.py`, `strategy/base_strategy.py`, `strategy/breakout.py`, `strategy/condor_roll.py`, `strategy/criteria.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/liquidity_hunt.py`, `strategy/management.py`, `strategy/orb_strategy.py`, `strategy/orcs.py`, `strategy/plan.py`, `strategy/runaway_continuation.py`, `strategy/sweep_credit_spread.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `strategy/trend_credit_spread.py`, `strategy/volt_strategy.py`, `utils/__init__.py`, `utils/blindness_latch.py`, `utils/mem_trace.py`, `utils/shutdown_cause.py`, `utils/time_utils.py`
-- **called by:** `tests/check_admission_wired.py`, `tests/check_atm_iv_stored.py`, `tests/check_atp_butterfly.py`, `tests/check_cap_fly_exempt.py`, `tests/check_chain_ordering.py`, `tests/check_credit_remainder.py`, `tests/check_emergency_watchdog.py`, `tests/check_entry_underwater.py`, `tests/check_expiry_settlement.py`, `tests/check_fill_basis.py`, `tests/check_noise_floor_open.py`, `tests/check_orcs.py`, `tests/check_pin_proximity.py`, `tests/check_recorder_keys.py`, `tests/check_rehearsal_toggle.py`, `tests/check_scaling_toggle.py`, `tests/check_signal_numeric_tail.py`, `tests/check_sweep_stop.py`, `tests/check_vix_stamp.py`, `tests/check_volt_sizing.py`, `tests/stress_entry_path.py`
+- **called by:** `tests/check_admission_wired.py`, `tests/check_atm_iv_stored.py`, `tests/check_atp_butterfly.py`, `tests/check_cap_fly_exempt.py`, `tests/check_chain_ordering.py`, `tests/check_credit_remainder.py`, `tests/check_emergency_watchdog.py`, `tests/check_entry_underwater.py`, `tests/check_expiry_settlement.py`, `tests/check_fill_basis.py`, `tests/check_noise_floor_open.py`, `tests/check_official_print.py`, `tests/check_orcs.py`, `tests/check_pin_proximity.py`, `tests/check_recorder_keys.py`, `tests/check_rehearsal_toggle.py`, `tests/check_scaling_toggle.py`, `tests/check_signal_numeric_tail.py`, `tests/check_sweep_stop.py`, `tests/check_vix_stamp.py`, `tests/check_volt_sizing.py`, `tests/stress_entry_path.py`
 
 ### `notifications/__init__.py`
 - **calls:** (none)
@@ -1029,6 +1029,10 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_offer_fill_price.py`
 - **calls:** `execution/__init__.py`, `execution/resting_orders.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
+### `tests/check_official_print.py`
+- **calls:** `analysis/orb_engine.py`, `main.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_oi_retry.py`

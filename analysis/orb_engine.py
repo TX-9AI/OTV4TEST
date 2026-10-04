@@ -1,5 +1,11 @@
 """
-analysis/orb_engine.py  v4.16
+analysis/orb_engine.py  v4.17
+v4.17  2026-10-03  OTV4TEST r222 (ORP.1) — correct_range(): THE OFFICIAL PRINT CAN REPLACE A RANGE FROZEN FROM AN INCOMPLETE OPEN.
+      On 2026-09-29 the feed was blind at the open and the range was frozen from a partial candle (low
+      739.62; the backfilled bars say 737.67), and nothing ever re-read it. The operator, 2026-10-03: "On a
+      blind start, agree. Yes, make it the official print & refer everything to it." correct_range replaces
+      the range ONLY while the sequence has not started (WAITING_FOR_BREAK and neither break latch set);
+      once a break is on the books the geometry is frozen (PLAN_SPEC 27) and it refuses, saying why.
 v4.16  2026-10-02  OTV4TEST r185 (LADR.1) — THE ORB CARRIES THE RAW 100% TARGET AS ITS
       `target_strike`; THE CHAIN SNAP PICKS THE CONTRACT. It was
       orb_strike_selection(..., STRIKE_INCREMENT): pre-rounded on one table
@@ -701,6 +707,29 @@ class ORBEngine:
             f"ORB re-armed for next attempt (#{attempt + 1}) in state "
             f"{self._data.state}: range {orb_low:.2f}-{orb_high:.2f}"
         )
+
+    def correct_range(self, high: float, low: float, source: str = "") -> tuple:
+        """r222 (ORP.1) — replace the range with the OFFICIAL PRINT. -> (corrected, why).
+
+        Only before the sequence starts: state WAITING_FOR_BREAK and no break latched.
+        After that the geometry is frozen by rule (one confirmation, one order; the
+        range a break was judged against is the range the trade stands on), so this
+        refuses and the caller records the difference instead."""
+        d = self._data
+        try:
+            high, low = float(high), float(low)
+        except (TypeError, ValueError):
+            return False, "unreadable print"
+        if not (high > low > 0):
+            return False, "degenerate print"
+        if d.state != ORBState.WAITING_FOR_BREAK or self._broke_high or self._broke_low:
+            return False, (f"the sequence has started (state {d.state}, broke_high={self._broke_high}, "
+                           f"broke_low={self._broke_low}) - the geometry is frozen")
+        old = (d.orb_high, d.orb_low)
+        d.orb_high, d.orb_low, d.orb_width = high, low, round(high - low, 4)
+        logger.warning("ORB range CORRECTED to the official print (%s): %.2f-%.2f -> %.2f-%.2f",
+                       source or "feed", old[1], old[0], low, high)
+        return True, "corrected"
 
     def _load_range_from_file(self):
         """Load the ORB range from orb_range.json — single source of truth.

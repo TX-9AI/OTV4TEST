@@ -1,5 +1,13 @@
 """
-main.py  v4.86
+main.py  v4.87
+v4.87 2026-10-03  OTV4TEST r222 (ORP.1) — THE OPENING RANGE HAS AN OFFICIAL PRINT, AND EVERYTHING REFERS TO IT. The operator,
+      2026-10-03: "On a blind start, agree. Yes, make it the official print & refer everything to it."
+      _verify_official_print(state) runs each tick once the range is established: when all five 1m bars
+      09:30-09:34 are on the feed it compares their high and low with the engine's range. Equal: verified,
+      said once. Different (2026-09-29: a blind open froze the low at 739.62; the bars say 737.67): the
+      engine is corrected and orb_range.json rewritten IF the sequence has not started; if a break is already
+      on the books it WARNS and changes nothing. _opening_range(ctx) returns the engine's range first and
+      recomputes from the tape only when the engine has none.
 v4.86 2026-10-03  OTV4TEST r213 (REC.1) — THE RECORDERS' MISSING INPUTS ARE PUBLISHED. derived/notes, derived/snapshot and the
       plan ledger read ten ctx keys that nothing ever set (the 10-03 audit, B12), so the note and fire-snapshot
       fields built from them were NULL on every row. _publish_recorder_keys(ctx), called right after
@@ -3294,8 +3302,87 @@ def _safe_strategy(name: str, fn, ctx=None):
         return None
 
 
+def _official_print(df_1m, today=None):
+    """r222 (ORP.1) — (high, low) of TODAY's five 1m bars 09:30-09:34, or None unless ALL FIVE are present.
+
+    The official opening-range print. A range read off fewer than five bars is exactly
+    the blind-open defect this exists to catch, so a partial set returns None."""
+    try:
+        if df_1m is None or getattr(df_1m, "empty", True):
+            return None
+        today = today or df_1m.index[-1].date()
+        h0, m0 = RTH_OPEN_ET
+        start = h0 * 60 + m0
+        rows = [i for i, t in enumerate(df_1m.index)
+                if t.date() == today and start <= (t.hour * 60 + t.minute) < start + 5]
+        if len({df_1m.index[i].minute for i in rows}) != 5:
+            return None
+        win = df_1m.iloc[rows]
+        hi, lo = float(win["high"].max()), float(win["low"].min())
+        return (hi, lo) if hi > lo > 0 else None
+    except Exception as exc:                                   # noqa: BLE001
+        logger.debug("official print unavailable: %s", exc)
+        return None
+
+
+def _verify_official_print(state, df_1m=None) -> str:
+    """r222 (ORP.1) — check the engine's range against the official print, once it can be read.
+
+    Returns what it did: '' (nothing yet / already settled today), 'verified', 'corrected',
+    'differs-frozen' or 'unverifiable'. Never raises."""
+    try:
+        _now = now_et()
+        _day = _now.strftime("%Y-%m-%d")
+        if getattr(state, "_orb_print_day", "") == _day:
+            return ""
+        if not getattr(state, "orb_range_established_today", False) or (_now.hour, _now.minute) < (9, 36):
+            return ""
+        if df_1m is None:
+            from data.market_data import fetch_candles as _fc
+            df_1m = _fc(INSTRUMENT, "1m", 400)
+        pr = _official_print(df_1m, _now.date())
+        eng = get_orb_engine()
+        d = eng.data
+        if pr is None:
+            if (_now.hour, _now.minute) >= (10, 30):
+                state._orb_print_day = _day
+                logger.warning("[orb-print] the five opening 1m bars never all arrived - the range %.2f-%.2f "
+                               "is UNVERIFIED today", d.orb_low, d.orb_high)
+                return "unverifiable"
+            return ""
+        hi, lo = pr
+        if abs(hi - d.orb_high) < 0.005 and abs(lo - d.orb_low) < 0.005:
+            state._orb_print_day = _day
+            logger.info("[orb-print] verified: the range %.2f-%.2f is the official print (five 1m bars)", lo, hi)
+            return "verified"
+        _old = (d.orb_low, d.orb_high)
+        ok, why = eng.correct_range(hi, lo, source="five 1m bars 09:30-09:34")
+        state._orb_print_day = _day
+        if ok:
+            try:
+                import json as _json
+                from analysis import orb_engine as _oe
+                _payload = _json.dumps({"status": "ESTABLISHED", "date": _day, "high": round(hi, 4), "low": round(lo, 4),
+                               "width": round(hi - lo, 4), "fetched_at": _now.strftime("%Y-%m-%d %H:%M:%S ET"),
+                               "symbol": INSTRUMENT, "source": "official print (five 1m bars), r222"}, indent=2)
+                with open(_oe.ORB_RANGE_FILE, "w") as _f:      # serialised FIRST: a failed dump must not leave an empty file
+                    _f.write(_payload)
+            except Exception as _wexc:                         # noqa: BLE001
+                logger.warning("[orb-print] corrected in the engine but orb_range.json was not rewritten: %s", _wexc)
+            logger.warning("[orb-print] UNUSUAL: the frozen range %.2f-%.2f did not match the official print "
+                           "%.2f-%.2f (a blind or partial open) - CORRECTED before any break", _old[0], _old[1], lo, hi)
+            return "corrected"
+        logger.warning("[orb-print] UNUSUAL: the frozen range %.2f-%.2f does not match the official print %.2f-%.2f "
+                       "and was NOT corrected: %s", _old[0], _old[1], lo, hi, why)
+        return "differs-frozen"
+    except Exception as exc:                                   # noqa: BLE001
+        logger.warning("[orb-print] check failed - the range is unverified this tick: %s", exc)
+        return ""
+
+
 def _opening_range(ctx: dict):
-    """(orb_high, orb_low) recomputed FROM THE TAPE, or (None, None).
+    """(orb_high, orb_low): THE ENGINE'S RANGE FIRST (r222 - the official print), else recomputed
+    FROM THE TAPE, or (None, None).
 
     ⚠️ TCS.3 (2026-08-17) — THE 1m-ONLY VERSION WAS STRUCTURALLY DEAD, and the
     fleet proved it live. v6.7 read `ctx["df_1m"]`, which the cache caps at 60
@@ -3325,6 +3412,12 @@ def _opening_range(ctx: dict):
     v6.7's reasons for NOT reading the ORB engine all stand — restart-proof,
     available past the cutoff, one definition. Only the frame was wrong.
     """
+    try:                                                       # r222: everything refers to the official print
+        _oh, _ol = ctx.get("orb_high"), ctx.get("orb_low")
+        if _oh and _ol and float(_oh) > float(_ol) > 0:
+            return float(_oh), float(_ol)
+    except Exception:                                          # noqa: BLE001
+        pass
     try:
         h0, m0 = RTH_OPEN_ET
         start = h0 * 60 + m0
@@ -5383,6 +5476,8 @@ def handle_session_reset(state: BotState):
             # we keep polling across IN_PROGRESS/EXPIRED instead of locking in a
             # carried-over range for the session.
             state.orb_range_established_today = _fetch_orb_range()
+
+    _verify_official_print(state)          # r222 (ORP.1): the official print, once all five bars are in
 
 
 def _vertical_close_due() -> bool:
