@@ -1,5 +1,6 @@
 """
-execution/position_manager.py  v5.13
+execution/position_manager.py  v5.14
+v5.14 2026-10-04  OTV4TEST r246 (LIVE.1 F4, MIRROR OF otv4 r468 f0fd443, WA 38.2) — THE LIVE MARK FALLBACK WORKS: _get_option_mark called session.get, which tastytrade 13.x does not have, so it always raised and the bare except returned None; now get_market_data(EQUITY_OPTION) via sdk_result, mid-else-mark-else-last kept, None outside (0, 1e6), a WARNING once per symbol. The live no-chain fallback dispatches by STRUCTURE: a tent is None, a credit vertical is short minus long (both required - never the short leg's full mark, which would trip a premium stop), butterfly and single unchanged. Code hunks applied verbatim; _get_option_mark getsource identical to f0fd443 (67b546bb); _fetch_current_premium differs ONLY by this tree's r195 comment labels and r209 _delta_readable lines, read and confirmed.
 v5.13 2026-10-03  OTV4TEST r209 (EXIT.4) — (1) the management intent's declared pricing is stamped on the record with its
       reason (`_exit_pricing`), and cleared on every tick the plan does not close, so exit_engine prices the
       close from the declaration. (2) A DELTA THAT CANNOT BE READ IS SAID: when the single-leg quote is
@@ -236,7 +237,7 @@ from strategy.structure import (is_credit_vertical as _is_credit_vertical,
                                 is_tent as _is_tent,
                                 has_assignment_risk as _has_assignment_risk)   # r149
 from execution.exit_engine import get_exit_engine, ExitDecision
-from data.tasty_client import get_client, TastyClientError
+from data.tasty_client import get_client, TastyClientError, sdk_result
 from risk.risk_manager import get_risk_manager
 from notifications.alert_manager import get_alert_manager
 import config
@@ -1125,6 +1126,18 @@ class PositionManager:
 
         client = get_client()
         try:
+            # r468 / F4 — dispatch like the chain path above: a leg we cannot
+            # see is not a price, and a vertical is never priced as one leg.
+            if _is_tent(record):
+                logger.warning(f"{str(record.get('trade_id', ''))[:8]}: no chain - "
+                               f"a tent is not priced by the quote fallback")
+                return None
+            if _is_credit_vertical(record):
+                short_m = self._get_option_mark(client, record.get("short_symbol") or "")
+                long_m  = self._get_option_mark(client, record.get("long_symbol") or "")
+                if short_m is None or long_m is None:
+                    return None
+                return short_m - long_m           # current spread value (credit basis)
             if is_butterfly:
                 lower_sym  = record.get("lower_symbol",  "")
                 center_sym = record.get("center_symbol", "")
@@ -1145,18 +1158,32 @@ class PositionManager:
             logger.error(f"Premium fetch error: {e}")
             return None
 
+    _mark_fail_warned: set = set()
+
     def _get_option_mark(self, client, symbol: str) -> Optional[float]:
+        """r468 / F4 — one option's mark from the REST market-data endpoint, for a
+        LIVE box with no chain in hand. `client` is the Session. The SDK call is a
+        coroutine on 13.x, so it goes through sdk_result (B0)."""
         if not symbol:
             return None
         try:
-            data  = client.get(f"/market-data/quotes/{symbol}")
-            quote = data.get("data", {})
-            bid   = float(quote.get("bid", 0) or 0)
-            ask   = float(quote.get("ask", 0) or 0)
+            from tastytrade.market_data import get_market_data
+            from tastytrade.order import InstrumentType
+            md  = sdk_result(get_market_data(client, symbol, InstrumentType.EQUITY_OPTION))
+            bid = float(getattr(md, "bid", 0) or 0)
+            ask = float(getattr(md, "ask", 0) or 0)
             if bid > 0 and ask > 0:
-                return (bid + ask) / 2
-            return float(quote.get("mark", 0) or quote.get("last", 0) or 0) or None
-        except Exception:
+                v = (bid + ask) / 2
+            else:
+                v = float(getattr(md, "mark", 0) or getattr(md, "last", 0) or 0)
+            # AUDIT F9's ceiling, as the chain path applies it: a finite-absurd
+            # print must not close a live position.
+            return v if 0 < v < 1e6 else None
+        except Exception as exc:                               # noqa: BLE001
+            if symbol not in self._mark_fail_warned:
+                self._mark_fail_warned.add(symbol)
+                logger.warning(f"live mark fallback failed for {symbol!r}: "
+                               f"{type(exc).__name__}: {exc}")
             return None
 
     def _execute_exit(self, record: TradeRecord,
