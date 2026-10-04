@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
-tests/check_level_tape.py  v2.1
+tests/check_level_tape.py  v2.2
 THE LEVEL BOOK IS BUILT FROM THE HOURLY TAPE, AND ITS BREACHES ARE JUDGED ON 1m.
 
+v2.2  2026-10-04  OTV4TEST r237 (SEED.2) — T2b: THE SAME TEST FOR 5m AND 15m. T2 judged only 1h, so when seed v1.0 wrote
+      1,297 mid-bar 5m and 380 mid-bar 15m bars into SPX-TEST's store (mainline's raw/candles carries every 5m/15m/1h bar
+      as its first ~30 s), only 8 hourly bars showed. A 5m/15m bar is judged when its own minutes are ALL present (5 / 15),
+      and must be at least as wide as them. Measured on QQQ-TEST's store before landing: 2,397 5m and 1,024 15m judged, 0 narrower.
 v2.1  2026-10-03  OTV4TEST r232 — SYMBOL AGNOSTIC: T7 and T2 read the BOX's instrument (the bot unit, then OT_INSTRUMENT) instead of
       a literal 'QQQ' - red on SPX-TEST for that reason alone (its agent found it). The boot sweep sets OT_INSTRUMENT=QQQ
       for fixtures, so the unit is read first: this check reads the box's REAL feed store.
@@ -59,6 +63,7 @@ hour exclusively"*.
 
 WHAT IS PINNED (v2.0):
   T2   an hourly bar's high/low IS the extreme of its hour — no PARTIAL bars
+  T2b  r237: the same for 5m and 15m against their own minutes
   T7   reach — the book sees more than 30 days back on the hourly tape
   T8   1m retention >= 1h retention, so a breach can be judged on 1m for
        every level the hourly tape builds (r108)
@@ -145,7 +150,24 @@ def main():
     # an hour the 1m tape only partly covers cannot judge the hourly bar
     judged = [r for r in rows if r[6] >= 30]
     bad = [r for r in judged if r[2] < r[4] - 0.02 or r[3] > r[5] + 0.02]
+    # T2b (r237) — 5m and 15m against their own minutes, judged only when every minute is present
+    bad_b, judged_b = {}, {}
+    for iv, span, need in (("5m", 300_000, 5), ("15m", 900_000, 15)):
+        got = con.execute(
+            "SELECT c.ts_epoch_ms, c.high, c.low, m.mh, m.ml FROM candles c"
+            " JOIN (SELECT symbol, (ts_epoch_ms/?)*? h, MAX(high) mh, MIN(low) ml, COUNT(*) n FROM candles"
+            "       WHERE symbol IN (?, ?) AND interval='1m' GROUP BY symbol, h) m"
+            "   ON m.symbol=c.symbol AND m.h=c.ts_epoch_ms"
+            " WHERE c.symbol IN (?, ?) AND c.interval=? AND m.n >= ?",
+            (span, span, SYM, SYM + "_EXT", SYM, SYM + "_EXT", iv, need)).fetchall()
+        judged_b[iv] = len(got)
+        bad_b[iv] = [g for g in got if g[1] < g[3] - 0.02 or g[2] > g[4] + 0.02]
     con.close()
+    check("T2b every 5m and 15m bar is at least as wide as its own minutes — no PARTIAL bars",
+          all(judged_b.values()) and not any(bad_b.values()),
+          "; ".join(f"{iv}: {judged_b[iv]} judged, {len(bad_b[iv])} narrower"
+                    + (f" e.g. {bad_b[iv][0][0]} {bad_b[iv][0][1]:.2f}/{bad_b[iv][0][2]:.2f} vs "
+                       f"{bad_b[iv][0][3]:.2f}/{bad_b[iv][0][4]:.2f}" if bad_b[iv] else "") for iv in judged_b))
     check("T2 every hourly bar is at least as wide as its own hour of 1m — no PARTIAL bars",
           judged and not bad,
           f"{len(judged)} bars judged, {len(bad)} narrower than the minute truth"

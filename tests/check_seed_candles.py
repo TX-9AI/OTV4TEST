@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_seed_candles.py  v1.0
+tests/check_seed_candles.py  v1.1
+v1.1  2026-10-04  OTV4TEST r237 (SEED.2) — C11/C12: partial bars and unreadable push times are refused. Born red on
+      seed v1.0, which wrote 4,407 mid-bar warehouse bars into SPX-TEST's feed store.
 v1.0  2026-10-04  OTV4TEST r233 (SEED.1) — the gate for tools/seed_candles_from_warehouse.py.
       No network: a fake bucket (warehouse_source's own _FakeS3) and a scratch feed store built by the
       REAL data/candle_feed.FeedStore, so the schema is the feed's and not a belief about it (WA §0.4).
@@ -14,6 +16,9 @@ v1.0  2026-10-04  OTV4TEST r233 (SEED.1) — the gate for tools/seed_candles_fro
   C8  a bar pushed twice: the LATER envelope's values are the ones written
   C9  the poison window is the feed's own (imported from data/candle_feed at runtime)
   C10 a missing store is refused (rc 2) and feed_meta is never touched
+  C11 r237: a bar whose winning push came BEFORE its end is refused as "partial" (the mid-bar 5m bar mainline
+      ships); a push exactly AT the bar's end is accepted
+  C12 r237: a bar with an unreadable push time is refused ("no_push_time") - fail closed
 Run: python3 tests/check_seed_candles.py      (OT_SEED_TOOL=<path> points it at another copy - the
      born-red runs use that)
 """
@@ -213,6 +218,19 @@ def main() -> int:
     ahead = cf._ts_ms_max() - int(time.time() * 1000)
     check("C9 the poison window is the feed's own", seed.TS_MS_MIN == cf.TS_MS_MIN
           and abs(ahead - seed.TS_MAX_AHEAD_MS) < 5_000, (seed.TS_MS_MIN, cf.TS_MS_MIN, ahead))
+
+    # C11 / C12 — r237: a bar pushed before it closed is "partial"; an unreadable push time fails closed
+    objs2 = {
+        f"{P}/sym=SPX/interval=5m/7-g.json": env([bar(t0 + 30 * M, 7720.0, "5m")], "2026-10-02T14:00:32+00:00"),
+        f"{P}/sym=SPX/interval=1m/8-h.json": env([bar(t0 + 40 * M, 7730.0)], "2026-10-02T14:11:00+00:00"),
+        f"{P}/sym=SPX/interval=1m/9-i.json": env([bar(t0 + 50 * M, 7740.0)], "not-a-time"),
+    }
+    rc, out = go("--date", D, "--db", db, s3=ws._FakeS3(objs2))
+    l5 = next((l for l in out.splitlines() if " 5m:" in l), "")
+    l1 = next((l for l in out.splitlines() if " 1m:" in l), "")
+    check("C11 a 5m bar pushed 32 s after it opened is refused as partial; a 1m bar pushed AT its end is kept",
+          rc == 0 and "partial 1" in l5 and "1 would insert" in l1.replace("would-insert", "would insert"), out[-500:])
+    check("C12 an unreadable push time is refused (no_push_time)", "no_push_time 1" in l1, l1)
 
     # C10
     rc, out = go("--date", D, "--db", os.path.join(d, "nope.db"))

@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
 """
-tools/seed_candles_from_warehouse.py  v1.0
+tools/seed_candles_from_warehouse.py  v1.1
+v1.1  2026-10-04  OTV4TEST r237 (SEED.2) — A BAR PUSHED BEFORE IT CLOSED IS REFUSED ("partial"). v1.0 kept the
+      latest push per bar and never asked whether that push came AFTER the bar's end. Mainline's pusher
+      ships the forming bar and never re-sends it (otv4 s3_push.push_candles advances its mark over the
+      newest row sent; 1-REPORTER confirmed in code, fix CNDL.1 staged there), so in raw/candles EVERY
+      5m/15m/1h bar is its first ~30 s and ~1 in 5 1m bars are too (measured QQQ 09-17/10-01, SPX 10-01).
+      v1.0 wrote 4,407 such bars into SPX-TEST's live feed store (found by SPX-TEST's agent; repaired on
+      the operator's yes). Now: the winning push's pushed_at_utc must be >= ts + the interval's length,
+      or the bar is rejected as "partial"; an interval with no known length, or a push time that cannot
+      be read, is rejected too (fail closed). Until mainline's history is fixed this seeds complete 1m
+      bars only - say so, never a pass. Gate: tests/check_seed_candles.py C11/C12, born red on v1.0.
 v1.0  2026-10-04  OTV4TEST r233 (SEED.1) — A NEW INSTRUMENT'S CANDLE HISTORY IS SEEDED FROM THE
       WAREHOUSE, ONLY ADDING ROWS. The operator, 2026-10-04, on SPX-TEST's first days: "Do we want him
       to backfill his feed?" SPX-TEST's feed store has 43 days of hourly SPX bars and NO 1m - the feed's
@@ -77,8 +87,19 @@ def _creds_resolve() -> bool:
         return False
 
 
-def _verdict(row: dict, cutoff_ms: int, max_ms: int):
-    """-> (ts, tuple) or (None, reason)."""
+INTERVAL_MS = {"1m": 60_000, "5m": 300_000, "15m": 900_000, "30m": 1_800_000, "1h": 3_600_000}
+
+
+def _push_ms(stamp: str):
+    from datetime import datetime
+    try:
+        return int(datetime.fromisoformat(str(stamp).replace("Z", "+00:00")).timestamp() * 1000)
+    except (TypeError, ValueError):
+        return None
+
+
+def _verdict(row: dict, cutoff_ms: int, max_ms: int, iv: str = None, stamp: str = None):
+    """-> (ts, tuple) or (None, reason). r237: a bar whose winning push precedes its end is "partial"."""
     try:
         ts = int(row["ts_epoch_ms"])
         o, h, l, c = (float(row[k]) for k in ("open", "high", "low", "close"))
@@ -91,6 +112,15 @@ def _verdict(row: dict, cutoff_ms: int, max_ms: int):
         return None, "nonpositive_price"
     if ts < cutoff_ms:
         return None, "beyond_retention"
+    if iv is not None:
+        span = INTERVAL_MS.get(iv)
+        if span is None:
+            return None, "unknown_interval"
+        pushed = _push_ms(stamp)
+        if pushed is None:
+            return None, "no_push_time"
+        if pushed < ts + span:
+            return None, "partial"
     return ts, (o, h, l, c, v)
 
 
@@ -208,7 +238,7 @@ def run(argv=None, s3=None, now_ms=None) -> int:
         cutoff = now_ms - RETENTION_DAYS[iv] * DAY_MS
         good, rejected = {}, {}
         for _k, (_s, r) in best[iv].items():
-            ts, val = _verdict(r, cutoff, max_ms)
+            ts, val = _verdict(r, cutoff, max_ms, iv, _s)
             if ts is None:
                 rejected[val] = rejected.get(val, 0) + 1
             else:
