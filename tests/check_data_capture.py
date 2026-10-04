@@ -1,4 +1,11 @@
-"""tests/check_data_capture.py — v1.4
+"""tests/check_data_capture.py — v1.5
+
+v1.5  2026-10-04 — OTV4TEST r233 (BOX.17). D6 now pins the box as ABLE to push (the probe overrides
+      the unit read and the drop-in path), because on a standalone box the clamp is meant to be off;
+      D6c: a masked s3-push or the never-push drop-in IGNORES a frozen push mark and names it; a
+      drop-in saying OT_S3_PUSH=1, or an unreadable unit, still clamps (keeps rows). D3b: standalone
+      writes the never-push drop-in and REPORTS a failed mask instead of hiding it; D3c: managed
+      removes the drop-in before it installs the pusher; D1b: status names the push guard.
 
 v1.4  2026-10-03 — OTV4TEST r228. D4 RE-POINTED (section 38.4): the ORB and VOLT scaling items
       left the menu, so Data capture is item 10 and Done 11. Properties unchanged.
@@ -147,7 +154,9 @@ def _run(mode, states, instrument_env=None, instrument_in_unit=None):
     script = os.path.join(repo, "deploy", "data_capture.sh")
     txt = open(script).read() if os.path.exists(script) else ""
     open(script, "w").write(txt.replace('UNIT_FILE="/etc/systemd/system/optionsbot.service"',
-                                        'UNIT_FILE="%s"' % unitfile))
+                                        'UNIT_FILE="%s"' % unitfile)
+                             .replace('NEVER_PUSH_CONF="/etc/systemd/system/s3-push.service.d/never-push.conf"',
+                                      'NEVER_PUSH_CONF="%s"' % dropin))
     env = {"PATH": stubs + ":/usr/bin:/bin", "HOME": os.path.dirname(repo)}
     if instrument_env:
         env["OT_INSTRUMENT"] = instrument_env
@@ -202,6 +211,30 @@ r5, log5, drop5 = _run("managed", STANDALONE_ST, instrument_env="SOFI", instrume
 guard("D2c shell and unit agree: proceeds, pushing as SOFI",
       lambda: r5.returncode == 0 and "OT_INSTRUMENT=SOFI" in drop5)
 
+r, _l, _d = _run("status", {**STANDALONE_ST, "s3-push.service": "masked"})
+guard("D1b status names the push guard: masked",
+      lambda: "push guard: masked" in r.stdout and "🔴" not in r.stdout, lambda: r.stdout[-200:])
+r, _l, _d = _run("status", STANDALONE_ST)
+guard("D1b standalone with NO guard (no mask, no drop-in) is flagged red, not just 'standalone'",
+      lambda: "push guard: NONE" in r.stdout and "🔴 standalone, but NOTHING stops" in r.stdout,
+      lambda: r.stdout[-240:])
+r, log, dro = _run("standalone", {**MANAGED_ST, "optbot-retention-purge.timer": "disabled",
+                                  "s3-push.service": "enabled"})
+guard("D3b standalone writes the never-push drop-in (OT_S3_PUSH=0)",
+      lambda: dro == "[Service]\nEnvironment=OT_S3_PUSH=0\n" and "sudo tee " in log,
+      lambda: repr(dro))
+guard("D3b a mask that did NOT take is SAID (state named), and the drop-in is named as the guard",
+      lambda: "could NOT be masked (state: enabled" in r.stdout and "never-push drop-in is the guard" in r.stdout
+      and "push guard: never-push drop-in (OT_S3_PUSH=0)" in r.stdout, lambda: r.stdout[-400:])
+r, log, dro = _run("standalone", {**MANAGED_ST, "optbot-retention-purge.timer": "disabled",
+                                  "s3-push.service": "masked"})
+guard("D3b a mask that took: no warning; the guard reads masked + drop-in",
+      lambda: "could NOT be masked" not in r.stdout
+      and "push guard: masked + never-push drop-in (OT_S3_PUSH=0)" in r.stdout, lambda: r.stdout[-300:])
+r, log, dro = _run("managed", STANDALONE_ST, instrument_env="SOFI")
+guard("D3c managed REMOVES the never-push drop-in before it unmasks and installs the pusher",
+      lambda: 0 <= log.find("sudo rm -f ") < log.find("unmask s3-push") < log.find("installer install_s3_push_timer.sh"),
+      lambda: log[-300:])
 r, log, _d = _run("standalone", {**MANAGED_ST, "optbot-retention-purge.timer": "disabled"})
 guard("D3 standalone: s3-push disabled and MASKED",
       lambda: "sudo systemctl disable --now s3-push.timer" in log
@@ -286,6 +319,8 @@ _PROBE = r'''
 import json, os, sys, time
 sys.path.insert(0, sys.argv[1])
 import warehouse.retention_purge as rp
+rp.NEVER_PUSH_DROPIN = os.path.join(os.environ["OT_WAREHOUSE_STATE"], "no-such-dropin.conf")
+rp._unit_state = lambda unit: "enabled"      # a box that CAN push: the clamp applies
 now = time.time(); DAY = 86400
 age = now - 3 * DAY
 out = {}
@@ -322,6 +357,53 @@ guard("D6 a push mark NEWER than the age cutoff changes nothing",
       lambda: _D6["newer_mark"] == [3.0, ""], lambda: str(_D6.get("newer_mark")))
 guard("D6 the ledger is read from OT_WAREHOUSE_STATE (the pusher's own state dir)",
       lambda: _D6["ledger_dir"] == _st)
+
+_PROBE_C = r'''
+import json, os, sys, time
+sys.path.insert(0, sys.argv[1])
+import warehouse.retention_purge as rp
+st = os.environ["OT_WAREHOUSE_STATE"]; now = time.time(); DAY = 86400; age = now - 3 * DAY
+json.dump({"series|quote_series": now - 7 * DAY}, open(rp.SERIES_LEDGER, "w"))
+out = {}
+def case(name, unit, dropin):
+    rp._NEVER = None
+    rp._unit_state = unit
+    rp.NEVER_PUSH_DROPIN = os.path.join(st, name + ".conf")
+    if dropin is not None:
+        open(rp.NEVER_PUSH_DROPIN, "w").write(dropin)
+    c, note = rp._safe_cutoff("quote_series", age, rp.SERIES_LEDGER, "series")
+    out[name] = [round((now - c) / DAY, 3), note]
+case("masked", lambda u: "masked", None)
+case("dropin", lambda u: "disabled", "[Service]\nEnvironment=OT_S3_PUSH=0\n")
+case("dropin_on", lambda u: "disabled", "[Service]\nEnvironment=OT_S3_PUSH=1\n")
+case("timer_off_only", lambda u: "disabled", None)
+case("unreadable", lambda u: "", None)
+print(json.dumps(out))
+'''
+
+
+def _d6c():
+    st = _mk("state_c_")
+    r = subprocess.run([sys.executable, "-c", _PROBE_C, _root], capture_output=True, text=True,
+                       env={**os.environ, "OT_WAREHOUSE_STATE": st}, timeout=60)
+    try:
+        return json.loads(r.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return {"err": r.stderr[-300:]}
+
+
+_D6C = _d6c()
+guard("D6c s3-push MASKED: a frozen push mark is IGNORED (age cutoff) and named",
+      lambda: _D6C["masked"][0] == 3.0 and "IGNORED" in _D6C["masked"][1] and "masked" in _D6C["masked"][1],
+      lambda: str(_D6C)[:300])
+guard("D6c the never-push drop-in (OT_S3_PUSH=0): the mark is IGNORED and named",
+      lambda: _D6C["dropin"][0] == 3.0 and "OT_S3_PUSH=0" in _D6C["dropin"][1], lambda: str(_D6C)[:300])
+guard("D6c a drop-in saying OT_S3_PUSH=1 still CLAMPS",
+      lambda: _D6C["dropin_on"][0] == 7.0 and _D6C["dropin_on"][1].startswith("CLAMPED"), lambda: str(_D6C)[:300])
+guard("D6c a merely DISABLED timer still CLAMPS (the conductor's quiesce is not 'never pushes')",
+      lambda: _D6C["timer_off_only"][0] == 7.0, lambda: str(_D6C)[:300])
+guard("D6c an unreadable unit state still CLAMPS (unknown keeps rows)",
+      lambda: _D6C["unreadable"][0] == 7.0, lambda: str(_D6C)[:300])
 
 
 def _d6b():

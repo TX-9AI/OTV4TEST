@@ -1,5 +1,17 @@
 #!/usr/bin/env bash
-# deploy/data_capture.sh  v1.1
+# deploy/data_capture.sh  v1.2
+#
+# v1.2  2026-10-04  OTV4TEST r233 (BOX.17, first half) — A FAILED MASK IS SAID, AND
+#       STANDALONE WRITES THE NEVER-PUSH DROP-IN. On SPX-TEST (2026-10-03) s3-push
+#       had been installed as real unit files, `systemctl mask` failed, the error
+#       went to /dev/null, and this script still printed "standalone". Now
+#       standalone ALSO writes s3-push.service.d/never-push.conf
+#       (Environment=OT_S3_PUSH=0 - s3_push.py exits before pushing), checks the
+#       mask afterwards and names a failed one; managed REMOVES the drop-in before
+#       it installs the pusher; status prints the push guard (masked / never-push
+#       drop-in / NONE) and a standalone box with NO guard is flagged red. The
+#       purge reads the same two facts (retention_purge v1.11). Gate:
+#       tests/check_data_capture.py D1b/D3b/D3c.
 #
 # v1.1  2026-09-25  OTV4TEST r138 — THE BOT UNIT'S INSTRUMENT WINS, AND A MISMATCH
 #       REFUSES. v1.0 preferred $OT_INSTRUMENT over the unit. On the first SOFI
@@ -48,6 +60,7 @@ set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODE="${1:-status}"
 UNIT_FILE="/etc/systemd/system/optionsbot.service"
+NEVER_PUSH_CONF="/etc/systemd/system/s3-push.service.d/never-push.conf"
 
 _state() {
     # is-enabled PRINTS "not-found" AND exits non-zero for a missing unit, so the
@@ -69,6 +82,11 @@ status() {
     echo "data capture: $mode"
     echo "  s3-push.timer=$s3  candle-logger.timer=$cl  optbot-self-close.timer=$sc  optbot-retention-purge.timer=$rp"
     [ "$mode" = "MIXED" ] && echo "  ⚠️ neither mode is fully in effect - run: bash deploy/data_capture.sh managed|standalone"
+    local g=""
+    [ "$(_state s3-push.service)" = "masked" ] && g="masked"
+    grep -qx 'Environment=OT_S3_PUSH=0' "$NEVER_PUSH_CONF" 2>/dev/null && g="${g:+$g + }never-push drop-in (OT_S3_PUSH=0)"
+    echo "  push guard: ${g:-NONE}"
+    [ "$mode" = "standalone" ] && [ -z "$g" ] && echo "  🔴 standalone, but NOTHING stops a manual s3-push start - run: bash deploy/data_capture.sh standalone"
     return 0
 }
 
@@ -97,6 +115,7 @@ managed() {
         echo "  installing python3-boto3 (s3-push and the conductor's --verify run under /usr/bin/python3)"
         sudo apt-get install -y -qq python3-boto3 >/dev/null || { echo "🔴 python3-boto3 install failed"; return 1; }
     fi
+    sudo rm -f "$NEVER_PUSH_CONF"
     sudo systemctl unmask s3-push.service s3-push.timer >/dev/null 2>&1 || true
     sudo mkdir -p /etc/systemd/system/s3-push.service.d
     printf '[Service]\nEnvironment=OT_INSTRUMENT=%s\n' "$sym" \
@@ -111,8 +130,12 @@ managed() {
 }
 
 standalone() {
+    local rc=0 st
     sudo systemctl disable --now s3-push.timer >/dev/null 2>&1 || true
     sudo systemctl mask s3-push.service s3-push.timer >/dev/null 2>&1 || true
+    sudo mkdir -p "$(dirname "$NEVER_PUSH_CONF")"
+    printf '[Service]\nEnvironment=OT_S3_PUSH=0\n' | sudo tee "$NEVER_PUSH_CONF" >/dev/null \
+        || { echo "🔴 could not write the never-push drop-in $NEVER_PUSH_CONF"; rc=1; }
     sudo systemctl disable --now candle-logger.timer optbot-self-close.timer >/dev/null 2>&1 || true
     if [ -f /etc/systemd/system/optbot-retention-purge.timer ]; then
         sudo systemctl enable --now optbot-retention-purge.timer >/dev/null 2>&1 || true
@@ -120,7 +143,13 @@ standalone() {
         bash "$DIR/deploy/install_retention_purge_timer.sh" || { echo "🔴 retention-purge install failed"; return 1; }
     fi
     sudo systemctl daemon-reload
+    st="$(_state s3-push.service)"
+    if [ "$st" != "masked" ] && [ "$st" != "not-found" ]; then
+        echo "  ⚠️ s3-push.service could NOT be masked (state: $st - installed as real unit files?);"
+        echo "     the never-push drop-in is the guard on this box."
+    fi
     echo "standalone: nothing is pushed; this box's own 16:05 purge is on."
+    return $rc
 }
 
 case "$MODE" in

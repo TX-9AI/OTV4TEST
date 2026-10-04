@@ -1,6 +1,6 @@
 # WORKING_AGREEMENT.md — how we operate (read this first, every new thread)
 
-**`WORKING_AGREEMENT.md` v4.24 · 2026-10-03 — §0 through §40, plus §15a, §18a, §36a, §38.9 and §40.1. See the CHANGELOG at the foot.**
+**`WORKING_AGREEMENT.md` v4.25 · 2026-10-04 — §0 through §40, plus §15a, §18a, §36a, §38.9 and §40.1. See the CHANGELOG at the foot.**
 
 > 🔴 **§0 IS THE FLOOR — AN ATTESTATION, NOT A TIP. Read it first, every thread.**
 > The operator ordered it once before and was told it existed. It did not.
@@ -1445,6 +1445,25 @@ with `^C` because it looked hung. A study that widens its date window says so
   ACK, and an unacked message by the next turn is reported to the operator as
   undelivered rather than assumed read.
 
+- 🔑 **QQQ-TEST IS THIS REPO'S ONE CONTROLLER, AND IT MAY WAKE AND STOP SPX-TEST
+  (added 2026-10-04, OTV4TEST r233, WAKE.1).** The operator: *"You're essentially the
+  controller for this repo like 1-REPORTER is for mainline. One controller for the
+  repo"*; *"I do want to assign you permission to wake SPX-TEST. This is for diagnostic
+  checks or git actions"*; and *"I want you to be able to stop it too."*
+  · **THE ONE PATH:** `python3 tools/wake_box.py SPX-TEST [--status | --stop]`, on an
+    inline policy (`qqq-test-wakes-spx-test`) on this box's role: Start/Stop on
+    SPX-TEST's ARN only, Describe on `*`. The tool refuses any other name, a second
+    match, and itself, and logs every run to `logs/wake_box.log`.
+  · **A STOP IN SESSION HOURS IS THE OPERATOR'S** - Mon-Fri 09:25-16:10 ET the tool
+    refuses unless `--during-session`, and that flag is passed ONLY on his word in the
+    thread (a mid-session stop cuts the bot off with positions open).
+  · **WHAT IT IS NOT:** a command channel. Waking a box does not run anything on it;
+    the work there is SPX-TEST's own agent's, asked through ListAgents/SendMessage,
+    inside ITS permissions (no laundering, as above). §3's segregation from control
+    and "no fleet fan-out" are untouched - this reaches one TEST box, by his grant.
+  · SPX-TEST is PULL-ONLY: every code fix it finds comes here to be ruled and landed
+    (docs/HANDOFF.md v2.1); its user settings deny `git push` and the lander.
+
 - 🔴 **A DEFECT BOTH TREES CARRY GETS THE IDENTICAL FIX IN BOTH (added
   2026-09-26, OTV4TEST r145).** The operator, relayed by the mainline agent on
   2026-09-25: *"If there's a change that affects both you take it, but have the
@@ -1893,6 +1912,8 @@ joins the table above.
 ---
 
 ## CHANGELOG
+
+**v4.25 — 2026-10-04 — OTV4TEST r233 — §38.2: QQQ-TEST IS THE REPO'S ONE CONTROLLER AND MAY WAKE AND STOP SPX-TEST (WAKE.1).** The operator's three rulings of 2026-10-04, quoted. One path (tools/wake_box.py); a session-hours stop needs his word; waking is not a command channel. No other rule changed.
 
 **v4.24 — 2026-10-03 — OTV4TEST r226 — FIVE STALE FACTS CORRECTED (audit D5).** §3: three timers and two boot services, re-measured (the 15:50 watchdog, r168). §33: 5m/15m candle retention is 30/30 days (r175), not 10/20. §19: the menu's version is read from its header, not quoted here. §34: `shadow/` was deleted at r125. §38.7: the alert watch (r171) runs while a session is up. No rule changes.
 

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/gen_file_map.py  v4.15
+tests/gen_file_map.py  v4.16
+v4.16 2026-10-04  OTV4TEST r233 — TWO NEW HAND-RUN TOOLS ARE ENTRY POINTS: tools/seed_candles_from_warehouse.py (SEED.1) and
+      tools/wake_box.py (WAKE.1). Both are run from a shell by design; undeclared they printed as orphans.
 v4.15 2026-10-03  OTV4TEST r216 (HYG.14) — THE LAST TWO ORPHANS ARE RULED. tools/segregate_nonrth_bars.py is declared an entry point: it is the
       08-20 repair tool for 24-hour bars landing in the RTH series, kept in case that recurs (the operator: "Sure, why not").
       execution/fill_model.py is DELETED by this delivery ("That's useless"). The map now reports no orphans.
@@ -184,6 +186,8 @@ ENTRY_POINTS = {
     "warehouse/counter_pop.py",    # fleet S3 counter repair CLI (WA 38.3 DELETE.1)
     "tools/manifold_status.py",    # r210 — the operator's hand-run feed check ("is the fire hose connected"); NOT dead (his correction, 2026-10-03)
     "tools/segregate_nonrth_bars.py",  # r216 — a hand-run REPAIR tool (moves overnight bars out of the RTH series); kept by ruling 2026-10-03
+    "tools/seed_candles_from_warehouse.py",  # r233 SEED.1 — the operator's yes to backfilling a new box's feed from the warehouse (2026-10-04)
+    "tools/wake_box.py",               # r233 WAKE.1 — QQQ-TEST wakes / stops SPX-TEST, by his grant (2026-10-04)
     # CLI helpers, run by hand or by a script
     "analysis/get_orb_range.py",
     "utils/check_sdk.py",

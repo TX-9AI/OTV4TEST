@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
 """
-warehouse/retention_purge.py  v1.10
+warehouse/retention_purge.py  v1.11
+v1.11 2026-10-04  OTV4TEST r233 (BOX.17, second half; the operator's yes 2026-10-04: "Make sure he has ... pruning
+      the retained SPX data") — A BOX THAT NEVER PUSHES IS NOT HELD TO ITS OLD PUSH MARKS. SPX-TEST pushed once
+      (2026-10-03, as the ex-AAL managed box) and was then made standalone: its ledgers in ~/.vertigo_warehouse
+      froze, and every series cutoff clamped to them, so the series tables would grow without bound once their
+      age passed the marks. The clamp now applies ONLY while the box can push. "Cannot push" is PROVEN, never
+      inferred from a timer: s3-push.service MASKED, or the never-push drop-in (s3-push.service.d/never-push.conf
+      carrying Environment=OT_S3_PUSH=0). A disabled timer is NOT enough (the conductor's quiesce disables it on a
+      managed box with rows still unshipped). Unreadable state = assume it pushes = clamp (keeps rows). A mark the
+      purge ignores is named in the log. Candles were never clamped and are unchanged. QQQ-TEST has no marks: no
+      change there. Gate: tests/check_data_capture.py D6/D6c.
 v1.10 2026-10-03  OTV4TEST r192 (AUD.3, MIRROR OF otv4 r420 / OPS.43) — THE RECLAIM NAMES THE REAL trades.db.
       It checkpointed and vacuumed HERE/data/trades.db; the trade record is HERE/trades.db (config.DB_PATH,
       s3_push.TRADES_DB), so the nightly reclaim never touched it. New module constant TRADES_DB, honouring
@@ -241,11 +251,51 @@ def _pushed_hwm(path, ns, table):
         return None
 
 
+NEVER_PUSH_DROPIN = "/etc/systemd/system/s3-push.service.d/never-push.conf"
+
+
+def _unit_state(unit):
+    """`systemctl is-enabled <unit>` as printed ('masked', 'enabled', ...), or '' when unreadable."""
+    import subprocess
+    try:
+        return subprocess.run(["systemctl", "is-enabled", unit], capture_output=True,
+                              text=True, timeout=10).stdout.strip()
+    except Exception:  # noqa: BLE001 - unreadable means unknown, and unknown clamps
+        return ""
+
+
+_NEVER = None
+
+
+def _box_never_pushes():
+    """(True, why) only when this box PROVABLY cannot push (r233). Cached for the run."""
+    global _NEVER
+    if _NEVER is None:
+        import re
+        try:
+            with open(NEVER_PUSH_DROPIN, "r", encoding="utf-8") as fh:
+                txt = fh.read()
+        except OSError:
+            txt = ""
+        if re.search(r"^Environment=OT_S3_PUSH=0\s*$", txt, re.M):
+            _NEVER = (True, "the never-push drop-in (OT_S3_PUSH=0)")
+        elif _unit_state("s3-push.service") == "masked":
+            _NEVER = (True, "s3-push.service is masked")
+        else:
+            _NEVER = (False, "")
+    return _NEVER
+
+
 def _safe_cutoff(table, age_cutoff, path, ns):
-    """(cutoff, note) — the age cutoff, clamped to what S3 has confirmed."""
+    """(cutoff, note) — the age cutoff, clamped to what S3 has confirmed while this box can push."""
     hwm = _pushed_hwm(path, ns, table)
     if hwm is None:
         return age_cutoff, ""       # standalone, or nothing shipped yet: age only
+    never, why = _box_never_pushes()
+    if never and hwm < age_cutoff:
+        return age_cutoff, ("push mark IGNORED (%.0f, %.1f day(s) old): this box never "
+                            "pushes - %s - so the mark is frozen, not lagging"
+                            % (hwm, (age_cutoff - hwm) / 86400, why))
     if hwm < age_cutoff:
         return hwm, ("CLAMPED to the push mark (%.0f): S3 is %.1f day(s) "
                      "behind the retention window and the rows above it are "
