@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-427 Python modules across 12 local packages.
+428 Python modules across 12 local packages.
 
-**Reached by:** 124 imported · 26 declared entry points · 203 referenced from a script, unit or doc but never imported · **74 by nothing here**.
+**Reached by:** 124 imported · 26 declared entry points · 204 referenced from a script, unit or doc but never imported · **74 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -40,7 +40,7 @@ isolated rather than being everywhere at once.
 - `analysis/market_state.py` - the structural state assembly.
   **Carries the vocabulary, classifies nothing.**
 
-**Where the evidence lives:** `tests/` holds 243 standing
+**Where the evidence lives:** `tests/` holds 244 standing
 checks (`check_*.py`, all run by `tools/boot_sweep.py` at boot)
 plus the studies that produced every threshold in
 `docs/TRADES.md`. **A number in a strategy file should be
@@ -177,7 +177,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `data/candle_feed.py`
 - **calls:** `config.py`, `data/tasty_client.py`
-- **called by:** `analysis/tape_at_level.py`, `data/candle_logger.py`, `data/market_data.py`, `derived/counterfactual.py`, `derived/levels.py`, `derived/surface.py`, `main.py`, `strategy/breakout_plan.py`, `tests/check_audit_20260823.py`, `tests/check_ext_polarity.py`, `tests/check_feed_always_on.py`, `tests/check_feed_log_noise.py`, `tests/check_seed_candles.py`, `tests/check_spxw_settle_orcs_live.py`, `tests/check_store_paths.py`
+- **called by:** `analysis/tape_at_level.py`, `data/candle_logger.py`, `data/market_data.py`, `derived/counterfactual.py`, `derived/levels.py`, `derived/surface.py`, `main.py`, `strategy/breakout_plan.py`, `tests/check_audit_20260823.py`, `tests/check_brk_cash_index.py`, `tests/check_ext_polarity.py`, `tests/check_feed_always_on.py`, `tests/check_feed_log_noise.py`, `tests/check_seed_candles.py`, `tests/check_spxw_settle_orcs_live.py`, `tests/check_store_paths.py`
 
 ### `data/candle_logger.py`
 - **calls:** `config.py`, `data/candle_feed.py`
@@ -409,11 +409,11 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `strategy/breakout.py`
 - **calls:** `config.py`, `strategy/breakout_plan.py`
-- **called by:** `main.py`, `strategy/breakout_plan.py`, `tests/check_breakout.py`, `tests/check_breakout_new_extreme.py`, `tests/check_breakout_research.py`, `tests/check_one_window_table.py`, `tests/check_trade_switches.py`
+- **called by:** `main.py`, `strategy/breakout_plan.py`, `tests/check_breakout.py`, `tests/check_breakout_new_extreme.py`, `tests/check_breakout_research.py`, `tests/check_brk_cash_index.py`, `tests/check_one_window_table.py`, `tests/check_trade_switches.py`
 
 ### `strategy/breakout_plan.py`
 - **calls:** `analysis/order_flow.py`, `config.py`, `data/candle_feed.py`, `data/derived_store.py`, `database/trade_logger.py`, `derived/gamma_regime.py`, `derived/levels.py`, `strategy/__init__.py`, `strategy/base_strategy.py`, `strategy/breakout.py`, `strategy/orb_plan.py`, `strategy/plan.py`, `utils/time_utils.py`
-- **called by:** `strategy/breakout.py`, `tests/check_breakout.py`, `tests/check_breakout_new_extreme.py`, `tests/check_breakout_research.py`, `tests/check_lazy_imports.py`, `tests/check_store_paths.py`, `tests/check_time_parse.py`
+- **called by:** `strategy/breakout.py`, `tests/check_breakout.py`, `tests/check_breakout_new_extreme.py`, `tests/check_breakout_research.py`, `tests/check_brk_cash_index.py`, `tests/check_lazy_imports.py`, `tests/check_store_paths.py`, `tests/check_time_parse.py`
 
 ### `strategy/condor_roll.py`
 - **calls:** `config.py`, `data/tasty_client.py`, `database/trade_logger.py`, `execution/entry_ladder.py`, `execution/exit_engine.py`, `execution/limit_ladder.py`, `execution/order_confirm.py`, `notifications/alert_manager.py`, `strategy/plan.py`, `utils/time_utils.py`
@@ -606,6 +606,10 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tests/check_breakout_research.py`
 - **calls:** `execution/position_manager.py`, `risk/risk_manager.py`, `strategy/breakout.py`, `strategy/breakout_plan.py`, `strategy/management.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
+### `tests/check_brk_cash_index.py`
+- **calls:** `data/candle_feed.py`, `strategy/breakout.py`, `strategy/breakout_plan.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/ENV.md`
 
 ### `tests/check_butterfly_foundational.py`
 - **calls:** `config.py`, `strategy/__init__.py`, `strategy/criteria.py`, `strategy/gex_pin_butterfly.py`, `strategy/plan.py`, `utils/time_utils.py`

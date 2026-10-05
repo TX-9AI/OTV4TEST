@@ -1,5 +1,15 @@
 """
-strategy/breakout_plan.py  v1.9
+strategy/breakout_plan.py  v1.10
+v1.10 2026-10-05  OTV4TEST r251 (BRK.6) — ON A CASH INDEX THE TAPE AND THE BOOK ARE NOT APPLICABLE, NEVER A REFUSAL.
+      SPX has no time-and-sale and no resting size: on 2026-10-05 flow_imbalance and depth_ratio were None on 220 of 220
+      SPX ticks (every print in SPX-TEST's store was AAL's; SPX's 6,046 Quote rows carried bid/ask size 0), so
+      flow_commit FAILED every tick and Breakout could not trade SPX by construction (mainline's SPX book: 0 Breakout
+      in 192 trades). The operator, 11:09 ET: "I agree and we have to get SPX Trading those breakouts"; 11:28 ET, on
+      depth too: "Yes, do it." On config.is_cash_index(symbol), flow_commit (with its flow_tagged half) and depth_thin
+      record "n/a - cash index, no tape" / "no book" and are MET - before acceptance is asked, so it holds after the
+      research window closes (10-30). The raw readings are still recorded. _route's `fading` no longer counts an
+      index's absent book as a failing one (it routed SPX's 10:16-10:18 break as a HARVEST on that alone). Found and
+      authored on SPX-TEST. Anything that is not a cash index: unchanged, a missing reading still refuses.
 v1.9  2026-10-03  OTV4TEST r220 (TIME.1) — the private parser is utils.time_utils.parse_hm; an unreadable window BOUND now closes the window (it read as 00:00, i.e. open since midnight).
 v1.8  2026-10-03  OTV4TEST r218 (PATH.1) — QUOTE_FLOOR is read from config with no getattr fallback (config now defines it, value unchanged 0.01).
 v1.7  2026-10-03  OTV4TEST r188 (BRK.5) — depth_thin FINALLY HAS A READING. `_depth` read
@@ -271,6 +281,19 @@ def session_extreme(symbol: str, day, before_ms: int, direction: str):
     return (max(vals) if direction == "long" else min(vals)), len(rows)
 
 
+# v1.10 (BRK.6) - what an index records in place of a tape or a book it cannot have.
+NA_NO_TAPE = "n/a - cash index, no tape"
+NA_NO_BOOK = "n/a - cash index, no book"
+
+
+def _cash_index(symbol: str) -> bool:
+    """config.is_cash_index on the symbol being traded; False if it cannot be asked."""
+    try:
+        return bool(symbol) and bool(config.is_cash_index(symbol))
+    except Exception:                                           # noqa: BLE001
+        return False
+
+
 class BreakoutPreparation:
     """What the search found. `ready` is True ONLY when every bar cleared."""
 
@@ -279,7 +302,7 @@ class BreakoutPreparation:
                  "contract", "premium", "r", "trigger", "invalidation",
                  "pool_price", "pool_name", "pool_dist_r", "verdict", "defer_to",
                  "defer_side", "defer_level", "defer_why", "price_now", "orb",
-                 "persist")
+                 "persist", "cash_index")
 
     def __init__(self, tick, spec):
         self.tick, self.spec = tick, spec
@@ -295,8 +318,9 @@ class BreakoutPreparation:
         self.defer_side = self.defer_level = self.defer_why = None
         self.price_now = self.orb = None
         self.persist = ()
+        self.cash_index = False
 
-    def cond(self, name, current, met):
+    def cond(self, name, current, met, note: str = ""):
         """Record one declared bar: its value now, and whether it cleared.
 
         🔑 EVERY BAR IS A REAL TRIGGER. r55 briefly made the informers BYPASS
@@ -318,7 +342,7 @@ class BreakoutPreparation:
         if not met:
             self.unmet.append(name)
         self.tick.check(name, current if isinstance(current, (int, float)) else None,
-                        bool(met))
+                        bool(met), note=note)
 
     def trade_line(self) -> str:
         if not self.ready:
@@ -460,14 +484,19 @@ class BreakoutPlan:
             t.check("vol_multiple", None, None)
 
         # ── the three a stop run cannot manufacture ────────────────────────
+        # v1.10 (BRK.6) - a cash index has no tape and no book: n/a, MET, never a refusal.
+        prep.cash_index = _cash_index(symbol or self._symbol())
         imb, tag = self._flow(flow_conn, symbol)
         t.check("flow_imbalance", imb, None)
         t.check("flow_tagged", tag, None)
         signed = (imb if direction == "long" else -imb) if imb is not None else None
-        prep.cond("flow_commit", signed,
-                  bool(signed is not None and tag is not None
-                       and B.accepts("flow_commit", signed)
-                       and B.accepts("flow_tagged", tag)))
+        if prep.cash_index:
+            prep.cond("flow_commit", signed, True, note=NA_NO_TAPE)
+        else:
+            prep.cond("flow_commit", signed,
+                      bool(signed is not None and tag is not None
+                           and B.accepts("flow_commit", signed)
+                           and B.accepts("flow_tagged", tag)))
 
         reg = self._regime()
         t.check("regime", reg, None)
@@ -475,7 +504,10 @@ class BreakoutPlan:
 
         dep = self._depth(flow_conn, symbol, direction)
         t.check("depth_ratio", dep, None)
-        prep.cond("depth_thin", dep, B.accepts("depth_thin", dep))
+        if prep.cash_index:
+            prep.cond("depth_thin", dep, True, note=NA_NO_BOOK)
+        else:
+            prep.cond("depth_thin", dep, B.accepts("depth_thin", dep))
 
         # ── the structure: stop, risk, reach, room ─────────────────────────
         bhi = _f(bar.get("high") if hasattr(bar, "get") else bar["high"])
@@ -641,8 +673,9 @@ class BreakoutPlan:
         # grab. Routing reads the FITTED dials, like `pooled` does.
         _reg = (prep.conditions.get("gamma_regime") or (None,))[0]
         _dep = (prep.conditions.get("depth_thin") or (None,))[0]
+        # v1.10: an index's absent book is n/a, not a book being defended
         fading = (not B.accepts_fitted("gamma_regime", _reg)
-                  or not B.accepts_fitted("depth_thin", _dep))
+                  or (not prep.cash_index and not B.accepts_fitted("depth_thin", _dep)))
         if pooled and fading and prep.direction and prep.pool_price:
             # price will REACH the pool and stop there -> the hunt has a target
             # it never gives way at all -> the sweep fades the level
