@@ -1,5 +1,6 @@
 """
-strategy/runaway_plan.py  v1.6
+strategy/runaway_plan.py  v1.7
+v1.7 2026-10-05  OTV4TEST r254 (OBS.1) — THE PLAN ALWAYS LOOKS, THE STRATEGY IS GATED ON THE HOUR: Breakout, Runaway and the Hunt are OBSERVED from their entry end to 15:40 - asked, recorded LOG-ONLY, never executed (the operator, 2026-10-05: "the plan always looks, but the strategies are gated on the hour of the day"; "Have those blocked TRADES just to Log only"). Here: past the cutoff the plan keeps looking only while observed.
 v1.6  2026-10-03  OTV4TEST r220 (TIME.1) — its private HH:MM parser is utils.time_utils.parse_hm (eight plans carried the same copy), and an UNREADABLE clock is DORMANT - no trade - instead of skipping the window check.
 v1.5  2026-10-03  OTV4TEST r193 (CFG.1) — its config dials are read as config.NAME with NO literal fallback; config v4.48 now defines them (they were getattr defaults on names config never had). Values unchanged.
 v1.4  2026-10-03  OTV4TEST r189 (RUNW.1) — NAMES THE RUNAWAY END AT IMPORT. When OT_RUNAWAY_END is set it logs
@@ -72,6 +73,7 @@ import logging
 from typing import Optional
 
 import config
+from strategy import observe as _observe   # r254 (OBS.1)
 from strategy.plan import Plan, _n
 from strategy.runaway_continuation import (
     ATR_FLOOR_PCT, CUTOFF_ET, _break_key, break_last_exit, gamma_leverage_pick,
@@ -264,9 +266,13 @@ class RunawayPlan:
         if hm is None:                                           # r220: a window that cannot be checked is not open
             t.dormant("entry_window", "the clock could not be read — no trade")
             return prep
-        if hm is not None and hm >= _cutoff_hm():
+        # r254 (OBS.1) - observed past the end: the plan keeps looking, nothing it fires executes.
+        _obs = bool(hm is not None and hm >= _cutoff_hm() and _observe.is_active("RunawayContinuation"))
+        if hm is not None and hm >= _cutoff_hm() and not _obs:
             t.dormant("entry_window", f"past the {CUTOFF_ET} ET debit cutoff — observing only")
             return prep
+        if _obs:
+            t.note(f"LOG-ONLY - past the {CUTOFF_ET} ET entry end: observed, recorded, never executed (OBS.1)")
         if hm is not None and hm < tuple(WINDOW_OPEN_ET):
             t.dormant("entry_window", f"before {WINDOW_OPEN_ET[0]:02d}:{WINDOW_OPEN_ET[1]:02d} "
                                       f"ET — the opening range is forming; observing only")

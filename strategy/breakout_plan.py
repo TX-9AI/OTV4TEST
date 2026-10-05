@@ -1,5 +1,6 @@
 """
-strategy/breakout_plan.py  v1.10
+strategy/breakout_plan.py  v1.11
+v1.11 2026-10-05  OTV4TEST r254 (OBS.1) — THE PLAN ALWAYS LOOKS, THE STRATEGY IS GATED ON THE HOUR: Breakout, Runaway and the Hunt are OBSERVED from their entry end to 15:40 - asked, recorded LOG-ONLY, never executed (the operator, 2026-10-05: "the plan always looks, but the strategies are gated on the hour of the day"; "Have those blocked TRADES just to Log only"). Here: past LATEST_ET the plan keeps looking only while observed (the r220 window line is unchanged).
 v1.10 2026-10-05  OTV4TEST r251 (BRK.6) — ON A CASH INDEX THE TAPE AND THE BOOK ARE NOT APPLICABLE, NEVER A REFUSAL.
       SPX has no time-and-sale and no resting size: on 2026-10-05 flow_imbalance and depth_ratio were None on 220 of 220
       SPX ticks (every print in SPX-TEST's store was AAL's; SPX's 6,046 Quote rows carried bid/ask size 0), so
@@ -120,6 +121,7 @@ from typing import Optional
 
 import config
 from strategy.plan import Plan
+from strategy import observe as _observe   # r254 (OBS.1)
 
 logger = logging.getLogger(__name__)
 
@@ -436,11 +438,18 @@ class BreakoutPlan:
         # ── the window. DORMANT writes one row and goes quiet (r41) ─────────
         hm = _hm(now_et)
         _lo, _hi = _et(B.EARLIEST_ET), _et(B.LATEST_ET)
+        # r254 (OBS.1) - past the END only, and only when main.py published this name as
+        # observed THIS tick: the plan keeps looking; nothing it fires is executed.
+        _obs = bool(hm is not None and _lo is not None and _hi is not None and hm >= _hi
+                    and _observe.is_active("Breakout"))
         if hm is None or _lo is None or _hi is None or not (_lo <= hm < _hi):
-            t.dormant("entry_window",
-                      f"outside {B.EARLIEST_ET}-{B.LATEST_ET} ET — observing only")
-            return prep
+            if not _obs:
+                t.dormant("entry_window",
+                          f"outside {B.EARLIEST_ET}-{B.LATEST_ET} ET — observing only")
+                return prep
         prep.cond("entry_window", None, True)
+        if _obs:
+            t.note(f"LOG-ONLY - past the {B.LATEST_ET} ET entry end: observed, recorded, never executed (OBS.1)")
 
         px = prep.price_now
         if px is None or df_1m is None or len(df_1m) < 2:

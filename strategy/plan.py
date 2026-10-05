@@ -1,5 +1,6 @@
 """
-strategy/plan.py  v2.5
+strategy/plan.py  v2.6
+v2.6 2026-10-05  OTV4TEST r254 (OBS.1) — THE PLAN ALWAYS LOOKS, THE STRATEGY IS GATED ON THE HOUR: Breakout, Runaway and the Hunt are OBSERVED from their entry end to 15:40 - asked, recorded LOG-ONLY, never executed (the operator, 2026-10-05: "the plan always looks, but the strategies are gated on the hour of the day"; "Have those blocked TRADES just to Log only"). Here: take() writes LOG-ONLY for an observed strategy - never TAKE, no plan_ledger row, no gate-report clear.
 v2.5  2026-10-03  OTV4TEST r211 (PLN.2) — EVERY TAKE OPENS ITS PLAN_LEDGER ROW. The ledger held ORB plans and nothing else
       (19 of 20 real rows), for two reasons, both in `_ledger_open`: (1) r6 returned whenever a store was BOUND,
       calling that "tests, not the box" - but the plan board binds the box's own store at start, so the guard
@@ -749,6 +750,16 @@ class PlanTick:
         """The strategy is firing. Writes TAKE (or MUTED if the R hurdle was
         muted), clears the gate block, opens the ledger row that
         `link_trade()` will join a fill to. Returns the signal unchanged."""
+        # r254 (OBS.1) - an OBSERVED strategy (past its entry end) records LOG-ONLY and stops:
+        # no TAKE row, no gate-report "cleared", no plan_ledger row. main.py refuses the signal.
+        try:
+            from strategy import observe as _observe
+            _obs = _observe.is_active(self.strategy)
+        except Exception:                                       # noqa: BLE001
+            _obs = False
+        if _obs:
+            self._close(_observe.LOG_ONLY, "; ".join(dict.fromkeys(self.notes)) or "would take")
+            return signal
         v = self.verdict or "TAKE"
         if v == "MUTED":
             v = "TAKE"

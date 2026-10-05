@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_gates.py  v4.3
+tests/check_gates.py  v4.4
+v4.4  2026-10-05  OTV4TEST r254 (OBS.1) — strategy/observe.py is a HELPER, not a strategy: it holds the
+      per-tick observe set and declares no gate, so it joins HELPERS beside relaxed.py and structure.py.
 v4.3  2026-09-08  r321 — FULLY PINNED IS NOT OPAQUE. v4.2 taught this file to
       recognise a constant passed as its OWN relaxed value as pinned and drop
       it from the categorizable names. Pin BOTH ends — the hardest form a
@@ -66,7 +68,8 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 STRAT = os.path.join(HERE, "..", "strategy")
 HELPERS = {"relaxed.py", "structure.py", "base_strategy.py",
-           "credit_vertical.py", "condor_roll.py", "__init__.py"}
+           "credit_vertical.py", "condor_roll.py", "__init__.py",
+           "observe.py"}                 # v4.4 (OBS.1): the observe set, no gates of its own
 CATEGORIES = {"SELECTION", "FOUNDATIONAL", "FEASIBILITY"}
 RELAX_CALLS = {"widen", "window"}
 

@@ -1,5 +1,6 @@
 """
-execution/position_manager.py  v5.14
+execution/position_manager.py  v5.15
+v5.15 2026-10-05  OTV4TEST r254 (OBS.1) — THE PLAN ALWAYS LOOKS, THE STRATEGY IS GATED ON THE HOUR: Breakout, Runaway and the Hunt are OBSERVED from their entry end to 15:40 - asked, recorded LOG-ONLY, never executed (the operator, 2026-10-05: "the plan always looks, but the strategies are gated on the hour of the day"; "Have those blocked TRADES just to Log only"). Here: observing() - pure; the three only, refused ONLY by the window, after its end and before the entries stop, every other gate still binding.
 v5.14 2026-10-04  OTV4TEST r246 (LIVE.1 F4, MIRROR OF otv4 r468 f0fd443, WA 38.2) — THE LIVE MARK FALLBACK WORKS: _get_option_mark called session.get, which tastytrade 13.x does not have, so it always raised and the bare except returned None; now get_market_data(EQUITY_OPTION) via sdk_result, mid-else-mark-else-last kept, None outside (0, 1e6), a WARNING once per symbol. The live no-chain fallback dispatches by STRUCTURE: a tent is None, a credit vertical is short minus long (both required - never the short leg's full mark, which would trip a premium stop), butterfly and single unchanged. Code hunks applied verbatim; _get_option_mark getsource identical to f0fd443 (67b546bb); _fetch_current_premium differs ONLY by this tree's r195 comment labels and r209 _delta_readable lines, read and confirmed.
 v5.13 2026-10-03  OTV4TEST r209 (EXIT.4) — (1) the management intent's declared pricing is stamped on the record with its
       reason (`_exit_pricing`), and cleared on every tick the plan does not close, so exit_engine prices the
@@ -227,7 +228,7 @@ repo-wide v3.0 bump: Yahoo-Finance purge & data stream
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace as _dc_replace
 from typing import Mapping, Optional, List
 
 import pandas as pd
@@ -697,6 +698,52 @@ class PositionManager:
                              open_by_strategy=openmap,
                              tries_used=int(tried.get(name, 0))), tbl)
             out[name] = (bool(v.admitted), v.gate, v.why)
+        return out
+
+    def observing(self, now_et: tuple, state: Mapping, *, trading_day: bool = True,
+                  orb_established: bool = False, cap_intact: bool = True,
+                  past_hard_close: bool = False,
+                  tries_used: Optional[Mapping[str, int]] = None,
+                  table: Optional[dict] = None) -> list:
+        """r254 (OBS.1) - the strategies to OBSERVE this tick: asked, recorded, never executed.
+
+        The operator, 2026-10-05: "the plan always looks, but the strategies are gated on the
+        hour of the day." A name qualifies only when ALL hold:
+          · it is in strategy/observe.OBSERVE_AFTER_WINDOW (his scope: the three r187 cut);
+          · `state` (this tick's logging_state) refused it on the gate "window" and nothing else;
+          · now is AT OR AFTER its window's end and BEFORE the entries stop (15:40) - never
+            before its window opens;
+          · `decide()` ADMITS it when only its window's end is moved to the entries stop, so
+            every other gate (cap, hard close, max open of type, tries, blocking) still binds.
+        ⚠️ PURE, like logging_state: same facts in, same list out, nothing remembered.
+        """
+        try:
+            from strategy.observe import OBSERVE_AFTER_WINDOW as _scope
+            from config import EOD_SCHEDULE as _eod
+            stop = tuple(_eod["entries_stop"])
+        except Exception:                                       # noqa: BLE001
+            return []                                           # fails closed: observe nothing
+        tbl = table if table is not None else rules()
+        tried = dict(tries_used or {})
+        openmap = self.open_by_strategy()
+        t = now_et[0] * 60 + now_et[1]
+        out: list = []
+        for name in _scope:
+            ok, gate, _why = (state or {}).get(name, (True, "", ""))
+            rule = tbl.get(name)
+            if ok or gate != "window" or rule is None:
+                continue
+            (eh, em) = tuple(rule.window[1])
+            if not ((eh * 60 + em) <= t < (stop[0] * 60 + stop[1])):
+                continue
+            ext = dict(tbl)
+            ext[name] = _dc_replace(rule, window=(tuple(rule.window[0]), stop))
+            v = decide(Facts(strategy=name, now_et=now_et, trading_day=trading_day,
+                             orb_established=orb_established, cap_intact=cap_intact,
+                             past_hard_close=past_hard_close, open_by_strategy=openmap,
+                             tries_used=int(tried.get(name, 0))), ext)
+            if v.admitted:
+                out.append(name)
         return out
 
     def eligible_now(self, now_et: tuple, **kw) -> list:

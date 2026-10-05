@@ -1,5 +1,6 @@
 """
-main.py  v4.95
+main.py  v4.96
+v4.96 2026-10-05  OTV4TEST r254 (OBS.1) — THE PLAN ALWAYS LOOKS, THE STRATEGY IS GATED ON THE HOUR: Breakout, Runaway and the Hunt are OBSERVED from their entry end to 15:40 - asked, recorded LOG-ONLY, never executed (the operator, 2026-10-05: "the plan always looks, but the strategies are gated on the hour of the day"; "Have those blocked TRADES just to Log only"). Here: admission publishes the observe set each tick (position_manager.observing) and clears it first; _log_only() refuses an observed signal at _fire, the hunt's door and the top of _execute_entry_signal (after the VIX stamp, before any sizing or order) and logs it once per setup with the pin gate's answer.
 v4.95 2026-10-05  OTV4TEST r253 (RUNW.2) — THE SERVICE MODE LINE NAMES THE PIN GATE AND RUNAWAY'S END IN FORCE: `_banner_dials()` appends " · pin_gate=ON/OFF · runaway_end=HH:MM" (and a refused OT_RUNAWAY_END by name), read from config. SPX-TEST, 10-05: neither was printed anywhere, so a box's pin gate had to be inferred from silence. configure.sh item 10 now sets the end (the operator: "it needs to be a toggle inside configure").
 v4.94 2026-10-04  OTV4TEST r247 (FORK-ONLY, the operator: "Fix the SPXW settlement", "Fix the ORCS ledger rows issue") — _settlement_spot reads SPX's tape for an SPXW root (_SETTLE_TAPE), so an adopted SPXW position settles at the index's 16:00 close instead of a flagged $0.00; _attempt_orcs refuses a LIVE box BEFORE ledger_open, so no orphan plan_ledger row is written (the refusal in _execute_condor_leg stays as the backstop). Both found by SPX-TEST's live-path audit.
 v4.93 2026-10-04  OTV4TEST r244 (LIVE.1 B2, MIRROR OF otv4 r466 579354d, WA 38.2) — AN ERROR AFTER place_order NO LONGER FORGETS THE ORDER: execution/order_guard (after_failure cancels, records the order as suspect and pages; clear_to_post blocks the intent until the broker says CANCELLED/EXPIRED/REMOVED/PARTIALLY_REMOVED/REJECTED, pages once on FILLED, blocks when unreadable); the failed rung is refused. Code hunks applied verbatim; ONE hunk hand-placed: the butterfly guard sits after _fly_key and before this tree's r224 FLY.1 cap block (mainline's butterfly lines differ).
@@ -1500,6 +1501,7 @@ if TYPE_CHECKING:                     # v4.9 — resolves the quoted annotation 
 from strategy.orb_strategy import ORBStrategy
 from strategy.volt_strategy import VoltStrategy
 from strategy.runaway_continuation import RunawayContinuationStrategy
+from strategy import observe as _observe      # r254 (OBS.1): the plan always looks
 from strategy.sweep_credit_spread import SweepCreditSpreadStrategy
 from strategy.gex_pin_butterfly import GEXPinButterflyStrategy
 from strategy.atp_butterfly import ATPButterflyStrategy
@@ -4024,6 +4026,7 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     # already carries a warning about at the ORB seam (r207). `None` is the
     # pre-r40 behaviour, so the cleared state is also the safe state.
     _set_admission(None)
+    _observe.clear()                    # r254 (OBS.1): same rule - cleared before any return
     session  = get_session_guard()
     risk_mgr = get_risk_manager()
     entry_eng = get_entry_engine(state.paper_trading)
@@ -4141,7 +4144,20 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
             tries_used      = _tries,
         )
         _eligible = [n for n, (ok, _g, _w) in _state.items() if ok]
-        _set_admission(_eligible)
+        # r254 (OBS.1) - "the plan always looks, but the strategies are gated on the hour"
+        # (operator, 2026-10-05). The three r187 cut at 10:29 are still ASKED from their end
+        # to the 15:40 entries stop, refused only by their window - and what they would fire
+        # is recorded LOG-ONLY at the doors below, never executed.
+        _obs = _pm_adm.observing(
+            (_adm_now.hour, _adm_now.minute), _state,
+            trading_day     = True,
+            orb_established = bool(_orb_d and _orb_d.orb_high and _orb_d.orb_low),
+            cap_intact      = not _cap_hit,
+            past_hard_close = _adm_now.time() >= HARD_CLOSE,
+            tries_used      = _tries,
+        )
+        _set_admission(_eligible + list(_obs))
+        _observe.set_active(_obs)
         _adm_ok = True
         # 🔑 A REFUSED STRATEGY NAMES THE GATE THAT REFUSED IT, and the GATE is
         # passed as its own field rather than buried in prose — `strategy/plan.py`
@@ -4149,7 +4165,7 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
         # episode; anything else declares itself), and parsing a sentence to
         # recover a gate name is how that rule would silently stop working.
         for _nm, (_ok, _gate, _why) in _state.items():
-            if not _ok:
+            if not _ok and _nm not in _obs:          # r254: an observed plan writes its own rows
                 _plan_skip(_nm, f"inactive — {_gate}: {_why}", gate=_gate)
     except Exception as exc:                                   # noqa: BLE001
         # ⚠️ FAILS OPEN AND SAYS SO. `open_by_strategy()` RAISES rather than
@@ -4159,6 +4175,7 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
         # the session silently; the pre-r40 gates are all still in place below,
         # so falling through to them is the smaller failure — but it is LOUD.
         _set_admission(None)
+        _observe.clear()                # r254: no admission, no observing - plans keep their windows
         logger.error("[admission] table unavailable this tick — falling back to "
                      "the pre-r40 gates, NOTHING is admission-filtered: %s: %s",
                      type(exc).__name__, exc)
@@ -4231,6 +4248,8 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
         """Execute ONE strategy's signal, on its own. Returns True if it fired."""
         nonlocal signal
         if sig is None:
+            return False
+        if _log_only(sig, ctx):                         # r254 (OBS.1): observed - recorded, never fired
             return False
         if _afternoon_debit_blocked(sig.strategy_name, now_et()):
             logger.info(
@@ -4825,7 +4844,7 @@ def _attempt_hunt(ctx, ms, state, *, orb, chain, now_hhmm, atr_pct) -> None:
         sig = _safe_strategy("LiquidityHunt", lambda: _liquidity_hunt.generate_signal(
             orb=orb, price_now=ctx["price"], now_et=now_hhmm, atr_pct=atr_pct,
             chain=chain, df_1m=ctx.get("df_1m"), atm_iv=ctx.get("atm_iv")), ctx)
-        if sig is not None:
+        if sig is not None and not _log_only(sig, ctx):     # r254 (OBS.1)
             _execute_entry_signal(sig, ctx, ms, state, None, additive=True)
     except Exception as exc:                                   # noqa: BLE001
         logger.warning("[hunt] attempt failed: %s", exc)
@@ -5174,12 +5193,48 @@ def _banner_dials() -> str:
     return f" · pin_gate={'ON' if PIN_PROXIMITY_ACTIVE else 'OFF'}{end}"
 
 
+def _log_only(signal, ctx) -> bool:
+    """r254 (OBS.1) - True when `signal` comes from a strategy OBSERVED this tick (past its
+    entry end): it is RECORDED - once per setup at INFO, with what the pin-proximity gate
+    would have said - and never executed. False for everything else. Never raises; an
+    error here reads True for an observed name (refuse) and False otherwise (unchanged)."""
+    name = str(getattr(signal, "strategy_name", "") or "")
+    try:
+        if not _observe.is_active(name):
+            return False
+    except Exception:                                           # noqa: BLE001
+        return False
+    try:
+        pin = "pin gate OFF"
+        if PIN_PROXIMITY_ACTIVE:
+            _r, _frac, _env, _pin, _why = pin_proximity_verdict(ctx)
+            pin = ("pin unmeasurable" if _frac is None else
+                   (f"pin would REFUSE ({_frac:.3f} EM from {_pin:g})" if _r
+                    else f"pin would pass ({_frac:.3f} EM from {_pin:g})"))
+        strike = getattr(signal, "strike", None)
+        key = (name, str(getattr(signal, "direction", "")), strike,
+               round(float(getattr(signal, "underlying_stop", 0) or 0), 2))
+        if _observe.first_time(key):
+            logger.info("[observe] LOG-ONLY %s %s %s @ %.2f stop %.2f - %s - NOT executed "
+                        "(past its entry end; OBS.1)", name, getattr(signal, "direction", ""),
+                        strike, float(getattr(signal, "entry_premium", 0) or 0),
+                        float(getattr(signal, "underlying_stop", 0) or 0), pin)
+    except Exception as exc:                                    # noqa: BLE001
+        logger.debug("[observe] record failed for %s: %s", name, exc)
+    return True
+
+
 def _execute_entry_signal(signal, ctx, ms, state, _sigj=None, *, additive: bool = False):
     """r161 — the execution tail of attempt_new_entry, factored so the
     butterfly can fire from main_loop while another position is open.
     `additive=True` APPENDS the record (add_open_position); False replaces,
     exactly as attempt_new_entry always did."""
     _stamp_vix(signal, ctx)                                     # r200: before the record is built
+    # r254 (OBS.1) - THE LAST LOCK, right after the VIX stamp (which only annotates the
+    # signal) and before ANY sizing, risk or order work. `_fire` and the hunt's door already
+    # refuse an observed signal; this one means no path added later can carry one further.
+    if _log_only(signal, ctx):
+        return
     macro = ctx["macro"]
     risk_mgr = get_risk_manager()
     entry_eng = get_entry_engine(state.paper_trading)

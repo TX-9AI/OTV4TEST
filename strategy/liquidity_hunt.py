@@ -1,5 +1,6 @@
 """
-strategy/liquidity_hunt.py  v1.8
+strategy/liquidity_hunt.py  v1.9
+v1.9 2026-10-05  OTV4TEST r254 (OBS.1) — THE PLAN ALWAYS LOOKS, THE STRATEGY IS GATED ON THE HOUR: Breakout, Runaway and the Hunt are OBSERVED from their entry end to 15:40 - asked, recorded LOG-ONLY, never executed (the operator, 2026-10-05: "the plan always looks, but the strategies are gated on the hour of the day"; "Have those blocked TRADES just to Log only"). Here: past the cutoff the plan keeps looking only while observed; an observed fire never touches FINISHED.
 v1.8  2026-10-03  OTV4TEST r229 (EM.2) — records em_platform (the tastytrade platform's expected move) beside the session number its above_em / below_em records are measured in. Nothing here ever gated on either.
 v1.7  2026-10-03  OTV4TEST r220 (TIME.1) — its private HH:MM parser is utils.time_utils.parse_hm (eight plans carried the same copy), and an UNREADABLE clock is DORMANT - no trade - instead of skipping the window check.
 v1.6  2026-10-03  OTV4TEST r193 (CFG.1) — its config dials are read as config.NAME with NO literal fallback; config v4.48 now defines them (they were getattr defaults on names config never had). Values unchanged.
@@ -82,6 +83,7 @@ import logging
 
 import config
 from strategy import relaxed
+from strategy import observe as _observe   # r254 (OBS.1)
 from strategy.base_strategy import OptionsSignal as Signal
 from strategy.plan import Plan, _n
 from strategy.runaway_continuation import gamma_leverage_pick, target_delta, ATR_FLOOR_PCT
@@ -177,9 +179,14 @@ class LiquidityHunt:
         if hm is None:                                           # r220: a window that cannot be checked is not open
             t.dormant("entry_window", "the clock could not be read — no trade")
             return prep
-        if hm is not None and hm >= tuple(CUTOFF_ET):
+        # r254 (OBS.1) - observed past the end: the plan keeps looking, nothing it fires executes.
+        _obs = bool(hm is not None and hm >= tuple(CUTOFF_ET) and _observe.is_active(self.name))
+        if hm is not None and hm >= tuple(CUTOFF_ET) and not _obs:
             t.dormant("entry_window", f"past {CUTOFF_ET[0]:02d}:{CUTOFF_ET[1]:02d} ET — observing only")
             return prep
+        if _obs:
+            t.note(f"LOG-ONLY - past the {CUTOFF_ET[0]:02d}:{CUTOFF_ET[1]:02d} ET entry end: "
+                   "observed, recorded, never executed (OBS.1)")
         if hm is not None and hm < tuple(WINDOW_OPEN_ET):
             t.dormant("entry_window", f"before {WINDOW_OPEN_ET[0]:02d}:{WINDOW_OPEN_ET[1]:02d} ET — the range is forming")
             return prep
@@ -387,6 +394,10 @@ class LiquidityHunt:
         sig.underlying_stop_is_thesis = True
         sig.disarms_retest = False                       # the ORB is untouched
         relaxed.tag(sig)
+        if _observe.is_active(self.name):
+            # r254 (OBS.1) - a LOG-ONLY fire never touches the real one-per-break set.
+            logger.debug("[hunt] LOG-ONLY %s %s — %s", prep.entry, prep.direction, prep.trade_line())
+            return prep.tick.take(sig)
         FINISHED.add((prep.direction, round(prep.boundary, 2)))
         logger.info("[hunt] FIRE %s %s — %s", prep.entry, prep.direction, prep.trade_line())
         return prep.tick.take(sig)
