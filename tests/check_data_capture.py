@@ -1,4 +1,7 @@
-"""tests/check_data_capture.py — v1.5
+"""tests/check_data_capture.py — v1.6
+
+v1.6  2026-10-05 — OTV4TEST r253 (RUNW.2). D4 RE-POINTED, NOT DROPPED (section 38.4): Runaway's entry end
+      joined the menu as item 10, so Data capture is item 11 and Done 12. Properties unchanged.
 
 v1.5  2026-10-04 — OTV4TEST r233 (BOX.17). D6 now pins the box as ABLE to push (the probe overrides
       the unit read and the drop-in path), because on a standalone box the clamp is meant to be off;
@@ -41,8 +44,8 @@ v1.0  2026-09-24 — OTV4TEST r136. The operator: "Make the s3 push compatible w
   D2b managed with no instrument anywhere REFUSES (never pushes as UNKNOWN)
   D3  standalone: disables and MASKS s3-push, turns candle-logger and self-close
       off, turns this box's own purge back on
-  D4  configure.sh: item 10 runs the ONE script; it does not restart the bot;
-      Done is 11; the summary shows the mode
+  D4  configure.sh: item 11 runs the ONE script; it does not restart the bot;
+      Done is 12; the summary shows the mode
   D5  VIX family (mainline r350): a non-SPX box uploads SOFI and SOFI_EXT and
       VIXY, never VIX or VIX_EXT; the SPX box still uploads the family
   D6  purge clamp (mainline r417): a push mark older than the age cutoff WINS;
@@ -246,15 +249,15 @@ guard("D3 standalone: candle-logger and self-close off, this box's purge back on
 
 # ── D4 configure.sh ──────────────────────────────────────────────────────────
 _cfg = _read("configure.sh")
-guard("D4 item 10 runs change_data_capture and does NOT mark the bot for restart",
-      lambda: re.search(r"^\s*10\)\s*change_data_capture\s*;;", _cfg, re.M)
-      and not re.search(r"^\s*10\)[^\n]*CHANGED=true", _cfg, re.M))
+guard("D4 item 11 runs change_data_capture and does NOT mark the bot for restart",
+      lambda: re.search(r"^\s*11\)\s*change_data_capture\s*;;", _cfg, re.M)
+      and not re.search(r"^\s*11\)[^\n]*CHANGED=true", _cfg, re.M))
 _cdc = (re.search(r"^change_data_capture\(\) \{\n.*?^\}", _cfg, re.M | re.S) or re.match("", "")).group(0)
 guard("D4 change_data_capture calls the ONE script for both answers (scoped to its body - r139's item 1 also re-applies managed)",
       lambda: _cdc.count('bash "$BOT_DIR/deploy/data_capture.sh" managed') == 1
       and _cdc.count('bash "$BOT_DIR/deploy/data_capture.sh" standalone') == 1)
-guard("D4 Done is 11, the prompt names 1-11, and the summary shows the mode",
-      lambda: re.search(r"^\s*11\)\s*break", _cfg, re.M) and "Select [1-11]" in _cfg
+guard("D4 Done is 12, the prompt names 1-12, and the summary shows the mode",
+      lambda: re.search(r"^\s*12\)\s*break", _cfg, re.M) and "Select [1-12]" in _cfg
       and "Data capture:   ${BOLD}$(data_capture_label)" in _cfg)
 
 # ── D5 VIX family ────────────────────────────────────────────────────────────

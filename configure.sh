@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# configure.sh  v4.15
+# configure.sh  v4.16
+# v4.16 2026-10-05  OTV4TEST r253 (RUNW.2) — ITEM 10 IS RUNAWAY'S ENTRY END (OT_RUNAWAY_END).
+#       r189 built the per-box switch and the operator approved 11:30 for SPX-TEST on
+#       10-03, but nothing here could set it, so it was never set: SPX-TEST measured its
+#       Runaway going INACTIVE at 10:30:00 ET on 10-05. The operator, 11:33 ET: "If
+#       we're gonna allow a per box setting then it needs to be a toggle inside
+#       configure." HH:MM sets it, blank clears it (the code's 10:30). The value is
+#       checked BY config.py before it is written - a value config would refuse is
+#       never stored. Data capture moves to 11 and Done to 12; the summary names the end.
 # v4.15 2026-10-03  OTV4TEST r228 (CFG.4) — THE ORB AND VOLT SCALING ITEMS LEAVE THE
 #       MENU; THE RAMP STAYS. Both trades are off (r187) and each switch is read
 #       only when its own trade fires. The operator, 2026-10-03: "Is it safe to
@@ -300,6 +308,7 @@ show_config() {
     echo -e "  Scaling:        ${BOLD}Breakout $(scaling_short OT_SCALE_BREAKOUT SCALE_BREAKOUT)${RESET}"
     local old_start=$(get_env "OT_ORB_RISK_USD")
     [[ -n "$old_start" ]] && print_warn "OT_ORB_RISK_USD=${old_start} is NOT read (merged into risk per trade) - item 2 removes it."
+    echo -e "  Runaway end:    ${BOLD}$(runaway_end_label)${RESET}"
     echo -e "  Data capture:   ${BOLD}$(data_capture_label)${RESET}"
     echo -e "  Trading mode:   $(echo -e $mode_label)"
     local rec_pin rec_label
@@ -435,6 +444,60 @@ pin_gate_label() {
     dflt=$(cd "$BOT_DIR" && env -u OT_PIN_PROXIMITY_ACTIVE python3 -c \
         "import config; print('ON' if config.PIN_PROXIMITY_ACTIVE else 'OFF')")
     printf 'not set (code default: %s)' "${dflt:-UNREADABLE - config.py did not import}"
+}
+
+# ── r253 (RUNW.2) — RUNAWAY'S ENTRY END, PER BOX ───────────────────────────
+# Shows what the operator SET, or "not set" with the code's default READ FROM
+# config.py (r91). A set value config.py would refuse is named as refused.
+runaway_end_label() {
+    local v got
+    v=$(get_env "OT_RUNAWAY_END")
+    if [[ -z "$v" ]]; then
+        got=$(cd "$BOT_DIR" && env -u OT_RUNAWAY_END python3 -c \
+            "import config; print(config.RUNAWAY_CUTOFF_ET)")
+        printf 'not set (code default: %s)' "${got:-UNREADABLE - config.py did not import}"
+        return
+    fi
+    got=$(cd "$BOT_DIR" && OT_RUNAWAY_END="$v" python3 -c \
+        "import config; print('REFUSED' if config.RUNAWAY_END_ENV_REFUSED else config.RUNAWAY_CUTOFF_ET)")
+    if [[ "$got" == "REFUSED" ]]; then
+        printf '%s REFUSED by config - Runaway holds the code default' "$v"
+    else
+        printf '%s' "${got:-UNREADABLE - config.py did not import}"
+    fi
+}
+
+change_runaway_end() {
+    local val got
+    echo ""
+    echo "  Runaway entry end: $(runaway_end_label)"
+    echo ""
+    echo "  The LAST entry is one minute before this time (11:30 = last at 11:29)."
+    echo "  HH:MM between 09:36 and the 15:40 entries stop. Blank = clear it"
+    echo "  (the code's default). Only Runaway moves; every exit is unchanged."
+    echo ""
+    read -p "    Runaway entry end (HH:MM, blank to clear): " val
+    val="${val// /}"
+    if [[ -z "$val" ]]; then
+        drop_env "OT_RUNAWAY_END"
+        reload_daemon
+        echo "  Runaway entry end cleared - $(runaway_end_label)."
+        return
+    fi
+    # Ask the CONSUMER, never a copy of its rule: config.py refuses what it would refuse.
+    got=$(cd "$BOT_DIR" && OT_RUNAWAY_END="$val" python3 -c \
+        "import config; print('REFUSED' if config.RUNAWAY_END_ENV_REFUSED else config.RUNAWAY_CUTOFF_ET)")
+    if [[ -z "$got" ]]; then
+        print_warn "REFUSED - config.py did not import, so '$val' could not be checked. Nothing written."
+        return
+    fi
+    if [[ "$got" == "REFUSED" ]]; then
+        print_warn "REFUSED - '$val' is not HH:MM between 09:36 and 15:40. Nothing written."
+        return
+    fi
+    set_env "OT_RUNAWAY_END" "$val"
+    reload_daemon
+    echo "  Runaway entry end set to $got (last entry one minute before)."
 }
 
 # ── r136 — DATA CAPTURE: managed (the conductor owns this box's data) or
@@ -798,10 +861,11 @@ while true; do
     echo -e "  ${BOLD}7.${RESET}  Pin-proximity gate  (currently: $(pin_gate_label))"
     echo -e "  ${BOLD}8.${RESET}  Ramp TOP (MAX)      (currently: $(fmt_declared "$(get_env OT_ORB_BUDGET_USD)"))"
     echo -e "  ${BOLD}9.${RESET}  Breakout scaling    (currently: $(scaling_label OT_SCALE_BREAKOUT SCALE_BREAKOUT))"
-    echo -e "  ${BOLD}10.${RESET} Data capture        (currently: $(data_capture_label))"
-    echo -e "  ${BOLD}11.${RESET} Done"
+    echo -e "  ${BOLD}10.${RESET} Runaway entry end   (currently: $(runaway_end_label))"
+    echo -e "  ${BOLD}11.${RESET} Data capture        (currently: $(data_capture_label))"
+    echo -e "  ${BOLD}12.${RESET} Done"
     echo ""
-    read -p "    Select [1-11]: " menu_choice
+    read -p "    Select [1-12]: " menu_choice
 
     case "$menu_choice" in
         1) change_instrument; CHANGED=true ;;
@@ -813,9 +877,10 @@ while true; do
         7) change_pin_gate;       CHANGED=true ;;
         8) change_orb_budget;     CHANGED=true ;;
         9) change_scaling OT_SCALE_BREAKOUT SCALE_BREAKOUT "Breakout"; CHANGED=true ;;
-        10) change_data_capture ;;
-        11) break ;;
-        *) print_warn "Please enter a number between 1 and 11." ;;
+        10) change_runaway_end;   CHANGED=true ;;
+        11) change_data_capture ;;
+        12) break ;;
+        *) print_warn "Please enter a number between 1 and 12." ;;
     esac
     echo ""
 done

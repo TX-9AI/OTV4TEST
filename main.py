@@ -1,5 +1,6 @@
 """
-main.py  v4.94
+main.py  v4.95
+v4.95 2026-10-05  OTV4TEST r253 (RUNW.2) — THE SERVICE MODE LINE NAMES THE PIN GATE AND RUNAWAY'S END IN FORCE: `_banner_dials()` appends " · pin_gate=ON/OFF · runaway_end=HH:MM" (and a refused OT_RUNAWAY_END by name), read from config. SPX-TEST, 10-05: neither was printed anywhere, so a box's pin gate had to be inferred from silence. configure.sh item 10 now sets the end (the operator: "it needs to be a toggle inside configure").
 v4.94 2026-10-04  OTV4TEST r247 (FORK-ONLY, the operator: "Fix the SPXW settlement", "Fix the ORCS ledger rows issue") — _settlement_spot reads SPX's tape for an SPXW root (_SETTLE_TAPE), so an adopted SPXW position settles at the index's 16:00 close instead of a flagged $0.00; _attempt_orcs refuses a LIVE box BEFORE ledger_open, so no orphan plan_ledger row is written (the refusal in _execute_condor_leg stays as the backstop). Both found by SPX-TEST's live-path audit.
 v4.93 2026-10-04  OTV4TEST r244 (LIVE.1 B2, MIRROR OF otv4 r466 579354d, WA 38.2) — AN ERROR AFTER place_order NO LONGER FORGETS THE ORDER: execution/order_guard (after_failure cancels, records the order as suspect and pages; clear_to_post blocks the intent until the broker says CANCELLED/EXPIRED/REMOVED/PARTIALLY_REMOVED/REJECTED, pages once on FILLED, blocks when unreadable); the failed rung is refused. Code hunks applied verbatim; ONE hunk hand-placed: the butterfly guard sits after _fly_key and before this tree's r224 FLY.1 cap block (mainline's butterfly lines differ).
 v4.92 2026-10-04  OTV4TEST r243 (LIVE.1 B1, MIRROR OF otv4 r465 7562317, WA 38.2) — reconcile reads ONLY this box's instrument family (SPX = SPX+SPXW; '*' = the whole account) and checks EVERY leg at its QUANTITY (summed across rows sharing a leg); a missing leg or a count off the broker is REPORTED (plan.mismatch + an alert), rows are never dropped, the phantom rule unchanged. The operator, 2026-10-04: 'multiple boxes will trade that account but never duplicate symbols ever.' Code hunks applied verbatim from 7562317.
@@ -1324,6 +1325,7 @@ from config import (
     SCALE_ORB, SCALE_BREAKOUT, SCALE_VOLT, ORB_RISK_ENV_IGNORED,   # r161
     CONTRACT_SCALE, CONTRACT_SCALE_SOURCE,                          # r234
     ORCS_ENABLED,                                                   # r235
+    RUNAWAY_CUTOFF_ET, RUNAWAY_END_ENV_REFUSED,                     # r253 (RUNW.2)
     NOISE_FLOOR_BAR_MULT, NOISE_FLOOR_LOOKBACK_BARS, NOISE_FLOOR_MIN_BARS,
     PIN_PROXIMITY_ACTIVE, PIN_PROXIMITY_MIN_FRAC,
     REASSESS_MINUTES, INSTRUMENT, INSTRUMENT_UNSET, INSTRUMENT_LISTED, SessionConfig, DIRECTIONAL_ONLY,
@@ -5163,6 +5165,15 @@ def _sizing_stop_premium(signal) -> float:
     return _pm - _move
 
 
+def _banner_dials() -> str:
+    """r253 (RUNW.2) — the Service mode line's tail: the pin-proximity gate and Runaway's entry end
+    IN FORCE, plus a refused OT_RUNAWAY_END by name. Read from config, never from the unit."""
+    end = f" · runaway_end={RUNAWAY_CUTOFF_ET}"
+    if RUNAWAY_END_ENV_REFUSED:
+        end += f" (OT_RUNAWAY_END={RUNAWAY_END_ENV_REFUSED!r} REFUSED)"
+    return f" · pin_gate={'ON' if PIN_PROXIMITY_ACTIVE else 'OFF'}{end}"
+
+
 def _execute_entry_signal(signal, ctx, ms, state, _sigj=None, *, additive: bool = False):
     """r161 — the execution tail of attempt_new_entry, factored so the
     butterfly can fire from main_loop while another position is open.
@@ -6771,6 +6782,9 @@ def main():
             f" · contract_scale={CONTRACT_SCALE:g} ({CONTRACT_SCALE_SOURCE})"
             # r235 — whether ORCS is armed, so no one has to read the unit.
             f" · ORCS={'on' if ORCS_ENABLED else 'OFF'}"
+            # r253 (RUNW.2) — the pin gate and Runaway's end in force, READ here rather than
+            # inferred from silence (SPX-TEST, 10-05: neither was printed anywhere).
+            f"{_banner_dials()}"
         )
         if ORB_RISK_ENV_IGNORED:
             logger.warning(
