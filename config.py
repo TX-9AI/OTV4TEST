@@ -1,5 +1,6 @@
 """
-config.py  v4.57
+config.py  v4.58
+v4.58 2026-10-04  OTV4TEST r249 (PREM.6) — ORCS IS RETIRED: ORCS_ENABLED defaults OFF (OT_ORCS=1 restores it, paper only as before; the plan keeps recording). The operator, 2026-10-04 20:12 ET: "Retire it on this repo."
 v4.57 2026-10-04  OTV4TEST r234 (SCALE.1) — CONTRACT_SCALE: ONE NUMBER PER BOX FOR WHAT ITS CONTRACTS COST AGAINST QQQ'S. The operator,
       2026-10-04: "SPX cap, ramp & wing search CANNOT be the same as QQQ. The math doesn't work. It needs to scale with the contract
       price differences"; on the measured proposal: "Perfect." MEASURED (/var/tmp/spx_scale_1004, mainline chain_snapshots, 14 sessions
@@ -1295,7 +1296,7 @@ DEPLOY_CAP_MULT = float(os.environ.get("OT_DEPLOY_CAP_MULT", "2.0"))
 # in BOTH halves at mid fills. NOT PROVEN - those sessions were calm. ENTRY
 # PRICING IS THE HOUSE ENTRY LADDER'S (r206, his ruling), not a dial here. The
 # window is ENTRY_WINDOWS["OpeningRangeCreditSpread"] (09:45-10:30).
-ORCS_ENABLED         = os.environ.get("OT_ORCS", "1") == "1"   # the TRADE; =0 leaves the plan recording only
+ORCS_ENABLED         = os.environ.get("OT_ORCS", "0") == "1"   # r249: RETIRED (default OFF); =1 restores the trade; the plan still records
 ORCS_SHORT_DELTA_MAX = 0.20       # r207, his ruling: worst day sized to 1,050 and over 80% winning days (X10: 80.4% of 56)
 ORCS_MIN_IM_MULT     = 1.0        # r207: at least ONE implied move (ATM straddle) out; 1.25 would push delta 0.20 further than measured
 ORCS_WING_USD        = 3.0        # r207: the long leg 3 dollars further out - 3 contracts a side at 1,050, max-loss day about -744

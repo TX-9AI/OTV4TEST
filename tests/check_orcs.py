@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_orcs.py  v1.5
+tests/check_orcs.py  v1.6
+v1.6  2026-10-04  OTV4TEST r249 (PREM.6) — O8 RE-POINTED, NOT DROPPED (38.4): ORCS is RETIRED by ruling ("Retire it on this repo"), so the
+      default is OFF; the dials and the retired-dial absence are still pinned. T2 still proves OFF signals nothing.
 v1.5  2026-10-03  OTV4TEST r230 (PREM.5) — T3, T4, T5 INVERTED BY RULING: "On rolling/defending the ORCS, adopt the condor logic
       verbatim." T3: the leg is booked with the condor leg's stop (credit x 1.15), not 0. T4: over a grid of premiums, lone and
       hedged, an ORCS leg and the same leg named IronCondorStrategy get the SAME exit decision (stop when lone, hold when hedged,
@@ -147,6 +149,12 @@ def _verdict(st):
 
 
 def main():
+    # r249 — ORCS is RETIRED (default OFF). The trading cases below test what the trade DOES when switched on
+    # (OT_ORCS=1 restores it), so they force it on here; O8 checks the shipped default from _ORCS_DEFAULT.
+    import config as _C
+    global _ORCS_DEFAULT
+    _ORCS_DEFAULT = _C.ORCS_ENABLED
+    _C.ORCS_ENABLED = True
     try:
         from strategy import plan as P
         from strategy import orcs_plan as M
@@ -255,9 +263,9 @@ def main():
                C.ORCS_SHORT_DELTA_MAX, C.ORCS_MIN_IM_MULT, C.ORCS_WING_USD, C.ORCS_MIN_CREDIT, C.ORCS_MAX_GAP_PCT)
         want = ((9, 45), (10, 30), 0.20, 1.0, 3.0, 0.10, 0.90)
         gone = [n for n in ("ORCS_LIMIT_IMPROVE", "ORCS_REST_MIN", "ORCS_WING_PCT") if hasattr(C, n) or hasattr(M, n)]
-        check("O8 config carries the window and five dials (delta 0.20, wing 3, one implied move), and the retired dials are GONE",
+        check("O8 config carries the window and five dials (delta 0.20, wing 3, one implied move), the trade is RETIRED (default OFF, r249), and the retired dials are GONE",
               got == want and (M.ORCS_START_ET, M.ORCS_SHORT_DELTA_MAX) == ((9, 45), 0.20)
-              and C.ORCS_ENABLED is True and not gone, f"{got}, still present {gone}")
+              and _ORCS_DEFAULT is False and not gone, f"{got}, shipped ORCS_ENABLED={_ORCS_DEFAULT}, still present {gone}")
     except Exception as exc:                                  # noqa: BLE001
         check("O8 (did not run)", False, f"{type(exc).__name__}: {exc}")
 

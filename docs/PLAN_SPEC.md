@@ -1,6 +1,6 @@
 # PLAN_SPEC.md — every strategy declares its intent BEFORE the trigger
 
-**v1.38 · 2026-10-04 · OTV4TEST r235 — §41.12 CORRECTED: SPX-TEST's dollars are NOT x7.5; the operator ruled 2,500 / 5,000 / 3,000 after seeing mainline SPX's real risk per trade.**
+**v1.39 · 2026-10-04 · OTV4TEST r249 — PREM.6: ORCS IS RETIRED by ruling (§41.13); the plan keeps recording.**
 
 **v1.35 · 2026-10-03 · OTV4TEST r229 — EM.2: ORCS's implied move is the tastytrade platform's expected move (§41.10); the butterflies keep theirs by ruling.**
 
@@ -1617,3 +1617,9 @@ The operator: *"On rolling/defending the ORCS, adopt the condor logic verbatim."
 | risk / ramp MIN, ramp TOP, daily cap | the box's own dollars | the box's own dollars, NOT scaled: ~~8,250 / 37,500 / 11,250 (x7.5)~~ **CORRECTED r235** - r234 recorded the x7.5 dollars as ruled; they were a proposal, and the operator, shown mainline SPX (OT_RISK_USD 2,100: ~$1,840 deployed a Runaway trade, ~$400 real loss at the 20% stop, avg win $1,017, 2.56:1, +$11,945 over 34 trades), ruled *"Maybe $2500/5000/3000?"* and *"I don't think we need to get crazy with our sizing to make money"* | configure.sh on that box |
 `CONTRACT_SCALE` is SPX 7.5, every other instrument 1.0; `OT_CONTRACT_SCALE` overrides (anything not a positive number is ignored and said). The Service mode line ends with it. Already scale-free and untouched: the butterflies (debit ratio, expected-move wings), the condor defence (percent of credit), and every trade that sizes off the risk dollars. **Not proven:** no ORCS shape has been priced on SPX history; the paper weeks are the measurement, as on QQQ. Re-measured every Saturday (BACKLOG SCALE.1, SAT-RUN).
 **As built (OTV4TEST r234):** `config.py` v4.57, `strategy/orcs_plan.py` v1.8, `main.py` v4.89. Gate `tests/check_contract_scale.py` S1-S6.
+
+
+### 41.13 r249 — RETIRED (operator 2026-10-04)
+The operator, 2026-10-04 20:12 ET: "Retire it on this repo." ORCS_ENABLED now defaults OFF; OT_ORCS=1 restores the trade (paper only, as before). The plan (strategy/orcs_plan) keeps locating and recording both sides every tick of its window, so the forward data does not stop.
+**Why.** Measured that evening, read-only, on 50 SPX sessions (07-24..10-02), every study's terms hashed before results: (1) the r207 shape scaled x7.5 (0.20 delta, 20 wide, condor defence) made ~+$20/day net with 36% losing days - no shape in the delta x wing x EM-floor grid passed; holding beat the condor defence in almost every cell (/var/tmp/orcs_spx_1004). (2) his EM-extremes, tight-wing, untested-roll shape: none passed, losing days 28-68% (/var/tmp/orcs_em_1005). (3) his 2-SD open condor, one-strike wings, roll: -$52/day held, -$37 rolled (/var/tmp/orcs_2sd_1005). In every study a NATURAL fill turned nearly every cell negative: the edge sits inside the bid-ask spread. On QQQ (10-03, X9/X10) the r207 shape made ~+$22/day and lost in the first half of its history. His words, 19:59 ET: "Why the fuck is it spec'd to make less than pocket change on a $1000 at risk?"
+**As built (OTV4TEST r249):** `config.py` v4.58; `docs/TRADES.md` §0; gate `tests/check_orcs.py` v1.6 O8 re-pointed (the default is OFF, still read from config).

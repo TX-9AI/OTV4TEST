@@ -19,7 +19,7 @@ is its `docs/PLAN_SPEC.md` section.
 | Runaway | `RunawayContinuation` | ON | none (`OT_RUNAWAY_END` moves its end) | 09:35-10:30 | PLAN_SPEC §30 |
 | Breakout | `Breakout` | ON | none | 09:35-10:30 | section 7 below |
 | Liquidity hunt | `LiquidityHunt` | ON | none | 09:35-10:30 | PLAN_SPEC §37 |
-| ORCS | `OpeningRangeCreditSpread` | ON | `OT_ORCS` | 09:45-10:30 | PLAN_SPEC §41 |
+| ORCS | `OpeningRangeCreditSpread` | OFF | `OT_ORCS` | 09:45-10:30 | PLAN_SPEC §41 |
 | GEX pin butterfly | `GEXPinButterfly` | ON | `OT_GEX_BUTTERFLY` | 12:00-15:00 | PLAN_SPEC §32 |
 | ATP butterfly | `ATPButterfly` | OFF | `OT_ATP_BUTTERFLY` | 12:00-15:00 | PLAN_SPEC §39 |
 | VOLT | `VOLT` | OFF | `OT_VOLT` | 09:35-10:30 | section 8 below |
@@ -28,7 +28,7 @@ is its `docs/PLAN_SPEC.md` section.
 | Trend credit spread | `TrendCreditSpread` | OFF | `OT_TCS_ACTIVE` | 11:31-15:40 | PLAN_SPEC §34 |
 
 A window's end is exclusive: 10:30 means the last entry is 10:29. A switch is on only at
-the literal `1`. ORCS is PAPER ONLY (a live box refuses it). The ORB trade is retired but
+the literal `1`. ORCS is RETIRED (r249, the operator 2026-10-04: "Retire it on this repo"; PLAN_SPEC §41.13) - OT_ORCS=1 restores it, PAPER ONLY (a live box refuses it); its plan keeps recording. The ORB trade is retired but
 the opening-range ENGINE is not: Runaway, Breakout and the Hunt read it, and since r222 its
 range is checked against the official print. The condor is a management plan with no entry
 of its own; with both credit entries retired it has nothing to manage.
