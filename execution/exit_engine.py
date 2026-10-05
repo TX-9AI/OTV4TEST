@@ -1,5 +1,6 @@
 """
-execution/exit_engine.py  v4.36
+execution/exit_engine.py  v4.37
+v4.37 2026-10-04  OTV4TEST r248 (LIVE.1 BBK.1, MIRROR OF otv4 r470 b457102, WA 38.2) — a single-leg BUY_TO_CLOSE is priced as a BUY: _close_single_leg passed the literal "sell" to _exit_limit, so an adopted short's buy-back walked down from the ask and snapped up - paying above its mark (measured: 1.15 then 1.14 against a 1.10 mark; floor 1.15 vs 1.10). The side now follows the action. Diff verbatim; reviewed here BEFORE mainline landed it (the operator: "Have reporter do the buy-back & run the fix by you for a sanity check").
 v4.36 2026-10-04  OTV4TEST r245 (LIVE.1 B3, MIRROR OF otv4 r467 b32c73b, WA 38.2) — A PARTIAL LIVE EXIT SURVIVES A RESTART: the close's state (filled portions, the working order id) is saved to the row's new live_exit_state column after the submit and after every pass, and loaded first; a restart resumes the working order or submits only the REMAINDER, and the booked price is the weighted average of every fill. Code hunks applied verbatim; getsource sha256[:16] of _exit_state_load / _exit_state_save / _confirm_and_book_live_exit identical to b32c73b (a71ca216 / b44de96e / 1819bebc).
 v4.35 2026-10-04  OTV4TEST r242 (LIVE.1 B0, MIRROR OF otv4 r463 c912ce7, WA 38.2) — every Account call goes through tasty_client.sdk_result: on tastytrade 13.x the Account methods are coroutines and a bare call placed and closed NOTHING live (paper never calls them). Hunks applied verbatim from c912ce7.
 v4.34 2026-10-03  OTV4TEST r230 (PREM.5) — ORCS LEGS TAKE THE CONDOR'S EXITS, VERBATIM. The operator, 2026-10-03 21:21 ET: "On rolling/defending the ORCS, adopt the condor logic verbatim." _evaluate_condor_leg no longer returns early for an ORCS leg: the stop is suppressed while its other side is open, a LONE leg stops at credit + 15% of risk, the nickel closes it, the final-form floor applies after a roll. r204's 'held to the close and nothing else' is superseded.
@@ -3824,7 +3825,11 @@ class ExitEngine:
         # r105 — selling a long OUT is the ladder's "sell" side: start 25% in
         # from the ask, walk down toward mark, never accept below mark. A FLOOR
         # stop skips the walk and goes to mark (see _exit_limit).
-        _lim, _why = self._exit_limit(record, reason, mark_price, "sell", "single")
+        # 🔴 r470 / BBK.1 — the side FOLLOWS THE ACTION. This was the literal
+        # "sell", so an adopted short's BUY_TO_CLOSE walked down from the ask and
+        # snapped up: a buy-back paying above its mark.
+        _side = "buy" if action == OrderAction.BUY_TO_CLOSE else "sell"
+        _lim, _why = self._exit_limit(record, reason, mark_price, _side, "single")
         limit = self._round_to_tick(_lim, record, single_leg=True)   # TICK.1
         record["_exit_last_limit"] = limit
         logger.info("[ladder] single CLOSE %s @ %.2f — %s",
