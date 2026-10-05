@@ -1,5 +1,10 @@
 """
-query.py  v4.17
+query.py  v4.18
+v4.18 2026-10-05  OTV4TEST r252 (BOX.18) - THE PLANS PANEL READS THIS BOX'S INSTRUMENT'S HEARTBEATS ONLY. plan_heartbeat
+      is keyed (symbol, plan) and was read with no symbol, so SPX-TEST's panel listed AAL's frozen heartbeats from its AAL
+      days as 15 STALE plans while every SPX heartbeat was current (operator's screenshot, 10-05 11:05 ET). UNSET reads
+      every row, as before. FORK-ONLY IN EFFECT: 1-REPORTER measured otv4 335d355 - mainline's query.py is v4.11 and has
+      no plan_heartbeat; v4.17's "1-REPORTER mirrors" no longer describes these two files, which have diverged.
 v4.17 2026-09-26  OTV4TEST r152 — THIS FILE READS ITS OWN TREE, AND A FAILED CONFIG IMPORT SAYS SO. SHARED
       with otv4 (WA section 38.2: this tree authors, 1-REPORTER mirrors the same code and gate). Three sites,
       found when a WIN.1 worktree checker went red on the LIVE config (Q1-Q3, 2026-09-26): (1) INSTALL_DIR was
@@ -855,8 +860,10 @@ def show_decisions(dc):
         print()
         return
 
+    _hb_all = (not INSTRUMENT) or INSTRUMENT == "UNSET"        # v4.18: this box's instrument only
     hb = _q(dc, "SELECT plan, ts_epoch, tick_id, state, gate, verdict, watching"
-                " FROM plan_heartbeat ORDER BY plan")
+                " FROM plan_heartbeat" + ("" if _hb_all else " WHERE symbol=?") + " ORDER BY plan",
+            () if _hb_all else (INSTRUMENT,))
     if hb is None:
         print("  (plan_heartbeat not present — bake r83 or older store)")
         print(); return

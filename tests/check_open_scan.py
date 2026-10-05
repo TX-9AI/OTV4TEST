@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_open_scan.py  v1.0
+tests/check_open_scan.py  v1.1
+
+v1.1  2026-10-05  OTV4TEST r252 (BOX.18) - level_ledger in the fixture carries `symbol` as the real schema does
+      (data/derived_store.py: symbol TEXT NOT NULL), and the box is pinned to the fixture's QQQ: open_scan v1.1
+      counts only this box's levels. No assertion changed.
 
 The daily open scan raises the reds it exists to raise, diffs NEW against the
 previous run, ignores checker fixtures, skips non-trading days, never writes a
@@ -67,7 +71,7 @@ def _sha(p):
 def _derived(path, live_levels=3, fork1h_built=1, level_zero=False, empty_field=None):
     c = sqlite3.connect(path)
     c.executescript("""
-      CREATE TABLE level_ledger (level_id TEXT, price REAL, retired_ts REAL);
+      CREATE TABLE level_ledger (level_id TEXT, symbol TEXT NOT NULL, price REAL, retired_ts REAL);
       CREATE TABLE fork_series (interval TEXT, ts_epoch REAL, built INTEGER);
       CREATE TABLE plan_tick (ts_epoch REAL, strategy TEXT, verdict TEXT, reason TEXT);
       CREATE TABLE plan_check (ts_epoch REAL, strategy TEXT, check_name TEXT, value REAL, verdict TEXT);
@@ -75,7 +79,7 @@ def _derived(path, live_levels=3, fork1h_built=1, level_zero=False, empty_field=
       CREATE TABLE derived_engine_status (name TEXT, runs INTEGER, failures INTEGER, last_rows INTEGER, last_error TEXT);
     """)
     for i in range(live_levels):
-        c.execute("INSERT INTO level_ledger VALUES (?,?,NULL)", (f"L{i}", 700 + i))
+        c.execute("INSERT INTO level_ledger VALUES (?,'QQQ',?,NULL)", (f"L{i}", 700 + i))
     t = T930 + 600
     c.execute("INSERT INTO fork_series VALUES ('1h',?,?)", (t, fork1h_built))
     c.execute("INSERT INTO fork_series VALUES ('1d',?,0)", (t,))
@@ -106,6 +110,7 @@ def _run(argv):
 
 
 def main() -> int:
+    os.environ["OT_INSTRUMENT"] = "QQQ"           # v1.1: the fixture is a QQQ box
     print("=" * 68)
     print("OPEN SCAN: the reds it exists for, NEW vs yesterday, read-only")
     print("=" * 68)

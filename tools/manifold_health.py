@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """
-tools/manifold_health.py  v4.3
+tools/manifold_health.py  v4.4
+v4.4 2026-10-05  OTV4TEST r252 (BOX.18) - A FOREIGN SYMBOL'S CANDLES NO LONGER JUDGE THIS BOX, AND THE TAPE QUESTION IS ASKED OF
+      THE BOX'S OWN INSTRUMENT. SPX-TEST was AAL until 2026-10-03 and its store still holds AAL rows: the board painted AAL/*
+      amber in RTH, the rollup went DEGRADED, and the 09:35 open scan read it as RED feed:rollup (10-05). And --symbol
+      defaulted to the shell's OT_INSTRUMENT, which devtools does not set, so SPX (a cash index) showed prints amber off
+      AAL's old tape instead of n/a. A candle whose base symbol is neither the box instrument nor VIX is FOREIGN: shown,
+      with its real age, under its own heading, painted n/a, and kept out of the rollup and --bulb. UNSET instrument =
+      the old behaviour (everything judged) - never a guess.
 v4.3 2026-09-26  OTV4TEST r146 — {SYM} resolves through box_instrument(): devtools runs this from a shell without OT_INSTRUMENT, so the board read QQQ's rows on every box.
 
 One bulb per stream. All green = manifold green.
@@ -234,9 +241,38 @@ def _is_after_hours_candle(label: str) -> bool:
     return label.split("/", 1)[0].endswith("_EXT")
 
 
+def _box_feed_bases() -> set:
+    """v4.4 - the base symbols this box's candle feed writes (its instrument and VIX), or
+    an EMPTY set when the instrument is UNSET, which judges every candle as before."""
+    from utils.instrument import box_instrument, UNSET
+    sym = (box_instrument() or "").strip().upper()
+    if not sym or sym == UNSET:
+        return set()
+    return {sym, "VIX"}
+
+
+def _is_foreign(label: str, bases: set) -> bool:
+    """`<SYM>[_EXT]/<tf>` whose base is not one this box feeds (v4.4)."""
+    if not bases:
+        return False
+    base = label.split("/", 1)[0].upper()
+    if base.endswith("_EXT"):
+        base = base[:-4]
+    return base not in bases
+
+
 def collect(feed_db: str, derived_db: str, in_rth: bool,
-            is_index: bool = False) -> dict:
+            is_index=None) -> dict:
     now = time.time()
+    # v4.4 - None asks the BOX, never the caller's shell (open_scan passed nothing,
+    # devtools sets no OT_INSTRUMENT): a cash index has no tape, whoever asks.
+    if is_index is None:
+        try:
+            from utils.instrument import box_instrument
+            from config import is_cash_index
+            is_index = bool(is_cash_index(box_instrument()))
+        except Exception:                                       # noqa: BLE001
+            is_index = False
     out = {"streams": [], "candles": [], "derived": [], "in_rth": in_rth,
            "is_index": is_index}
 
@@ -279,15 +315,17 @@ def collect(feed_db: str, derived_db: str, in_rth: bool,
                           " FROM candles GROUP BY symbol, interval").fetchall()
     except sqlite3.Error:
         rows = []
+    bases = _box_feed_bases()
     for sym, iv, n, newest in rows:
         age = now - (newest or 0) / 1000.0
         label = f"{sym}/{iv}"
         ah = _is_after_hours_candle(label)
+        foreign = _is_foreign(label, bases)
         out["candles"].append({
             "label": label, "rows": n, "age_s": round(age),
-            "after_hours": ah,
-            "bulb": _bulb(n, age, CANDLE_BUDGET.get(iv, 3600),
-                          (not in_rth) if ah else in_rth)})
+            "after_hours": ah, "foreign": foreign,
+            "bulb": NA if foreign else _bulb(n, age, CANDLE_BUDGET.get(iv, 3600),
+                                             (not in_rth) if ah else in_rth)})
 
     if os.path.exists(derived_db):
         dc = sqlite3.connect(f"file:{derived_db}?mode=ro", uri=True)
@@ -358,10 +396,11 @@ def rollup(rep: dict) -> str:
             if s["critical"] and s["bulb"] != NA
             and not s.get("after_hours") and _in_window(s, in_rth)]
     cand = [c for c in rep["candles"]
-            if not c.get("after_hours") and _in_window(c, in_rth)]
+            if not c.get("after_hours") and not c.get("foreign")
+            and _in_window(c, in_rth)]
     # ⚠️ "no candles AT ALL" stays RED — that is a dead store, not a window
     # question — but an empty IN-WINDOW set outside RTH is normal.
-    if not rep["candles"]:
+    if not [c for c in rep["candles"] if not c.get("foreign")]:
         return RED
     if any(s["bulb"] == RED for s in crit):
         return RED
@@ -389,18 +428,21 @@ def main() -> int:
     a = ap.parse_args()
 
     in_rth = _rth_now()
-    try:
-        from config import is_cash_index
-        _is_index = is_cash_index(a.symbol)
-    except Exception:                                           # noqa: BLE001
-        _is_index = False
+    _is_index = None                 # v4.4: no --symbol and no env -> collect() asks the box
+    if a.symbol:
+        try:
+            from config import is_cash_index
+            _is_index = is_cash_index(a.symbol)
+        except Exception:                                       # noqa: BLE001
+            _is_index = False
     rep = collect(a.feed_db, a.derived_db, in_rth, _is_index)
     r = rollup(rep)
 
     if a.bulb:
         bad = [s["label"] for s in rep.get("streams", [])
                if s["critical"] and s["bulb"] in (RED, AMBER)]
-        bad += [c["label"] for c in rep.get("candles", []) if c["bulb"] in (RED, AMBER)]
+        bad += [c["label"] for c in rep.get("candles", [])
+                if not c.get("foreign") and c["bulb"] in (RED, AMBER)]
         # ⚠️ NEVER PRINT A DANGLING ARROW. When the store is missing entirely
         # there are no per-stream labels to name, and "DOWN  ← " reads like a
         # truncated message rather than a diagnosis.
@@ -434,7 +476,7 @@ def main() -> int:
 
     print("\n  CANDLES")
     for c in sorted(rep["candles"], key=lambda x: x["label"]):
-        if c.get("after_hours"):
+        if c.get("after_hours") or c.get("foreign"):
             continue
         print(f"   {c['bulb']}  {c['label']:<22} rows={c['rows']:<8} age={c['age_s']}s")
 
@@ -444,7 +486,7 @@ def main() -> int:
     # reach GREEN instead of sitting permanently DEGRADED on rows that are
     # behaving exactly as designed.
     ah_s = [s for s in rep["streams"] if s.get("after_hours")]
-    ah_c = [c for c in rep["candles"] if c.get("after_hours")]
+    ah_c = [c for c in rep["candles"] if c.get("after_hours") and not c.get("foreign")]
     if ah_s or ah_c:
         print("\n  AFTER-HOURS  " +
               ("(idle now — judged outside RTH)" if rep["in_rth"]
@@ -453,6 +495,13 @@ def main() -> int:
             age = "—" if s["age_s"] is None else f"{s['age_s']}s"
             print(f"   {s['bulb']}  {s['label']:<22} rows={s['rows']:<8} age={age}")
         for c in sorted(ah_c, key=lambda x: x["label"]):
+            print(f"   {c['bulb']}  {c['label']:<22} rows={c['rows']:<8} age={c['age_s']}s")
+
+    # v4.4 - SHOWN, NOT HIDDEN, NOT JUDGED: rows this box's feed no longer writes.
+    fc_ = [c for c in rep["candles"] if c.get("foreign")]
+    if fc_:
+        print("\n  FOREIGN  (not this box's instrument - leftovers, never judged)")
+        for c in sorted(fc_, key=lambda x: x["label"]):
             print(f"   {c['bulb']}  {c['label']:<22} rows={c['rows']:<8} age={c['age_s']}s")
 
     if rep["derived"]:

@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_manifold_windows.py  v1.0
+tests/check_manifold_windows.py  v1.1
+
+v1.1  2026-10-05  OTV4TEST r252 (BOX.18) - the fixture is SPX's board, so the box instrument is PINNED to SPX
+      (manifold_health v4.4 judges only the box's own instrument + VIX; under the sweep's OT_INSTRUMENT=QQQ the SPX
+      rows would be foreign). No assertion changed.
 
 r95 — THE BOARD MUST BE ABLE TO REACH ITS OWN GOOD STATE.
 
@@ -88,6 +92,7 @@ def _build_feed(path, prints_rows=0):
 
 
 def main() -> int:
+    os.environ["OT_INSTRUMENT"] = "SPX"           # v1.1: the fixture is SPX's board
     print("check_manifold_windows — freshness is judged in each stream's own window")
 
     d = tempfile.mkdtemp()

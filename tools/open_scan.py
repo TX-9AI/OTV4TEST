@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """
-tools/open_scan.py  v1.0 — THE DAILY OPEN SCAN: IS THE PIPELINE READY, AND ARE THE
+tools/open_scan.py  v1.1 — THE DAILY OPEN SCAN: IS THE PIPELINE READY, AND ARE THE
 PLANS SEEING WHAT THEY SHOULD?
 
+v1.1  2026-10-05  OTV4TEST r252 (BOX.18) - the level book's live/retired counts are this box's instrument only
+      (SPX-TEST's 09:35 scan read 68 live = 20 SPX + 48 AAL left from the box's AAL days); n/a streams are skipped.
 v1.0  2026-09-24  OTV4TEST r130. Operator, after a by-hand scan of the live box
       found five things no gate had: *"the scan you just ran should be done every
       trading day ... What you found was insightful"*, then the timing: *"let's do
@@ -110,7 +112,7 @@ def scan_ready(s: Scan, feed: str, derived: str, now: dt.datetime):
     s.add(OK if MH.rollup(rep) == MH.GREEN else RED, "feed:rollup",
           f"manifold rollup {MH.rollup(rep)}")
     for st in rep["streams"]:
-        if st.get("after_hours"):
+        if st.get("after_hours") or st["bulb"] == MH.NA:   # BOX.18: n/a (an index's tape) is no question
             continue
         if not st["rows"]:
             s.add(RED if st["critical"] else WATCH, f"feed:{st['table']}",
@@ -134,8 +136,15 @@ def scan_ready(s: Scan, feed: str, derived: str, now: dt.datetime):
         return
     t0, _ = _day_bounds(now)
     try:
-        live = dc.execute("SELECT COUNT(*) FROM level_ledger WHERE retired_ts IS NULL OR retired_ts = ''").fetchone()[0]
-        ret = dc.execute("SELECT COUNT(*) FROM level_ledger WHERE retired_ts >= ?", (t0,)).fetchone()[0]
+        # BOX.18 - this box's instrument only: SPX-TEST's book counted AAL's 48 old levels
+        # as live (68 = 20 SPX + 48 AAL, 10-05). UNSET counts every row, as before.
+        from utils.instrument import box_instrument, UNSET
+        _sym = (box_instrument() or "").strip().upper()
+        _w, _p = ("", ()) if (not _sym or _sym == UNSET) else (" AND symbol = ?", (_sym,))
+        live = dc.execute("SELECT COUNT(*) FROM level_ledger WHERE (retired_ts IS NULL OR retired_ts = '')" + _w,
+                          _p).fetchone()[0]
+        ret = dc.execute("SELECT COUNT(*) FROM level_ledger WHERE retired_ts >= ?" + _w,
+                         (t0,) + _p).fetchone()[0]
         s.add(OK if live else RED, "levels:live", f"level book: {live} live level(s), {ret} retired today")
     except sqlite3.Error as exc:
         s.add(RED, "levels:unreadable", f"level_ledger unreadable: {exc}")
