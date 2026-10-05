@@ -62,6 +62,8 @@ the same failure class as the 10:39 restart wiping confirmed ORB setups.
 
 ## TIER 3 — STATEFUL / LIFECYCLE (the object has a biography)
 
+> **OTV4TEST NOTE (r250, 2026-10-04):** this fork's liquidity mapper is the **LEVEL BOOK** - the operator's LVL.15 redesign (r110-r126): `derived/levels.py` (the engine) + `derived/level_book.py` + `derived/level_rules.py`, recording to `level_ledger`. It REPLACED mainline's `analysis/liquidity_mapper.py`, which r123 stopped running and r126 deleted. Rows below naming `liquidity_mapper` describe mainline; here the same jobs are the level book's, under his 2026-10-01/10-03 definitions (a sweep is a defence; a lone level flips S/R; defences and failures counted, r214).
+
 | value | source | why |
 |---|---|---|
 | **Liquidity pools** — `touch_count`, `swept`, `swept_index`, `rejection_confirmed`, `is_named` | liquidity_mapper | A pool is created, held n times, broken, done. **Recomputing from a rolling window reconstructs that history rather than recording it** — and a pool whose first touches aged out comes back UNDERSTATED. That biases systematically against the OLDEST levels, which are the strongest ones. |
@@ -140,7 +142,7 @@ that have nothing to do with the level.
 **Operator's ruling, 2026-08-22: the sweep rules apply universally to candles,
 wicks and bodies. This is the basis of all his conditions.**
 
-Source is `liquidity_mapper` and its doctrine is explicit:
+Source is `liquidity_mapper` (mainline; in this fork, the LEVEL BOOK - see the TIER 3 note) and its doctrine is explicit:
 
 > `closes_beyond >= ACCEPT_CLOSES` is no longer a sweep — **it is a breakout.**
 

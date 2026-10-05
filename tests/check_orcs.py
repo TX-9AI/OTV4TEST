@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_orcs.py  v1.6
+tests/check_orcs.py  v1.7
+v1.7  2026-10-04  OTV4TEST r250 — THE FIXTURE IS A QQQ CHAIN, SO ITS CONTRACT SCALE IS PINNED TO 1.0. Under OT_INSTRUMENT=SPX the r234 scale
+      (7.5) put the wing 22.50 out on a 1-dollar fixture and O1 O3 O4 O5 T1 T2 T3 T6 went red for that reason alone (SPX-TEST, 10-04).
 v1.6  2026-10-04  OTV4TEST r249 (PREM.6) — O8 RE-POINTED, NOT DROPPED (38.4): ORCS is RETIRED by ruling ("Retire it on this repo"), so the
       default is OFF; the dials and the retired-dial absence are still pinned. T2 still proves OFF signals nothing.
 v1.5  2026-10-03  OTV4TEST r230 (PREM.5) — T3, T4, T5 INVERTED BY RULING: "On rolling/defending the ORCS, adopt the condor logic
@@ -81,6 +83,7 @@ import tempfile
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
+os.environ["OT_CONTRACT_SCALE"] = "1"      # r250: the fixture chain is QQQ-shaped; never the box's SPX 7.5
 for _sp in _glob.glob(os.path.join(_root, "venv", "lib", "python*", "site-packages")):
     if _sp not in sys.path:                                  # r106 venv bootstrap
         sys.path.insert(1, _sp)

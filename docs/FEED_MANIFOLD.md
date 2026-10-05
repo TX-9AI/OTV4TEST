@@ -73,9 +73,9 @@ overwrite**.
 | `greeks.series` | Greeks | `greeks_series` | **ALL 13 FIELDS**, append |
 | `quotes.live` | Quote | `chain_marks` | current value — KEEP |
 | `quotes.series` | Quote | `quote_series` | **ALL 12 FIELDS**, incl. sizes |
-| `prints` | TimeAndSale | `prints` | not currently subscribed |
-| `last_trade` | Trade | `last_trade` | not currently subscribed |
-| `session_summary` | Summary | `session_summary` | not currently subscribed |
+| `prints` | TimeAndSale | `prints` | not subscribed (08-22) — **SUBSCRIBED on OTV4TEST** (r250, measured 2026-10-04 on QQQ-TEST's feed_store: 257,143 rows, newest 10-05 00:34 UTC; the 08-22 'not subscribed' was stale) |
+| `last_trade` | Trade | `last_trade` | not subscribed (08-22) — **SUBSCRIBED on OTV4TEST** (r250, measured 2026-10-04 on QQQ-TEST's feed_store: 52,492 rows, newest 10-05 00:34 UTC; the 08-22 'not subscribed' was stale) |
+| `session_summary` | Summary | `session_summary` | not subscribed (08-22) — **SUBSCRIBED on OTV4TEST** (r250, measured 2026-10-04 on QQQ-TEST's feed_store: 213 rows, newest 10-05 00:00 UTC; the 08-22 'not subscribed' was stale) |
 | `underlying` | Underlying | `underlying` | not currently subscribed |
 | `theo` | TheoPrice | `theo` | not currently subscribed |
 | `open_interest` | REST daily | chain rows | correct as REST, once/day |
