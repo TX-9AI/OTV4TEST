@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_prepares.py  v1.22
+tests/check_plan_prepares.py  v1.23
+v1.23 2026-10-05  OTV4TEST r255 — PINNED TO QQQ, the instrument its fixtures are written for (found and named by
+      SPX-TEST): M2/M3 build a 1-wide QQQ grid, and under OT_INSTRUMENT=SPX config.STRIKE_INCREMENT is 5, so
+      condor_roll's proximity read the call as TESTED (M2) and priced the roll on SPX's grid (M3). Red on
+      b08d747 too; the sweep forces QQQ, so only SPX-TEST saw it. No assertion changed.
 v1.22 2026-09-26  OTV4TEST r149 (EOD.1) — R8 and R14 RE-POINTED: "past the cutoff" is now five
       minutes past the cutoff READ FROM CONFIG (RUNAWAY_CUTOFF_ET, 15:40), not a typed 11:45. The
       operator's 2026-08-29 "Debit entries are finished at 1130, period" is superseded by his
@@ -179,6 +183,7 @@ for _sp in _glob.glob(os.path.join(_RT, "venv", "lib", "python*", "site-packages
     if _sp not in sys.path:
         sys.path.insert(1, _sp)
 os.environ.setdefault("OT_PAPER_TRADING", "1")
+os.environ["OT_INSTRUMENT"] = "QQQ"   # v1.23: the fixtures are a 1-wide QQQ grid; SPX STRIKE_INCREMENT=5
 _fails = []
 
 

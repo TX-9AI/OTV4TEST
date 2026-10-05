@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/gen_file_map.py  v4.17
+tests/gen_file_map.py  v4.18
+v4.18 2026-10-05  OTV4TEST r255 — THE ORIENTATION PROSE STOPS CLAIMING "Nothing flows backwards". It was false
+      at HEAD (measured 10-05): strategy/management.py, strategy/condor_roll.py, analysis/entry_snapshot.py,
+      analysis/gate_report.py and data/options_chain.py import downstream modules INSIDE functions. The prose
+      now says the direction is the intent of module-level imports and the map lists every edge either way.
 v4.17 2026-10-04  OTV4TEST r239 — tools/probe_order_dryrun.py is an entry point (run THROUGH run_with_bot_env, like the other probes).
 v4.16 2026-10-04  OTV4TEST r233 — TWO NEW HAND-RUN TOOLS ARE ENTRY POINTS: tools/seed_candles_from_warehouse.py (SEED.1) and
       tools/wake_box.py (WAKE.1). Both are run from a shell by design; undeclared they printed as orphans.
@@ -425,8 +429,10 @@ def render(root, files, calls, called_by, broken, unparsed, absent_block):
     L.append("")
     L.append("**The one-way flow:** `data/` fetches -> `analysis/` describes ->")
     L.append("`strategy/` decides -> `execution/` acts -> `database/` records.")
-    L.append("**Nothing flows backwards**, and that is what let v3's defects be")
-    L.append("isolated rather than being everywhere at once.")
+    L.append("That is the intended direction of MODULE-LEVEL imports, and it is what")
+    L.append("let v3's defects be isolated. ⚠️ It is not absolute: some modules import")
+    L.append("downstream INSIDE a function (e.g. strategy/management.py ->")
+    L.append("execution.exit_engine); every such edge is listed below like any other.")
     L.append("")
     L.append("**Where the decisions live:**")
     L.append("")

@@ -18,8 +18,10 @@ unreferenced. Confirm before removing anything.
 
 **The one-way flow:** `data/` fetches -> `analysis/` describes ->
 `strategy/` decides -> `execution/` acts -> `database/` records.
-**Nothing flows backwards**, and that is what let v3's defects be
-isolated rather than being everywhere at once.
+That is the intended direction of MODULE-LEVEL imports, and it is what
+let v3's defects be isolated. ⚠️ It is not absolute: some modules import
+downstream INSIDE a function (e.g. strategy/management.py ->
+execution.exit_engine); every such edge is listed below like any other.
 
 **Where the decisions live:**
 

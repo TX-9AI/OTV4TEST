@@ -1,6 +1,6 @@
 # WORKING_AGREEMENT.md — how we operate (read this first, every new thread)
 
-**`WORKING_AGREEMENT.md` v4.26 · 2026-10-04 — §0 through §40, plus §15a, §18a, §36a, §38.9 and §40.1. See the CHANGELOG at the foot.**
+**`WORKING_AGREEMENT.md` v4.27 · 2026-10-05 — §0 through §40, plus §15a, §18a, §36a, §38.9 and §40.1. See the CHANGELOG at the foot.**
 
 > 🔴 **§0 IS THE FLOOR — AN ATTESTATION, NOT A TIP. Read it first, every thread.**
 > The operator ordered it once before and was told it existed. It did not.
@@ -254,7 +254,10 @@ layer** vs. a direct prompt. Nested quotes collide with that wrapping.
   `optbot-boot-sweep` (the full checker sweep) and `optbot-claude-boot` (the
   08:00 session). It still has no
   `ot-eod`, `candle-logger`, `eod-bot`, `self-close` or shadow units, and `s3-push`
-  stays masked. The box is started at **08:00 ET daily by an AWS EventBridge
+  stays masked. 🔑 **RE-MEASURED 2026-10-05 (OTV4TEST r255): FIVE TIMERS.** The
+  operator installed `optbot-open-scan-ready.timer` (09:35 ET) and
+  `optbot-open-scan-live.timer` (09:45 ET, both r130, weekdays) on 2026-10-04 20:48 ET;
+  they first ran 10-05. The box is started at **08:00 ET daily by an AWS EventBridge
   schedule that lives outside this repo** — a failed wake is invisible from here,
   so read `journalctl --list-boots` first.
 - **The trap:** `~/options-trader` exists on **bot boxes**, NOT on the control box.
@@ -912,7 +915,8 @@ entry or exit is wrong, however convenient.
 ## 30. EVERY BOX COLLECTS. THE COLLECTORS ARE THE TRADERS.
 Added 2026-08-19 as "collection is fleet-wide, trading is panel-only, 15 traders
 / 29 collectors". **REWRITTEN 2026-08-25: that split no longer exists.** The
-2026-08-20 pare TERMINATED the other 14 instances, so the fleet is 15 boxes and
+2026-08-20 pare TERMINATED the other 14 instances, so the fleet is 15 boxes (⚠️ measured
+2026-10-05 by 1-REPORTER: 13 mainline boxes plus SOFI, which runs THIS fork's code) and
 they both trade and collect.
 
 The rule itself survives intact and is why the section stays: **a box that stops
@@ -1243,7 +1247,8 @@ mistake.
 EXIST IN THIS REPO, AND THE RULE POINTED AWAY FROM THE ONE THAT DOES.**
 Measured on this box: `grep -rn "WarehouseCache" --include=*.py` returns
 **zero hits**, and there is no `warehouse_reader.py` — `warehouse/` holds
-`midnight_halt`, `retention_purge`, `s3_push` and `self_close`, and nothing
+`midnight_halt`, `retention_purge`, `s3_push` and `self_close` (and, since r147,
+`counter_pop` - corrected r255), and nothing
 else. **The one path here is `tests/warehouse_source.py`**, which §38.1 already
 names as the single sanctioned route, carrying the mandatory CDC dedupe
 (*latest wins by `pushed_at_utc`*) and the objects-listed-vs-read report so a
@@ -1663,7 +1668,8 @@ not hold surfaces at the worst moment: *after* the work and *after* the approval
   assumed three timers that never existed here. As of r27 the box has exactly
   two, both ruled — the midnight halt (BOX.2) and the **nightly 16:05 ET**
   purge (BOX.4, moved off Saturday by r53) —
-  and §3 lists them as measured (three since r168: the 15:50 watchdog).
+  and §3 lists them as measured (three since r168: the 15:50 watchdog; FIVE since
+  2026-10-04: the 09:35 and 09:45 open-scan timers, r130, installed by the operator).
   🔑 **AMENDED 2026-10-03 (r226): ONE THING NOW DOES WATCH WHILE A SESSION IS UP** —
   the alert watch (r171, AGT.1: `tools/agent_watch.py --follow`, re-armed every
   30 minutes by the session). It ends when the session ends; "does not run
@@ -1926,6 +1932,8 @@ joins the table above.
 ---
 
 ## CHANGELOG
+
+**v4.27 — 2026-10-05 — OTV4TEST r255 — FOUR STALE FACTS CORRECTED, EACH MEASURED (the 10-05 boot review).** §3 and §38.7: five timers, not three (the open-scan pair, installed 10-04 20:48 ET). §30: the fleet is 13 mainline boxes plus SOFI on this fork. §36a: `warehouse/` also holds `counter_pop` (r147). No rule changed. Still open for the operator: §7 names Fable as the second agent; the agents are now QQQ-TEST, SPX-TEST and 1-REPORTER.
 
 **v4.26 — 2026-10-04 — OTV4TEST r238 — §38.2: QQQ-TEST's instructions carry the operator's authority on SPX-TEST (his words, with what that obliges: ids, rulings quoted, proposals labelled, nothing §38.3 reserves); the Saturday run includes SPX-TEST, woken by QQQ-TEST.**
 
