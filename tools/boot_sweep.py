@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""tools/boot_sweep.py — v1.4
+"""tools/boot_sweep.py — v1.5
+
+v1.5 (2026-10-06) — OTV4TEST r257. A SWEEP NEVER STARTS INSIDE ANOTHER SWEEP. check_boot_sweep's B1b drives
+  `boot_sweep --only check_boot_sweep`, which runs check_boot_sweep, which drives it again - nothing bounded
+  the depth. Found by SPX-TEST 10-06: its 08:05 sweep's chain outlived B1b's 180 s timeout (unit peak 1 GB,
+  688 MB swap, the bot running); reproduced by hand at 60+ levels. run_one now hands every checker
+  OT_SWEEP_NESTED=1, and main() refuses at once under it: prints NESTED, runs nothing, writes no result,
+  exits 0. Depth is now at most 2. check_boot_sweep B8/B8b.
 
 v1.4 (2026-10-03) — OTV4TEST r194. THE LOG IS SCRATCH TOO (BOX.16): run_one sets OT_LOG_FILE under
   the same bootsweep- mkdtemp, so a checker that imports main no longer writes the live bot.log.
@@ -128,6 +135,7 @@ def run_one(name: str) -> bool:
     env["OT_RESTING_DB"] = os.path.join(d, "resting_orders.db")     # r109
     env["OT_SIGNAL_JOURNAL_DIR"] = os.path.join(d, "signal_journal")  # r144
     env["OT_LOG_FILE"] = os.path.join(d, "bot.log")                   # r194 (BOX.16)
+    env["OT_SWEEP_NESTED"] = "1"     # r257: a checker that drives this tool gets a refusal, not a sweep
     env.setdefault("OT_INSTRUMENT", "QQQ")   # r146: an EXPLICIT fixture symbol; config no longer guesses one
     try:
         p = subprocess.run([PY, os.path.join(TESTS, name)],
@@ -213,6 +221,10 @@ def main(argv=None) -> int:
         print(json.dumps(r, indent=2) if r else "no sweep result recorded")
         return 0
 
+    if os.environ.get("OT_SWEEP_NESTED") == "1":
+        # 🔴 r257 — a sweep inside a sweep recursed without bound (SPX-TEST, 10-06).
+        print("boot_sweep: NESTED inside another sweep's checker - refusing; nothing run, no result written")
+        return 0
     prev = _load(RESULT)
     now = sweep(dry=a.dry_run, only=a.only)
     now["diff"] = diff(now, prev)

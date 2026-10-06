@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_boot_sweep.py  v1.3
+tests/check_boot_sweep.py  v1.4
+v1.4  2026-10-06  OTV4TEST r257 — B8/B8b: A SWEEP NEVER STARTS INSIDE ANOTHER. B1b's "real subset" drives
+      `--only check_boot_sweep`, which recursed without bound (SPX-TEST 10-06: past B1b's 180 s timeout).
+      B8 DRIVES the tool with OT_SWEEP_NESTED=1 and requires the refusal (exit 0, "NESTED", no result file,
+      seconds not minutes); B8b requires the real run_one to hand every checker OT_SWEEP_NESTED=1.
 v1.3  2026-10-03  OTV4TEST r194 (BOX.16) — B3/B3b REQUIRE THE LOG IN SCRATCH TOO, and B3c drives it: a fresh
       interpreter imports main with OT_LOG_FILE set and the only file handler is the scratch log.
 v1.2  2026-09-25  OTV4TEST r144 — B3/B3b REQUIRE THE SIGNAL JOURNAL IN SCRATCH TOO
@@ -132,6 +136,9 @@ check("B3 every checker runs against SCRATCH stores",
 # ── B3b — DRIVEN (§21): the real run_one, its subprocess intercepted, so no
 # checker runs and nothing is written — only the environment it WOULD hand a
 # checker is inspected. Every store must resolve inside run_one's own mkdtemp.
+_B3B_ENV = {}
+
+
 def _b3b():
     import importlib.util as _ilu
     import subprocess as _spm
@@ -145,6 +152,7 @@ def _b3b():
 
     def _fake_run(cmd, **kw):
         seen["env"] = dict(kw.get("env") or {})
+        _B3B_ENV.update(seen["env"])
         return _R()
     _orig = _m.subprocess.run
     _m.subprocess.run = _fake_run
@@ -235,6 +243,25 @@ check("B6 a red does not abort the sweep",
 check("B7 the result path is overridable so a check cannot clobber it",
       "OT_SWEEP_RESULT_DIR" in _src,
       "a check that writes where production reads breaks production (r13)")
+
+# ── B8 / B8b — r257: A SWEEP NEVER STARTS INSIDE ANOTHER (DRIVEN, §21). A name that matches no
+# checker keeps the UNFIXED tool from recursing here: it reports ERROR and exits 0 without NESTED.
+import time as _t8
+_rd8 = tempfile.mkdtemp()
+_t0 = _t8.time()
+try:
+    _r8 = _sp.run([_py, _p, "--only", "check_does_not_exist_anywhere"], capture_output=True, text=True,
+                  timeout=60, cwd=_root, env={**os.environ, "OT_SWEEP_NESTED": "1",
+                                              "OT_SWEEP_RESULT_DIR": _rd8})
+    _out8, _rc8 = (_r8.stdout or "") + (_r8.stderr or ""), _r8.returncode
+except Exception as _e8:                                        # noqa: BLE001
+    _out8, _rc8 = f"raised {type(_e8).__name__}: {_e8}", None
+_dt8 = _t8.time() - _t0
+check("B8 DRIVEN: under OT_SWEEP_NESTED=1 the tool refuses - exit 0, says NESTED, writes no result",
+      _rc8 == 0 and "NESTED" in _out8 and not os.listdir(_rd8) and _dt8 < 30,
+      f"rc={_rc8} secs={_dt8:.1f} result_dir={os.listdir(_rd8)} out={_out8.strip()[:160]!r}")
+check("B8b DRIVEN: run_one hands every checker OT_SWEEP_NESTED=1",
+      _B3B_ENV.get("OT_SWEEP_NESTED") == "1", f"OT_SWEEP_NESTED={_B3B_ENV.get('OT_SWEEP_NESTED')!r}")
 
 print(f"\n{'PASS' if not FAIL else 'FAIL'}: {len(FAIL)} problem(s) {FAIL}")
 sys.exit(1 if FAIL else 0)

@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_heartbeat.py  v1.2
+tests/check_plan_heartbeat.py  v1.3
+v1.3  2026-10-06  OTV4TEST r257 — H4's FROZEN HEARTBEATS ARE WRITTEN UNDER THE PANEL'S OWN INSTRUMENT.
+      r252 (BOX.18) made query.show_decisions read plan_heartbeat WHERE symbol=query.INSTRUMENT; this
+      fixture wrote the literal "QQQ", so under OT_INSTRUMENT=SPX the panel read nothing and H4 went red
+      for that reason alone (SPX-TEST's 08:05 sweep, 10-06). Green on QQQ by construction. Found, measured
+      and proposed by SPX-TEST. No assertion changed.
 v1.2  2026-09-22  OTV4TEST r91 — H4/H5 FREEZE THE CLOCK. They drive the real
       panel, and `show_decisions` returns early before 09:30 ET, so from r86
       (sweep moved to the 08:00 BOOT) they failed EVERY morning for a reason
@@ -125,7 +130,7 @@ check("H3 CLASS: the gate is CARRIED from the not-asked path, not parsed",
 # writer and the reader alike.
 import query
 _frozen = query.now_et().replace(hour=12, minute=0, second=0, microsecond=0)
-P._write_heartbeats(store, "QQQ", 9, _frozen.timestamp())
+P._write_heartbeats(store, query.INSTRUMENT or "QQQ", 9, _frozen.timestamp())   # r257: the panel's own symbol
 _real_now_et = query.now_et
 query.now_et = lambda: _frozen
 buf = _io.StringIO()
