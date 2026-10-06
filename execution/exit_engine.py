@@ -1,5 +1,6 @@
 """
-execution/exit_engine.py  v4.37
+execution/exit_engine.py  v4.38
+v4.38 2026-10-06  OTV4TEST r256 (F3, MIRROR OF otv4 r475 5270801, WA 38.9) — NO MARKET CLOSE FOR WANT OF A MARK BEFORE THE CROSS. A single-leg close with no mark (None or <= 0) sent a MARKET order at any hour - on a thin 0DTE contract that fills at whatever the bid is. Now, before the cross (hard_close_order_mode != "market"), it posts NOTHING, pages once per trade ("nomark"), and the caller retries next tick; at/after the cross it still crosses. force_market is unchanged. Live-only (reached only through _submit_live_close). The logic and decision points are otv4's verbatim; THE ONE DIFFERENCE IS THE CLOCK, read from this tree's limit_ladder: the cross is 15:55 here (EOD.1, r149), 15:45 on mainline - so the messages say "before the cross". _confirm_and_book_live_exit_pass returns unconfirmed "no mark before the cross; nothing posted" so the generic SUBMIT FAILED page does not also fire. Pinned by tests/check_no_mark_close.py (N1 N2 N3b N5 born red on cd613cb).
 v4.37 2026-10-04  OTV4TEST r248 (LIVE.1 BBK.1, MIRROR OF otv4 r470 b457102, WA 38.2) — a single-leg BUY_TO_CLOSE is priced as a BUY: _close_single_leg passed the literal "sell" to _exit_limit, so an adopted short's buy-back walked down from the ask and snapped up - paying above its mark (measured: 1.15 then 1.14 against a 1.10 mark; floor 1.15 vs 1.10). The side now follows the action. Diff verbatim; reviewed here BEFORE mainline landed it (the operator: "Have reporter do the buy-back & run the fix by you for a sanity check").
 v4.36 2026-10-04  OTV4TEST r245 (LIVE.1 B3, MIRROR OF otv4 r467 b32c73b, WA 38.2) — A PARTIAL LIVE EXIT SURVIVES A RESTART: the close's state (filled portions, the working order id) is saved to the row's new live_exit_state column after the submit and after every pass, and loaded first; a restart resumes the working order or submits only the REMAINDER, and the booked price is the weighted average of every fill. Code hunks applied verbatim; getsource sha256[:16] of _exit_state_load / _exit_state_save / _confirm_and_book_live_exit identical to b32c73b (a71ca216 / b44de96e / 1819bebc).
 v4.35 2026-10-04  OTV4TEST r242 (LIVE.1 B0, MIRROR OF otv4 r463 c912ce7, WA 38.2) — every Account call goes through tasty_client.sdk_result: on tastytrade 13.x the Account methods are coroutines and a bare call placed and closed NOTHING live (paper never calls them). Hunks applied verbatim from c912ce7.
@@ -3338,6 +3339,8 @@ class ExitEngine:
         if placed is None:
             placed = self._submit_live_close(record, remaining, mark_price,
                                              reason=reason)
+            if placed is None and record.pop("_exit_nomark_hold", None):
+                return FillResult(confirmed=False, detail="no mark before the cross; nothing posted")   # F3
             if placed is None:
                 self._alert_live_exit_once(
                     trade_id, "submit",
@@ -3811,14 +3814,25 @@ class ExitEngine:
             action          = action,
             quantity        = contracts,
         )
-        if force_market or mark_price is None or mark_price <= 0:
-            # 15:45 flatten, or no mark to price against — cross and be done.
+        _no_mark = mark_price is None or mark_price <= 0
+        if _no_mark and not force_market and hard_close_order_mode(now_et()) != "market":
+            # 🔴 r256 / F3 (otv4 r475) — no mark before the cross: post NOTHING, page once, retry next tick.
+            record["_exit_nomark_hold"] = 1
+            self._alert_live_exit_once(
+                record.get("trade_id", ""), "nomark",
+                f"LIVE close {str(record.get('trade_id', ''))[:8]}: NO MARK for {symbol} — "
+                f"nothing posted before the cross (no market order into an unknown book); "
+                f"retrying each tick, position stays OPEN")
+            return None
+        record.pop("_exit_nomark_hold", None)
+        if force_market or _no_mark:
+            # the end-of-day cross, or no mark at/after it — cross and be done.
             order = NewOrder(
                 time_in_force = OrderTimeInForce.DAY,
                 order_type    = OrderType.MARKET,   # single-leg market is accepted
                 legs          = [leg],
             )
-            why = "hard-close cross" if force_market else "no mark"
+            why = "hard-close cross" if force_market else "no mark, at/after the cross"
             return self._place(session, account, order,
                                f"Single-leg close (MARKET — {why})")
         tick  = self._tick_for(record)
