@@ -1,8 +1,18 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_status.py  v1.2
+tests/check_plan_status.py  v1.3
 EVERY PLAN IS WORKING OR INACTIVE, AND INACTIVE SAYS SO ONCE.
 
+v1.3  2026-10-06  OTV4TEST r258 (HYG.17) — S13-S16: A NON-WINDOW REASON THAT COMES BACK DECLARES ITSELF.
+      Found on SPX-TEST 10-06: Breakout/manage went "no open position" -> "position open —
+      managing" -> back to "no open position" inside one inactive episode, and the return was
+      never written, so plan.last(), the heartbeat and the [plans] line read "managing" on a flat
+      book from 10:42 to 16:00. The per-episode SET (r42) keeps EVERY token it ever saw, so a
+      non-window reason that was said once was silent forever after. r42's ruling says the
+      opposite for every gate but the window: "if something other than the window made it
+      inactive it should declare that". S13 drives A -> B -> A (no gate) and demands three rows
+      and last() = A; S14 the same with named gates; S15 pins that the return, once written,
+      is not repeated; S16 that a new trading day says it again (killed the one surviving mutant). S9-S12 (the window's once-per-episode rule) are unchanged and must stay green.
 v1.2  2026-09-18  OTV4TEST r49 — `guard()` takes a CALLABLE detail. Its `detail`
       argument was evaluated BEFORE the predicate ran, so any detail computed
       from state the predicate sets printed STALE — a failing check reporting
@@ -100,7 +110,7 @@ def main():
         # ⚠️ EVERY module-level dict, or state LEAKS BETWEEN CASES and a later
         # case silently reads an earlier one's episode. That is what made S10
         # report 1 row when the same sequence passed standalone.
-        for _d in ("_STATUS", "_SEEN", "_SEEN_DAY", "_SKIPPED", "_SKIP_GATE", "_ASKED"):
+        for _d in ("_STATUS", "_SEEN", "_SEEN_DAY", "_SKIPPED", "_SKIP_GATE", "_ASKED", "_LAST_SAID"):
             getattr(P, _d, {}).clear()
         st.conn.execute("DELETE FROM plan_tick")
         P.Plan("TrendCreditSpread", ("age",))
@@ -219,6 +229,48 @@ def main():
     guard("S12 window REWORDED three ways is still ONE row — keyed on the GATE",
           lambda: len(rows()) == 1,
           "parsing prose for the gate is how this rule would silently stop working")
+
+    # ══ S13-S15 — r258 (HYG.17): A NON-WINDOW REASON THAT RETURNS DECLARES ITSELF ════
+    _A = "no open position — nothing to manage"
+    _B = "position open — managing; only the second-leg window is open"
+    fresh()
+    for i in range(1, 4):
+        tick(i, reason=_A)
+    for i in range(4, 7):
+        tick(i, reason=_B)
+    for i in range(7, 12):
+        tick(i, reason=_A)
+    r13 = rows()
+    guard("S13 A -> B -> A (no gate) writes THREE rows, and last() ends at A",
+          lambda: len(r13) == 3 and r13[-1][1] == _A
+          and P.REGISTRY[N].last()[2] == _A,
+          lambda: f"{len(r13)} row(s), last()={P.REGISTRY[N].last()!r}")
+    fresh()
+    for i in range(1, 4):
+        gtick(i, "max_open_of_type", "2 already open")
+    for i in range(4, 7):
+        gtick(i, "tries_per_session", "1 try used")
+    for i in range(7, 10):
+        gtick(i, "max_open_of_type", "2 already open")
+    r14 = rows()
+    guard("S14 gate X -> gate Y -> gate X writes THREE rows — the return is news",
+          lambda: len(r14) == 3 and "max_open_of_type" in r14[-1][1],
+          lambda: f"{len(r14)} row(s)")
+    fresh()
+    tick(1, reason=_A)
+    tick(2, reason=_B)
+    for i in range(3, 50):
+        tick(i, reason=_A)
+    guard("S15 and the returned state, once written, stays SILENT (47 ticks -> one row)",
+          lambda: len(rows()) == 3, lambda: f"{len(rows())} row(s)")
+
+    # S16 — a NEW TRADING DAY says it again (the day keys the episode, r41)
+    fresh()
+    _d1 = [P._status_changed(N, "2026-10-05", "INACTIVE", _A),
+           P._status_changed(N, "2026-10-05", "INACTIVE", _A),
+           P._status_changed(N, "2026-10-06", "INACTIVE", _A)]
+    guard("S16 the same reason: said, silent the same day, said again the NEXT day",
+          lambda: _d1 == [True, False, True], lambda: f"{_d1}")
 
     # ── S7 — the status is exposed, not merely internal ────────────────────
     guard("S7 plan_status() answers working/inactive/unknown",

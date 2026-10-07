@@ -1,5 +1,6 @@
 """
-strategy/plan.py  v2.6
+strategy/plan.py  v2.7
+v2.7 2026-10-06  OTV4TEST r258 (HYG.17) — A NON-WINDOW REASON THAT COMES BACK DECLARES ITSELF. _status_changed kept every token of an inactive episode in one SET, so a reason said once was silent for the rest of the episode: SPX-TEST's Breakout/manage went "no open position" -> "position open — managing" -> "no open position" (10:14 / 10:42 / 10:49 ET 10-06) and the return was never written - plan.last(), the heartbeat and the [plans] line read "managing" on a flat book until 16:00 (_STATUS held the truth). The operator's r42 rule is two-sided: the WINDOW is said once per episode; "if something other than the window made it inactive it should declare that". So a non-window token is now written whenever it differs from the LAST token written for that plan (_LAST_SAID); the window keeps its once-per-episode set exactly as before (window -> cap -> window is still two rows). DISPLAY ONLY - traced 10-06: no trading path reads plan.last(), plan_heartbeat, the latest plan_tick, _STATUS or plan_status(). tests/check_plan_status.py S13-S15 (born red on 2feb827).
 v2.6 2026-10-05  OTV4TEST r254 (OBS.1) — THE PLAN ALWAYS LOOKS, THE STRATEGY IS GATED ON THE HOUR: Breakout, Runaway and the Hunt are OBSERVED from their entry end to 15:40 - asked, recorded LOG-ONLY, never executed (the operator, 2026-10-05: "the plan always looks, but the strategies are gated on the hour of the day"; "Have those blocked TRADES just to Log only"). Here: take() writes LOG-ONLY for an observed strategy - never TAKE, no plan_ledger row, no gate-report clear.
 v2.5  2026-10-03  OTV4TEST r211 (PLN.2) — EVERY TAKE OPENS ITS PLAN_LEDGER ROW. The ledger held ORB plans and nothing else
       (19 of 20 real rows), for two reasons, both in `_ledger_open`: (1) r6 returned whenever a store was BOUND,
@@ -965,6 +966,7 @@ _STATUS: Dict[str, Tuple[str, str, str]] = {}   # strategy -> (day, verdict, rea
 _SKIP_GATE: Dict[str, str] = {}                # strategy -> admission gate name
 _SEEN: Dict[str, set] = {}                     # strategy -> tokens announced THIS episode
 _SEEN_DAY: Dict[str, str] = {}                 # strategy -> the day that episode belongs to
+_LAST_SAID: Dict[str, object] = {}             # r258 — strategy -> the token its last INACTIVE row carried
 
 # 🔑 r42 — THE OPERATOR'S ASYMMETRY, STATED AS A RULE.
 # 2026-09-18: *"if something other than the window made it inactive it should
@@ -987,6 +989,7 @@ def _episode(name: str, day: str) -> set:
     if _SEEN_DAY.get(name) != day:
         _SEEN_DAY[name] = day
         _SEEN[name] = set()
+        _LAST_SAID.pop(name, None)                 # r258: a new day starts unsaid
     return _SEEN.setdefault(name, set())
 
 
@@ -1005,6 +1008,7 @@ def _status_changed(name: str, day: str, verdict: str, reason: str,
         # goes quiet, because the operator has seen it trading since.
         _SEEN[name] = set()
         _SEEN_DAY[name] = day
+        _LAST_SAID.pop(name, None)                 # r258
         return prev != cur
 
     seen = _episode(name, day)
@@ -1012,9 +1016,20 @@ def _status_changed(name: str, day: str, verdict: str, reason: str,
     # episode is the same token however the sentence is phrased. Anything else
     # carries its full reason, so a DIFFERENT cap break still declares itself.
     token = gate if gate in QUIET_GATES else (verdict, gate, reason)
-    if token in seen:
+    if gate in QUIET_GATES:
+        # the WINDOW: once per inactive episode (r42), unchanged.
+        if token in seen:
+            return False
+        seen.add(token)
+        _LAST_SAID[name] = token
+        return True
+    # 🔴 r258 (HYG.17) — EVERY OTHER REASON declares itself when it BECOMES the
+    # reason: silent only while it is what the last row already says. Keeping
+    # it in the episode set forever hid a return (A -> B -> A showed B all day).
+    if token == _LAST_SAID.get(name):
         return False
     seen.add(token)
+    _LAST_SAID[name] = token
     return True
 
 
