@@ -1,5 +1,10 @@
 """
-strategy/breakout_plan.py  v1.11
+strategy/breakout_plan.py  v1.12
+v1.12 2026-10-06  OTV4TEST r259 (STRK.2) — ON A CASH INDEX THE CONTRACT IS THE NEAREST STRIKE AT OR INSIDE
+      THE REACH. The operator, 2026-10-06 20:41 ET: "at or inside target". SPX-TEST's 10:08 long bought the
+      7845C for a 7842.79 reach (nearest by 2.21 vs 2.79); on SPX's 5-wide grid a strike could sit up to 2.5
+      points past the reach. select_contract(..., inside=prep.cash_index); every other symbol is unchanged.
+      No inside strike is a refusal ("no listed strike at or inside the reach"). tests/check_brk_strike_inside.py.
 v1.11 2026-10-05  OTV4TEST r254 (OBS.1) — THE PLAN ALWAYS LOOKS, THE STRATEGY IS GATED ON THE HOUR: Breakout, Runaway and the Hunt are OBSERVED from their entry end to 15:40 - asked, recorded LOG-ONLY, never executed (the operator, 2026-10-05: "the plan always looks, but the strategies are gated on the hour of the day"; "Have those blocked TRADES just to Log only"). Here: past LATEST_ET the plan keeps looking only while observed (the r220 window line is unchanged).
 v1.10 2026-10-05  OTV4TEST r251 (BRK.6) — ON A CASH INDEX THE TAPE AND THE BOOK ARE NOT APPLICABLE, NEVER A REFUSAL.
       SPX has no time-and-sale and no resting size: on 2026-10-05 flow_imbalance and depth_ratio were None on 220 of 220
@@ -556,10 +561,12 @@ class BreakoutPlan:
 
         # ── the structural bars: a contract, an R that clears the floor ────
         from strategy.orb_plan import select_contract
-        prep.contract = select_contract(chain, direction, prep.target) if chain else None
+        prep.contract = (select_contract(chain, direction, prep.target, inside=bool(prep.cash_index))
+                         if chain else None)                            # r259 (STRK.2)
         t.check("contract", None, prep.contract is not None)
         if prep.contract is None:
-            t.refuse("contract", "no listed strike with a live quote at the reach")
+            t.refuse("contract", "no listed strike with a live quote at or inside the reach"
+                     if prep.cash_index else "no listed strike with a live quote at the reach")
             return prep
         prep.premium = _f(getattr(prep.contract, "mark", None))
         t.check("premium", prep.premium, bool(prep.premium and prep.premium > QUOTE_FLOOR))

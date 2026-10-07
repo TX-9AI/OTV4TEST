@@ -1,5 +1,11 @@
 """
-strategy/orb_plan.py  v1.10
+strategy/orb_plan.py  v1.11
+v1.11  2026-10-06  OTV4TEST r259 (STRK.2) — select_contract gains keyword `inside` (default False: every
+       existing caller is unchanged, and the default rule still mirrors select_orb_strike, check_orb_plan
+       P4). inside=True considers only strikes AT or INSIDE the reach - at/below it for a long call,
+       at/above it for a short put - then the nearest of those, same tie rule. Breakout passes it on a
+       cash index: the operator, 2026-10-06 20:41 ET, "at or inside target" (SPX-TEST's 10:08 long bought
+       the 7845C for a 7842.79 reach). tests/check_brk_strike_inside.py.
 v1.10  2026-10-03  OTV4TEST r220 (TIME.1) — its private HH:MM parser is utils.time_utils.parse_hm (eight plans carried the same copy), and an UNREADABLE clock is DORMANT - no trade - instead of skipping the window check.
 v1.9  2026-10-02  OTV4TEST r187 (ROSTER.1) — THE ORB TRADE IS RETIRED BY DEFAULT.
       prepare() still narrates the engine every tick, then goes DORMANT at gate
@@ -136,7 +142,7 @@ CONTRACT_MULT      = int(getattr(config, "CONTRACT_MULTIPLIER", 100))
 from utils.time_utils import parse_hm as _hhmm    # r220 (TIME.1): the one parser
 
 
-def select_contract(chain, direction: str, target_strike: float):
+def select_contract(chain, direction: str, target_strike: float, *, inside: bool = False):
     """Nearest listed strike to the target with a live quote; equidistant
     strikes break toward the lower |delta| (DELTA_BIAS="lower") or higher.
     ⚠️ SAME RULE AS `OptionsChainFetcher.select_orb_strike` (data/options_chain.py)
@@ -147,6 +153,10 @@ def select_contract(chain, direction: str, target_strike: float):
     contracts = chain.calls if direction == "long" else chain.puts
     cands = [c for c in (contracts or []) if float(getattr(c, "mark", 0) or 0) > QUOTE_FLOOR
              and two_sided(c)]                                  # ZBID.1 (r186)
+    if inside:
+        # r259 (STRK.2) — never a strike PAST the reach: at/below it for a call, at/above for a put.
+        _t = float(target_strike) + (1e-6 if direction == "long" else -1e-6)
+        cands = [c for c in cands if (float(c.strike) <= _t if direction == "long" else float(c.strike) >= _t)]
     if not cands:
         return None
     dist = min(abs(float(c.strike) - float(target_strike)) for c in cands)
