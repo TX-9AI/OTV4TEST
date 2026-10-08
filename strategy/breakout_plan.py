@@ -1,5 +1,11 @@
 """
-strategy/breakout_plan.py  v1.12
+strategy/breakout_plan.py  v1.13
+v1.13 2026-10-08  OTV4TEST r263 (BRK.7, found on SPX-TEST) — A ZERO-RISK BREAK IS REFUSED, NEVER RAISED. A break bar
+      that CLOSED AT ITS OWN EXTREME (a short at its high, a long at its low) puts the stop on the close: risk 0,
+      r None, and while `r` accepts "any" nothing refused it - prepare reached TAKE and trade_line raised
+      TypeError formatting R (SPX-TEST 56x, QQQ-TEST 77x, 10-07/10-08, all in r254 LOG-ONLY hours, none in the
+      entry window). The operator, 2026-10-08 16:40 ET: "Yes, to all". After the r check, risk <= 0 refuses at
+      stop_survivable ("zero risk: the break bar closed at its own extreme"). tests/check_brk_zero_risk.py.
 v1.12 2026-10-06  OTV4TEST r259 (STRK.2) — ON A CASH INDEX THE CONTRACT IS THE NEAREST STRIKE AT OR INSIDE
       THE REACH. The operator, 2026-10-06 20:41 ET: "at or inside target". SPX-TEST's 10:08 long bought the
       7845C for a 7842.79 reach (nearest by 2.21 vs 2.79); on SPX's 5-wide grid a strike could sit up to 2.5
@@ -581,6 +587,13 @@ class BreakoutPlan:
         if not B.accepts("r", prep.r):
             t.refuse("r", f"R {prep.r:.2f} outside acceptance "
                           f"{B.acceptance('r')}" if prep.r else "R unmeasurable")
+            return prep
+        # r263 (BRK.7) — A BREAK BAR THAT CLOSED AT ITS OWN EXTREME HAS NO RISK: the stop IS the close, so R
+        # is unmeasurable and nothing can be sized. While `r` accepts "any" (research) an absent R passed
+        # here and trade_line crashed formatting it (TypeError, 133 times 10-07/10-08 across both boxes, all
+        # in LOG-ONLY hours). FEASIBILITY: refused, recorded, never raised.
+        if not (prep.risk and prep.risk > 0):
+            t.refuse("stop_survivable", "zero risk: the break bar closed at its own extreme")
             return prep
 
         # ══ THE TRIGGER, AND IT IS COMPOUND ═══════════════════════════════
