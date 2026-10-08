@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tools/rebuild_1m_from_last_trade.py  v1.0
+tools/rebuild_1m_from_last_trade.py  v1.1
+v1.1  2026-10-08  OTV4TEST r262 (SEED.3) — BAR_TOLERANCE_OC_PTS 1.00 -> 3.00, BY HIS RULING. The operator, 2026-10-08 16:40 ET:
+      "Yes, to all" (QQQ-TEST's recommendation of 3.00, 10-07: the 10-06 15:50 open is off 2.49 because last_trade never
+      carried the value the feed's bar opened at). High/low (1.00), the tick floor (30) and the 3 verified days are unchanged.
 v1.0  2026-10-07  OTV4TEST r261 (SEED.3, authored on SPX-TEST) — THE SEED GAPS ARE REBUILT FROM THE INDEX'S OWN TICKS,
       ONLY WHERE THE STORE HAS NO BAR. The operator, 2026-10-07 19:35 ET: "Let's re-seed"; told a re-seed cannot
       work, 20:17 ET: "Yes" (to bringing this to QQQ-TEST, who asked for it built and gated: MSG-1007-12).
@@ -34,12 +37,12 @@ THE NUMBERS, WITH THEIR BASIS (measured 2026-10-07 on SPX, warehouse raw/last_tr
                               (median 60, ~1/s). Half the normal rate is a thin minute, refused rather than guessed.
   BAR_TOLERANCE_HL_PTS = 1.00 high/low. 1,170 bars on 10-05..10-07: max |dH| 0.47, max |dL| 0.63 (~0.008% of
                               price); an extreme is robust to which minute a boundary tick lands in.
-  BAR_TOLERANCE_OC_PTS = 1.00 open/close - NOT YET RULED. The same 1,170 bars: max |dO| 2.49, |dC| 0.79; 1,169 within
+  BAR_TOLERANCE_OC_PTS = 3.00 open/close - RULED 2026-10-08 (r262; was 1.00). The same 1,170 bars: max |dO| 2.49, |dC| 0.79; 1,169 within
                               0.79. The 2.49 is 10-06 15:50: the feed's bar opened 7823.13, a value at the minute mark
                               that last_trade never carried (its ticks: 7823.09 at -0.7 s, 7820.64 at +1.5 s; the
                               sequence numbers show no tick missing; ev_time orders them the same). An open/close is
                               one tick, so it is off by whatever moved in ~1 s around the boundary. At 1.00 the
-                              verification FAILS on 10-06 and --apply refuses; the value is the operator's to set.
+                              verification failed on 10-06 and --apply refused; 3.00 clears it (2.49).
   MIN_VERIFIED_DAYS    = 3    the three complete days the box has (10-05, 10-06, 10-07).
 
 Run:   python3 tools/rebuild_1m_from_last_trade.py                       (dry run, full 1m depth)
@@ -68,7 +71,7 @@ from warehouse.retention_purge import RETENTION_DAYS            # noqa: E402
 
 MIN_TICKS_PER_MINUTE = 30
 BAR_TOLERANCE_HL_PTS = 1.00
-BAR_TOLERANCE_OC_PTS = 1.00
+BAR_TOLERANCE_OC_PTS = 3.00                                     # r262: his ruling 2026-10-08 (was 1.00)
 MIN_VERIFIED_DAYS = 3
 
 IV = "1m"
