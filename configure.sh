@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# configure.sh  v4.16
+# configure.sh  v4.17
+# v4.17 2026-10-10  OTV4TEST r265 (BRK.8 + BRK.9) — ITEM 11 IS BREAKOUT'S ENTRY END (OT_BREAKOUT_END),
+#       ITEM 12 ITS NO-PROGRESS EXIT (OT_BRK_NOPROG off|log|trade); data capture moves to 13, Done to 14.
+#       Both read their answer from config.py (the consumer), never a copy of its rule. The operator,
+#       2026-10-05: "If we're gonna allow a per box setting then it needs to be a toggle inside configure";
+#       2026-10-10 13:37 ET: "Yes, to all. Study, fit & apply."
 # v4.16 2026-10-05  OTV4TEST r253 (RUNW.2) — ITEM 10 IS RUNAWAY'S ENTRY END (OT_RUNAWAY_END).
 #       r189 built the per-box switch and the operator approved 11:30 for SPX-TEST on
 #       10-03, but nothing here could set it, so it was never set: SPX-TEST measured its
@@ -309,6 +314,8 @@ show_config() {
     local old_start=$(get_env "OT_ORB_RISK_USD")
     [[ -n "$old_start" ]] && print_warn "OT_ORB_RISK_USD=${old_start} is NOT read (merged into risk per trade) - item 2 removes it."
     echo -e "  Runaway end:    ${BOLD}$(runaway_end_label)${RESET}"
+    echo -e "  Breakout end:   ${BOLD}$(breakout_end_label)${RESET}"
+    echo -e "  BRK no-progress:${BOLD}$(brk_noprog_label)${RESET}"
     echo -e "  Data capture:   ${BOLD}$(data_capture_label)${RESET}"
     echo -e "  Trading mode:   $(echo -e $mode_label)"
     local rec_pin rec_label
@@ -498,6 +505,98 @@ change_runaway_end() {
     set_env "OT_RUNAWAY_END" "$val"
     reload_daemon
     echo "  Runaway entry end set to $got (last entry one minute before)."
+}
+
+# ── r265 (BRK.9) — BREAKOUT'S ENTRY END, PER BOX (the mirror of item 10) ────
+breakout_end_label() {
+    local v got
+    v=$(get_env "OT_BREAKOUT_END")
+    if [[ -z "$v" ]]; then
+        got=$(cd "$BOT_DIR" && env -u OT_BREAKOUT_END python3 -c \
+            "import config; print(config.BREAKOUT_LATEST_ET)")
+        printf 'not set (code default: %s)' "${got:-UNREADABLE - config.py did not import}"
+        return
+    fi
+    got=$(cd "$BOT_DIR" && OT_BREAKOUT_END="$v" python3 -c \
+        "import config; print('REFUSED' if config.BREAKOUT_END_ENV_REFUSED else config.BREAKOUT_LATEST_ET)")
+    if [[ "$got" == "REFUSED" ]]; then
+        printf '%s REFUSED by config - Breakout holds the code default' "$v"
+    else
+        printf '%s' "${got:-UNREADABLE - config.py did not import}"
+    fi
+}
+
+change_breakout_end() {
+    local val got
+    echo ""
+    echo "  Breakout entry end: $(breakout_end_label)"
+    echo ""
+    echo "  The LAST entry is one minute before this time (15:40 = last at 15:39)."
+    echo "  HH:MM between 09:36 and the 15:40 entries stop. Blank = clear it"
+    echo "  (the code's default). Only Breakout moves; every exit is unchanged."
+    echo ""
+    read -p "    Breakout entry end (HH:MM, blank to clear): " val
+    val="${val// /}"
+    if [[ -z "$val" ]]; then
+        drop_env "OT_BREAKOUT_END"
+        reload_daemon
+        echo "  Breakout entry end cleared - $(breakout_end_label)."
+        return
+    fi
+    got=$(cd "$BOT_DIR" && OT_BREAKOUT_END="$val" python3 -c \
+        "import config; print('REFUSED' if config.BREAKOUT_END_ENV_REFUSED else config.BREAKOUT_LATEST_ET)")
+    if [[ -z "$got" ]]; then
+        print_warn "REFUSED - config.py did not import, so '$val' could not be checked. Nothing written."
+        return
+    fi
+    if [[ "$got" == "REFUSED" ]]; then
+        print_warn "REFUSED - '$val' is not HH:MM between 09:36 and 15:40. Nothing written."
+        return
+    fi
+    set_env "OT_BREAKOUT_END" "$val"
+    reload_daemon
+    echo "  Breakout entry end set to $got (last entry one minute before)."
+}
+
+# ── r265 (BRK.8) — BREAKOUT'S NO-PROGRESS EXIT: off | log | trade ───────────
+brk_noprog_label() {
+    local v got
+    v=$(get_env "OT_BRK_NOPROG")
+    got=$(cd "$BOT_DIR" && OT_BRK_NOPROG="$v" python3 -c \
+        "import config; print(config.BRK_NOPROG_MODE + (' (set to ' + config.BRK_NOPROG_ENV_REFUSED + ' - REFUSED)' if config.BRK_NOPROG_ENV_REFUSED else ''))")
+    if [[ -z "$v" ]]; then
+        printf 'not set (code default: %s)' "${got:-UNREADABLE - config.py did not import}"
+    else
+        printf '%s' "${got:-UNREADABLE - config.py did not import}"
+    fi
+}
+
+change_brk_noprog() {
+    local val
+    echo ""
+    echo "  Breakout no-progress exit: $(brk_noprog_label)"
+    echo ""
+    echo "  After 2 closed 1m bars with no new extreme in the trade's direction,"
+    echo "  a Breakout that has made less than 0.5 R of progress is CUT."
+    echo "  trade - cut it (the mark ladder), and record the cut."
+    echo "  log   - record what the cut would do; trade as before."
+    echo "  off   - neither."
+    echo ""
+    read -p "    Mode (trade / log / off, blank to clear): " val
+    val="${val// /}"; val="${val,,}"
+    if [[ -z "$val" ]]; then
+        drop_env "OT_BRK_NOPROG"
+        reload_daemon
+        echo "  No-progress mode cleared - $(brk_noprog_label)."
+        return
+    fi
+    if [[ "$val" != "trade" && "$val" != "log" && "$val" != "off" ]]; then
+        print_warn "REFUSED - '$val' is not trade, log or off. Nothing written."
+        return
+    fi
+    set_env "OT_BRK_NOPROG" "$val"
+    reload_daemon
+    echo "  Breakout no-progress exit set to $val."
 }
 
 # ── r136 — DATA CAPTURE: managed (the conductor owns this box's data) or
@@ -862,10 +961,12 @@ while true; do
     echo -e "  ${BOLD}8.${RESET}  Ramp TOP (MAX)      (currently: $(fmt_declared "$(get_env OT_ORB_BUDGET_USD)"))"
     echo -e "  ${BOLD}9.${RESET}  Breakout scaling    (currently: $(scaling_label OT_SCALE_BREAKOUT SCALE_BREAKOUT))"
     echo -e "  ${BOLD}10.${RESET} Runaway entry end   (currently: $(runaway_end_label))"
-    echo -e "  ${BOLD}11.${RESET} Data capture        (currently: $(data_capture_label))"
-    echo -e "  ${BOLD}12.${RESET} Done"
+    echo -e "  ${BOLD}11.${RESET} Breakout entry end  (currently: $(breakout_end_label))"
+    echo -e "  ${BOLD}12.${RESET} Breakout no-progress (currently: $(brk_noprog_label))"
+    echo -e "  ${BOLD}13.${RESET} Data capture        (currently: $(data_capture_label))"
+    echo -e "  ${BOLD}14.${RESET} Done"
     echo ""
-    read -p "    Select [1-12]: " menu_choice
+    read -p "    Select [1-14]: " menu_choice
 
     case "$menu_choice" in
         1) change_instrument; CHANGED=true ;;
@@ -878,9 +979,11 @@ while true; do
         8) change_orb_budget;     CHANGED=true ;;
         9) change_scaling OT_SCALE_BREAKOUT SCALE_BREAKOUT "Breakout"; CHANGED=true ;;
         10) change_runaway_end;   CHANGED=true ;;
-        11) change_data_capture ;;
-        12) break ;;
-        *) print_warn "Please enter a number between 1 and 12." ;;
+        11) change_breakout_end;  CHANGED=true ;;
+        12) change_brk_noprog;    CHANGED=true ;;
+        13) change_data_capture ;;
+        14) break ;;
+        *) print_warn "Please enter a number between 1 and 14." ;;
     esac
     echo ""
 done

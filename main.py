@@ -1,5 +1,6 @@
 """
-main.py  v4.96
+main.py  v4.97
+v4.97 2026-10-10  OTV4TEST r265 (BRK.8 + BRK.9) — THE SERVICE MODE LINE NAMES BREAKOUT'S END AND ITS NO-PROGRESS MODE IN FORCE: `_banner_dials()` appends " · breakout_end=HH:MM · brk_noprog=off|log|trade" (and a refused OT_BREAKOUT_END / OT_BRK_NOPROG by name), read from config. The operator, 2026-10-10 13:37 ET: "Yes, to all. Study, fit & apply."
 v4.96 2026-10-05  OTV4TEST r254 (OBS.1) — THE PLAN ALWAYS LOOKS, THE STRATEGY IS GATED ON THE HOUR: Breakout, Runaway and the Hunt are OBSERVED from their entry end to 15:40 - asked, recorded LOG-ONLY, never executed (the operator, 2026-10-05: "the plan always looks, but the strategies are gated on the hour of the day"; "Have those blocked TRADES just to Log only"). Here: admission publishes the observe set each tick (position_manager.observing) and clears it first; _log_only() refuses an observed signal at _fire, the hunt's door and the top of _execute_entry_signal (after the VIX stamp, before any sizing or order) and logs it once per setup with the pin gate's answer.
 v4.95 2026-10-05  OTV4TEST r253 (RUNW.2) — THE SERVICE MODE LINE NAMES THE PIN GATE AND RUNAWAY'S END IN FORCE: `_banner_dials()` appends " · pin_gate=ON/OFF · runaway_end=HH:MM" (and a refused OT_RUNAWAY_END by name), read from config. SPX-TEST, 10-05: neither was printed anywhere, so a box's pin gate had to be inferred from silence. configure.sh item 10 now sets the end (the operator: "it needs to be a toggle inside configure").
 v4.94 2026-10-04  OTV4TEST r247 (FORK-ONLY, the operator: "Fix the SPXW settlement", "Fix the ORCS ledger rows issue") — _settlement_spot reads SPX's tape for an SPXW root (_SETTLE_TAPE), so an adopted SPXW position settles at the index's 16:00 close instead of a flagged $0.00; _attempt_orcs refuses a LIVE box BEFORE ledger_open, so no orphan plan_ledger row is written (the refusal in _execute_condor_leg stays as the backstop). Both found by SPX-TEST's live-path audit.
@@ -1327,6 +1328,8 @@ from config import (
     CONTRACT_SCALE, CONTRACT_SCALE_SOURCE,                          # r234
     ORCS_ENABLED,                                                   # r235
     RUNAWAY_CUTOFF_ET, RUNAWAY_END_ENV_REFUSED,                     # r253 (RUNW.2)
+    BREAKOUT_LATEST_ET, BREAKOUT_END_ENV_REFUSED,                   # r265 (BRK.9)
+    BRK_NOPROG_MODE, BRK_NOPROG_ENV_REFUSED,                        # r265 (BRK.8)
     NOISE_FLOOR_BAR_MULT, NOISE_FLOOR_LOOKBACK_BARS, NOISE_FLOOR_MIN_BARS,
     PIN_PROXIMITY_ACTIVE, PIN_PROXIMITY_MIN_FRAC,
     REASSESS_MINUTES, INSTRUMENT, INSTRUMENT_UNSET, INSTRUMENT_LISTED, SessionConfig, DIRECTIONAL_ONLY,
@@ -5190,7 +5193,13 @@ def _banner_dials() -> str:
     end = f" · runaway_end={RUNAWAY_CUTOFF_ET}"
     if RUNAWAY_END_ENV_REFUSED:
         end += f" (OT_RUNAWAY_END={RUNAWAY_END_ENV_REFUSED!r} REFUSED)"
-    return f" · pin_gate={'ON' if PIN_PROXIMITY_ACTIVE else 'OFF'}{end}"
+    brk = f" · breakout_end={BREAKOUT_LATEST_ET}"                          # r265 (BRK.9)
+    if BREAKOUT_END_ENV_REFUSED:
+        brk += f" (OT_BREAKOUT_END={BREAKOUT_END_ENV_REFUSED!r} REFUSED)"
+    brk += f" · brk_noprog={BRK_NOPROG_MODE}"                              # r265 (BRK.8)
+    if BRK_NOPROG_ENV_REFUSED:
+        brk += f" (OT_BRK_NOPROG={BRK_NOPROG_ENV_REFUSED!r} REFUSED)"
+    return f" · pin_gate={'ON' if PIN_PROXIMITY_ACTIVE else 'OFF'}{end}{brk}"
 
 
 def _log_only(signal, ctx) -> bool:

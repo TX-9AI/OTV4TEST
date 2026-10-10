@@ -1,5 +1,12 @@
 """
-config.py  v4.58
+config.py  v4.59
+v4.59 2026-10-10  OTV4TEST r265 (BRK.8 + BRK.9) — TWO PER-BOX BREAKOUT SWITCHES. (1) OT_BREAKOUT_END "HH:MM" moves ONLY
+      Breakout's entry end (09:36 .. 15:40; unset = r187's 10:30; a refused value keeps 10:30 and is named in
+      BREAKOUT_END_ENV_REFUSED), the mirror of r189's OT_RUNAWAY_END. (2) OT_BRK_NOPROG off|log|trade (unset = log):
+      Breakout's NO-PROGRESS exit (management.breakout_no_progress) - after 2 consecutive CLOSED 1m bars with no new
+      favourable extreme, with less than BRK_NOPROG_MIN_R (0.5 R) of progress, the trade is cut (trade) or the cut is
+      only recorded (log). A refused value reads as log and is named in BRK_NOPROG_ENV_REFUSED. The operator,
+      2026-10-10 13:37 ET: "Yes, to all. Study, fit & apply." EVIDENCE /var/tmp/sat_1010/PREREG_MONDAY.md (N3).
 v4.58 2026-10-04  OTV4TEST r249 (PREM.6) — ORCS IS RETIRED: ORCS_ENABLED defaults OFF (OT_ORCS=1 restores it, paper only as before; the plan keeps recording). The operator, 2026-10-04 20:12 ET: "Retire it on this repo."
 v4.57 2026-10-04  OTV4TEST r234 (SCALE.1) — CONTRACT_SCALE: ONE NUMBER PER BOX FOR WHAT ITS CONTRACTS COST AGAINST QQQ'S. The operator,
       2026-10-04: "SPX cap, ramp & wing search CANNOT be the same as QQQ. The math doesn't work. It needs to scale with the contract
@@ -795,13 +802,59 @@ def _runaway_end():
 
 RUNAWAY_END = _runaway_end()
 
+# ── r265 (BRK.9) — BREAKOUT'S END IS A PER-BOX SWITCH, THE MIRROR OF r189 ─────
+# Unset = r187's 10:30. OT_BREAKOUT_END="HH:MM" (09:36 .. the entries stop)
+# moves ONLY Breakout's end. A malformed or out-of-range value keeps 10:30 and
+# is named in BREAKOUT_END_ENV_REFUSED (main's Service mode line prints it).
+# The operator, 2026-10-10 13:37 ET: "Yes, to all" - re-open Breakout after
+# 10:29 on QQQ; the cutoff's counterfactual is every Breakout trade entered at
+# or after 10:30 (that trade would not exist under r187).
+_BREAKOUT_END_DEFAULT = (10, 30)
+BREAKOUT_END_ENV_REFUSED = ""
+
+
+def _breakout_end():
+    global BREAKOUT_END_ENV_REFUSED
+    raw = os.environ.get("OT_BREAKOUT_END", "").strip()
+    if not raw:
+        return _BREAKOUT_END_DEFAULT
+    try:
+        parts = raw.split(":")
+        if len(parts) != 2:
+            raise ValueError(raw)
+        hm = (int(parts[0]), int(parts[1]))
+        if not (0 <= hm[1] < 60 and (9, 36) <= hm <= tuple(EOD_SCHEDULE["entries_stop"])):
+            raise ValueError(raw)
+        return hm
+    except ValueError:
+        BREAKOUT_END_ENV_REFUSED = raw
+        return _BREAKOUT_END_DEFAULT
+
+
+BREAKOUT_END = _breakout_end()
+
+# ── r265 (BRK.8) — BREAKOUT'S NO-PROGRESS EXIT ──────────────────────────────
+# off | log | trade. Unset = log: every box RECORDS what the cut would do; only
+# a box set to trade acts on it (QQQ-TEST; SPX-TEST stays log until its own
+# threshold is fitted - its 9 Breakouts moved 1, -910, 10-10).
+BRK_NOPROG_ENV_REFUSED = ""
+_np_raw = os.environ.get("OT_BRK_NOPROG", "").strip().lower()
+if _np_raw in ("off", "log", "trade"):
+    BRK_NOPROG_MODE = _np_raw
+else:
+    BRK_NOPROG_MODE = "log"
+    if _np_raw:
+        BRK_NOPROG_ENV_REFUSED = _np_raw
+BRK_NOPROG_STALL_BARS = 2      # consecutive closed 1m bars without a new favourable extreme
+BRK_NOPROG_MIN_R = 0.5         # best progress since entry, in R = |underlying_entry - underlying_stop|
+
 ENTRY_WINDOWS = {
     # r149: directional debits run ALL DAY to the entries stop (operator: "A").
     # Supersedes criteria.py's 2026-08-29 "Debit entries are finished at 1130".
     "ORBStrategy":          ((9, 35),  EOD_SCHEDULE["entries_stop"]),
     "RunawayContinuation":  ((9, 35),  RUNAWAY_END),   # r187: 10:29 last entry; r189: OT_RUNAWAY_END per box
     "LiquidityHunt":        ((9, 35),  (10, 30)),   # r187
-    "Breakout":             ((9, 35),  (10, 30)),   # r187
+    "Breakout":             ((9, 35),  BREAKOUT_END),   # r187: 10:29 last entry; r265: OT_BREAKOUT_END per box
     "VOLT":                 ((9, 35),  (10, 30)),   # r187 (VOLT is also OFF by default)
     "SweepCreditSpread":    ((9, 35),  EOD_SCHEDULE["entries_stop"]),
     "TrendCreditSpread":    ((11, 31), EOD_SCHEDULE["entries_stop"]),

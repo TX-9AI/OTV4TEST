@@ -1,5 +1,15 @@
 """
-strategy/management.py  v2.9
+strategy/management.py  v2.10
+v2.10 2026-10-10  OTV4TEST r265 (BRK.8) — BREAKOUT'S NO-PROGRESS EXIT. `breakout_no_progress()` walks the CLOSED 1m bars
+      after the entry bar: once BRK_NOPROG_STALL_BARS (2) consecutive bars make no new favourable extreme, it decides
+      ONCE - cut if the best progress since entry is under BRK_NOPROG_MIN_R (0.5 R, R = |underlying_entry -
+      underlying_stop|). Stateless (recomputed from the frame each tick, so a restart decides the same). decide()
+      applies it after the spec stops and par delta, before exhaustion: OT_BRK_NOPROG=trade CLOSES ("no_progress",
+      priced by the exit engine's own rule - the mark ladder); log only RECORDS. Every decision that cuts is written once
+      per trade to data/counterfactual/breakout_no_progress.jsonl (OT_COUNTERFACTUAL_DIR) with the mark - what the old
+      stack held is replayed from the quote stream on Saturday. The operator, 2026-10-10 13:37 ET: "Yes, to all. Study,
+      fit & apply"; "as long as this counter factual evidence is available for next Saturday." EVIDENCE: PREREG_MONDAY.md
+      N3 - 13 unseen stocks +28,595 (losing days +35,786, 9/13 symbols); QQQ as-run +3,220; SPX-TEST 1 moved -910.
 v2.9  2026-10-03  OTV4TEST r209 (EXIT.4) — THE EXIT'S PRICING POLICY IS DECLARED, NOT INFERRED; THE STRUCTURE STOP IS NAMED A
       TOUCH. (1) EXIT_PRICING maps each condition this plan closes on to how the close is priced - `floor` (at
       the mark) or `walk` (the exit ladder) - and Intent carries it; exit_engine reads it instead of matching
@@ -218,6 +228,90 @@ BUTTERFLIES = ("GEXPinButterfly", "ATPButterfly")
 # target. VOLT is NOT here: it owns `_evaluate_volt` and carries its own rung.
 DELTA_PAR_STRATEGIES = ("Breakout",)
 from config import DELTA_PAR                                      # r82
+import config as _cfg                                              # r265: BRK_NOPROG_* read at call time
+import json as _json
+import os as _os
+import time as _time
+from datetime import datetime as _dt
+
+
+def _entry_epoch(record) -> Optional[float]:
+    raw = record.get("entry_time")
+    if not raw:
+        return None
+    try:
+        return _dt.fromisoformat(str(raw).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def breakout_no_progress(record, df_1m, now_epoch: Optional[float] = None) -> Optional[dict]:
+    """r265 (BRK.8) - the no-progress decision for one Breakout, or None while undecided /
+    not applicable. Reads ONLY the record (entry_time, underlying_entry, underlying_stop,
+    direction) and the CLOSED 1m bars after the entry bar (a bar is closed when its open +
+    60 s <= now; the forming bar never counts). Returns {"cut": bool, "best_r": float,
+    "bar_close": epoch, "bars": n} at the FIRST point BRK_NOPROG_STALL_BARS consecutive bars
+    fail to make a new favourable extreme beyond the best since entry (starting from
+    underlying_entry). Deterministic: the same frame gives the same answer every tick."""
+    try:
+        ue = float(record.get("underlying_entry") or 0.0)
+        us = float(record.get("underlying_stop") or 0.0)
+        R = abs(ue - us)
+        t0 = _entry_epoch(record)
+        if R <= 0 or ue <= 0 or t0 is None or df_1m is None or not len(df_1m):
+            return None
+        long_ = str(record.get("direction", "")) == "long" or str(record.get("option_side", "")) == "call"
+        sg = 1.0 if long_ else -1.0
+        now = _time.time() if now_epoch is None else float(now_epoch)
+        e_open = (t0 // 60) * 60
+        ext, cnt, best, n = ue, 0, 0.0, 0
+        for ts, hi, lo in zip(df_1m.index, df_1m["high"], df_1m["low"]):
+            b0 = ts.timestamp() if hasattr(ts, "timestamp") else float(ts)
+            if b0 <= e_open or b0 + 60 > now:
+                continue
+            n += 1
+            x = float(hi) if long_ else float(lo)
+            best = max(best, (x - ue) * sg / R)
+            if (x > ext) if long_ else (x < ext):
+                ext, cnt = x, 0
+            else:
+                cnt += 1
+            if cnt >= _cfg.BRK_NOPROG_STALL_BARS:
+                return {"cut": best < _cfg.BRK_NOPROG_MIN_R, "best_r": best, "bar_close": b0 + 60, "bars": n}
+        return None
+    except Exception as exc:                                     # noqa: BLE001
+        logger.debug("[manage] no-progress read failed: %s", exc)
+        return None
+
+
+_NOPROG_SAID: set = set()
+
+
+def _record_no_progress(record, verdict: dict, mode: str, prem, price) -> None:
+    """Once per trade per process: the counterfactual row (WA: the old rule's road is
+    replayed Saturday from the quote stream; this row says WHEN and AT WHAT the cut was)."""
+    tid = str(record.get("trade_id", "") or "")
+    if not tid or tid in _NOPROG_SAID:
+        return
+    _NOPROG_SAID.add(tid)
+    acted = mode == "trade"
+    logger.info("[manage] Breakout %s NO-PROGRESS %s: %d closed bars, best %.2f R < %.2f R; mark %s (%s)",
+                tid[:8], "CUT" if acted else "would cut (LOG ONLY)", verdict["bars"], verdict["best_r"],
+                _cfg.BRK_NOPROG_MIN_R, _n(prem), "OT_BRK_NOPROG=" + mode)
+    try:
+        d = _os.environ.get("OT_COUNTERFACTUAL_DIR") or _os.path.join(
+            _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "data", "counterfactual")
+        _os.makedirs(d, exist_ok=True)
+        row = {"ts_epoch": _time.time(), "trade_id": tid, "symbol": record.get("symbol"),
+               "rule": "breakout_no_progress", "mode": mode, "acted": acted,
+               "decided_at_bar_close": verdict["bar_close"], "bars": verdict["bars"],
+               "best_r": round(verdict["best_r"], 4), "min_r": _cfg.BRK_NOPROG_MIN_R,
+               "mark": prem, "underlying": price, "entry_premium": record.get("entry_premium"),
+               "option_symbol": record.get("option_symbol"), "contracts": record.get("contracts")}
+        with open(_os.path.join(d, "breakout_no_progress.jsonl"), "a") as fh:
+            fh.write(_json.dumps(row) + "\n")
+    except Exception as exc:                                     # noqa: BLE001
+        logger.warning("[manage] no-progress counterfactual row NOT written for %s: %s", tid[:8], exc)
 EXIT_CONDITIONS["ATPButterfly"] = dict(EXIT_CONDITIONS["GEXPinButterfly"])
 
 MGMT_CHECKS = ("premium", "entry_premium", "pnl_pct", "stop_premium", "trail_stop",
@@ -504,6 +598,20 @@ class ManagementPlan:
                 intent = Intent("CLOSE", f"target_hit pnl={pnl:.1%}", "target", pnl_pct=pnl)
             if intent is None and credit and prem is not None and prem <= NICKEL:
                 intent = Intent("CLOSE", f"nickel_close pnl={pnl:.1%}", "nickel", pnl_pct=pnl)
+
+            # ── 1a. r265 (BRK.8) — THE BREAKOUT'S NO-PROGRESS EXIT ───────────
+            # After the spec stops and par delta (they always outrank it), before
+            # exhaustion. `trade` cuts; `log` records the cut and holds; `off` skips.
+            if (intent is None and strategy == "Breakout" and not credit
+                    and _cfg.BRK_NOPROG_MODE in ("log", "trade")):
+                _np = breakout_no_progress(record, df_1m)
+                if _np is not None and _np["cut"]:
+                    _record_no_progress(record, _np, _cfg.BRK_NOPROG_MODE, prem, price)
+                    if _cfg.BRK_NOPROG_MODE == "trade":
+                        intent = Intent("CLOSE", f"no_progress: {_cfg.BRK_NOPROG_STALL_BARS} closed bars without "
+                                                 f"a new extreme, best {_np['best_r']:.2f}R < "
+                                                 f"{_cfg.BRK_NOPROG_MIN_R:.2f}R pnl={pnl:.1%}",
+                                        "no_progress", pnl_pct=pnl)
 
             # ── 1b. r51 (BRK.1) — THE BREAKOUT'S EXHAUSTION EXIT ─────────────
             # 🔴 THE MACHINERY WAS ALREADY WRITTEN AND ORPHANED. `_midline_atr`

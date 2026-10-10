@@ -17,7 +17,7 @@ is its `docs/PLAN_SPEC.md` section.
 | trade | key | default | switch | entries (ET) | spec |
 |---|---|---|---|---|---|
 | Runaway | `RunawayContinuation` | ON | none (`OT_RUNAWAY_END` moves its end) | 09:35-10:30 | PLAN_SPEC §30 |
-| Breakout | `Breakout` | ON | none | 09:35-10:30 | section 7 below |
+| Breakout | `Breakout` | ON | none (`OT_BREAKOUT_END` moves its end) | 09:35-10:30 | section 7 below |
 | Liquidity hunt | `LiquidityHunt` | ON | none | 09:35-10:30 | PLAN_SPEC §37 |
 | ORCS | `OpeningRangeCreditSpread` | OFF | `OT_ORCS` | 09:45-10:30 | PLAN_SPEC §41 |
 | GEX pin butterfly | `GEXPinButterfly` | ON | `OT_GEX_BUTTERFLY` | 12:00-15:00 | PLAN_SPEC §32 |
@@ -671,6 +671,11 @@ and blocks neither.
 2. `structure_stop` - a TOUCH through the breaking bar's extreme, unless the trail is nearer.
    A return INTO the range with that stop intact is a HOLD (operator, 2026-09-19).
 3. `delta_par` - delta at or above `DELTA_PAR` (0.98): it is stock now, get out.
+3a. `no_progress` (r265, BRK.8) - after 2 consecutive CLOSED 1m bars after the entry bar with no
+   new favourable extreme, a trade whose best progress since entry is under 0.5 R is cut (decided
+   once; the mark ladder). `OT_BRK_NOPROG`: `trade` cuts, `log` (the default) only records the cut
+   in `data/counterfactual/breakout_no_progress.jsonl`, `off` skips. Operator, 2026-10-10: *"Yes, to
+   all. Study, fit & apply."*
 4. `exhaustion` - a new favourable extreme on WEAKER 5m momentum. This is the trade's
    real exit: it has no target.
 5. the exit engine's trail, as a floor under the trade, and the close schedule in section 0.
