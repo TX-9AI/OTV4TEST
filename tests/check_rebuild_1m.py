@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_rebuild_1m.py  v1.0
+tests/check_rebuild_1m.py  v1.1
+v1.1  2026-10-09  OTV4TEST r264 (SEED.3, authored on SPX-TEST) — the tool's v1.2: a complete day with a SOURCE GAP (a minute
+      under MIN_TICKS_PER_MINUTE, 0 included) is SKIPPED and not counted toward MIN_VERIFIED_DAYS. R7c is INVERTED (it
+      pinned v1.1's refusal); R7d R7e R7f R7g are new. A skipped day's minutes at or above the floor are still compared,
+      and a disagreement there FAILS as on any day (QQQ-TEST MSG-1009-16): R7g.
 v1.0  2026-10-07  OTV4TEST r261 (SEED.3, authored on SPX-TEST) — the gate for tools/rebuild_1m_from_last_trade.py.
       No network: warehouse_source's own _FakeS3 serves raw/last_trade envelopes, and the scratch feed store is built
       by the REAL data/candle_feed.FeedStore, so the schema is the feed's and not a belief about it (WA §0.4). The
@@ -20,7 +24,16 @@ v1.0  2026-10-07  OTV4TEST r261 (SEED.3, authored on SPX-TEST) — the gate for 
   R7  a complete day whose held bars disagree with the ticks beyond the tolerance refuses --apply (rc 4), nothing
       written, with THREE other days verified (so the refusal is the disagreement's); the dry run prints the FAIL
   R7b the same with the HIGH off beyond BAR_TOLERANCE_HL_PTS (open/close exact): --apply rc 4, nothing written
-  R7c the same with ONE minute of a complete day under MIN_TICKS_PER_MINUTE (bars exact): --apply rc 4, nothing written
+  R7c ONE minute of one of four complete days under MIN_TICKS_PER_MINUTE (bars exact): that day prints "SKIPPED (source
+      gap: 1 minutes, 12:50-12:50 ET)", the other three verify, --apply rc 0 and inserts (v1.1 refused: rc 4)
+  R7d a 10-08-shaped hole - 0 ticks for 11:44..11:48 - on one of four complete days: SKIPPED (source gap: 5 minutes,
+      11:44-11:48 ET), --apply rc 0 and inserts
+  R7e a skipped day does NOT count: three complete days, one with a gap -> 2 verified -> --apply rc 4, "only 2", nothing
+      written (kills "skipped counted toward the 3")
+  R7f a minute with EXACTLY MIN_TICKS_PER_MINUTE ticks is not a gap: three complete days, one with such a minute -> no
+      SKIPPED, 3 verified, --apply rc 0 (kills the threshold off by one, and "skip every day")
+  R7g a source gap does not hide a bad bar: the R7d hole AND a 10:10 open 5.00 off on the same day (three others
+      verify) -> FAIL, --apply rc 4, nothing written (kills "no comparison on a skipped day")
   R8  fewer than MIN_VERIFIED_DAYS verified complete days refuses --apply (rc 4), nothing written
   R9  the insert log records the date, rows inserted and the thinnest minute's ticks
   R10 a re-run inserts 0
@@ -110,13 +123,20 @@ def main() -> int:
         return json.dumps({"schema_version": 1, "datatype": "last_trade", "symbol": "SPX", "dt": d,
                            "pushed_at_utc": stamp, "record": rows}).encode()
 
-    def build_objs(complete_days, disagree=None, thin_day=None):
+    def build_objs(complete_days, disagree=None, thin_day=None, hole_day=None, exact_day=None):
         objs = {}
         n = 0
         for d in complete_days:
             rows = []
             for m in range(390):
-                rows.extend(ticks_for(d, m, (FLOOR - 1) if (d == thin_day and m == 200) else FLOOR + 5))
+                if d == hole_day and 134 <= m <= 138:           # R7d: 11:44..11:48 ET carry no ticks at all
+                    continue
+                n_m = FLOOR + 5
+                if m == 200 and d == thin_day:
+                    n_m = FLOOR - 1                             # R7c/R7e: 12:50 one tick under the floor
+                elif m == 200 and d == exact_day:
+                    n_m = FLOOR                                 # R7f: 12:50 exactly at the floor
+                rows.extend(ticks_for(d, m, n_m))
             half = len(rows) // 2                               # two objects, the later one first (R6 order)
             objs[f"{ws.PREFIX}/last_trade/dt={d}/sym=SPX/{n}-b.json"] = env(d, rows[half:], f"{d}T20:00:00+00:00")
             objs[f"{ws.PREFIX}/last_trade/dt={d}/sym=SPX/{n}-a.json"] = env(d, rows[:half], f"{d}T19:00:00+00:00")
@@ -261,13 +281,48 @@ def main() -> int:
     check("R7b a complete day whose HIGH disagrees: --apply rc 4, nothing written",
           rc == 4 and md5(db7b) == h7b and "-> FAIL" in out, f"rc={rc}\n{out[-600:]}")
 
-    # R7c — one minute of a complete day under the tick floor, bars exact
+    # R7c — one minute of a complete day under the tick floor, bars exact: SKIPPED, the other three verify
     objs7c = build_objs(C7, thin_day="2026-10-06")
     db7c = build_store("r7c", C7)
-    h7c = md5(db7c)
-    rc, out = go(db7c, "--apply", objs=objs7c)
-    check("R7c a complete day with one thin minute: --apply rc 4, nothing written",
-          rc == 4 and md5(db7c) == h7c and "under" in out, f"rc={rc}\n{out[-600:]}")
+    rc, out = go(db7c, objs=objs7c)
+    dry_skip = "2026-10-06: SKIPPED (source gap: 1 minutes, 12:50-12:50 ET)" in out
+    rc, out2 = go(db7c, "--apply", objs=objs7c)
+    check("R7c a complete day with one thin minute is SKIPPED; three verify; --apply rc 0 and inserts",
+          dry_skip and rc == 0 and "2 row(s) inserted" in out2.splitlines()[-1]
+          and "skipped (source gap) 1 ['2026-10-06']" in out2,
+          f"dry_skip={dry_skip} rc={rc}\n{out[-700:]}\n{out2[-700:]}")
+
+    # R7d — the 10-08 shape: 0 ticks for five minutes of a complete day
+    objs7d = build_objs(C7, hole_day="2026-10-06")
+    db7d = build_store("r7d", C7)
+    rc, out = go(db7d, "--apply", objs=objs7d)
+    check("R7d a 0-tick hole 11:44-11:48 on a complete day: SKIPPED (5 minutes), --apply rc 0 and inserts",
+          rc == 0 and "2026-10-06: SKIPPED (source gap: 5 minutes, 11:44-11:48 ET)" in out
+          and "2 row(s) inserted" in out.splitlines()[-1], f"rc={rc}\n{out[-900:]}")
+
+    # R7e — a skipped day does not count: 2 verified + 1 skipped refuses
+    objs7e = build_objs(COMPLETE, thin_day="2026-10-06")
+    db7e = build_store("r7e", COMPLETE)
+    h7e = md5(db7e)
+    rc, out = go(db7e, "--apply", objs=objs7e)
+    check("R7e a skipped day plus 2 verified: --apply rc 4 (\"only 2\"), nothing written",
+          rc == 4 and md5(db7e) == h7e and "SKIPPED" in out and "only 2 complete day(s) verified" in out,
+          f"rc={rc}\n{out[-700:]}")
+
+    # R7f — exactly MIN_TICKS_PER_MINUTE ticks is not a gap
+    objs7f = build_objs(COMPLETE, exact_day="2026-10-06")
+    db7f = build_store("r7f", COMPLETE)
+    rc, out = go(db7f, "--apply", objs=objs7f)
+    check("R7f a minute at exactly the floor is not a gap: no SKIPPED, 3 verified, --apply rc 0",
+          rc == 0 and "SKIPPED" not in out and "verified 3 day(s)" in out, f"rc={rc}\n{out[-700:]}")
+
+    # R7g — a gap day with a bad bar elsewhere still FAILS
+    db7g = build_store("r7g", C7, disagree_day="2026-10-06")
+    h7g = md5(db7g)
+    rc, out = go(db7g, "--apply", objs=objs7d)
+    check("R7g a gap day with a bar 5.00 off elsewhere: FAIL, --apply rc 4, nothing written",
+          rc == 4 and md5(db7g) == h7g and "-> FAIL (source gap: 5 minutes, 11:44-11:48 ET)" in out
+          and "SKIPPED" not in out, f"rc={rc}\n{out[-900:]}")
 
     # R8 — too few verified days
     db8 = build_store("r8", COMPLETE)

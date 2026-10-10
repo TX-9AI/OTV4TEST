@@ -1,6 +1,17 @@
 #!/usr/bin/env python3
 """
-tools/rebuild_1m_from_last_trade.py  v1.1
+tools/rebuild_1m_from_last_trade.py  v1.2
+v1.2  2026-10-09  OTV4TEST r264 (SEED.3, authored on SPX-TEST) — A COMPLETE DAY WITH A SOURCE GAP IS SKIPPED, NOT COUNTED;
+      A BAD BAR ON ITS OTHER MINUTES STILL FAILS THE RUN.
+      The operator, 2026-10-09 20:28 ET (SPX-TEST's thread): "Yes, fill in the missing bars"; QQQ-TEST MSG-1009-15:
+      build. WHY: SPX's last_trade stream went silent 11:44:26-11:48:38 ET on 10-08 on this box AND in the warehouse
+      (QQQ's had no gap: a source-side hole). 10-08's held bars are complete, so v1.1 verified it, found minutes under
+      MIN_TICKS_PER_MINUTE and refused every --apply until 10-08 aged out of the 1m window (~20 days). NOW a complete day
+      with any RTH minute under MIN_TICKS_PER_MINUTE (0 ticks included) prints "SKIPPED (source gap: N minutes,
+      HH:MM-HH:MM ET)" and does NOT count toward MIN_VERIFIED_DAYS - but every minute it DOES hold at or above the floor
+      is still compared, and an HL > 1.00 or OC > 3.00 disagreement FAILS the run as on any day (QQQ-TEST MSG-1009-16,
+      the controller's call: "a source gap must not hide a real bad bar"). HL 1.00, OC 3.00, the 30-tick floor on
+      inserted minutes and the 3 verified days are unchanged.
 v1.1  2026-10-08  OTV4TEST r262 (SEED.3) — BAR_TOLERANCE_OC_PTS 1.00 -> 3.00, BY HIS RULING. The operator, 2026-10-08 16:40 ET:
       "Yes, to all" (QQQ-TEST's recommendation of 3.00, 10-07: the 10-06 15:50 open is off 2.49 because last_trade never
       carried the value the feed's bar opened at). High/low (1.00), the tick floor (30) and the 3 verified days are unchanged.
@@ -24,8 +35,9 @@ v1.0  2026-10-07  OTV4TEST r261 (SEED.3, authored on SPX-TEST) — THE SEED GAPS
       ticks): the candles table has no provenance column, so this log is how a rebuilt bar is traced afterwards.
       BEFORE --apply IT PROVES ITSELF: every COMPLETE held day (all 390 RTH 1m bars present) inside the window is
       rebuilt from its ticks and compared bar for bar with the store; a high/low off by more than BAR_TOLERANCE_HL_PTS
-      or an open/close off by more than BAR_TOLERANCE_OC_PTS,
-      or a minute with fewer than MIN_TICKS_PER_MINUTE ticks on such a day, refuses the apply. A complete day the
+      or an open/close off by more than BAR_TOLERANCE_OC_PTS refuses the apply. A complete day with a minute under
+      MIN_TICKS_PER_MINUTE ticks is SKIPPED (v1.2; it refused before) and does not count; its minutes at or above the
+      floor are still compared, and a disagreement there refuses as on any day. A complete day the
       warehouse has no ticks for is printed as "not verifiable" and does not count; fewer than MIN_VERIFIED_DAYS
       verified days refuses the apply. The comparison is printed on every run, dry or not.
       DRY RUN BY DEFAULT (the store is opened read-only).
@@ -163,6 +175,11 @@ def fold_day(sym, d, s3, meta):
     return {m: (b[1], b[2], b[3], b[5], b[6]) for m, b in bars.items()}
 
 
+def _hhmm(m: int) -> str:
+    """Minute index 0..389 as HH:MM ET (09:30 + m)."""
+    return f"{(570 + m) // 60:02d}:{(570 + m) % 60:02d}"
+
+
 def _poison_ok(ts, o, h, l, c, max_ms) -> bool:
     return TS_MS_MIN <= ts <= max_ms and min(o, h, l, c) > 0
 
@@ -211,7 +228,7 @@ def run(argv=None, s3=None, now_ms=None, log_path=None) -> int:
     if a.date:
         want = ws._valid(a.date)
         targets = [d for d in targets if d == want]
-    print(f"rebuild_1m_from_last_trade v1.0 - {sym} {IV}, window {window[0] if window else '-'}..{window[-1] if window else '-'} "
+    print(f"rebuild_1m_from_last_trade v1.2 - {sym} {IV}, window {window[0] if window else '-'}..{window[-1] if window else '-'} "
           f"({len(window)} trading day(s)), {len(complete)} complete, {len(targets)} with gaps; store {db}; "
           f"{'APPLY' if a.apply else 'DRY RUN (read-only)'}; MIN_TICKS_PER_MINUTE {MIN_TICKS_PER_MINUTE}, "
           f"BAR_TOLERANCE_HL_PTS {BAR_TOLERANCE_HL_PTS:.2f}, BAR_TOLERANCE_OC_PTS {BAR_TOLERANCE_OC_PTS:.2f}, "
@@ -219,7 +236,7 @@ def run(argv=None, s3=None, now_ms=None, log_path=None) -> int:
     meta = ws.Meta(f"last_trade {window[0] if window else '-'}..{window[-1] if window else '-'} sym={sym}")
 
     # ── 1. VERIFY on every complete held day ───────────────────────────────────
-    verified, verify_fail = [], []
+    verified, verify_fail, skipped = [], [], []
     print("VERIFY - every complete held day rebuilt from its ticks and compared with the store:")
     for d in complete:
         l0 = meta.listed
@@ -230,20 +247,25 @@ def run(argv=None, s3=None, now_ms=None, log_path=None) -> int:
             print(f"  {d}: not verifiable - the warehouse has no {sym} last_trade ticks "
                   f"({meta.listed - l0} object(s) listed)")
             continue
-        worst = [0.0, 0.0, 0.0, 0.0]
         thin = [m for m in range(RTH_MINUTES) if built.get(m, (0, 0, 0, 0, 0))[4] < MIN_TICKS_PER_MINUTE]
+        worst = [0.0, 0.0, 0.0, 0.0]
         for m, (o, h, l, c) in held[d].items():
             b = built.get(m)
-            if b is None:
+            if b is None or b[4] < MIN_TICKS_PER_MINUTE:            # v1.2: a gap minute is never compared
                 continue
             for i, (x, y) in enumerate(zip((o, h, l, c), b[:4])):
                 worst[i] = max(worst[i], abs(x - y))
-        bad = (max(worst[1], worst[2]) > BAR_TOLERANCE_HL_PTS or max(worst[0], worst[3]) > BAR_TOLERANCE_OC_PTS
-               or bool(thin))
+        bad = max(worst[1], worst[2]) > BAR_TOLERANCE_HL_PTS or max(worst[0], worst[3]) > BAR_TOLERANCE_OC_PTS
+        gap = (f"source gap: {len(thin)} minutes, {_hhmm(thin[0])}-{_hhmm(thin[-1])} ET" if thin else "")
+        diffs = (f"max |dO| {worst[0]:.2f} |dH| {worst[1]:.2f} |dL| {worst[2]:.2f} |dC| {worst[3]:.2f}")
+        if thin and not bad:                                    # v1.2: skipped, never counted toward the 3
+            print(f"  {d}: SKIPPED ({gap}) - {len(built)}/{RTH_MINUTES} minutes with ticks, {len(thin)} under "
+                  f"{MIN_TICKS_PER_MINUTE}; the rest agree ({diffs}); not counted toward {MIN_VERIFIED_DAYS}")
+            skipped.append(d)
+            continue
         print(f"  {d}: {len(built)}/{RTH_MINUTES} minutes with ticks, thinnest "
-              f"{min((b[4] for b in built.values()), default=0)} tick(s); max |dO| {worst[0]:.2f} |dH| {worst[1]:.2f} "
-              f"|dL| {worst[2]:.2f} |dC| {worst[3]:.2f} -> {'FAIL' if bad else 'ok'}"
-              + (f" ({len(thin)} minute(s) under {MIN_TICKS_PER_MINUTE} ticks)" if thin else ""))
+              f"{min((b[4] for b in built.values()), default=0)} tick(s); {diffs} -> {'FAIL' if bad else 'ok'}"
+              + (f" ({gap})" if thin else ""))
         (verify_fail if bad else verified).append(d)
     if meta.error:
         print(meta.banner())
@@ -291,7 +313,7 @@ def run(argv=None, s3=None, now_ms=None, log_path=None) -> int:
     total = sum(len(r) for r, _ in plan.values())
     print(f"TOTAL: {total} minute(s) {'to insert' if a.apply else 'would insert'} on "
           f"{sum(1 for r, _ in plan.values() if r)} day(s); verified {len(verified)} day(s) "
-          f"{verified}, failed {len(verify_fail)} {verify_fail}")
+          f"{verified}, failed {len(verify_fail)} {verify_fail}, skipped (source gap) {len(skipped)} {skipped}")
     ro.close()
     if not a.apply:
         print("DRY RUN - nothing written. --apply writes the missing rows (INSERT OR IGNORE).")
