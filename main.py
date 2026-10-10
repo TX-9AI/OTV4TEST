@@ -1,5 +1,6 @@
 """
-main.py  v4.97
+main.py  v4.98
+v4.98 2026-10-10  OTV4TEST r266 (STOP.1) — THE SERVICE MODE LINE NAMES THE RESTING STOP IN FORCE: " · resting_stop=off|trade" (plus "(LIVE: refused)" on a live box, and a refused OT_RESTING_STOP by name).
 v4.97 2026-10-10  OTV4TEST r265 (BRK.8 + BRK.9) — THE SERVICE MODE LINE NAMES BREAKOUT'S END AND ITS NO-PROGRESS MODE IN FORCE: `_banner_dials()` appends " · breakout_end=HH:MM · brk_noprog=off|log|trade" (and a refused OT_BREAKOUT_END / OT_BRK_NOPROG by name), read from config. The operator, 2026-10-10 13:37 ET: "Yes, to all. Study, fit & apply."
 v4.96 2026-10-05  OTV4TEST r254 (OBS.1) — THE PLAN ALWAYS LOOKS, THE STRATEGY IS GATED ON THE HOUR: Breakout, Runaway and the Hunt are OBSERVED from their entry end to 15:40 - asked, recorded LOG-ONLY, never executed (the operator, 2026-10-05: "the plan always looks, but the strategies are gated on the hour of the day"; "Have those blocked TRADES just to Log only"). Here: admission publishes the observe set each tick (position_manager.observing) and clears it first; _log_only() refuses an observed signal at _fire, the hunt's door and the top of _execute_entry_signal (after the VIX stamp, before any sizing or order) and logs it once per setup with the pin gate's answer.
 v4.95 2026-10-05  OTV4TEST r253 (RUNW.2) — THE SERVICE MODE LINE NAMES THE PIN GATE AND RUNAWAY'S END IN FORCE: `_banner_dials()` appends " · pin_gate=ON/OFF · runaway_end=HH:MM" (and a refused OT_RUNAWAY_END by name), read from config. SPX-TEST, 10-05: neither was printed anywhere, so a box's pin gate had to be inferred from silence. configure.sh item 10 now sets the end (the operator: "it needs to be a toggle inside configure").
@@ -1330,6 +1331,7 @@ from config import (
     RUNAWAY_CUTOFF_ET, RUNAWAY_END_ENV_REFUSED,                     # r253 (RUNW.2)
     BREAKOUT_LATEST_ET, BREAKOUT_END_ENV_REFUSED,                   # r265 (BRK.9)
     BRK_NOPROG_MODE, BRK_NOPROG_ENV_REFUSED,                        # r265 (BRK.8)
+    RESTING_STOP_MODE, RESTING_STOP_ENV_REFUSED,                    # r266 (STOP.1)
     NOISE_FLOOR_BAR_MULT, NOISE_FLOOR_LOOKBACK_BARS, NOISE_FLOOR_MIN_BARS,
     PIN_PROXIMITY_ACTIVE, PIN_PROXIMITY_MIN_FRAC,
     REASSESS_MINUTES, INSTRUMENT, INSTRUMENT_UNSET, INSTRUMENT_LISTED, SessionConfig, DIRECTIONAL_ONLY,
@@ -5199,6 +5201,11 @@ def _banner_dials() -> str:
     brk += f" · brk_noprog={BRK_NOPROG_MODE}"                              # r265 (BRK.8)
     if BRK_NOPROG_ENV_REFUSED:
         brk += f" (OT_BRK_NOPROG={BRK_NOPROG_ENV_REFUSED!r} REFUSED)"
+    brk += f" · resting_stop={RESTING_STOP_MODE}"                          # r266 (STOP.1)
+    if RESTING_STOP_MODE == "trade" and not PAPER_TRADING:
+        brk += " (LIVE: refused - stops close as before)"
+    if RESTING_STOP_ENV_REFUSED:
+        brk += f" (OT_RESTING_STOP={RESTING_STOP_ENV_REFUSED!r} REFUSED)"
     return f" · pin_gate={'ON' if PIN_PROXIMITY_ACTIVE else 'OFF'}{end}{brk}"
 
 

@@ -48,6 +48,11 @@ Other single legs: **25%** (`MAX_LOSS_PCT`). Butterflies: **40%** of the debit
 its risk, a nickel closes a leg. Every other exit rule lives in `strategy/management.py` and
 `execution/exit_engine.py`, not in a number that can be quoted here.
 
+**The resting stop (r266, STOP.1, paper only).** With `OT_RESTING_STOP=trade`, a fired `hard_stop` or
+`trail_stop_hit` on a single long does not close at the mark that tick: it rests a sell at its own level for
+120 s, filled there if price comes back, else closed at the mark - at once if the mark falls 5% of entry
+further. Unset = off: stops close at the mark as before.
+
 **The day.** New entries stop while the day's net loss is at or past the daily catastrophic
 loss cap (`OT_DAILY_LOSS_LIMIT`), and it re-arms if the day recovers (r162).
 

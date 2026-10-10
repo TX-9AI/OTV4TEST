@@ -1,4 +1,7 @@
-"""tests/check_data_capture.py — v1.7
+"""tests/check_data_capture.py — v1.8
+
+v1.8  2026-10-10 — OTV4TEST r266 (STOP.1). D4 RE-POINTED, NOT DROPPED (section 38.4): the resting stop joined the
+      menu as item 13, so Data capture is item 14 and Done 15. Properties unchanged.
 
 v1.7  2026-10-10 — OTV4TEST r265 (BRK.8/BRK.9). D4 RE-POINTED, NOT DROPPED (section 38.4): Breakout's entry
       end (11) and no-progress exit (12) joined the menu, so Data capture is item 13 and Done 14. Properties unchanged.
@@ -252,15 +255,15 @@ guard("D3 standalone: candle-logger and self-close off, this box's purge back on
 
 # ── D4 configure.sh ──────────────────────────────────────────────────────────
 _cfg = _read("configure.sh")
-guard("D4 item 13 runs change_data_capture and does NOT mark the bot for restart",
-      lambda: re.search(r"^\s*13\)\s*change_data_capture\s*;;", _cfg, re.M)
-      and not re.search(r"^\s*13\)[^\n]*CHANGED=true", _cfg, re.M))
+guard("D4 item 14 runs change_data_capture and does NOT mark the bot for restart",
+      lambda: re.search(r"^\s*14\)\s*change_data_capture\s*;;", _cfg, re.M)
+      and not re.search(r"^\s*14\)[^\n]*CHANGED=true", _cfg, re.M))
 _cdc = (re.search(r"^change_data_capture\(\) \{\n.*?^\}", _cfg, re.M | re.S) or re.match("", "")).group(0)
 guard("D4 change_data_capture calls the ONE script for both answers (scoped to its body - r139's item 1 also re-applies managed)",
       lambda: _cdc.count('bash "$BOT_DIR/deploy/data_capture.sh" managed') == 1
       and _cdc.count('bash "$BOT_DIR/deploy/data_capture.sh" standalone') == 1)
-guard("D4 Done is 14, the prompt names 1-14, and the summary shows the mode",
-      lambda: re.search(r"^\s*14\)\s*break", _cfg, re.M) and "Select [1-14]" in _cfg
+guard("D4 Done is 15, the prompt names 1-15, and the summary shows the mode",
+      lambda: re.search(r"^\s*15\)\s*break", _cfg, re.M) and "Select [1-15]" in _cfg
       and "Data capture:   ${BOLD}$(data_capture_label)" in _cfg)
 
 # ── D5 VIX family ────────────────────────────────────────────────────────────

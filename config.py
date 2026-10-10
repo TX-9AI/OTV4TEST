@@ -1,5 +1,9 @@
 """
-config.py  v4.59
+config.py  v4.60
+v4.60 2026-10-10  OTV4TEST r266 (STOP.1) — OT_RESTING_STOP off|trade (unset = off; a refused value reads off and is named
+      in RESTING_STOP_ENV_REFUSED): a fired hard_stop / trail_stop_hit RESTS at its level for RESTING_STOP_WAIT_S (120,
+      "120 seconds is fine") unless the mark falls RESTING_STOP_EMERGENCY_FRAC (0.05 of entry, "I can live with a 5%
+      emergency stop") under it. PAPER ONLY (execution/resting_stop.py).
 v4.59 2026-10-10  OTV4TEST r265 (BRK.8 + BRK.9) — TWO PER-BOX BREAKOUT SWITCHES. (1) OT_BREAKOUT_END "HH:MM" moves ONLY
       Breakout's entry end (09:36 .. 15:40; unset = r187's 10:30; a refused value keeps 10:30 and is named in
       BREAKOUT_END_ENV_REFUSED), the mirror of r189's OT_RUNAWAY_END. (2) OT_BRK_NOPROG off|log|trade (unset = log):
@@ -845,6 +849,17 @@ else:
     BRK_NOPROG_MODE = "log"
     if _np_raw:
         BRK_NOPROG_ENV_REFUSED = _np_raw
+# ── r266 (STOP.1) — THE RESTING STOP (execution/resting_stop.py) ─────────────
+RESTING_STOP_ENV_REFUSED = ""
+_rs_raw = os.environ.get("OT_RESTING_STOP", "").strip().lower()
+if _rs_raw in ("off", "trade"):
+    RESTING_STOP_MODE = _rs_raw
+else:
+    RESTING_STOP_MODE = "off"
+    if _rs_raw:
+        RESTING_STOP_ENV_REFUSED = _rs_raw
+RESTING_STOP_WAIT_S = 120.0
+RESTING_STOP_EMERGENCY_FRAC = 0.05
 BRK_NOPROG_STALL_BARS = 2      # consecutive closed 1m bars without a new favourable extreme
 BRK_NOPROG_MIN_R = 0.5         # best progress since entry, in R = |underlying_entry - underlying_stop|
 

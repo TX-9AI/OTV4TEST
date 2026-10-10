@@ -1,5 +1,6 @@
 """
-execution/position_manager.py  v5.15
+execution/position_manager.py  v5.16
+v5.16 2026-10-10  OTV4TEST r266 (STOP.1) — A PREMIUM STOP THAT FIRES RESTS AT ITS OWN LEVEL BEFORE IT CHASES (execution/resting_stop.py, PAPER ONLY, OT_RESTING_STOP=trade). _execute_exit: a hard_stop / trail_stop_hit on a single-leg long, with the mark already under its level, BEGINS a rest instead of booking the mark (returns False: the row stays open). _manage_one: each later tick a resting trade is resolved FIRST - a mark back at the level books the LEVEL, a mark 5% of entry under it (emergency) or 120 s books the mark; the end-of-day close abandons the rest. Any other close of a resting trade abandons it. The operator, 2026-10-10: "post a resting order when our stop is hit, wait for price to come back to it"; "I can live with a 5% emergency stop on failed fills"; "120 seconds is fine".
 v5.15 2026-10-05  OTV4TEST r254 (OBS.1) — THE PLAN ALWAYS LOOKS, THE STRATEGY IS GATED ON THE HOUR: Breakout, Runaway and the Hunt are OBSERVED from their entry end to 15:40 - asked, recorded LOG-ONLY, never executed (the operator, 2026-10-05: "the plan always looks, but the strategies are gated on the hour of the day"; "Have those blocked TRADES just to Log only"). Here: observing() - pure; the three only, refused ONLY by the window, after its end and before the entries stop, every other gate still binding.
 v5.14 2026-10-04  OTV4TEST r246 (LIVE.1 F4, MIRROR OF otv4 r468 f0fd443, WA 38.2) — THE LIVE MARK FALLBACK WORKS: _get_option_mark called session.get, which tastytrade 13.x does not have, so it always raised and the bare except returned None; now get_market_data(EQUITY_OPTION) via sdk_result, mid-else-mark-else-last kept, None outside (0, 1e6), a WARNING once per symbol. The live no-chain fallback dispatches by STRUCTURE: a tent is None, a credit vertical is short minus long (both required - never the short leg's full mark, which would trip a premium stop), butterfly and single unchanged. Code hunks applied verbatim; _get_option_mark getsource identical to f0fd443 (67b546bb); _fetch_current_premium differs ONLY by this tree's r195 comment labels and r209 _delta_readable lines, read and confirmed.
 v5.13 2026-10-03  OTV4TEST r209 (EXIT.4) — (1) the management intent's declared pricing is stamped on the record with its
@@ -238,6 +239,7 @@ from strategy.structure import (is_credit_vertical as _is_credit_vertical,
                                 is_tent as _is_tent,
                                 has_assignment_risk as _has_assignment_risk)   # r149
 from execution.exit_engine import get_exit_engine, ExitDecision
+from execution import resting_stop as _rs                          # r266 (STOP.1)
 from data.tasty_client import get_client, TastyClientError, sdk_result
 from risk.risk_manager import get_risk_manager
 from notifications.alert_manager import get_alert_manager
@@ -969,6 +971,31 @@ class PositionManager:
         record["current_premium"] = current_premium
 
         exit_eng = get_exit_engine(self.paper_trading)
+        # ── r266 (STOP.1) — A RESTING STOP IS RESOLVED BEFORE ANYTHING ELSE ──
+        # The stop already fired; this tick only decides WHICH price paper books.
+        try:
+            if _rs.is_resting(trade_id):
+                from execution.exit_engine import _eod_due
+                if _eod_due(record):
+                    _rs.abandon(trade_id, "the end-of-day close governs")
+                else:
+                    _act = _rs.step(trade_id, current_premium)
+                    if _act is None:
+                        return True                                  # still resting
+                    _px, _label, _st = _act
+                    _d = ExitDecision(should_exit=True,
+                                      exit_reason=f"{_st['reason']} | rested: {_label}")
+                    _closed = self._execute_exit(record, _d, _px, _rested=True)
+                    if _closed:
+                        _rs.finish(trade_id, _px, _label)
+                    return not _closed
+        except Exception as _rse:                                    # noqa: BLE001
+            logger.error(f"resting stop for {trade_id[:8]} raised ({_rse}) - abandoning it; "
+                         f"the normal exit path decides")
+            try:
+                _rs.abandon(trade_id, f"raised: {_rse}")
+            except Exception:                                        # noqa: BLE001
+                pass
         # ── r167 — THE MANAGEMENT PLAN DECIDES FIRST for the records it covers
         # (runaway, butterfly, a lone sweep/TCS vertical). It asserts the
         # declared spec conditions itself (15% floor / hard stop, the breach
@@ -1235,7 +1262,8 @@ class PositionManager:
 
     def _execute_exit(self, record: TradeRecord,
                        decision: ExitDecision,
-                       current_premium: float) -> bool:
+                       current_premium: float,
+                       _rested: bool = False) -> bool:
         """Place the exit and book P&L ONLY on a confirmed fill. Returns True if
         the position genuinely closed, False if not (caller retries).
 
@@ -1249,6 +1277,19 @@ class PositionManager:
         trade_id = record["trade_id"]
 
         exit_eng = get_exit_engine(self.paper_trading)
+        # r266 (STOP.1) — a premium stop with the mark already under its level RESTS instead.
+        if not _rested:
+            try:
+                if (_rs.active_mode(self.paper_trading) == "trade"
+                        and _rs.eligible(record, decision.exit_reason)):
+                    _lvl = _rs.level_for(record, decision.exit_reason,
+                                         getattr(exit_eng, "_trail_stops", {}).get(trade_id))
+                    if _lvl and current_premium is not None and float(current_premium) < _lvl:
+                        _rs.begin(record, decision.exit_reason, float(current_premium), _lvl)
+                        return False                                 # resting: the row stays open
+            except Exception as _rse:                                # noqa: BLE001
+                logger.error(f"resting stop could not start for {trade_id[:8]} ({_rse}) - "
+                             f"closing as before")
         fill     = exit_eng.place_exit_order(record, decision.exit_reason,
                                              mark_price=current_premium)
 
@@ -1326,6 +1367,11 @@ class PositionManager:
         )
 
         exit_eng.clear_trail(trade_id)
+        if not _rested:                                              # r266: any other close ends a rest
+            try:
+                _rs.abandon(trade_id, f"closed by {str(decision.exit_reason).split(' ')[0]}")
+            except Exception:                                        # noqa: BLE001
+                pass
 
         # ── Re-arm ORB engine if this was an ORB trade ─────────────────────────
         # Allows the engine to watch for another breakout attempt this session

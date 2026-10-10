@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# configure.sh  v4.17
+# configure.sh  v4.18
+# v4.18 2026-10-10  OTV4TEST r266 (STOP.1) — ITEM 13 IS THE RESTING STOP (OT_RESTING_STOP off|trade, paper
+#       only); data capture moves to 14, Done to 15. The operator, 2026-10-10: "post a resting order when our
+#       stop is hit, wait for price to come back to it"; "120 seconds is fine".
 # v4.17 2026-10-10  OTV4TEST r265 (BRK.8 + BRK.9) — ITEM 11 IS BREAKOUT'S ENTRY END (OT_BREAKOUT_END),
 #       ITEM 12 ITS NO-PROGRESS EXIT (OT_BRK_NOPROG off|log|trade); data capture moves to 13, Done to 14.
 #       Both read their answer from config.py (the consumer), never a copy of its rule. The operator,
@@ -316,6 +319,7 @@ show_config() {
     echo -e "  Runaway end:    ${BOLD}$(runaway_end_label)${RESET}"
     echo -e "  Breakout end:   ${BOLD}$(breakout_end_label)${RESET}"
     echo -e "  BRK no-progress:${BOLD}$(brk_noprog_label)${RESET}"
+    echo -e "  Resting stop:   ${BOLD}$(resting_stop_label)${RESET}"
     echo -e "  Data capture:   ${BOLD}$(data_capture_label)${RESET}"
     echo -e "  Trading mode:   $(echo -e $mode_label)"
     local rec_pin rec_label
@@ -597,6 +601,46 @@ change_brk_noprog() {
     set_env "OT_BRK_NOPROG" "$val"
     reload_daemon
     echo "  Breakout no-progress exit set to $val."
+}
+
+# ── r266 (STOP.1) — THE RESTING STOP: off | trade (paper only) ─────────────
+resting_stop_label() {
+    local v got
+    v=$(get_env "OT_RESTING_STOP")
+    got=$(cd "$BOT_DIR" && OT_RESTING_STOP="$v" python3 -c \
+        "import config; print(config.RESTING_STOP_MODE + (' (set to ' + config.RESTING_STOP_ENV_REFUSED + ' - REFUSED)' if config.RESTING_STOP_ENV_REFUSED else ''))")
+    if [[ -z "$v" ]]; then
+        printf 'not set (code default: %s)' "${got:-UNREADABLE - config.py did not import}"
+    else
+        printf '%s' "${got:-UNREADABLE - config.py did not import}"
+    fi
+}
+
+change_resting_stop() {
+    local val
+    echo ""
+    echo "  Resting stop: $(resting_stop_label)"
+    echo ""
+    echo "  trade - a fired hard stop / trail stop RESTS a sell at its own level for"
+    echo "          120 s; filled there if price comes back, else closed at the mark"
+    echo "          (at once if it falls 5% of entry further). PAPER ONLY."
+    echo "  off   - stops close at the mark as before."
+    echo ""
+    read -p "    Mode (trade / off, blank to clear): " val
+    val="${val// /}"; val="${val,,}"
+    if [[ -z "$val" ]]; then
+        drop_env "OT_RESTING_STOP"
+        reload_daemon
+        echo "  Resting stop cleared - $(resting_stop_label)."
+        return
+    fi
+    if [[ "$val" != "trade" && "$val" != "off" ]]; then
+        print_warn "REFUSED - '$val' is not trade or off. Nothing written."
+        return
+    fi
+    set_env "OT_RESTING_STOP" "$val"
+    reload_daemon
+    echo "  Resting stop set to $val."
 }
 
 # ── r136 — DATA CAPTURE: managed (the conductor owns this box's data) or
@@ -963,10 +1007,11 @@ while true; do
     echo -e "  ${BOLD}10.${RESET} Runaway entry end   (currently: $(runaway_end_label))"
     echo -e "  ${BOLD}11.${RESET} Breakout entry end  (currently: $(breakout_end_label))"
     echo -e "  ${BOLD}12.${RESET} Breakout no-progress (currently: $(brk_noprog_label))"
-    echo -e "  ${BOLD}13.${RESET} Data capture        (currently: $(data_capture_label))"
-    echo -e "  ${BOLD}14.${RESET} Done"
+    echo -e "  ${BOLD}13.${RESET} Resting stop        (currently: $(resting_stop_label))"
+    echo -e "  ${BOLD}14.${RESET} Data capture        (currently: $(data_capture_label))"
+    echo -e "  ${BOLD}15.${RESET} Done"
     echo ""
-    read -p "    Select [1-14]: " menu_choice
+    read -p "    Select [1-15]: " menu_choice
 
     case "$menu_choice" in
         1) change_instrument; CHANGED=true ;;
@@ -981,9 +1026,10 @@ while true; do
         10) change_runaway_end;   CHANGED=true ;;
         11) change_breakout_end;  CHANGED=true ;;
         12) change_brk_noprog;    CHANGED=true ;;
-        13) change_data_capture ;;
-        14) break ;;
-        *) print_warn "Please enter a number between 1 and 14." ;;
+        13) change_resting_stop;  CHANGED=true ;;
+        14) change_data_capture ;;
+        15) break ;;
+        *) print_warn "Please enter a number between 1 and 15." ;;
     esac
     echo ""
 done
