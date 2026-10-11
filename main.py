@@ -1,5 +1,8 @@
 """
-main.py  v4.100
+main.py  v4.101
+v4.101  2026-10-11  OTV4TEST r270 (PMAP.1 + FILL.2, RECORD ONLY) — the end-of-tick sleep is execution/fill_observers.sleep_observing:
+      the SAME total, in 2 s slices, between which the quote watch records any open position whose own quote crossed its
+      premium stop (never wakes, exits or orders). The Service mode line names " · fill_observe=on|off" (OT_FILL_OBSERVE).
 v4.100  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
       US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
       without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
@@ -5217,6 +5220,11 @@ def _banner_dials() -> str:
         brk += " (LIVE: refused - stops close as before)"
     if RESTING_STOP_ENV_REFUSED:
         brk += f" (OT_RESTING_STOP={RESTING_STOP_ENV_REFUSED!r} REFUSED)"
+    try:                                                                   # r270 (PMAP.1 + FILL.2)
+        from execution.fill_observers import enabled as _fo_on
+        brk += f" · fill_observe={'on' if _fo_on() else 'off'}"
+    except Exception:                                                      # noqa: BLE001
+        brk += " · fill_observe=?"
     return f" · pin_gate={'ON' if PIN_PROXIMITY_ACTIVE else 'OFF'}{end}{brk}"
 
 
@@ -5804,6 +5812,7 @@ def main_loop(state: BotState):
 
     while True:
         tick_start  = time.time()
+        _obs_chain  = None              # r270 (FILL.2) — the chain the observing sleep reads
         state.tick_count += 1
         _touch_heartbeat(state.tick_count)   # r168 — the emergency watchdog's liveness read
 
@@ -6022,6 +6031,7 @@ def main_loop(state: BotState):
 
             # ── Main analysis ─────────────────────────────────────────────
             ctx = run_analysis(state, chain=_gex_chain)
+            _obs_chain = ctx.get("chain")    # r270 (FILL.2)
 
             # cheap (threshold checks over the ctx run_analysis already computed),
             # so we reclassify every tick — no throttle. Verified safe: the only
@@ -6322,7 +6332,12 @@ def main_loop(state: BotState):
                 sys.exit(1)
 
         elapsed = time.time() - tick_start
-        time.sleep(max(0, POLL_INTERVAL_SECONDS - elapsed))
+        # r270 (FILL.2, RECORD ONLY) — the SAME sleep, in 2 s slices: between them the quote watch records whether an
+        # open position's own quote crossed its premium stop. It never wakes the tick, exits or orders. Never raises.
+        from execution import fill_observers as _fo
+        _fo.sleep_observing(max(0, POLL_INTERVAL_SECONDS - elapsed),
+                            lambda: get_position_manager(state.paper_trading).get_open_records(),
+                            lambda: _obs_chain)
 
 
 # Below this many seconds of system uptime, a startup is treated as a fresh

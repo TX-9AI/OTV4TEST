@@ -56,6 +56,10 @@ its risk, a nickel closes a leg. Every other exit rule lives in `strategy/manage
 120 s, filled there if price comes back, else closed at the mark - at once if the mark falls 5% of entry
 further. Unset = off: stops close at the mark as before.
 
+**The fill observers (r270, PMAP.1 + FILL.2, record only).** Every open single long gets a premium-map row a minute, and the
+end-of-tick sleep records when its own quote crosses its premium stop (data/counterfactual/). Nothing here exits or orders.
+`OT_FILL_OBSERVE=off` turns both off.
+
 **The day.** New entries stop while the day's net loss is at or past the daily catastrophic
 loss cap (`OT_DAILY_LOSS_LIMIT`), and it re-arms if the day recovers (r162).
 

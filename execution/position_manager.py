@@ -1,5 +1,7 @@
 """
-execution/position_manager.py  v5.17
+execution/position_manager.py  v5.18
+v5.18 2026-10-11  OTV4TEST r270 (PMAP.1, RECORD ONLY) — _manage_one writes one premium-map row per position per minute
+      (fill_observers.observe_map) after the mark is fetched; it decides nothing and never raises.
 v5.17 2026-10-11  OTV4TEST r268 (DEP.12, mirror of otv4 r478) — _vertical_close_due reads past_close_anchor: credit verticals close at
       12:45 on a 13:00 close, 15:45 on a full day. The operator, 2026-10-11 16:51 ET: "Yes, we want those fixed here too".
 v5.16 2026-10-10  OTV4TEST r266 (STOP.1) — A PREMIUM STOP THAT FIRES RESTS AT ITS OWN LEVEL BEFORE IT CHASES (execution/resting_stop.py, PAPER ONLY, OT_RESTING_STOP=trade). _execute_exit: a hard_stop / trail_stop_hit on a single-leg long, with the mark already under its level, BEGINS a rest instead of booking the mark (returns False: the row stays open). _manage_one: each later tick a resting trade is resolved FIRST - a mark back at the level books the LEVEL, a mark 5% of entry under it (emergency) or 120 s books the mark; the end-of-day close abandons the rest. Any other close of a resting trade abandons it. The operator, 2026-10-10: "post a resting order when our stop is hit, wait for price to come back to it"; "I can live with a 5% emergency stop on failed fills"; "120 seconds is fine".
@@ -242,6 +244,7 @@ from strategy.structure import (is_credit_vertical as _is_credit_vertical,
                                 has_assignment_risk as _has_assignment_risk)   # r149
 from execution.exit_engine import get_exit_engine, ExitDecision
 from execution import resting_stop as _rs                          # r266 (STOP.1)
+from execution import fill_observers as _fo        # r270 (PMAP.1 + FILL.2): record-only observers
 from data.tasty_client import get_client, TastyClientError, sdk_result
 from risk.risk_manager import get_risk_manager
 from notifications.alert_manager import get_alert_manager
@@ -971,6 +974,8 @@ class PositionManager:
         self._trade_logger.update_current_premium(trade_id, current_premium)
         # r166 — the management plan reads the record, not the DB
         record["current_premium"] = current_premium
+        # r270 (PMAP.1, RECORD ONLY) — one premium-map row per position per minute; decides nothing, never raises.
+        _fo.observe_map(record, current_premium, getattr(chain, "spot_price", None))
 
         exit_eng = get_exit_engine(self.paper_trading)
         # ── r266 (STOP.1) — A RESTING STOP IS RESOLVED BEFORE ANYTHING ELSE ──
