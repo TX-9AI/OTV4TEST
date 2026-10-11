@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tools/emergency_watchdog.py  v1.1 — THE OUT-OF-PROCESS EMERGENCY WATCHDOG.
+tools/emergency_watchdog.py  v1.2 — THE OUT-OF-PROCESS EMERGENCY WATCHDOG.
+
+v1.2  2026-10-11  OTV4TEST r268 (DEP.12, mirror of otv4 r478) — HALF DAYS. WINDOW's end, CLOSE_AT and CLOSE_END move to
+      the day's bell through _at() (utils/market_calendar.close_shift_minutes): on a 13:00 close it flattens 12:50-13:00
+      and idles from 13:05. WINDOW's 09:30 start is raw. _at() is byte-identical to otv4's.
 
 v1.1  2026-10-04  OTV4TEST r242 (LIVE.1 B0, FORK-ONLY) — cancel_working() called account.get_live_orders /
       delete_order bare; on tastytrade 13.x those are coroutines, so on a LIVE box the 15:50 watchdog
@@ -56,7 +60,7 @@ Ticks average 15.1s (900 twenty-tick windows; the slowest averaged 21.9s), so
 ⚠️ THE BOT'S ENVIRONMENT IS READ AT RUN TIME (`systemctl show <svc> -p
 Environment`), never copied at install: configure.sh edits the unit, and a
 stale copy would close a LIVE book as paper. Nothing here prints a value.
-⚠️ HALF DAYS ARE NOT MODELLED, as everywhere in this tree (market_calendar).
+~~⚠️ HALF DAYS ARE NOT MODELLED, as everywhere in this tree (market_calendar).~~ Modelled since r268 (DEP.12): _at().
 ⚠️ THE WHOLE BOX DOWN IS NOT COVERED: nothing on the box can page then.
 ⚠️ A DELIBERATE STOP with a position still open at 15:50 is closed like a hang.
 ⚠️ ALWAYS EXITS 0: a red here is a page, not a failed unit.
@@ -282,6 +286,18 @@ def health(w) -> tuple:
     return True, f"heartbeat {hb:.0f}s"
 
 
+def _at(t: dt.time, now: dt.datetime) -> dt.time:
+    """r478 / DEP.12 — a 16:00-bell time moved to `now`'s bell (15:50 -> 12:50 on a
+    13:00 close). CLOSE SIDE ONLY. Fails toward a FULL day: the pre-r478 times."""
+    try:
+        from utils.market_calendar import close_shift_minutes
+        sh = int(close_shift_minutes(now.date()))
+    except Exception:                                             # noqa: BLE001
+        sh = 0
+    m = max(0, t.hour * 60 + t.minute - sh)
+    return dt.time(m // 60, m % 60)
+
+
 def run_once(w) -> str:
     """One timer firing. Returns a one-word verdict for the log and the gate.
     ⚠️ PAGES ONLY FROM emergency_close, ONCE PER EVENT (the ruling)."""
@@ -289,7 +305,7 @@ def run_once(w) -> str:
     st = w.load_state()
     if st.get("date") != now.date().isoformat():
         st = {"date": now.date().isoformat()}
-    if not w.trading_day(now.date()) or not (WINDOW[0] <= now.time() < WINDOW[1]):
+    if not w.trading_day(now.date()) or not (WINDOW[0] <= now.time() < _at(WINDOW[1], now)):
         return "idle"
     w.load_env()
     ok, why = health(w)
@@ -306,7 +322,8 @@ def run_once(w) -> str:
     first = st.setdefault("unhealthy_since", now.isoformat())
     seen_twice = first != now.isoformat()
     _log(f"UNHEALTHY ({why}) with {len(opened)} open: {', '.join(opened)}")
-    if seen_twice and CLOSE_AT <= now.time() < CLOSE_END and not st.get("closed"):
+    if (seen_twice and _at(CLOSE_AT, now) <= now.time() < _at(CLOSE_END, now)
+            and not st.get("closed")):
         st["closed"] = True                     # once a day, whatever happens next
         w.save_state(st)
         return emergency_close(w, os.environ.get("OT_INSTRUMENT", "?"),
@@ -334,7 +351,8 @@ def emergency_close(w, inst: str, mode: str, opened: list, why: str) -> str:
             left = w.flatten_pass()
         except Exception as exc:                                  # noqa: BLE001
             _log(f"flatten pass raised {type(exc).__name__}: {exc}")
-        if not left or w.now().time() >= CLOSE_END:
+        _n = w.now()
+        if not left or _n.time() >= _at(CLOSE_END, _n):
             break
         w.sleep(PASS_S)
     try:

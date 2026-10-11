@@ -1,5 +1,7 @@
 """
-execution/position_manager.py  v5.16
+execution/position_manager.py  v5.17
+v5.17 2026-10-11  OTV4TEST r268 (DEP.12, mirror of otv4 r478) — _vertical_close_due reads past_close_anchor: credit verticals close at
+      12:45 on a 13:00 close, 15:45 on a full day. The operator, 2026-10-11 16:51 ET: "Yes, we want those fixed here too".
 v5.16 2026-10-10  OTV4TEST r266 (STOP.1) — A PREMIUM STOP THAT FIRES RESTS AT ITS OWN LEVEL BEFORE IT CHASES (execution/resting_stop.py, PAPER ONLY, OT_RESTING_STOP=trade). _execute_exit: a hard_stop / trail_stop_hit on a single-leg long, with the mark already under its level, BEGINS a rest instead of booking the mark (returns False: the row stays open). _manage_one: each later tick a resting trade is resolved FIRST - a mark back at the level books the LEVEL, a mark 5% of entry under it (emergency) or 120 s books the mark; the end-of-day close abandons the rest. Any other close of a resting trade abandons it. The operator, 2026-10-10: "post a resting order when our stop is hit, wait for price to come back to it"; "I can live with a 5% emergency stop on failed fills"; "120 seconds is fine".
 v5.15 2026-10-05  OTV4TEST r254 (OBS.1) — THE PLAN ALWAYS LOOKS, THE STRATEGY IS GATED ON THE HOUR: Breakout, Runaway and the Hunt are OBSERVED from their entry end to 15:40 - asked, recorded LOG-ONLY, never executed (the operator, 2026-10-05: "the plan always looks, but the strategies are gated on the hour of the day"; "Have those blocked TRADES just to Log only"). Here: observing() - pure; the three only, refused ONLY by the window, after its end and before the entries stop, every other gate still binding.
 v5.14 2026-10-04  OTV4TEST r246 (LIVE.1 F4, MIRROR OF otv4 r468 f0fd443, WA 38.2) — THE LIVE MARK FALLBACK WORKS: _get_option_mark called session.get, which tastytrade 13.x does not have, so it always raised and the bare except returned None; now get_market_data(EQUITY_OPTION) via sdk_result, mid-else-mark-else-last kept, None outside (0, 1e6), a WARNING once per symbol. The live no-chain fallback dispatches by STRUCTURE: a tent is None, a credit vertical is short minus long (both required - never the short leg's full mark, which would trip a premium stop), butterfly and single unchanged. Code hunks applied verbatim; _get_option_mark getsource identical to f0fd443 (67b546bb); _fetch_current_premium differs ONLY by this tree's r195 comment labels and r209 _delta_readable lines, read and confirmed.
@@ -288,11 +290,11 @@ def _vertical_close_due() -> bool:
     time so a test can pin the clock; fails toward FLATTEN on any error."""
     try:
         from config import VERTICAL_HOLD_TO_ET, VERTICAL_HOLD_TO_CLOSE
-        from utils.time_utils import now_et
+        from utils.time_utils import now_et, past_close_anchor
         if not VERTICAL_HOLD_TO_CLOSE:
             return True
-        _n = now_et()
-        return (_n.hour, _n.minute) >= tuple(VERTICAL_HOLD_TO_ET)
+        # r478 / DEP.12 — 12:45 on a 13:00 close.
+        return past_close_anchor(VERTICAL_HOLD_TO_ET, now_et())
     except Exception:                                          # noqa: BLE001
         return True
 

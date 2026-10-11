@@ -1,5 +1,7 @@
 """
-execution/limit_ladder.py  v4.2
+execution/limit_ladder.py  v4.3
+v4.3  2026-10-11  OTV4TEST r268 (DEP.12, mirror of otv4 r478) - hard_close_order_mode() moves its two EOD_SCHEDULE times (15:50 limit,
+      15:55 market) to the day's bell: 12:50 / 12:55 on a 13:00 close. A bare time argument carries no date and is a full day.
 v4.2  2026-10-03  OTV4TEST r216 (HYG.14): comments only - the two references to the deleted fill_model are reworded; the rule stays (paper never books a fill from an inside-the-spread rung).
 v4.1  2026-09-26  OTV4TEST r149 (EOD.1): the ladder's two times come from config.EOD_SCHEDULE — limit from 15:50 (EOD_LADDER_AT_ET), market from 15:55 (EOD_CROSS_AT_ET). Were literals 15:40 / 15:45. Assignment-risk positions rest from 15:45 on a best-case price (exit_engine); this function governs the ladder they share at the cross.
 Escalating limit ladder for fills.
@@ -89,9 +91,16 @@ def hard_close_order_mode(now_et) -> str:
     'market' 15:45 onward — the position MUST close; cross and be done.
     """
     t = now_et.time() if hasattr(now_et, "time") else now_et
-    if t >= HARD_CLOSE_MARKET_AT_ET:
+    # r478 / DEP.12 — 12:40 / 12:45 on a 13:00 close. Module constants are read
+    # at call time, so a test that pins them (check_buyback_side B5) still works.
+    _cross, _start = HARD_CLOSE_MARKET_AT_ET, HARD_CLOSE_LIMIT_START_ET
+    if hasattr(now_et, "date"):
+        from utils.time_utils import close_anchored
+        _cross = close_anchored(_cross, now_et)
+        _start = close_anchored(_start, now_et)
+    if t >= _cross:
         return "market"
-    if t >= HARD_CLOSE_LIMIT_START_ET:
+    if t >= _start:
         return "limit"
     return "none"
 

@@ -1,5 +1,7 @@
 """
-analysis/volatility_measures.py  v4.2
+analysis/volatility_measures.py  v4.3
+v4.3  2026-10-11  OTV4TEST r268 (DEP.12, mirror of otv4 r478) - session_fraction_remaining knows the day's bell. On a 13:00 close it is
+      (390 - elapsed - 180) / 390: 210/390 at the open, 120/390 at 11:00, 0 at 13:00. The denominator stays 390 on purpose.
 v4.2  2026-10-03  OTV4TEST r229 (EM.2) — expected_move_platform: THE TASTYTRADE PLATFORM'S EXPECTED MOVE (the "± n" beside an expiration): 60% of the ATM straddle + 30% of the first out-of-the-money strangle + 10% of the second, at the marks. The operator, 2026-10-03: "Which expected move? Use the one that's built into the tasty trade platform." ORCS, the condor and readiness read it; the Hunt records it. THE BUTTERFLIES KEEP expected_move_session, BY HIS RULING the same evening ("Don't mess with the butterfly EV then") after the measurement: the session number is 3.0-3.4x the platform's, so the same fractions would have refused every pin butterfly the book has taken.
 v4.1  2026-10-03  OTV4TEST r223 (EM.1) — every expected-move formula lives here: expected_move_session (the butterflies' / TCS / Hunt), straddle_nearest_marked (condor), straddle_nearest (readiness), straddle_same_strike + quote_mark (ORCS), each MOVED VERBATIM. No number changes.
 Realised volatility, implied volatility and EXPECTED MOVE.
@@ -128,15 +130,19 @@ def session_fraction_remaining(now: Optional[datetime] = None) -> Optional[float
     # ~3.5x — all day, on every box, silently. It was visible in CVX's payload
     # as session_fraction_remaining=0.036 at 11:45 and read as "some other
     # cutoff" until the manifold board surfaced the same clock bug.
-    from utils.time_utils import ET
+    from utils.time_utils import ET, close_anchored, close_shift
     now = now or datetime.now(ET)
     t = now.time()
-    if t >= dtime(16, 0):
+    # 🔴 r478 / DEP.12 — ON AN EARLY CLOSE THE SESSION IS SHORTER, NOT SLOWER.
+    # Remaining = (390 - elapsed - shift) / 390: 120/390 at 11:00 on a 13:00
+    # day, 210/390 at the open. ⚠️ THE DENOMINATOR STAYS 390 ON PURPOSE. The
+    # variance is per MINUTE of trading; renormalising to a 210-minute day
+    # would call 11:00 "57% remaining" and overstate the move by ~1.4x.
+    if t >= close_anchored(dtime(16, 0), now):
         return 0.0
-    if t <= dtime(9, 30):
-        return 1.0
-    mins = (now.hour * 60 + now.minute) - (9 * 60 + 30)
-    return max(0.0, min(1.0, (RTH_MINUTES - mins) / RTH_MINUTES))
+    _shift = close_shift(now).total_seconds() / 60.0
+    mins = max(0, (now.hour * 60 + now.minute) - (9 * 60 + 30))
+    return max(0.0, min(1.0, (RTH_MINUTES - mins - _shift) / RTH_MINUTES))
 
 
 def expected_move_iv(spot: float, atm_iv: float,

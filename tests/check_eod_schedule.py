@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
-"""tests/check_eod_schedule.py — v1.2
+"""tests/check_eod_schedule.py — v1.3
 THE OPERATOR'S END OF DAY, DRIVEN THROUGH THE REAL CODE UNDER A FROZEN CLOCK.
+
+v1.3  2026-10-11 — OTV4TEST r268 (DEP.12) — E2b: THE FORK-ONLY eod_close_due ON A HALF DAY. check_half_day (byte-identical
+      with otv4) pins every SHARED close site; eod_close_due is this tree's own (r149), so it is pinned here: on 2026-11-27
+      (13:00 close) assignment risk is due at 12:45 (not 12:44), everything else at 12:50 (not 12:49); 11-25 at 12:50 is not due.
 
 v1.2  2026-10-03 — OTV4TEST r191 (AUD.2) — E11 BUILDS THE REAL OptionsChain. Its fixture gave the chain
       `atm_iv=lambda: 0.14`, a METHOD, while the real OptionsChain.atm_iv is a PROPERTY - so
@@ -138,6 +142,17 @@ def main() -> int:
         check("E2 clocks: risk 15:45, others 15:50, ladder limits 15:50, cross 15:55", e2)
     except Exception as exc:                                  # noqa: BLE001
         check("E2 (did not run)", False, f"raised {type(exc).__name__}: {exc}")
+
+    # E2b (r268, DEP.12) — the fork-only eod_close_due moves to a half day's bell
+    try:
+        def _hd(day, h, m):
+            return D.datetime(2026, 11, day, h, m, 5, tzinfo=ET)
+        e2b = (not T.eod_close_due(True, _hd(27, 12, 44)) and T.eod_close_due(True, _hd(27, 12, 45))
+               and not T.eod_close_due(False, _hd(27, 12, 49)) and T.eod_close_due(False, _hd(27, 12, 50))
+               and not T.eod_close_due(False, _hd(25, 12, 50)) and not T.eod_close_due(True, _hd(25, 15, 44)))
+        check("E2b half day 11-27: risk due 12:45, others 12:50; full day 11-25 unchanged", e2b)
+    except Exception as exc:                                  # noqa: BLE001
+        check("E2b (did not run)", False, f"raised {type(exc).__name__}: {exc}")
 
     # E3
     try:

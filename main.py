@@ -1,5 +1,9 @@
 """
-main.py  v4.98
+main.py  v4.99
+v4.99 2026-10-11  OTV4TEST r268 (DEP.12, mirror of otv4 r478) — HALF DAYS. Every close-anchored instant here moves to the day's bell
+      (utils/time_utils.close_anchored): _vertical_close_due (credit hold 12:45 on a 13:00 close), the tent's minutes_to_flatten,
+      and _intraday_reconcile_slot's EOD_SCHEDULE wind-down slots (12:45/12:50/12:55/12:57, dormant 13:00; the 09:30 base stays
+      raw and every key is true ET). The hard-close branch reads is_hard_close_time, so run_analysis goes quiet at 12:45.
 v4.98 2026-10-10  OTV4TEST r266 (STOP.1) — THE SERVICE MODE LINE NAMES THE RESTING STOP IN FORCE: " · resting_stop=off|trade" (plus "(LIVE: refused)" on a live box, and a refused OT_RESTING_STOP by name).
 v4.97 2026-10-10  OTV4TEST r265 (BRK.8 + BRK.9) — THE SERVICE MODE LINE NAMES BREAKOUT'S END AND ITS NO-PROGRESS MODE IN FORCE: `_banner_dials()` appends " · breakout_end=HH:MM · brk_noprog=off|log|trade" (and a refused OT_BREAKOUT_END / OT_BRK_NOPROG by name), read from config. The operator, 2026-10-10 13:37 ET: "Yes, to all. Study, fit & apply."
 v4.96 2026-10-05  OTV4TEST r254 (OBS.1) — THE PLAN ALWAYS LOOKS, THE STRATEGY IS GATED ON THE HOUR: Breakout, Runaway and the Hunt are OBSERVED from their entry end to 15:40 - asked, recorded LOG-ONLY, never executed (the operator, 2026-10-05: "the plan always looks, but the strategies are gated on the hour of the day"; "Have those blocked TRADES just to Log only"). Here: admission publishes the observe set each tick (position_manager.observing) and clears it first; _log_only() refuses an observed signal at _fire, the hunt's door and the top of _execute_entry_signal (after the VIX stamp, before any sizing or order) and logs it once per setup with the pin gate's answer.
@@ -2138,7 +2142,9 @@ def run_analysis(state: BotState, chain=None) -> dict:
     # Derived from the SAME 15:45 flatten so the two can never disagree.
     try:
         from config import VERTICAL_HOLD_TO_ET as _VH
-        _fm = _VH[0] * 60 + _VH[1]
+        from utils.time_utils import close_anchored as _ca
+        _VHa = _ca(_VH, now_et())                     # r268 (DEP.12): the day's bell
+        _fm = _VHa.hour * 60 + _VHa.minute
         _nm = ctx.get("now_et_minutes")
         ctx["minutes_to_flatten"] = (float(_fm - _nm) if _nm is not None
                                      else None)
@@ -2843,7 +2849,8 @@ def _execute_condor_leg(signal: "OptionsSignal", state: BotState,
     # and the second-leg window route through here, so one test covers them.
     if not entries_open():
         logger.info("[entry-gate] %s %s HELD — entries open at %02d:%02d ET "
-                    "(opening range not established)", mode,
+                    "(opening range not established, or past a half day's "
+                    "entry cutoff — r268)", mode,
                     getattr(signal, "strategy_name", "credit vertical"),
                     *ENTRY_OPEN_ET[:2])
         return
@@ -4140,12 +4147,13 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
         # differently to the second call and the board reports a gate that is
         # not the one that actually refused — wrong in the log, and
         # unfalsifiable from the log.
+        from utils.time_utils import close_anchored as _close_anchored   # r268 (DEP.12): the day's bell
         _state = _pm_adm.logging_state(
             (_adm_now.hour, _adm_now.minute),
             trading_day     = True,
             orb_established = bool(_orb_d and _orb_d.orb_high and _orb_d.orb_low),
             cap_intact      = not _cap_hit,
-            past_hard_close = _adm_now.time() >= HARD_CLOSE,
+            past_hard_close = _adm_now.time() >= _close_anchored(HARD_CLOSE, _adm_now),   # r268 DEP.12
             tries_used      = _tries,
         )
         _eligible = [n for n, (ok, _g, _w) in _state.items() if ok]
@@ -4158,7 +4166,7 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
             trading_day     = True,
             orb_established = bool(_orb_d and _orb_d.orb_high and _orb_d.orb_low),
             cap_intact      = not _cap_hit,
-            past_hard_close = _adm_now.time() >= HARD_CLOSE,
+            past_hard_close = _adm_now.time() >= _close_anchored(HARD_CLOSE, _adm_now),   # r268 DEP.12
             tries_used      = _tries,
         )
         _set_admission(_eligible + list(_obs))
@@ -5604,8 +5612,9 @@ def _vertical_close_due() -> bool:
     from config import VERTICAL_HOLD_TO_ET, VERTICAL_HOLD_TO_CLOSE
     if not VERTICAL_HOLD_TO_CLOSE:
         return True
-    _n = now_et()
-    return (_n.hour, _n.minute) >= tuple(VERTICAL_HOLD_TO_ET)
+    # r268 (DEP.12, mirror of otv4 r478) — 12:45 on a 13:00 close.
+    from utils.time_utils import past_close_anchor
+    return past_close_anchor(VERTICAL_HOLD_TO_ET, now_et())
 
 
 def handle_hard_close(state: BotState):
@@ -6359,7 +6368,11 @@ def _intraday_reconcile_slot(now):
     if now.weekday() >= 5:
         return None
     t = now.time()
-    if t < dtime(9, 30) or t >= dtime(16, 0):
+    # r268 (DEP.12, mirror of otv4 r478) — the OPEN side stays raw (09:30); every
+    # CLOSE-side instant moves to the day's bell: 12:45 / 12:50 / 12:55 / 12:57,
+    # dormant at 13:00 on a 13:00 close. The KEY is the moved instant (true ET).
+    from utils.time_utils import close_anchored as _ca
+    if t < dtime(9, 30) or t >= _ca(dtime(16, 0), now):
         return None
     # r149 (EOD.1) — THE WIND-DOWN SWEEPS FOLLOW THE OPERATOR'S SCHEDULE: one as
     # assignment risk starts resting, one as the debit ladder opens, one AS THE
@@ -6369,6 +6382,7 @@ def _intraday_reconcile_slot(now):
     # exists), and the 15:57 post-cross truth pass. Operator, 2026-09-26: "Agree"
     # (was fixed at 15:45 / 15:50 / 15:57, blind from 15:50 to the cross).
     _eod = sorted({tuple(EOD_RESTING_AT_ET), tuple(EOD_LADDER_AT_ET), tuple(EOD_CROSS_AT_ET), (15, 57)})
+    _eod = [(a.hour, a.minute) for a in (_ca(x, now) for x in _eod)]   # r268: the day's bell
     if (t.hour, t.minute) >= _eod[0]:
         hh, mm = max(x for x in _eod if (t.hour, t.minute) >= x)
         return f"{now:%Y-%m-%d} {hh:02d}:{mm:02d}"

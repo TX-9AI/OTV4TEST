@@ -37,6 +37,9 @@ of its own; with both credit entries retired it has nothing to manage.
 a short leg rests a best-case close from **15:45**. Everything else walks the mark ladder
 from **15:50**. Whatever is still open CROSSES at **15:55** (r149 - this supersedes "nothing
 ever crosses" and the "15:45 hard close" wherever they appear below).
+On a listed EARLY CLOSE (13:00: 11-27, 12-24, ...; `utils/market_calendar.EARLY_CLOSES`) every one of these moves
+three hours earlier and nothing opens at or after 11:30 (r268, DEP.12; deliberately not bold: check_docs_roster R4 reads the bold times
+above as EOD_SCHEDULE).
 
 **The stops that are one number in `config.py`.** Runaway: a **20%** premium floor
 (`RUNAWAY_MAX_LOSS_PCT`). Hunt: NO premium stop - it RECORDS the same floor
