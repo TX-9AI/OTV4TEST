@@ -1,5 +1,8 @@
 """
-analysis/get_orb_range.py  v4.1
+analysis/get_orb_range.py  v4.2
+v4.2  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
+      US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
+      without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
 v4.1 2026-09-26  OTV4TEST r146 — no QQQ fallback: argv, then utils.instrument.box_instrument() (this process, the bot unit, else UNSET).
 Opening-range accessor with the date filter.
 
@@ -61,7 +64,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data.market_data import fetch_candles
 
-ET = ZoneInfo("US/Eastern")
+ET = ZoneInfo("America/New_York")
 OUTPUT_PATH = os.path.expanduser("~/options-trader/orb_range.json")
 
 STATUS_ESTABLISHED = "ESTABLISHED"

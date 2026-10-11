@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tools/rebuild_1m_from_last_trade.py  v1.3
+tools/rebuild_1m_from_last_trade.py  v1.4
+v1.4  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
+      US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
+      without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
 v1.3  2026-10-11  OTV4TEST r267 (SEED.3, authored on SPX-TEST) — A TICK IS BUCKETED BY ITS SOURCE TIME (ev_time), NOT BY
       WHEN THE BOX RECEIVED IT (ts_epoch). The operator, 2026-10-11 09:23 ET (relayed by QQQ-TEST, MSG-QQQ-1011-05):
       "1. Yes, 2. B" - (1) bucket on ev_time, ts_epoch only when ev_time is missing; (2) the 453 minutes v1.2 already
@@ -117,7 +120,7 @@ class Refused(Exception):
 def _et():
     try:
         from zoneinfo import ZoneInfo
-        return ZoneInfo("US/Eastern")
+        return ZoneInfo("America/New_York")
     except Exception:                                           # noqa: BLE001
         return None
 

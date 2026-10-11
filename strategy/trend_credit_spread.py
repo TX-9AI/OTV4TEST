@@ -1,5 +1,8 @@
 """
-strategy/trend_credit_spread.py  v5.0
+strategy/trend_credit_spread.py  v5.1
+v5.1  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
+      US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
+      without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
 v5.0  2026-09-09  OTV4TEST r9 — THE STRATEGY IS THE SPEC; THE PLAN SELECTS
       (PLAN_SPEC §34, agreed with the operator 2026-09-09). The purpose is an
       AFTERNOON CATALYST — a large move, good or bad, with theta doing the work
@@ -280,7 +283,7 @@ logger = logging.getLogger(__name__)
 # no trigger. If ORB-boundary credit is worth having, the sweep
 # discriminator's method measures it first and the spec comes after.
 GATES = {}
-ET = pytz.timezone("US/Eastern")
+ET = pytz.timezone("America/New_York")
 
 
 class TrendCreditSpread:

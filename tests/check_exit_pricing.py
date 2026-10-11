@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_exit_pricing.py  v1.0
+tests/check_exit_pricing.py  v1.1
+v1.1  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
+      US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
+      without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
 v1.0  2026-10-03  OTV4TEST r209 (EXIT.4) — THE EXIT'S PRICING IS DECLARED; THE RUNAWAY STOPS; A DARK DELTA IS SAID.
 
   From the 10-03 audit (A4, A5, A6, A10, A13) and the operator's rulings that
@@ -74,7 +77,7 @@ class _Logs(logging.Handler):
 
 def _frame(rows, hhmm):
     import pandas as pd
-    idx = pd.date_range(f"2026-09-10 {hhmm}", periods=len(rows), freq="1min", tz="US/Eastern")
+    idx = pd.date_range(f"2026-09-10 {hhmm}", periods=len(rows), freq="1min", tz="America/New_York")
     return pd.DataFrame(rows, columns=["open", "high", "low", "close"], index=idx).assign(volume=1000)
 
 
@@ -157,7 +160,7 @@ def main():
         class _F(_dt.datetime):
             @classmethod
             def now(cls, tz=None):
-                return _dt.datetime(2026, 9, 10, 10, 0, tzinfo=ZoneInfo("US/Eastern"))
+                return _dt.datetime(2026, 9, 10, 10, 0, tzinfo=ZoneInfo("America/New_York"))
         XE.datetime = _F; XE.is_hard_close_time = lambda: False
         try:
             xe = XE.ExitEngine(paper_trading=True)

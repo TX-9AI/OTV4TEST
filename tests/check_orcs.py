@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_orcs.py  v1.7
+tests/check_orcs.py  v1.8
+v1.8  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
+      US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
+      without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
 v1.7  2026-10-04  OTV4TEST r250 — THE FIXTURE IS A QQQ CHAIN, SO ITS CONTRACT SCALE IS PINNED TO 1.0. Under OT_INSTRUMENT=SPX the r234 scale
       (7.5) put the wing 22.50 out on a 1-dollar fixture and O1 O3 O4 O5 T1 T2 T3 T6 went red for that reason alone (SPX-TEST, 10-04).
 v1.6  2026-10-04  OTV4TEST r249 (PREM.6) — O8 RE-POINTED, NOT DROPPED (38.4): ORCS is RETIRED by ruling ("Retire it on this repo"), so the
@@ -116,7 +119,7 @@ class _Store:
 def _et(h, m):
     from datetime import datetime
     from zoneinfo import ZoneInfo
-    return datetime(2026, 10, 5, h, m, 0, tzinfo=ZoneInfo("US/Eastern"))
+    return datetime(2026, 10, 5, h, m, 0, tzinfo=ZoneInfo("America/New_York"))
 
 
 def _chain(spot, scale, expiry=DAY, bump=None):

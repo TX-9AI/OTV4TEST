@@ -1,5 +1,8 @@
 """
-query.py  v4.18
+query.py  v4.19
+v4.19  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
+      US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
+      without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
 v4.18 2026-10-05  OTV4TEST r252 (BOX.18) - THE PLANS PANEL READS THIS BOX'S INSTRUMENT'S HEARTBEATS ONLY. plan_heartbeat
       is keyed (symbol, plan) and was read with no symbol, so SPX-TEST's panel listed AAL's frozen heartbeats from its AAL
       days as 15 STALE plans while every SPX heartbeat was current (operator's screenshot, 10-05 11:05 ET). UNSET reads
@@ -223,7 +226,7 @@ except Exception as _cfg_exc:                                   # noqa: BLE001
     print(f"query.py: config did not load ({type(_cfg_exc).__name__}: {_cfg_exc}) "
           f"- falling back to {DB_PATH}", file=sys.stderr)
 
-ET  = ZoneInfo("US/Eastern")
+ET  = ZoneInfo("America/New_York")
 UTC = timezone.utc
 
 

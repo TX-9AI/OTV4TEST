@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_runaway_plan.py  v1.3
+tests/check_runaway_plan.py  v1.4
+v1.4  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
+      US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
+      without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
 v1.3  2026-10-03  OTV4TEST r209 (RUN.10) — X2 INVERTED BY RULING. It pinned the engine HOLDING a Runaway at its 20% floor
       (r3). The management plan has closed Runaways at that floor since r168, so the hold was dead code; the
       10-03 replay of the 9 stopped trades said holding cost 499 more and none recovered; the operator:
@@ -338,7 +341,7 @@ def main():
     _real_dt = XE.datetime
     _real_hc = XE.is_hard_close_time
     _real_store = DS._store
-    ET = ZoneInfo("US/Eastern")
+    ET = ZoneInfo("America/New_York")
 
     class _Frozen(_dt.datetime):
         @classmethod

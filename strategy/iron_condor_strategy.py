@@ -1,5 +1,8 @@
 """
-strategy/iron_condor_strategy.py  v4.16
+strategy/iron_condor_strategy.py  v4.17
+v4.17  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
+      US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
+      without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
 v4.16  2026-10-03  OTV4TEST r230 (PREM.5) — manage() narrates ORCS legs like any credit vertical: The operator, 2026-10-03 21:21 ET: "On rolling/defending the ORCS, adopt the condor logic verbatim."
 v4.15  2026-10-03  OTV4TEST r229 (EM.2) — _expected_move_from_straddle returns the tastytrade platform's expected move (volatility_measures.expected_move_platform), 0.0 when it cannot be read; by the operator's ruling 2026-10-03. The condor has no entry of its own while both credit entries are retired.
 v4.14  2026-10-03  OTV4TEST r223 (EM.1) — _expected_move_from_straddle delegates to analysis.volatility_measures.straddle_nearest_marked (moved verbatim).
@@ -192,7 +195,7 @@ GATES = {
     "CONDOR_EXPECTED_MOVE_GUARDRAIL_MULT": "FEASIBILITY",
     # FOUNDATIONAL — fork required, strikes outside rails, not exceeded
 }
-ET = ZoneInfo("US/Eastern")
+ET = ZoneInfo("America/New_York")
 
 
 @dataclass

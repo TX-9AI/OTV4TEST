@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""check_decisions_today.py — v1.4
+"""check_decisions_today.py — v1.5
+v1.5  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
+      US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
+      without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
 v1.4  2026-09-22  OTV4TEST r92 — D3 counted ts_epoch bounds in a panel that runs no ranged
       SQL. It now pins liveness by HEARTBEAT AGE — a stronger guarantee than
       a date bound, because it also catches a plan that died sixty seconds
@@ -46,7 +49,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ET = ZoneInfo("US/Eastern")
+ET = ZoneInfo("America/New_York")
 _fails = []
 
 
@@ -94,10 +97,10 @@ def main():
     from zoneinfo import ZoneInfo as _Z
     # ⚠️ `_cut_dt`, not `_cut`: this file already defines a `_cut()` helper
     # and shadowing it turned the next case into a TypeError.
-    _cut_dt = _dt.fromtimestamp(_m.session_start_epoch(), _Z("US/Eastern"))
+    _cut_dt = _dt.fromtimestamp(_m.session_start_epoch(), _Z("America/New_York"))
     check("D2 the row cut is the open itself, not midnight",
           (_cut_dt.hour, _cut_dt.minute, _cut_dt.second) == (9, 30, 0)
-          and _cut_dt.date() == _dt.now(_Z("US/Eastern")).date(),
+          and _cut_dt.date() == _dt.now(_Z("America/New_York")).date(),
           _cut_dt.strftime("%Y-%m-%d %H:%M:%S ET"))
 
     # ── D3 — THE PANEL NO LONGER RANGE-QUERIES, AND THAT IS THE POINT ────

@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_condor_mgmt.py  v1.1
+tests/check_condor_mgmt.py  v1.2
+v1.2  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
+      US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
+      without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
 v1.1  2026-09-09  OTV4TEST r11 — R1–R5: the widened-wing roll (the operator's picture),
       the prepared roll on the row, the group final-form floor, the rich complement,
       the tent retired. C7's tent-record pin is kept as history of the as-formed basis rule.
@@ -90,7 +93,7 @@ def main():
     _rdt, _rhc = XE.datetime, XE.is_hard_close_time
     class _F(_dt.datetime):
         @classmethod
-        def now(cls, tz=None): return _dt.datetime(2026, 9, 9, 14, 0, tzinfo=ZoneInfo("US/Eastern"))
+        def now(cls, tz=None): return _dt.datetime(2026, 9, 9, 14, 0, tzinfo=ZoneInfo("America/New_York"))
     XE.datetime = _F; XE.is_hard_close_time = lambda: False
     try:
         xe = XE.ExitEngine(paper_trading=True)

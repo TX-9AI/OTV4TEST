@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/warehouse_source.py  v1.4
+tests/warehouse_source.py  v1.5
+v1.5  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
+      US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
+      without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
 v1.4  2026-09-20  OTV4TEST r69 (S3.14) — `stream_series()` ADDED. `load_series`
 materialises a whole date (~230k prints per symbol-day, hundreds of MB) and a
 19-session corpus run was OOM-reaped on a box with 908 MB of physical RAM.
@@ -257,7 +260,7 @@ def _et_today() -> str:
     from datetime import datetime, timezone
     try:
         from zoneinfo import ZoneInfo
-        return datetime.now(ZoneInfo("US/Eastern")).date().isoformat()
+        return datetime.now(ZoneInfo("America/New_York")).date().isoformat()
     except Exception:                                            # noqa: BLE001
         return datetime.now(timezone.utc).date().isoformat()
 

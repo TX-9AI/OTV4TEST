@@ -1,5 +1,8 @@
 """
-config.py  v4.61
+config.py  v4.62
+v4.62  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
+      US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
+      without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
 v4.61 2026-10-11  OTV4TEST r268 (DEP.12, mirror of otv4 r478) — HALF_DAY_ENTRY_LEAD_MIN = 90: on a listed early close
       (utils/market_calendar.EARLY_CLOSES) entries_open() closes 90 min before the bell, 11:30 on a 13:00 day. Every
       close-anchored time here (EOD_SCHEDULE and the names derived from it, RTH_CLOSE_ET) keeps its 16:00-bell value and is
@@ -1482,7 +1485,7 @@ IV_RANK_HIGH                = 50
 
 # ─── SESSION / TIME RULES ─────────────────────────────────────────────────────
 
-TIMEZONE                    = "US/Eastern"
+TIMEZONE                    = "America/New_York"
 RTH_OPEN_ET                 = (9, 30)
 RTH_CLOSE_ET                = (16, 0)
 HARD_CLOSE_ET               = EOD_SCHEDULE["cross_at"]      # r149: the final cross (was 15:45)

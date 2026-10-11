@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_orb_rearm_zone.py  v1.5
+tests/check_orb_rearm_zone.py  v1.6
+v1.6  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
+      US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
+      without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
 v1.5  2026-09-04  r235 — Z1d RE-DERIVED. It asserted `order_placed` is
       CLEARED on the armed path — r227's fix against a GLOBAL latch, and the
       very behaviour that let ONE retest fire three times once the flag turned
@@ -103,7 +106,7 @@ def main():
     # the real clock in play.
     from datetime import datetime as _dt
     from zoneinfo import ZoneInfo as _ZI
-    _FROZEN = _dt(2026, 9, 3, 10, 15, tzinfo=_ZI("US/Eastern"))
+    _FROZEN = _dt(2026, 9, 3, 10, 15, tzinfo=_ZI("America/New_York"))
     OE.now_et = lambda: _FROZEN
 
     def armed_long_engine():

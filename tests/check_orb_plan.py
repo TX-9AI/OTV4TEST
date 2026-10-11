@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_orb_plan.py  v1.6
+tests/check_orb_plan.py  v1.7
+v1.7  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
+      US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
+      without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
 v1.6  2026-10-02  OTV4TEST r187 (ROSTER.1) — RE-POINTED BY THE RULING, NOT LOOSENED:
       the strategy is OFF by default from r187; this checker tests its LOGIC,
       so it switches it on for its own run (OT_ORB_TRADE=1). check_trade_switches pins the default.
@@ -192,7 +195,7 @@ def main():
     from zoneinfo import ZoneInfo
     import execution.exit_engine as XE
     _real_dt = _dt.datetime
-    ET = ZoneInfo("US/Eastern")
+    ET = ZoneInfo("America/New_York")
 
     class _Frozen(_dt.datetime):
         @classmethod

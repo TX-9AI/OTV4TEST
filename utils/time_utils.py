@@ -1,5 +1,8 @@
 """
-utils/time_utils.py  v4.7
+utils/time_utils.py  v4.8
+v4.8  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
+      US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
+      without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
 v4.7  2026-10-11  OTV4TEST r268 (DEP.12, MIRROR OF otv4 r478 044d837) - HALF DAYS. close_shift()/close_anchored()/past_close_anchor(): every
       close-anchored constant (written against a 16:00 bell) moves to the day's real bell, CLOSE SIDE ONLY. is_rth's close,
       is_hard_close_time (now takes an optional clock), current_session_label AND (fork-only) eod_close_due read it.
@@ -53,7 +56,7 @@ from config import ORB_NO_ENTRY_AFTER_ET
 
 logger = logging.getLogger(__name__)
 
-ET = pytz.timezone("US/Eastern")
+ET = pytz.timezone("America/New_York")
 
 # RTH boundaries (ET)
 RTH_OPEN    = dtime(9, 30)

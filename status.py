@@ -1,5 +1,8 @@
 """
-status.py  v4.9
+status.py  v4.10
+v4.10  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
+      US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
+      without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
 v4.9 2026-09-27  OTV4TEST r162 (CAP.1) — the halt line names the DAILY CATASTROPHIC LOSS CAP and says entries re-open once the realized loss is back under it (risk_manager v4.8). This reader already recomputed from the day's P&L on every run, so its logic is unchanged.
 v4.8 2026-09-26  OTV4TEST r146 — the last-resort fallback is UNSET, not QQQ: the unit's own OT_INSTRUMENT is still read first.
 v4.7  2026-09-17  OTV4TEST r34 — MOVED BACK TO THE REPO ROOT. Operator's ruling,
@@ -132,7 +135,7 @@ import subprocess
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-ET  = ZoneInfo("US/Eastern")
+ET  = ZoneInfo("America/New_York")
 UTC = timezone.utc
 
 INSTALL_DIR  = os.path.expanduser("~/options-trader")

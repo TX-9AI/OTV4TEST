@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_sweep_plan.py  v1.3
+tests/check_sweep_plan.py  v1.4
+v1.4  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
+      US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
+      without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
 v1.3  2026-09-23  OTV4TEST r120 — E6-E8: THE EXIT'S BREACH IS THE OPERATOR'S BREACHED
       (a 1m close beyond, then the next 1m open beyond), through the same
       level_rules the book uses. E1/E2 hold under both rules and so could not
@@ -74,7 +77,7 @@ def main():
     import datetime as _dt
     from zoneinfo import ZoneInfo
     import execution.exit_engine as XE
-    ET = ZoneInfo("US/Eastern")
+    ET = ZoneInfo("America/New_York")
     _real_dt, _real_hc = XE.datetime, XE.is_hard_close_time
 
     class _Frozen(_dt.datetime):

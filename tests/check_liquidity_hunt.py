@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_liquidity_hunt.py  v1.0
+tests/check_liquidity_hunt.py  v1.1
+v1.1  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
+      US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
+      without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
 v1.0  2026-09-10  OTV4TEST r12 — THE LIQUIDITY HUNT AND THE HANDOFF GRANT, ON
       HYPOTHETICALS (PLAN_SPEC §37). Real plan, real exit engine, real slot rule,
       a DerivedStore fixture for the levels.
@@ -115,7 +118,7 @@ def main():
     _rdt, _rhc = XE.datetime, XE.is_hard_close_time
     class _F(_dt.datetime):
         @classmethod
-        def now(cls, tz=None): return _dt.datetime(2026, 9, 10, 10, 0, tzinfo=ZoneInfo("US/Eastern"))
+        def now(cls, tz=None): return _dt.datetime(2026, 9, 10, 10, 0, tzinfo=ZoneInfo("America/New_York"))
     XE.datetime = _F; XE.is_hard_close_time = lambda: False
     try:
         xe = XE.ExitEngine(paper_trading=True)

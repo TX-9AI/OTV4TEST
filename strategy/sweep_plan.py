@@ -1,5 +1,8 @@
 """
-strategy/sweep_plan.py  v1.16
+strategy/sweep_plan.py  v1.17
+v1.17  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
+      US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
+      without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
 v1.16  2026-10-03  OTV4TEST r220 (TIME.1) — its private HH:MM parser is utils.time_utils.parse_hm (eight plans carried the same copy), and an UNREADABLE clock is DORMANT - no trade - instead of skipping the window check.
 v1.15 2026-10-03  OTV4TEST r193 (CFG.1) — its config dials are read as config.NAME with NO literal fallback; config v4.48 now defines them (they were getattr defaults on names config never had). Values unchanged.
 v1.14 2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged. 🔴 Its fallback END was (14, 0) against a live 15:40 — r81 pre-armed.
@@ -161,7 +164,7 @@ def _session_open_epoch() -> float:
     try:
         from datetime import datetime
         from zoneinfo import ZoneInfo
-        et = ZoneInfo("US/Eastern")
+        et = ZoneInfo("America/New_York")
         n = datetime.now(et)
         return n.replace(hour=9, minute=30, second=0, microsecond=0).timestamp()
     except Exception:                                           # noqa: BLE001

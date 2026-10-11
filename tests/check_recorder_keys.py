@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_recorder_keys.py  v1.0
+tests/check_recorder_keys.py  v1.1
+v1.1  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
+      US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
+      without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
 v1.0  2026-10-03  OTV4TEST r213 (REC.1) — THE RECORDERS' MISSING INPUTS ARE PUBLISHED, AND THE NOTE FIELDS FILL.
 
   The 10-03 audit (B12): derived/notes, derived/snapshot and the plan ledger
@@ -74,8 +77,8 @@ def main():
     try:
         import pandas as pd
         from analysis.gap_measure import measure_gap
-        idx = list(pd.date_range("2026-10-02 15:50", periods=2, freq="5min", tz="US/Eastern")) + \
-            list(pd.date_range("2026-10-05 09:30", periods=2, freq="5min", tz="US/Eastern"))
+        idx = list(pd.date_range("2026-10-02 15:50", periods=2, freq="5min", tz="America/New_York")) + \
+            list(pd.date_range("2026-10-05 09:30", periods=2, freq="5min", tz="America/New_York"))
         df = pd.DataFrame({"open": [746.0, 746.5, 750.0, 750.5], "high": [747, 747.2, 751, 751],
                            "low": [745.8, 746.4, 749.5, 750.2], "close": [746.5, 747.0, 750.5, 750.8]}, index=idx)
         g = measure_gap(df)

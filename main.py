@@ -1,5 +1,8 @@
 """
-main.py  v4.99
+main.py  v4.100
+v4.100  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
+      US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
+      without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
 v4.99 2026-10-11  OTV4TEST r268 (DEP.12, mirror of otv4 r478) — HALF DAYS. Every close-anchored instant here moves to the day's bell
       (utils/time_utils.close_anchored): _vertical_close_due (credit hold 12:45 on a 13:00 close), the tent's minutes_to_flatten,
       and _intraday_reconcile_slot's EOD_SCHEDULE wind-down slots (12:45/12:50/12:55/12:57, dormant 13:00; the 09:30 base stays
@@ -5595,7 +5598,7 @@ def handle_session_reset(state: BotState):
     # is fully closed and baked. Fetching at 9:30 returns a degenerate
     # candle (high == low == 0 width) because the candle is still forming.
     if not state.orb_range_established_today:
-        now_et_dt = datetime.now(ZoneInfo("US/Eastern"))
+        now_et_dt = datetime.now(ZoneInfo("America/New_York"))
         if (now_et_dt.hour, now_et_dt.minute) >= (9, 30):
             # Poll from the open: 9:30-9:35 writes IN_PROGRESS, then ESTABLISHED
             # once the candle closes. Latch ONLY on ESTABLISHED (returns True) so

@@ -1,6 +1,6 @@
 # WORKING_AGREEMENT.md — how we operate (read this first, every new thread)
 
-**`WORKING_AGREEMENT.md` v4.27 · 2026-10-05 — §0 through §40, plus §15a, §18a, §36a, §38.9 and §40.1. See the CHANGELOG at the foot.**
+**`WORKING_AGREEMENT.md` v4.28 · 2026-10-11 — §0 through §40, plus §15a, §18a, §36a, §38.9 and §40.1. See the CHANGELOG at the foot.**
 
 > 🔴 **§0 IS THE FLOOR — AN ATTESTATION, NOT A TIP. Read it first, every thread.**
 > The operator ordered it once before and was told it existed. It did not.
@@ -1728,8 +1728,11 @@ standard that lives in a conversation is not a standard.
    imports `COUNTERS_PATH`, `BUCKET`, `REGION` and `LOCK_WAIT` from `s3_push`
    for exactly this reason. A difference that cannot be read from a module is
    NAMED in that tree's header with its reason (r152: otv4's query.py resolves
-   `America/New_York` because control's system python lacks tzdata-legacy; this
-   box resolves `US/Eastern` under both interpreters and keeps it).
+   `America/New_York` because control's system python lacks tzdata-legacy;
+   ~~this box resolves `US/Eastern` under both interpreters and keeps it~~ -
+   STRUCK by r269 (OPS.22, mirror of otv4 r479): tzdata 2026c moved the US/*
+   links into tzdata-legacy, so BOTH trees now name `America/New_York`
+   everywhere and tests/check_no_legacy_zone.py refuses the old name).
 2. **One gate file, byte-identical but for its header**, which DRIVES the real
    function rather than grepping source, with every side effect replaced by a
    recorder: subprocess, purge, alerts, network. ⚠️ **Verify the transfer by
@@ -1932,6 +1935,8 @@ joins the table above.
 ---
 
 ## CHANGELOG
+
+**v4.28 — 2026-10-11 — OTV4TEST r269 — §38.9 criterion 1: r152's "this box keeps US/Eastern" STRUCK (OPS.22: every zone is America/New_York in both trees).**
 
 **v4.27 — 2026-10-05 — OTV4TEST r255 — FOUR STALE FACTS CORRECTED, EACH MEASURED (the 10-05 boot review).** §3 and §38.7: five timers, not three (the open-scan pair, installed 10-04 20:48 ET). §30: the fleet is 13 mainline boxes plus SOFI on this fork. §36a: `warehouse/` also holds `counter_pop` (r147). No rule changed. Still open for the operator: §7 names Fable as the second agent; the agents are now QQQ-TEST, SPX-TEST and 1-REPORTER.
 

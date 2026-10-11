@@ -9,60 +9,60 @@ Unit `Environment=` lines set these; NEVER print a unit's Environment block to r
 
 | variable | default(s) as written | read at |
 |---|---|---|
-| `OT_ADOPTED_STOP_PCT` | <expr> | `config.py:1449` |
+| `OT_ADOPTED_STOP_PCT` | <expr> | `config.py:1452` |
 | `OT_AGENT_STATUS` | (required), (set here), <expr> | `tests/check_claude_boot.py:129`, `tests/check_claude_boot.py:232`, `tests/check_claude_boot.py:762`, `utils/agent_status.py:51` |
-| `OT_ATP_BUTTERFLY` | '0' | `config.py:1438` |
-| `OT_BFLY_DEBIT_CEILING` | '0.50' | `config.py:1039` |
-| `OT_BFLY_DEBIT_HICONV` | '0.50' | `config.py:1029` |
-| `OT_BFLY_DISC_CONV_HI` | '0.55' | `config.py:1041` |
-| `OT_BFLY_DISC_CONV_LO` | '0.30' | `config.py:1040` |
+| `OT_ATP_BUTTERFLY` | '0' | `config.py:1441` |
+| `OT_BFLY_DEBIT_CEILING` | '0.50' | `config.py:1042` |
+| `OT_BFLY_DEBIT_HICONV` | '0.50' | `config.py:1032` |
+| `OT_BFLY_DISC_CONV_HI` | '0.55' | `config.py:1044` |
+| `OT_BFLY_DISC_CONV_LO` | '0.30' | `config.py:1043` |
 | `OT_BLIND_REFUSE` | 'False' | `data/market_data.py:135` |
 | `OT_BLIND_SECONDS` | '45' | `utils/blindness_latch.py:49` |
 | `OT_BLIND_TICKS` | '3' | `utils/blindness_latch.py:46` |
-| `OT_BOS_MIN_DIST_ATR` | '0.35' | `config.py:2751` |
-| `OT_BOT_NAME` | 'OptionsTrader' | `config.py:2680` |
+| `OT_BOS_MIN_DIST_ATR` | '0.35' | `config.py:2754` |
+| `OT_BOT_NAME` | 'OptionsTrader' | `config.py:2683` |
 | `OT_BOT_UNIT` | 'optionsbot', (set here) | `tests/check_foreign_symbol_board.py:80`, `tools/run_with_bot_env.py:46`, `utils/instrument.py:27` |
-| `OT_BREAKOUT_END` | '' | `config.py:828` |
-| `OT_BRK_NOPROG` | '' | `config.py:851` |
-| `OT_BRK_RESEARCH_UNTIL` | '2026-10-30', (set here) | `config.py:1215`, `tests/check_breakout_new_extreme.py:80` |
-| `OT_BROKER_RECONCILE` | '' | `config.py:1458` |
-| `OT_BROKER_RECONCILE_INTERVAL_MIN` | '10' | `config.py:1467` |
+| `OT_BREAKOUT_END` | '' | `config.py:831` |
+| `OT_BRK_NOPROG` | '' | `config.py:854` |
+| `OT_BRK_RESEARCH_UNTIL` | '2026-10-30', (set here) | `config.py:1218`, `tests/check_breakout_new_extreme.py:80` |
+| `OT_BROKER_RECONCILE` | '' | `config.py:1461` |
+| `OT_BROKER_RECONCILE_INTERVAL_MIN` | '10' | `config.py:1470` |
 | `OT_CHAIN_BOOTSTRAP_S` | '30' | `data/options_chain.py:149` |
 | `OT_CHAIN_ROOT` | <expr> | `warehouse/s3_push.py:339` |
 | `OT_CHAIN_SNAPSHOT_MIN` | '5' | `analysis/chain_snapshot.py:87` |
 | `OT_CHAIN_STALE_S` | '120' | `data/options_chain.py:148` |
 | `OT_CHAIN_STRUCT_REFRESH_S` | '1800' | `data/options_chain.py:147` |
-| `OT_CONDOR_LONE_STOP_PCT` | '0.15' | `config.py:1904` |
-| `OT_CONDOR_MAX_QUOTE_WIDTH` | '0.25' | `config.py:2010` |
-| `OT_CONDOR_MIN_POP` | '0.70' | `config.py:2002` |
-| `OT_CONDOR_PF_ANCHOR` | '1' | `config.py:1959` |
-| `OT_CONDOR_PF_FLAT` | '0.00002' | `config.py:1983` |
-| `OT_CONDOR_PF_TF` | '1h' | `config.py:1978` |
-| `OT_CONDOR_POP_BAR_MIN` | '5' | `config.py:2205` |
-| `OT_CONDOR_RATCHET_BE` | '0.20' | `config.py:1926` |
-| `OT_CONDOR_RATCHET_LOCK_AT` | '0.40' | `config.py:1927` |
-| `OT_CONDOR_RATCHET_LOCK_PCT` | '0.20' | `config.py:1928` |
-| `OT_CONDOR_RATCHET_STANDALONE_ONLY` | '1' | `config.py:2031` |
-| `OT_CONDOR_REQUIRE_FORK` | '1' | `config.py:1960` |
-| `OT_CONDOR_TP_MIN_HOLD` | '10' | `config.py:1937` |
-| `OT_CONDOR_TP_PCT` | '0.25' | `config.py:1932` |
-| `OT_CONDOR_TRIGGER_APPROACH` | '0.65' | `config.py:1894` |
-| `OT_CONTRACT_SCALE` | (none), (set here) | `config.py:1390`, `tests/check_orcs.py:86` |
-| `OT_CONT_BREAKOUT_DIRECTION` | '1' | `config.py:2367` |
-| `OT_CONT_BREAKOUT_MIN_ADX` | <expr> | `config.py:2369` |
-| `OT_CONT_CONFIRM_TOL_ATR` | '0.40' | `config.py:2796` |
-| `OT_CONT_EXT_ATR` | '2.0' | `config.py:2728` |
-| `OT_CONT_HANDOFF_IN_COMPRESSION` | '0' | `config.py:1833` |
-| `OT_CONT_INSURANCE` | '1' | `config.py:2364` |
-| `OT_CONT_MIN_GAIN` | '0.15' | `config.py:2729` |
-| `OT_CONT_REQUIRE_CONFIRM` | '1' | `config.py:2740` |
-| `OT_CONT_STOP_PCT` | '0.15' | `config.py:2727` |
-| `OT_CONT_TRAIL_LOCK` | '0.85' | `config.py:2730` |
+| `OT_CONDOR_LONE_STOP_PCT` | '0.15' | `config.py:1907` |
+| `OT_CONDOR_MAX_QUOTE_WIDTH` | '0.25' | `config.py:2013` |
+| `OT_CONDOR_MIN_POP` | '0.70' | `config.py:2005` |
+| `OT_CONDOR_PF_ANCHOR` | '1' | `config.py:1962` |
+| `OT_CONDOR_PF_FLAT` | '0.00002' | `config.py:1986` |
+| `OT_CONDOR_PF_TF` | '1h' | `config.py:1981` |
+| `OT_CONDOR_POP_BAR_MIN` | '5' | `config.py:2208` |
+| `OT_CONDOR_RATCHET_BE` | '0.20' | `config.py:1929` |
+| `OT_CONDOR_RATCHET_LOCK_AT` | '0.40' | `config.py:1930` |
+| `OT_CONDOR_RATCHET_LOCK_PCT` | '0.20' | `config.py:1931` |
+| `OT_CONDOR_RATCHET_STANDALONE_ONLY` | '1' | `config.py:2034` |
+| `OT_CONDOR_REQUIRE_FORK` | '1' | `config.py:1963` |
+| `OT_CONDOR_TP_MIN_HOLD` | '10' | `config.py:1940` |
+| `OT_CONDOR_TP_PCT` | '0.25' | `config.py:1935` |
+| `OT_CONDOR_TRIGGER_APPROACH` | '0.65' | `config.py:1897` |
+| `OT_CONTRACT_SCALE` | (none), (set here) | `config.py:1393`, `tests/check_orcs.py:89` |
+| `OT_CONT_BREAKOUT_DIRECTION` | '1' | `config.py:2370` |
+| `OT_CONT_BREAKOUT_MIN_ADX` | <expr> | `config.py:2372` |
+| `OT_CONT_CONFIRM_TOL_ATR` | '0.40' | `config.py:2799` |
+| `OT_CONT_EXT_ATR` | '2.0' | `config.py:2731` |
+| `OT_CONT_HANDOFF_IN_COMPRESSION` | '0' | `config.py:1836` |
+| `OT_CONT_INSURANCE` | '1' | `config.py:2367` |
+| `OT_CONT_MIN_GAIN` | '0.15' | `config.py:2732` |
+| `OT_CONT_REQUIRE_CONFIRM` | '1' | `config.py:2743` |
+| `OT_CONT_STOP_PCT` | '0.15' | `config.py:2730` |
+| `OT_CONT_TRAIL_LOCK` | '0.85' | `config.py:2733` |
 | `OT_COUNTERFACTUAL_DIR` | (none), (set here) | `execution/resting_stop.py:52`, `tests/check_brk_noprog.py:41` |
-| `OT_DAILY_LOSS_LIMIT` | (none), (set here), <expr> | `config.py:1255`, `risk/risk_manager.py:293`, `tests/check_cap_counterfactual.py:45`, `tests/check_cap_page_once.py:65`, `tests/check_loss_cap_rearm.py:72` |
-| `OT_DEBIT_BLOCK_ACTIVE` | '1' | `config.py:1590` |
-| `OT_DELTA_PAR` | '0.98' | `config.py:2161` |
-| `OT_DEPLOY_CAP_MULT` | '2.0' | `config.py:1362` |
+| `OT_DAILY_LOSS_LIMIT` | (none), (set here), <expr> | `config.py:1258`, `risk/risk_manager.py:293`, `tests/check_cap_counterfactual.py:45`, `tests/check_cap_page_once.py:65`, `tests/check_loss_cap_rearm.py:72` |
+| `OT_DEBIT_BLOCK_ACTIVE` | '1' | `config.py:1593` |
+| `OT_DELTA_PAR` | '0.98' | `config.py:2164` |
+| `OT_DEPLOY_CAP_MULT` | '2.0' | `config.py:1365` |
 | `OT_DERIVED_DB` | (none), (set here), <expr> | `tests/check_breakout_new_extreme.py:77`, `tests/check_brk_cash_index.py:37`, `tests/check_brk_noprog.py:35`, `tests/check_brk_strike_inside.py:34`, `tests/check_brk_zero_risk.py:36`, `tests/check_cap_page_once.py:60`, `tests/check_derived_layer.py:61`, `tests/check_derived_layer.py:118`, `tests/check_derived_layer.py:242`, `tests/check_engine_status.py:50`, `tests/check_expiry_settlement.py:54`, `tests/check_indicator_votes.py:74`, `tests/check_loss_cap_rearm.py:67`, `tests/check_no_zero_price.py:48`, `tests/check_plan_observe.py:44`, `tests/stop_spread_report.py:73`, `tools/manifold_health.py:425`, `tools/open_scan.py:279`, `tools/plan_board.py:38`, `warehouse/retention_purge.py:682` |
 | `OT_DISK_CHECK_S` | '300' | `data/disk_watch.py:86` |
 | `OT_DISK_DRILL_FLAG` | <expr> | `data/disk_watch.py:104` |
@@ -70,9 +70,9 @@ Unit `Environment=` lines set these; NEVER print a unit's Environment block to r
 | `OT_DISK_WALK_S` | '20' | `data/disk_watch.py:91` |
 | `OT_DXFEED_SYMBOL` | '' | `data/candle_feed.py:425` |
 | `OT_DXFEED_VIX` | 'VIX' | `data/candle_feed.py:404` |
-| `OT_ENTRY_LADDER` | '0' | `config.py:955` |
-| `OT_ENTRY_LADDER_STEP_SEC` | '15' | `config.py:954` |
-| `OT_ENTRY_OPEN_ET` | '9,35' | `config.py:1576` |
+| `OT_ENTRY_LADDER` | '0' | `config.py:958` |
+| `OT_ENTRY_LADDER_STEP_SEC` | '15' | `config.py:957` |
+| `OT_ENTRY_OPEN_ET` | '9,35' | `config.py:1579` |
 | `OT_EXT_1H` | '1' | `data/candle_feed.py:413` |
 | `OT_EXT_INTERVAL` | '1h' | `data/candle_feed.py:411` |
 | `OT_FEED_DB` | '', (none), (required), (set here) | `data/candle_feed.py:265`, `data/candle_feed.py:1942`, `tests/check_breakout_new_extreme.py:79`, `tests/check_breakout_new_extreme.py:124`, `tests/check_breakout_new_extreme.py:146`, `tests/check_breakout_new_extreme.py:328`, `tests/check_breakout_new_extreme.py:329`, `tests/check_breakout_new_extreme.py:335`, `tests/check_breakout_new_extreme.py:371`, `tests/check_breakout_new_extreme.py:372`, `tests/check_breakout_new_extreme.py:376`, `tests/check_brk_cash_index.py:38`, `tests/check_brk_cash_index.py:76`, `tests/check_brk_noprog.py:36`, `tests/check_brk_strike_inside.py:35`, `tests/check_brk_strike_inside.py:66`, `tests/check_brk_zero_risk.py:37`, `tests/check_brk_zero_risk.py:93`, `tests/check_fork_closed_bars.py:39`, `tests/check_fork_invalidation.py:43`, `tests/check_level_engine_book.py:140`, `tests/check_level_engine_book.py:251`, `tests/check_level_engine_book.py:291`, `tests/check_level_engine_book.py:318`, `tests/check_level_flip.py:316`, `tests/check_level_flip.py:401`, `tests/check_plan_observe.py:45`, `tests/check_rails_book.py:59`, `tests/check_sma50_record.py:58`, `tests/check_spxw_settle_orcs_live.py:35`, `tests/check_spxw_settle_orcs_live.py:39`, `tools/agent_verdict.py:45`, `tools/backfill_sma50.py:86`, `tools/feed_capabilities.py:57`, `tools/probe_aux_streams.py:60` |
@@ -80,114 +80,114 @@ Unit `Environment=` lines set these; NEVER print a unit's Environment block to r
 | `OT_FEED_MAINT_FLAG` | <expr> | `data/candle_feed.py:328` |
 | `OT_FEED_MODE` | 'service', (none), (set here) | `data/candle_feed.py:351`, `tests/check_feed_always_on.py:66`, `tests/check_feed_always_on.py:67`, `tests/check_feed_always_on.py:88`, `tests/check_feed_always_on.py:93` |
 | `OT_FEED_STALE_S` | '120' | `data/market_data.py:108` |
-| `OT_FVG_FLOOR_MAX_LOCK_PCT` | '0.90' | `config.py:2298` |
-| `OT_GEX_BFLY_WING_EM_FRAC` | '0.25' | `config.py:1675` |
-| `OT_GEX_BUTTERFLY` | '1' | `config.py:1674` |
-| `OT_HUNT_MAX_LOSS_PCT` | (presence), <expr> | `config.py:1322`, `tests/check_attr_fidelity.py:213` |
-| `OT_INSTRUMENT` | '', '?', 'QQQ', 'UNKNOWN', (none), (set here), <expr> | `analysis/chain_snapshot.py:84`, `analysis/signal_journal.py:123`, `config.py:655`, `data/tasty_client.py:206`, `main.py:5635`, `main.py:5692`, `main.py:5708`, `main.py:5769`, `main.py:5960`, `main.py:6710`, `main.py:6802`, `main.py:6965`, `tests/check_brk_noprog.py:180`, `tests/check_brk_zero_risk.py:91`, `tests/check_credit_remainder.py:36`, `tests/check_data_capture.py:307`, `tests/check_data_capture.py:310`, `tests/check_data_capture.py:319`, `tests/check_foreign_symbol_board.py:81`, `tests/check_foreign_symbol_board.py:113`, `tests/check_instrument_unset.py:120`, `tests/check_instrument_unset.py:127`, `tests/check_instrument_unset.py:168`, `tests/check_level_tape.py:123`, `tests/check_manifold_windows.py:95`, `tests/check_open_scan.py:113`, `tests/check_plan_observe.py:47`, `tests/check_plan_prepares.py:186`, `tests/check_rebuild_1m.py:75`, `tests/check_reconcile_strict.py:107`, `tests/check_reconcile_strict.py:110`, `tests/check_reconcile_strict.py:112`, `tests/check_reconcile_strict.py:126`, `tests/check_resting_stop.py:186`, `tests/check_seed_candles.py:46`, `tests/check_seed_candles.py:199`, `tests/check_seed_candles.py:207`, `tests/check_self_close_hold.py:41`, `tools/agent_verdict.py:97`, `tools/emergency_watchdog.py:223`, `tools/emergency_watchdog.py:329`, `tools/emergency_watchdog.py:377`, `tools/manifold_health.py:419`, `tools/probe_candle_depth.py:30`, `tools/probe_order_dryrun.py:45`, `utils/instrument.py:43`, `warehouse/s3_push.py:760`, `warehouse/s3_push.py:772`, `warehouse/self_close.py:105` |
-| `OT_LIVE_CLOSE_LIMIT_BUFFER` | '0.10' | `config.py:2695` |
-| `OT_LIVE_ENTRY_DEADLINE_SECONDS` | '20' | `config.py:2699` |
-| `OT_LIVE_FILL_DEADLINE_SECONDS` | '30' | `config.py:2690` |
-| `OT_LIVE_FILL_POLL_SECONDS` | '2' | `config.py:2687` |
-| `OT_LOG_FILE` | (none), (set here) | `config.py:2675`, `tests/check_brk_noprog.py:37` |
-| `OT_LOG_LEVEL` | 'INFO' | `config.py:2670` |
-| `OT_LONE_STOP_PCT_RISK` | '0.15' | `config.py:2433` |
-| `OT_MAX_LOSS_PCT` | '0.25' | `config.py:1272` |
+| `OT_FVG_FLOOR_MAX_LOCK_PCT` | '0.90' | `config.py:2301` |
+| `OT_GEX_BFLY_WING_EM_FRAC` | '0.25' | `config.py:1678` |
+| `OT_GEX_BUTTERFLY` | '1' | `config.py:1677` |
+| `OT_HUNT_MAX_LOSS_PCT` | (presence), <expr> | `config.py:1325`, `tests/check_attr_fidelity.py:213` |
+| `OT_INSTRUMENT` | '', '?', 'QQQ', 'UNKNOWN', (none), (set here), <expr> | `analysis/chain_snapshot.py:84`, `analysis/signal_journal.py:123`, `config.py:658`, `data/tasty_client.py:206`, `main.py:5638`, `main.py:5695`, `main.py:5711`, `main.py:5772`, `main.py:5963`, `main.py:6713`, `main.py:6805`, `main.py:6968`, `tests/check_brk_noprog.py:180`, `tests/check_brk_zero_risk.py:91`, `tests/check_credit_remainder.py:36`, `tests/check_data_capture.py:307`, `tests/check_data_capture.py:310`, `tests/check_data_capture.py:319`, `tests/check_foreign_symbol_board.py:81`, `tests/check_foreign_symbol_board.py:113`, `tests/check_instrument_unset.py:120`, `tests/check_instrument_unset.py:127`, `tests/check_instrument_unset.py:168`, `tests/check_level_tape.py:123`, `tests/check_manifold_windows.py:95`, `tests/check_open_scan.py:113`, `tests/check_plan_observe.py:47`, `tests/check_plan_prepares.py:186`, `tests/check_rebuild_1m.py:75`, `tests/check_reconcile_strict.py:107`, `tests/check_reconcile_strict.py:110`, `tests/check_reconcile_strict.py:112`, `tests/check_reconcile_strict.py:126`, `tests/check_resting_stop.py:186`, `tests/check_seed_candles.py:46`, `tests/check_seed_candles.py:199`, `tests/check_seed_candles.py:207`, `tests/check_self_close_hold.py:41`, `tools/agent_verdict.py:97`, `tools/emergency_watchdog.py:223`, `tools/emergency_watchdog.py:329`, `tools/emergency_watchdog.py:377`, `tools/manifold_health.py:419`, `tools/probe_candle_depth.py:30`, `tools/probe_order_dryrun.py:45`, `utils/instrument.py:43`, `warehouse/s3_push.py:760`, `warehouse/s3_push.py:772`, `warehouse/self_close.py:105` |
+| `OT_LIVE_CLOSE_LIMIT_BUFFER` | '0.10' | `config.py:2698` |
+| `OT_LIVE_ENTRY_DEADLINE_SECONDS` | '20' | `config.py:2702` |
+| `OT_LIVE_FILL_DEADLINE_SECONDS` | '30' | `config.py:2693` |
+| `OT_LIVE_FILL_POLL_SECONDS` | '2' | `config.py:2690` |
+| `OT_LOG_FILE` | (none), (set here) | `config.py:2678`, `tests/check_brk_noprog.py:37` |
+| `OT_LOG_LEVEL` | 'INFO' | `config.py:2673` |
+| `OT_LONE_STOP_PCT_RISK` | '0.15' | `config.py:2436` |
+| `OT_MAX_LOSS_PCT` | '0.25' | `config.py:1275` |
 | `OT_MEM_TRACE` | '0' | `utils/mem_trace.py:49` |
 | `OT_MEM_TRACE_EVERY` | '40' | `utils/mem_trace.py:51` |
 | `OT_MEM_TRACE_TOP` | '12' | `utils/mem_trace.py:53` |
 | `OT_MEM_TRACE_WARM` | '20' | `utils/mem_trace.py:52` |
-| `OT_MIN_RRR` | '1.3' | `config.py:2483` |
-| `OT_MIN_RRR_ACTIVE` | '0' | `config.py:2484` |
-| `OT_NOISE_FLOOR_BAR_MULT` | '0.5' | `config.py:1177` |
-| `OT_NOISE_FLOOR_LOOKBACK_BARS` | '60' | `config.py:1178` |
-| `OT_NOISE_FLOOR_MIN_BARS` | '3' | `config.py:1183` |
+| `OT_MIN_RRR` | '1.3' | `config.py:2486` |
+| `OT_MIN_RRR_ACTIVE` | '0' | `config.py:2487` |
+| `OT_NOISE_FLOOR_BAR_MULT` | '0.5' | `config.py:1180` |
+| `OT_NOISE_FLOOR_LOOKBACK_BARS` | '60' | `config.py:1181` |
+| `OT_NOISE_FLOOR_MIN_BARS` | '3' | `config.py:1186` |
 | `OT_NO_MIDNIGHT_HALT` | <expr> | `warehouse/midnight_halt.py:74` |
-| `OT_ORB_BUDGET_USD` | (presence), (set here), <expr> | `config.py:1077`, `config.py:1250`, `tests/check_scaling_toggle.py:83`, `tests/check_volt_sizing.py:96` |
-| `OT_ORB_RISK_USD` | '' | `config.py:1104` |
+| `OT_ORB_BUDGET_USD` | (presence), (set here), <expr> | `config.py:1080`, `config.py:1253`, `tests/check_scaling_toggle.py:83`, `tests/check_volt_sizing.py:96` |
+| `OT_ORB_RISK_USD` | '' | `config.py:1107` |
 | `OT_ORB_TRADE` | '0', (set here) | `strategy/orb_plan.py:267`, `tests/check_trade_switches.py:180` |
-| `OT_ORCS` | '0' | `config.py:1373` |
-| `OT_PAPER_SLIPPAGE_PCT` | '0.0' | `config.py:2518` |
-| `OT_PAPER_TRADING` | 'True', (none), (set here) | `config.py:1462`, `config.py:1471`, `tests/check_cap_counterfactual.py:43`, `tests/check_cap_page_once.py:63`, `tests/check_credit_remainder.py:107`, `tests/check_criteria.py:44`, `tests/check_emergency_watchdog.py:257`, `tests/check_emergency_watchdog.py:259`, `tests/check_emergency_watchdog.py:260`, `tests/check_entry_windows.py:257`, `tests/check_entry_windows.py:258`, `tests/check_entry_windows.py:284`, `tests/check_exit_pricing.py:47`, `tests/check_expiry_settlement.py:58`, `tests/check_loss_cap_rearm.py:70`, `tests/check_official_print.py:46`, `tests/check_orb_budget.py:108`, `tests/check_orcs.py:337`, `tests/check_plan_wiring.py:170`, `tests/check_recorder_keys.py:41`, `tools/emergency_watchdog.py:163`, `tools/eod_summary.py:80` |
+| `OT_ORCS` | '0' | `config.py:1376` |
+| `OT_PAPER_SLIPPAGE_PCT` | '0.0' | `config.py:2521` |
+| `OT_PAPER_TRADING` | 'True', (none), (set here) | `config.py:1465`, `config.py:1474`, `tests/check_cap_counterfactual.py:43`, `tests/check_cap_page_once.py:63`, `tests/check_credit_remainder.py:107`, `tests/check_criteria.py:44`, `tests/check_emergency_watchdog.py:257`, `tests/check_emergency_watchdog.py:259`, `tests/check_emergency_watchdog.py:260`, `tests/check_entry_windows.py:257`, `tests/check_entry_windows.py:258`, `tests/check_entry_windows.py:284`, `tests/check_exit_pricing.py:50`, `tests/check_expiry_settlement.py:58`, `tests/check_loss_cap_rearm.py:70`, `tests/check_official_print.py:46`, `tests/check_orb_budget.py:108`, `tests/check_orcs.py:340`, `tests/check_plan_wiring.py:170`, `tests/check_recorder_keys.py:44`, `tools/emergency_watchdog.py:163`, `tools/eod_summary.py:80` |
 | `OT_PF_OBSERVE` | '1' | `analysis/pitchfork_observer.py:68` |
 | `OT_PF_REBUILD_MIN` | '5' | `analysis/pitchfork_observer.py:67` |
-| `OT_PIN_PROXIMITY_ACTIVE` | '1' | `config.py:1174` |
-| `OT_PIN_PROXIMITY_MIN_FRAC` | '0.32' | `config.py:1175` |
+| `OT_PIN_PROXIMITY_ACTIVE` | '1' | `config.py:1177` |
+| `OT_PIN_PROXIMITY_MIN_FRAC` | '0.32' | `config.py:1178` |
 | `OT_PLAN_BOARD_LOG_S` | '60' | `derived/plans.py:62` |
 | `OT_PLAN_R_FLOOR` | '1.00' | `strategy/criteria.py:152` |
 | `OT_PLAN_R_FLOOR_STOP` | '1.00' | `strategy/criteria.py:179` |
-| `OT_POST_TARGET_TRAIL_LOCK_PCT` | '0.75' | `config.py:2302` |
+| `OT_POST_TARGET_TRAIL_LOCK_PCT` | '0.75' | `config.py:2305` |
 | `OT_PRUNE_KEEP_ROWS` | '0' | `data/candle_feed.py:280` |
 | `OT_PURGE_BUSY_MS` | '120000' | `warehouse/retention_purge.py:424` |
 | `OT_PURGE_LOCK_WAIT` | '300' | `warehouse/retention_purge.py:422` |
-| `OT_RESTING_STOP` | '' | `config.py:860` |
+| `OT_RESTING_STOP` | '' | `config.py:863` |
 | `OT_RESTING_STOP_STATE` | (none) | `execution/resting_stop.py:48` |
 | `OT_RETENTION_APPLY` | (none) | `warehouse/retention_purge.py:844` |
-| `OT_RISK_USD` | '200', (set here) | `config.py:1048`, `tests/check_cap_counterfactual.py:44`, `tests/check_cap_page_once.py:64`, `tests/check_loss_cap_rearm.py:71`, `tests/check_scaling_toggle.py:82`, `tests/check_volt_sizing.py:97` |
-| `OT_RUNAWAY_END` | '' | `config.py:797` |
-| `OT_RUNAWAY_MAX_LOSS_PCT` | '0.20' | `config.py:1277` |
-| `OT_S3_BUCKET` | 'vertigo-warehouse-tx9ai' | `tests/warehouse_source.py:62`, `warehouse/s3_push.py:332` |
+| `OT_RISK_USD` | '200', (set here) | `config.py:1051`, `tests/check_cap_counterfactual.py:44`, `tests/check_cap_page_once.py:64`, `tests/check_loss_cap_rearm.py:71`, `tests/check_scaling_toggle.py:82`, `tests/check_volt_sizing.py:97` |
+| `OT_RUNAWAY_END` | '' | `config.py:800` |
+| `OT_RUNAWAY_MAX_LOSS_PCT` | '0.20' | `config.py:1280` |
+| `OT_S3_BUCKET` | 'vertigo-warehouse-tx9ai' | `tests/warehouse_source.py:65`, `warehouse/s3_push.py:332` |
 | `OT_S3_FLUSH_EVERY` | '200' | `warehouse/s3_push.py:714` |
 | `OT_S3_LOCK_WAIT` | '120' | `warehouse/s3_push.py:712` |
-| `OT_S3_PREFIX` | 'raw' | `tests/warehouse_source.py:64`, `warehouse/s3_push.py:334` |
+| `OT_S3_PREFIX` | 'raw' | `tests/warehouse_source.py:67`, `warehouse/s3_push.py:334` |
 | `OT_S3_PUSH` | '1' | `warehouse/s3_push.py:336` |
-| `OT_S3_REGION` | 'us-east-2' | `tests/warehouse_source.py:63`, `tools/wake_box.py:79`, `warehouse/s3_push.py:333` |
+| `OT_S3_REGION` | 'us-east-2' | `tests/warehouse_source.py:66`, `tools/wake_box.py:79`, `warehouse/s3_push.py:333` |
 | `OT_S3_SERIES_BATCH` | '50000' | `warehouse/s3_push.py:1076` |
-| `OT_SCALE_BREAKOUT` | '1' | `config.py:1122` |
-| `OT_SCALE_ORB` | '1' | `config.py:1121` |
-| `OT_SCALE_VOLT` | '1' | `config.py:1123` |
+| `OT_SCALE_BREAKOUT` | '1' | `config.py:1125` |
+| `OT_SCALE_ORB` | '1' | `config.py:1124` |
+| `OT_SCALE_VOLT` | '1' | `config.py:1126` |
 | `OT_SHUTDOWN_CAUSE` | (required), (set here), <expr> | `tests/check_shutdown_cause.py:77`, `tests/check_shutdown_cause.py:108`, `tests/check_shutdown_cause.py:109`, `utils/shutdown_cause.py:57` |
 | `OT_SIGNAL_JOURNAL_DIR` | (none), (set here) | `analysis/signal_journal.py:117`, `tests/check_brk_noprog.py:38`, `tests/check_expiry_settlement.py:56` |
-| `OT_SIZE_ON_RISK` | '0' | `config.py:1352` |
+| `OT_SIZE_ON_RISK` | '0' | `config.py:1355` |
 | `OT_STALE_BAR_MULTIPLE` | '3.0' | `data/market_data.py:131` |
 | `OT_STOP_VS_SPREAD_MIN` | '2.0' | `strategy/criteria.py:367` |
-| `OT_SWEEP_CS` | '0' | `config.py:727` |
-| `OT_SWEEP_CS_MAX_LOSS_PCT` | '0.15' | `config.py:1410` |
-| `OT_SWEEP_CS_WING` | '5' | `config.py:1424` |
-| `OT_SWEEP_LIVENESS_GATE` | '1' | `config.py:2823` |
-| `OT_SWEEP_POST_TARGET_TRAIL` | 'True' | `config.py:2305` |
-| `OT_SWEEP_RECOVERY_FROM_POOL` | '1' | `config.py:2808` |
-| `OT_SWEEP_SETUP_FLOOR` | '0.05' | `config.py:1798` |
-| `OT_SWEEP_SETUP_FLOOR_SHORT` | '0.20' | `config.py:1821` |
-| `OT_SWEEP_STALE_HARD_BARS` | '48' | `config.py:2824` |
-| `OT_TCS_ACTIVE` | '0' | `config.py:726` |
-| `OT_TCS_COOLDOWN_MIN` | '0' | `config.py:951` |
-| `OT_TCS_DRIFT_HORIZON_BARS` | '24' | `config.py:703` |
-| `OT_TCS_LGB` | '0.5' | `config.py:920` |
-| `OT_TCS_MAX_QUOTE_WIDTH` | '0.25' | `config.py:704` |
-| `OT_TCS_MIN_CREDIT_PCT` | '0.10' | `config.py:899` |
-| `OT_TCS_MIN_POP` | '0.70' | `config.py:697` |
-| `OT_TCS_NICKEL_MULT` | '4.0' | `config.py:921` |
-| `OT_TCS_NICKEL_REF` | '0.05' | `config.py:706` |
-| `OT_TCS_POP_BAR_MIN` | '5' | `config.py:705` |
-| `OT_TCS_R_FLOOR_EXPIRY` | '1.00' | `config.py:933` |
-| `OT_TCS_STOP_PCT_CREDIT` | '0.15' | `config.py:944` |
-| `OT_TCS_WING_QQQ` | '5' | `config.py:708` |
-| `OT_TCS_WING_SPX` | '5' | `config.py:707` |
-| `OT_TENT_ENABLED` | '1' | `config.py:1918` |
-| `OT_TENT_FLOOR_PCT` | '0.15' | `config.py:1919` |
-| `OT_THESIS_BAND_LOOKBACK` | '60' | `config.py:1227` |
-| `OT_THESIS_BAND_WICKS` | '1.0' | `config.py:1226` |
-| `OT_TRADES_DB` | (none), (required), (set here), <expr> | `config.py:2662`, `tests/check_breakout_new_extreme.py:76`, `tests/check_brk_cash_index.py:36`, `tests/check_brk_noprog.py:34`, `tests/check_brk_strike_inside.py:33`, `tests/check_brk_zero_risk.py:35`, `tests/check_cap_page_once.py:59`, `tests/check_db_handles.py:52`, `tests/check_emergency_watchdog.py:257`, `tests/check_emergency_watchdog.py:258`, `tests/check_expiry_settlement.py:52`, `tests/check_expiry_settlement.py:53`, `tests/check_expiry_settlement.py:120`, `tests/check_lineage.py:43`, `tests/check_loss_cap_rearm.py:62`, `tests/check_loss_cap_rearm.py:66`, `tests/check_loss_cap_rearm.py:160`, `tests/check_no_zero_price.py:45`, `tests/check_no_zero_price.py:47`, `tests/check_plan_observe.py:43`, `tests/check_reclaim_paths.py:155`, `tests/check_reclaim_paths.py:156`, `tests/check_reclaim_paths.py:173`, `tests/check_scaling_toggle.py:72`, `tests/check_sma50_record.py:59`, `tests/check_sma50_record.py:197`, `tests/trade_report.py:363`, `tools/agent_verdict.py:44`, `tools/agent_watch.py:69`, `tools/emergency_watchdog.py:166`, `warehouse/retention_purge.py:227`, `warehouse/s3_push.py:633` |
-| `OT_TRAIL_GAIN_LOCK` | '0.50' | `config.py:1242` |
-| `OT_USE_5M_FVG_TRAIL` | 'True' | `config.py:2295` |
+| `OT_SWEEP_CS` | '0' | `config.py:730` |
+| `OT_SWEEP_CS_MAX_LOSS_PCT` | '0.15' | `config.py:1413` |
+| `OT_SWEEP_CS_WING` | '5' | `config.py:1427` |
+| `OT_SWEEP_LIVENESS_GATE` | '1' | `config.py:2826` |
+| `OT_SWEEP_POST_TARGET_TRAIL` | 'True' | `config.py:2308` |
+| `OT_SWEEP_RECOVERY_FROM_POOL` | '1' | `config.py:2811` |
+| `OT_SWEEP_SETUP_FLOOR` | '0.05' | `config.py:1801` |
+| `OT_SWEEP_SETUP_FLOOR_SHORT` | '0.20' | `config.py:1824` |
+| `OT_SWEEP_STALE_HARD_BARS` | '48' | `config.py:2827` |
+| `OT_TCS_ACTIVE` | '0' | `config.py:729` |
+| `OT_TCS_COOLDOWN_MIN` | '0' | `config.py:954` |
+| `OT_TCS_DRIFT_HORIZON_BARS` | '24' | `config.py:706` |
+| `OT_TCS_LGB` | '0.5' | `config.py:923` |
+| `OT_TCS_MAX_QUOTE_WIDTH` | '0.25' | `config.py:707` |
+| `OT_TCS_MIN_CREDIT_PCT` | '0.10' | `config.py:902` |
+| `OT_TCS_MIN_POP` | '0.70' | `config.py:700` |
+| `OT_TCS_NICKEL_MULT` | '4.0' | `config.py:924` |
+| `OT_TCS_NICKEL_REF` | '0.05' | `config.py:709` |
+| `OT_TCS_POP_BAR_MIN` | '5' | `config.py:708` |
+| `OT_TCS_R_FLOOR_EXPIRY` | '1.00' | `config.py:936` |
+| `OT_TCS_STOP_PCT_CREDIT` | '0.15' | `config.py:947` |
+| `OT_TCS_WING_QQQ` | '5' | `config.py:711` |
+| `OT_TCS_WING_SPX` | '5' | `config.py:710` |
+| `OT_TENT_ENABLED` | '1' | `config.py:1921` |
+| `OT_TENT_FLOOR_PCT` | '0.15' | `config.py:1922` |
+| `OT_THESIS_BAND_LOOKBACK` | '60' | `config.py:1230` |
+| `OT_THESIS_BAND_WICKS` | '1.0' | `config.py:1229` |
+| `OT_TRADES_DB` | (none), (required), (set here), <expr> | `config.py:2665`, `tests/check_breakout_new_extreme.py:76`, `tests/check_brk_cash_index.py:36`, `tests/check_brk_noprog.py:34`, `tests/check_brk_strike_inside.py:33`, `tests/check_brk_zero_risk.py:35`, `tests/check_cap_page_once.py:59`, `tests/check_db_handles.py:52`, `tests/check_emergency_watchdog.py:257`, `tests/check_emergency_watchdog.py:258`, `tests/check_expiry_settlement.py:52`, `tests/check_expiry_settlement.py:53`, `tests/check_expiry_settlement.py:120`, `tests/check_lineage.py:43`, `tests/check_loss_cap_rearm.py:62`, `tests/check_loss_cap_rearm.py:66`, `tests/check_loss_cap_rearm.py:160`, `tests/check_no_zero_price.py:45`, `tests/check_no_zero_price.py:47`, `tests/check_plan_observe.py:43`, `tests/check_reclaim_paths.py:155`, `tests/check_reclaim_paths.py:156`, `tests/check_reclaim_paths.py:173`, `tests/check_scaling_toggle.py:72`, `tests/check_sma50_record.py:59`, `tests/check_sma50_record.py:197`, `tests/trade_report.py:363`, `tools/agent_verdict.py:44`, `tools/agent_watch.py:69`, `tools/emergency_watchdog.py:166`, `warehouse/retention_purge.py:227`, `warehouse/s3_push.py:633` |
+| `OT_TRAIL_GAIN_LOCK` | '0.50' | `config.py:1245` |
+| `OT_USE_5M_FVG_TRAIL` | 'True' | `config.py:2298` |
 | `OT_VACUUM_MIN_FREE_MB` | (set here), <expr> | `tests/check_purge_reclaim.py:112`, `tests/check_purge_reclaim.py:159`, `tests/check_purge_reclaim.py:166`, `warehouse/retention_purge.py:474` |
-| `OT_VELOCITY_CONFIRM` | '3' | `config.py:2868` |
-| `OT_VELOCITY_ENFORCE` | '0' | `config.py:2862` |
-| `OT_VELOCITY_GRACE_MIN` | '10' | `config.py:2863` |
-| `OT_VELOCITY_STALL` | '1' | `config.py:2859` |
-| `OT_VELOCITY_STRICTNESS` | '1.0' | `config.py:2864` |
-| `OT_VERTICAL_HOLD_1545` | '1' | `config.py:2202` |
+| `OT_VELOCITY_CONFIRM` | '3' | `config.py:2871` |
+| `OT_VELOCITY_ENFORCE` | '0' | `config.py:2865` |
+| `OT_VELOCITY_GRACE_MIN` | '10' | `config.py:2866` |
+| `OT_VELOCITY_STALL` | '1' | `config.py:2862` |
+| `OT_VELOCITY_STRICTNESS` | '1.0' | `config.py:2867` |
+| `OT_VERTICAL_HOLD_1545` | '1' | `config.py:2205` |
 | `OT_VOLT` | '0', (set here) | `strategy/volt_plan.py:305`, `tests/check_trade_switches.py:167`, `tests/check_trade_switches.py:188`, `tests/check_trade_switches.py:190`, `tests/check_trade_switches.py:201` |
-| `OT_VOLT_BUDGET_USD` | <expr> | `config.py:2199` |
-| `OT_VOLT_EXT_STOCKLIKE` | '0.02' | `config.py:2174` |
-| `OT_VOLT_MIN_BARS` | '3' | `config.py:2127` |
-| `OT_VOLT_STOCKLIKE_ATR_MULT` | '1.0' | `config.py:2180` |
-| `OT_VOLT_TRAIL_ARM_R` | '0.50' | `config.py:2137` |
-| `OT_VOLT_TRAIL_LOCK_FRAC` | '0.50' | `config.py:2138` |
-| `OT_VOLT_VOL_LOOKBACK_BARS` | '5' | `config.py:2124` |
-| `OT_VOLT_VOL_MULT` | '1.25' | `config.py:2103` |
-| `OT_VWAP_FILTER_ACTIVE` | '0' | `config.py:2485` |
+| `OT_VOLT_BUDGET_USD` | <expr> | `config.py:2202` |
+| `OT_VOLT_EXT_STOCKLIKE` | '0.02' | `config.py:2177` |
+| `OT_VOLT_MIN_BARS` | '3' | `config.py:2130` |
+| `OT_VOLT_STOCKLIKE_ATR_MULT` | '1.0' | `config.py:2183` |
+| `OT_VOLT_TRAIL_ARM_R` | '0.50' | `config.py:2140` |
+| `OT_VOLT_TRAIL_LOCK_FRAC` | '0.50' | `config.py:2141` |
+| `OT_VOLT_VOL_LOOKBACK_BARS` | '5' | `config.py:2127` |
+| `OT_VOLT_VOL_MULT` | '1.25' | `config.py:2106` |
+| `OT_VWAP_FILTER_ACTIVE` | '0' | `config.py:2488` |
 | `OT_WAREHOUSE_STATE` | (set here), <expr> | `tests/check_lineage.py:44`, `warehouse/retention_purge.py:233`, `warehouse/s3_push.py:342` |
 
 ## Read only by tests/ and tools/
@@ -215,7 +215,7 @@ Unit `Environment=` lines set these; NEVER print a unit's Environment block to r
 | `OT_MAP_STORE_ROOT` | (none) | `tests/check_map_accuracy.py:231` |
 | `OT_RC_NAME` | (none) | `tools/claude_boot.py:181` |
 | `OT_REBUILD_TOOL` | (none) | `tests/check_rebuild_1m.py:96` |
-| `OT_RELAXED_ENTRY` | (none), (set here) | `tests/check_atp_butterfly.py:121`, `tests/check_atp_pin_floor.py:70`, `tests/check_bfly_vwap_band.py:145`, `tests/check_butterfly_legs.py:109`, `tests/check_criteria.py:43`, `tests/check_entry_windows.py:256`, `tests/check_entry_windows.py:263`, `tests/check_entry_windows.py:280`, `tests/check_plan_prepares.py:269`, `tests/check_plan_prepares.py:533`, `tests/check_plan_prepares.py:587`, `tests/check_plan_prepares.py:594`, `tests/check_plan_prepares.py:773`, `tests/check_plan_prepares.py:870`, `tests/check_plan_prepares.py:880`, `tests/check_plan_prepares.py:890`, `tests/check_plan_wiring.py:147`, `tests/check_plan_wiring.py:169`, `tests/check_plan_wiring.py:190`, `tests/check_runaway_plan.py:147`, `tests/check_runaway_plan.py:422`, `tests/check_signal_numeric_tail.py:126`, `tests/check_signal_numeric_tail.py:130` |
+| `OT_RELAXED_ENTRY` | (none), (set here) | `tests/check_atp_butterfly.py:121`, `tests/check_atp_pin_floor.py:70`, `tests/check_bfly_vwap_band.py:145`, `tests/check_butterfly_legs.py:109`, `tests/check_criteria.py:43`, `tests/check_entry_windows.py:256`, `tests/check_entry_windows.py:263`, `tests/check_entry_windows.py:280`, `tests/check_plan_prepares.py:269`, `tests/check_plan_prepares.py:533`, `tests/check_plan_prepares.py:587`, `tests/check_plan_prepares.py:594`, `tests/check_plan_prepares.py:773`, `tests/check_plan_prepares.py:870`, `tests/check_plan_prepares.py:880`, `tests/check_plan_prepares.py:890`, `tests/check_plan_wiring.py:147`, `tests/check_plan_wiring.py:169`, `tests/check_plan_wiring.py:190`, `tests/check_runaway_plan.py:150`, `tests/check_runaway_plan.py:425`, `tests/check_signal_numeric_tail.py:126`, `tests/check_signal_numeric_tail.py:130` |
 | `OT_RESTING_DB` | (required), (set here) | `tests/check_breakout_new_extreme.py:78`, `tests/check_brk_noprog.py:39`, `tests/check_cap_page_once.py:61`, `tests/check_db_handles.py:53`, `tests/check_expiry_settlement.py:55`, `tests/check_loss_cap_rearm.py:68`, `tests/check_no_zero_price.py:49`, `tests/check_offer_fill_price.py:56`, `tests/check_standing_offer.py:57` |
 | `OT_ROUTE_SELFTEST` | '0' | `tests/test_candle_routing.py:113` |
 | `OT_SEED_TOOL` | (none) | `tests/check_seed_candles.py:61` |
