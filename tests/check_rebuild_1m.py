@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_rebuild_1m.py  v1.1
+tests/check_rebuild_1m.py  v1.2
+v1.2  2026-10-11  OTV4TEST r267 (SEED.3, authored on SPX-TEST) — the tool's v1.3: a tick is bucketed by ev_time (the source's
+      event time, ms), ts_epoch only when ev_time is missing. The operator, 2026-10-11 09:23 ET (via QQQ-TEST MSG-QQQ-1011-05):
+      "1. Yes, 2. B". R14 and R14b are NEW; R1-R13 are unchanged in code. R6's docstring now says its fixture ticks carry
+      NO ev_time, so R6 pins open/high/low/close ordering on the fallback path (its assertions are as before).
 v1.1  2026-10-09  OTV4TEST r264 (SEED.3, authored on SPX-TEST) — the tool's v1.2: a complete day with a SOURCE GAP (a minute
       under MIN_TICKS_PER_MINUTE, 0 included) is SKIPPED and not counted toward MIN_VERIFIED_DAYS. R7c is INVERTED (it
       pinned v1.1's refusal); R7d R7e R7f R7g are new. A skipped day's minutes at or above the floor are still compared,
@@ -20,7 +24,8 @@ v1.0  2026-10-07  OTV4TEST r261 (SEED.3, authored on SPX-TEST) — the gate for 
   R4  a --symbol other than the box's instrument is refused (rc 2); an UNSET instrument is refused (rc 2)
   R5  ticks outside 09:30-15:59 ET never make a bar (09:29 and 16:00 ticks present in the fixture)
   R6  a rebuilt bar is open = first tick, high = max, low = min, close = last BY ts_epoch - ticks are served out
-      of order across two objects; another symbol's ticks filed in the same object and minute are ignored
+      of order across two objects; another symbol's ticks filed in the same object and minute are ignored. (v1.2 of
+      this gate: these fixture ticks carry no ev_time, so this is the FALLBACK path's ordering.)
   R7  a complete day whose held bars disagree with the ticks beyond the tolerance refuses --apply (rc 4), nothing
       written, with THREE other days verified (so the refusal is the disagreement's); the dry run prints the FAIL
   R7b the same with the HIGH off beyond BAR_TOLERANCE_HL_PTS (open/close exact): --apply rc 4, nothing written
@@ -40,6 +45,13 @@ v1.0  2026-10-07  OTV4TEST r261 (SEED.3, authored on SPX-TEST) — the gate for 
   R11 feed_meta is never touched
   R12 zero last_trade objects listed -> rc 3 with a reason
   R13 a weekend date is never targeted, even with ticks filed under it
+  R14 (v1.3) ticks are BUCKETED BY ev_time: on a day the store holds nothing for, two minutes whose ticks carry ev_time
+      (ms) with ts_epoch 1.08 s later (09-28's measured lag). The last tick of 10:00 (ev 10:00:59.60, ts 10:01:00.68) is
+      a +7.00 spike: it must CLOSE and top 10:00, and 10:01 must open on its own first tick - exactly the bars ev_time
+      gives (kills ts bucketing, "fallback always taken", and ev_time read as seconds)
+  R14b a tick with NO usable ev_time - the key absent, None, "", or 0.0 (event_time is 0.0 on every SPX row) - is
+      bucketed by ts_epoch: 10:10/10:11 are built from such ticks only, a 0.0-ev_time tick is 10:10's +7.00 high, and
+      the plan line counts them (kills "fallback removed" and "0.0 taken as a time")
 Run: python3 tests/check_rebuild_1m.py      (OT_REBUILD_TOOL=<path> points it at another copy - born-red/mutant runs)
      Needs the venv (FeedStore imports the broker SDK): under an interpreter that cannot, it prints NOT RUN, exit 2.
 """
@@ -352,6 +364,68 @@ def main() -> int:
     # R13 — weekend never targeted
     rc, out = go(db8, objs=objs)
     check("R13 a weekend date with ticks is never targeted", f"{WEEKEND}:" not in out, out[-800:])
+
+    # R14 / R14b (v1.3) — ev_time bucketing, and the ts_epoch fallback
+    EVD = "2026-10-01"                                          # in the window, nothing held: every minute a target
+    LAG = 1.08
+
+    def ev_minute(m, base, spike_last):
+        n = FLOOR + 5
+        start = t0(EVD) / 1000 + m * 60
+        out = []
+        for i in range(n):
+            ev = start + 0.05 + i * (59.55 / (n - 1))           # 0.05 .. 59.60 s into the minute
+            p = base + (7.0 if (spike_last and i == n - 1) else 0.01 * i)
+            out.append({"symbol": "SPX", "ts_epoch": round(ev + LAG, 3), "ev_time": round(ev * 1000.0, 1),
+                        "price": round(p, 2)})
+        return out
+
+    FORMS = ("absent", None, "", 0.0)
+
+    def fb_minute(m, base, spike_zero):
+        n = FLOOR + 5
+        start = t0(EVD) / 1000 + m * 60
+        out = []
+        for i in range(n):
+            r = {"symbol": "SPX", "ts_epoch": round(start + 0.3 + i * (59.0 / (n - 1)), 3)}
+            form = FORMS[i % len(FORMS)]
+            p = base + 0.01 * i
+            if spike_zero and i == 3:                           # i % 4 == 3 -> ev_time 0.0, the high
+                p = base + 7.0
+            if form != "absent":
+                r["ev_time"] = form
+            r["price"] = round(p, 2)
+            out.append(r)
+        return out
+
+    e0, e1 = 7100.0, 7100.5
+    ev_rows = ev_minute(30, e0, True) + ev_minute(31, e1, False)
+    f0, f1 = 7200.0, 7200.5
+    fb_rows = fb_minute(40, f0, True) + fb_minute(41, f1, False)
+    objs14 = dict(build_objs(COMPLETE))
+    objs14[f"{ws.PREFIX}/last_trade/dt={EVD}/sym=SPX/7-e.json"] = env(EVD, ev_rows[::-1] + fb_rows, f"{EVD}T20:00:00+00:00")
+
+    def want_bar(rows, m, key):
+        lo, hi = t0(EVD) / 1000 + m * 60, t0(EVD) / 1000 + (m + 1) * 60
+        sel = sorted((key(r), r["price"]) for r in rows if lo <= key(r) < hi)
+        ps = [x[1] for x in sel]
+        return (ps[0], max(ps), min(ps), ps[-1]) if ps else None
+
+    by_ev = lambda r: r["ev_time"] / 1000.0
+    w30, w31 = want_bar(ev_rows, 30, by_ev), want_bar(ev_rows, 31, by_ev)
+    db14 = build_store("r14", COMPLETE)
+    rc, out = go(db14, "--apply", objs=objs14)
+    b14 = bars(db14, EVD)
+    check("R14 ticks are bucketed by ev_time: 10:00 closes and tops on the boundary spike, 10:01 opens on its own tick",
+          rc == 0 and b14.get(30) == w30 and b14.get(31) == w31 and w30[3] == e0 + 7.0 and w31[0] == e1,
+          f"rc={rc} 10:00 {b14.get(30)} want {w30}; 10:01 {b14.get(31)} want {w31}\n{out[-900:]}")
+    by_ts = lambda r: r["ts_epoch"]
+    v40, v41 = want_bar(fb_rows, 40, by_ts), want_bar(fb_rows, 41, by_ts)
+    n_fb = len(fb_rows)
+    check("R14b a tick with no usable ev_time (absent / None / \"\" / 0.0) is bucketed by ts_epoch, and counted",
+          rc == 0 and b14.get(40) == v40 and b14.get(41) == v41 and v40[1] == f0 + 7.0
+          and f"; {n_fb} tick(s) without ev_time bucketed by ts_epoch" in out,
+          f"rc={rc} 10:10 {b14.get(40)} want {v40}; 10:11 {b14.get(41)} want {v41}\n{out[-900:]}")
 
     print()
     if FAILED:

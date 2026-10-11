@@ -1,6 +1,19 @@
 #!/usr/bin/env python3
 """
-tools/rebuild_1m_from_last_trade.py  v1.2
+tools/rebuild_1m_from_last_trade.py  v1.3
+v1.3  2026-10-11  OTV4TEST r267 (SEED.3, authored on SPX-TEST) — A TICK IS BUCKETED BY ITS SOURCE TIME (ev_time), NOT BY
+      WHEN THE BOX RECEIVED IT (ts_epoch). The operator, 2026-10-11 09:23 ET (relayed by QQQ-TEST, MSG-QQQ-1011-05):
+      "1. Yes, 2. B" - (1) bucket on ev_time, ts_epoch only when ev_time is missing; (2) the 453 minutes v1.2 already
+      wrote are NOT re-derived: they age out of the 1m window. WHY: ts_epoch is the receiving box's time.time()
+      (data/candle_feed.py _on_trade) and runs 0.07-1.08 s behind ev_time on a per-day plateau, with rare bursts to
+      ~40 s (measured 2026-10-11 on the 29 SEED.3 days, /var/tmp/spx_t2b_1011). The feed's candles are cut on event
+      time, so a tick with ev_time 10:29:59.021 and ts_epoch 10:30:00.113 closed the feed's 10:15 15m bar but opened
+      v1.2's 10:30 1m bar - check_level_tape T2b found 2 such 15m bars on 09-28 narrower than their minutes. Under
+      ev_time 453 of v1.2's 2,258 inserted minutes would differ (max |dO| 1.20 |dH| 0.49 |dL| 0.45 |dC| 1.12) and T2b
+      reads 0 narrower on all 29 days. ev_time is epoch MILLISECONDS; a missing, empty, non-numeric or non-positive
+      ev_time (event_time is 0.0 on every SPX row, so 0 is "absent", not 1970) falls back to ts_epoch, and the day's
+      fallback count is printed. The insert log gains bucket=ev_time so a v1.3 row can be told from a v1.2 one.
+      Dedupe, the window, the floor, HL 1.00, OC 3.00 and the 3 verified days are unchanged.
 v1.2  2026-10-09  OTV4TEST r264 (SEED.3, authored on SPX-TEST) — A COMPLETE DAY WITH A SOURCE GAP IS SKIPPED, NOT COUNTED;
       A BAD BAR ON ITS OTHER MINUTES STILL FAILS THE RUN.
       The operator, 2026-10-09 20:28 ET (SPX-TEST's thread): "Yes, fill in the missing bars"; QQQ-TEST MSG-1009-15:
@@ -25,7 +38,8 @@ v1.0  2026-10-07  OTV4TEST r261 (SEED.3, authored on SPX-TEST) — THE SEED GAPS
       10-07 would insert 0 and rejects exactly 2,722 as partial.
       WHAT IT DOES. Reads raw/last_trade for THE BOX'S instrument through tests/warehouse_source.stream_series
       (the one reader, WA §36a/§38.1; rows folded as they arrive, never accumulated) and builds each RTH minute's
-      bar from its ticks: open = first price, high = max, low = min, close = last, by the tick's ts_epoch.
+      bar from its ticks: open = first price, high = max, low = min, close = last, by the tick's ev_time (v1.3;
+      ts_epoch only when ev_time is missing).
       Volume is 0.0 - an index has none, and the seeded/feed bars carry 0.0 too.
       It writes a minute ONLY where the store has no 1m row (INSERT OR IGNORE; a held bar is never changed),
       only on a trading day (utils.market_calendar), only 09:30-15:59 ET, only within RETENTION_DAYS['1m']
@@ -141,25 +155,42 @@ def held_minutes(conn, sym, d) -> dict:
     return out
 
 
-def fold_day(sym, d, s3, meta):
+def _event_s(r):
+    """v1.3: the tick's SOURCE time in epoch seconds - ev_time (ms) - or None when it is missing, empty,
+    non-numeric or not positive (event_time is 0.0 on every SPX row; a 0 is absent, never 1970)."""
+    try:
+        e = float(r.get("ev_time"))
+    except (TypeError, ValueError):
+        return None
+    return e / 1000.0 if e > 0 else None
+
+
+def fold_day(sym, d, s3, meta, fallback=None):
     """Stream one date's last_trade for sym into {minute: [first, high, low, last, n]}. Ticks are de-duplicated
-    on (ts_epoch, price) - an object can be re-pushed - and ordered by ts_epoch within the minute."""
+    on (ts_epoch, price) - an object can be re-pushed - and BUCKETED AND ORDERED BY ev_time (v1.3), ts_epoch
+    only for a tick whose ev_time is missing. `fallback`, a dict, receives {"n": ticks that fell back}."""
     t0 = rth_open_ms(d) / 1000.0
     seen = set()
     bars = {}
+    fb = 0
     for r in ws.stream_series("last_trade", [d], symbols={sym}, s3=s3, meta=meta):
         if r.get("symbol", sym) != sym:
             continue
         try:
-            t = float(r.get("ts_epoch"))
+            ts = float(r.get("ts_epoch"))
             p = float(r.get("price"))
         except (TypeError, ValueError):
             continue
+        t = _event_s(r)
+        missing = t is None
+        if missing:
+            t = ts
         if not (p > 0) or not (t0 <= t < t0 + RTH_MINUTES * 60):
             continue
-        if (t, p) in seen:
+        if (ts, p) in seen:
             continue
-        seen.add((t, p))
+        seen.add((ts, p))
+        fb += missing
         m = int((t - t0) // 60)
         b = bars.get(m)
         if b is None:
@@ -172,6 +203,8 @@ def fold_day(sym, d, s3, meta):
             b[2] = max(b[2], p)
             b[3] = min(b[3], p)
             b[6] += 1
+    if fallback is not None:
+        fallback["n"] = fb
     return {m: (b[1], b[2], b[3], b[5], b[6]) for m, b in bars.items()}
 
 
@@ -228,11 +261,11 @@ def run(argv=None, s3=None, now_ms=None, log_path=None) -> int:
     if a.date:
         want = ws._valid(a.date)
         targets = [d for d in targets if d == want]
-    print(f"rebuild_1m_from_last_trade v1.2 - {sym} {IV}, window {window[0] if window else '-'}..{window[-1] if window else '-'} "
+    print(f"rebuild_1m_from_last_trade v1.3 - {sym} {IV}, window {window[0] if window else '-'}..{window[-1] if window else '-'} "
           f"({len(window)} trading day(s)), {len(complete)} complete, {len(targets)} with gaps; store {db}; "
           f"{'APPLY' if a.apply else 'DRY RUN (read-only)'}; MIN_TICKS_PER_MINUTE {MIN_TICKS_PER_MINUTE}, "
           f"BAR_TOLERANCE_HL_PTS {BAR_TOLERANCE_HL_PTS:.2f}, BAR_TOLERANCE_OC_PTS {BAR_TOLERANCE_OC_PTS:.2f}, "
-          f"MIN_VERIFIED_DAYS {MIN_VERIFIED_DAYS}", flush=True)
+          f"MIN_VERIFIED_DAYS {MIN_VERIFIED_DAYS}; ticks bucketed by ev_time (ts_epoch if missing)", flush=True)
     meta = ws.Meta(f"last_trade {window[0] if window else '-'}..{window[-1] if window else '-'} sym={sym}")
 
     # ── 1. VERIFY on every complete held day ───────────────────────────────────
@@ -277,7 +310,8 @@ def run(argv=None, s3=None, now_ms=None, log_path=None) -> int:
     plan = {}
     print("PLAN - missing RTH minutes per day:")
     for d in targets:
-        built = fold_day(sym, d, s3, meta)
+        fbk = {}
+        built = fold_day(sym, d, s3, meta, fallback=fbk)
         if meta.error:
             break
         t0 = rth_open_ms(d)
@@ -302,7 +336,8 @@ def run(argv=None, s3=None, now_ms=None, log_path=None) -> int:
         plan[d] = (rows, min_n)
         print(f"  {d}: held {len(held[d])}, missing {len(missing)}, "
               f"{'to insert' if a.apply else 'would insert'} {len(rows)}; refused: no ticks {none}, "
-              f"thin {thin}, poison {poison}" + (f"; thinnest inserted minute {min_n} tick(s)" if rows else ""))
+              f"thin {thin}, poison {poison}" + (f"; thinnest inserted minute {min_n} tick(s)" if rows else "")
+              + f"; {fbk.get('n', 0)} tick(s) without ev_time bucketed by ts_epoch")
     print(meta.banner())
     if meta.error:
         print("FAILED: the warehouse could not be read - nothing was written")
@@ -341,7 +376,7 @@ def run(argv=None, s3=None, now_ms=None, log_path=None) -> int:
                                "close, volume) VALUES (?,?,?,?,?,?,?,?)", rows)
             n = rw.total_changes - b
             log.write(f"{stamp} {sym} {IV} {d} inserted={n} planned={len(rows)} min_ticks={min_n} "
-                      f"source=raw/last_trade tol_hl={BAR_TOLERANCE_HL_PTS} tol_oc={BAR_TOLERANCE_OC_PTS} verified={','.join(verified)}\n")
+                      f"source=raw/last_trade bucket=ev_time tol_hl={BAR_TOLERANCE_HL_PTS} tol_oc={BAR_TOLERANCE_OC_PTS} verified={','.join(verified)}\n")
             print(f"  APPLIED {d}: {n} row(s) inserted of {len(rows)} planned")
             if n != len(rows):
                 print(f"  ⚠️ {d}: {len(rows) - n} planned row(s) were already present - the feed's rows win")
