@@ -1,5 +1,13 @@
 """
-data/candle_feed.py  v4.20
+data/candle_feed.py  v4.21
+v4.21 2026-10-12  OTV4TEST r277 (FEED.10b) — THE REFEREE WAITS 60 s, NOT 5, AND AN IDENTICAL REPLAY IS SILENT. From
+      1-REPORTER's critique (MSG-1REP-1012-12): the feed writes in flush batches, so a bar's FINAL live update can
+      land a few seconds after its close while its last 1m is still partial in the store; r276 (5 s) refereed it
+      against that short 1m sum and KEPT the stale bar (pinned: check_bar_referee R11, red on r276). Only a bar
+      closed REFEREE_CLOSE_GRACE_S = 60 s ago is refereed; every live final update takes the FEED.9b rule. An
+      identical replay returns before any decision (r276 logged it as an 'override - KEPT': 103 15m / 156 5m
+      lines on one restart; R12). The operator, 2026-10-12 19:14 ET: "We need to fix this problem before it
+      starts polluting more days than just today"; 19:16 ET: "Yes".
 v4.20 2026-10-12  OTV4TEST r276 (FEED.9b MIRROR OF otv4 r486 556bc2c + FEED.10, FORK-FIRST) — (1) FEED.9b: the upsert's
       WHERE is otv4 v4.14's _UPSERT_CANDLE_SQL byte-for-byte (a stored NULL yields; 1d is last-write-wins; a bar with
       volume yields unless the new version lost more than 5% of it; a 0-volume index keeps r271's range/open rule),
@@ -425,7 +433,8 @@ def _within_rth(ts_ms: int, interval: str) -> bool:
 
 # ── v4.20 FEED.10 — the 1m referee's spans, grace and helpers ───────────────────
 _REFEREE_SPAN_MIN = {"5m": 5, "15m": 15, "1h": 60}
-REFEREE_CLOSE_GRACE_S = 5.0     # a bar is CLOSED once its span + this has passed (r274's VWAP idea)
+REFEREE_CLOSE_GRACE_S = 60.0    # r277: a bar is refereed only once its span + this has passed - the final live
+                                # update and the bar's last 1m both land well inside it (was 5.0 in r276)
 
 
 def _referee_minutes(store_symbol: str, ts_ms: int, span: int) -> List[int]:
@@ -818,6 +827,8 @@ class FeedStore:
                 "symbol=? AND interval=? AND ts_epoch_ms=?", (r[0], r[1], r[2])).fetchone()
             if stored is None or any(x is None for x in stored[:4]):
                 return False                         # a stored NULL yields: FEED.9b's case
+            if tuple(r[3:8]) == tuple(stored):
+                return True                          # r277: an identical replay - nothing to decide or log
             want = _referee_minutes(r[0], r[2], span)
             if not want:
                 return False

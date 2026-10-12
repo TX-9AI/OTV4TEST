@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""tests/check_bar_referee.py  v1.0
+"""tests/check_bar_referee.py  v1.1
+v1.1  2026-10-12  OTV4TEST r277 (FEED.10b) — R11-R13, from 1-REPORTER's critique (MSG-1REP-1012-12). R11: a
+      bar's FINAL live update that lands 10 s after its close, while its last 1m is still partial in the store,
+      is TAKEN (r276's 5 s grace refereed it against the short 1m sum and kept the stale bar). R12: an
+      identical replay of a refereed bar logs nothing. R13: a half day's 12:00 hour has 60 minutes and its
+      13:00 hour none (falls back), a full day's 15:00 hour 60.
 v1.0  2026-10-12  OTV4TEST r276 (FEED.10, fork-first) — THE 1m REFEREE. FEED.9/9b decide from the two
       versions alone: they refuse a SHRUNKEN replay (10-08's vendor slice) and pass any version with MORE
       volume - and on 2026-10-12 this box's own 16:11/16:17 replays stored every complete QQQ 1h bar at
@@ -263,6 +268,32 @@ def main():
         r10b = get("QQQ", "1m", md[0][0]) == (754.0, 754.3, 753.9, 754.2, 98.0)   # 1m: 9b takes (>= 95%); never refereed
         check("R10 1m and 1d are never refereed (1d last-write-wins; 1m takes the 9b rule)",
               r10a and r10b, f"1d took={r10a} 1m took={r10b}")
+
+        # R11 — the final live update of a just-closed bar, its last minute still partial in the store
+        T11 = ms(2026, 10, 9, 10, 0)
+        m11 = [(T11 + k * 60_000, 750.0, 750.2, 749.9, 750.1, 20000.0) for k in range(5)]
+        part = list(m11); part[-1] = (T11 + 4 * 60_000, 750.0, 750.1, 749.95, 750.05, 7000.0)
+        mins_in("QQQ", part)
+        st.conn.execute("INSERT OR REPLACE INTO candles VALUES ('QQQ','5m',?,?,?,?,?,?)",
+                        (T11, 750.0, 750.2, 749.9, 750.05, 87000.0)); st.commit()      # the live bar so far
+        put(("QQQ", "5m", T11, 750.0, 750.2, 749.9, 750.1, 100000.0), now=T11 / 1000.0 + 300 + 10)
+        g11 = get("QQQ", "5m", T11)
+        check("R11 a FINAL live update 10 s after the close is TAKEN while its last minute is still partial",
+              g11 is not None and g11[4] == 100000.0, f"stored={g11}")
+        # R12 — an identical replay of a refereed (closed, complete) bar is silent
+        mins_in("QQQ", m11)
+        st.conn.execute("INSERT OR REPLACE INTO candles VALUES ('QQQ','5m',?,?,?,?,?,?)",
+                        (T11, 750.0, 750.2, 749.9, 750.1, 100000.0)); st.commit()     # stored == the replay below
+        seen.clear()
+        put(("QQQ", "5m", T11, 750.0, 750.2, 749.9, 750.1, 100000.0), now=late)
+        check("R12 an identical replay of a refereed bar logs no FEED.10 line",
+              not [m for m in seen if m.startswith("FEED.10")], str([m for m in seen if m.startswith("FEED.10")]))
+        # R13 — half day 2026-11-27 (13:00 bell): the 12:00 hour holds 60 minutes, the 13:00 hour none
+        _rm = getattr(cf, "_referee_minutes")
+        n12 = len(_rm("QQQ", ms(2026, 11, 27, 12, 0), 60)); n13 = len(_rm("QQQ", ms(2026, 11, 27, 13, 0), 60))
+        n15 = len(_rm("QQQ", ms(2026, 11, 25, 15, 0), 60)); n09 = len(_rm("QQQ", ms(2026, 11, 27, 9, 0), 60))
+        check("R13 half day: 12:00 hour = 60 minutes, 13:00 hour = none (falls back), 09:00 = 30; full day 15:00 = 60",
+              (n12, n13, n09, n15) == (60, 0, 30, 60), f"12:00={n12} 13:00={n13} 09:00={n09} full 15:00={n15}")
 
         # R7 — a referee exception falls back, does not raise, warns once
         real_min = getattr(cf, "_referee_minutes", None)
