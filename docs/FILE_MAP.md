@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-444 Python modules across 12 local packages.
+445 Python modules across 12 local packages.
 
-**Reached by:** 127 imported · 27 declared entry points · 218 referenced from a script, unit or doc but never imported · **72 by nothing here**.
+**Reached by:** 127 imported · 27 declared entry points · 219 referenced from a script, unit or doc but never imported · **72 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -42,7 +42,7 @@ execution.exit_engine); every such edge is listed below like any other.
 - `analysis/market_state.py` - the structural state assembly.
   **Carries the vocabulary, classifies nothing.**
 
-**Where the evidence lives:** `tests/` holds 256 standing
+**Where the evidence lives:** `tests/` holds 257 standing
 checks (`check_*.py`, all run by `tools/boot_sweep.py` at boot)
 plus the studies that produced every threshold in
 `docs/TRADES.md`. **A number in a strategy file should be
@@ -179,7 +179,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `data/candle_feed.py`
 - **calls:** `config.py`, `data/tasty_client.py`
-- **called by:** `analysis/tape_at_level.py`, `data/candle_logger.py`, `data/market_data.py`, `derived/counterfactual.py`, `derived/levels.py`, `derived/surface.py`, `execution/fill_observers.py`, `main.py`, `strategy/breakout_plan.py`, `tests/check_audit_20260823.py`, `tests/check_brk_cash_index.py`, `tests/check_brk_strike_inside.py`, `tests/check_brk_zero_risk.py`, `tests/check_ext_polarity.py`, `tests/check_feed_always_on.py`, `tests/check_feed_log_noise.py`, `tests/check_foreign_symbol_board.py`, `tests/check_rebuild_1m.py`, `tests/check_seed_candles.py`, `tests/check_spxw_settle_orcs_live.py`, `tests/check_store_paths.py`
+- **called by:** `analysis/tape_at_level.py`, `data/candle_logger.py`, `data/market_data.py`, `derived/counterfactual.py`, `derived/levels.py`, `derived/surface.py`, `execution/fill_observers.py`, `main.py`, `strategy/breakout_plan.py`, `tests/check_audit_20260823.py`, `tests/check_brk_cash_index.py`, `tests/check_brk_strike_inside.py`, `tests/check_brk_zero_risk.py`, `tests/check_ext_polarity.py`, `tests/check_feed_always_on.py`, `tests/check_feed_log_noise.py`, `tests/check_foreign_symbol_board.py`, `tests/check_rebuild_1m.py`, `tests/check_replay_overwrite.py`, `tests/check_seed_candles.py`, `tests/check_spxw_settle_orcs_live.py`, `tests/check_store_paths.py`
 
 ### `data/candle_logger.py`
 - **calls:** `config.py`, `data/candle_feed.py`
@@ -1328,6 +1328,10 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tests/check_rehearsal_toggle.py`
 - **calls:** `main.py`, `utils/time_utils.py`
 - **called by:** (nothing — no importer and no mention in any script, unit or doc here)
+
+### `tests/check_replay_overwrite.py`
+- **calls:** `data/candle_feed.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_resting_stop.py`
 - **calls:** `config.py`, `execution/exit_engine.py`, `execution/position_manager.py`, `execution/resting_stop.py`
