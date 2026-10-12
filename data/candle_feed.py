@@ -1,5 +1,16 @@
 """
-data/candle_feed.py  v4.19
+data/candle_feed.py  v4.20
+v4.20 2026-10-12  OTV4TEST r276 (FEED.9b MIRROR OF otv4 r486 556bc2c + FEED.10, FORK-FIRST) — (1) FEED.9b: the upsert's
+      WHERE is otv4 v4.14's _UPSERT_CANDLE_SQL byte-for-byte (a stored NULL yields; 1d is last-write-wins; a bar with
+      volume yields unless the new version lost more than 5% of it; a 0-volume index keeps r271's range/open rule),
+      rows run one by one, and the refusal log carries the kept and refused OHLCV. (2) FEED.10, THE 1m REFEREE: a
+      CLOSED 5m/15m/1h bar whose every minute this store holds keeps whichever version is closer to its own 1m
+      aggregate - an INFLATED replay is caught as well as a shrunken one (10-12: this box's own replays stored every
+      complete QQQ 1h bar at exactly 2.0x its 1m volume; FEED.9b passes any version with more volume). Forming bars,
+      incomplete minutes, stored NULLs and any referee error take the FEED.9b rule with no extra read. ⚠️ The 1m set
+      is the same vendor's and completeness is by count (an open limitation, BACKLOG FEED.10). The operator,
+      2026-10-12 19:14 ET: "We need to fix this problem before it starts polluting more days than just today".
+      GATES check_replay_overwrite v1.1 U1-U13 (byte-identical with otv4's but its version line), check_bar_referee R1-R9.
 v4.19 2026-10-12  OTV4TEST r271 (FEED.9, SHARED; MIRROR OF otv4 r485 eed0069) — A HISTORY REPLAY CANNOT SHRINK A BAR WE
       ALREADY HOLD. upsert_candles was INSERT OR REPLACE (last write wins); every (re)subscribe replays history, and
       the vendor's 2026-10-08 11:50-11:55 history held only the last ~2 minutes, so the live QQQ 5m 11:55 bar
@@ -412,6 +423,46 @@ def _within_rth(ts_ms: int, interval: str) -> bool:
     return (sh * 60 + sm) <= minutes < (eh * 60 + em)
 
 
+# ── v4.20 FEED.10 — the 1m referee's spans, grace and helpers ───────────────────
+_REFEREE_SPAN_MIN = {"5m": 5, "15m": 15, "1h": 60}
+REFEREE_CLOSE_GRACE_S = 5.0     # a bar is CLOSED once its span + this has passed (r274's VWAP idea)
+
+
+def _referee_minutes(store_symbol: str, ts_ms: int, span: int) -> List[int]:
+    """The 1m starts a COMPLETE bar must hold. *_EXT: every minute of the span. A
+    plain (RTH) route: only the minutes inside 09:30 to the day's bell (half days
+    included), so the 09:00 hour bar needs its 30. [] = not refereeable (no
+    trading day / no RTH minute)."""
+    mins = [int(ts_ms) + k * 60_000 for k in range(span)]
+    if _is_ext_route(store_symbol):
+        return mins
+    from utils import market_calendar as _mc
+    d = datetime.fromtimestamp(ts_ms / 1000.0, tz=timezone.utc).astimezone(ET).date()
+    if not _mc.is_trading_day(d):
+        return []
+    bell = _mc.close_time(d)
+    lo, hi = 9 * 60 + 30, bell.hour * 60 + bell.minute
+    out = []
+    for m in mins:
+        et = datetime.fromtimestamp(m / 1000.0, tz=timezone.utc).astimezone(ET)
+        if lo <= et.hour * 60 + et.minute < hi:
+            out.append(m)
+    return out
+
+
+def _referee_dist(v: Tuple, agg: Tuple) -> Tuple:
+    """Distance of one OHLCV version from the 1m aggregate, compared as a tuple:
+    with volume, relative volume error first, then |high|+|low|; a 0-volume index,
+    |high|+|low| first, then |open|+|close|. Rounded so float noise is a tie."""
+    o, h, l, c = (float(x) for x in v[:4])
+    vol = float(v[4] or 0.0)
+    ao, ah, al, ac, av = (float(x or 0.0) for x in agg)
+    hl = abs(h - ah) + abs(l - al)
+    if av > 0:
+        return (round(abs(vol - av) / av, 9), round(hl, 9))
+    return (round(hl, 9), round(abs(o - ao) + abs(c - ac), 9))
+
+
 VIX_SYMBOL        = os.environ.get("OT_DXFEED_VIX", "VIX")
 VIX_INTERVALS     = ("1m", "1d")
 
@@ -669,47 +720,142 @@ class FeedStore:
         with self._lock:
             self._upsert_candles_locked(rows)
 
+    # v4.14 FEED.9b — when a stored bar yields. Three cases, in this order:
+    #   · a stored NULL price always yields;
+    #   · 1d is last-write-wins, as before v4.13: the vendor's daily is its
+    #     official bar and a replay CORRECTS it (CVX 2026-10-12 stored an
+    #     off-tape low of 211.02 against a 1m low of 213.75; v4.13 refused the
+    #     vendor's correction twice, and that bar becomes tomorrow's prior-day
+    #     low);
+    #   · a bar WITH volume yields unless the new version lost more than 5% of
+    #     it. The 10-08 slices lost 14-90%; a correction that removes a bad
+    #     print loses almost none and is now taken, narrower range or not;
+    #   · a 0-volume bar (index: SPX, VIX; SQLite stores NaN as NULL, hence
+    #     the coalesce) keeps v4.13's rule: range no narrower, and the same
+    #     open or a wider range.
+    _UPSERT_CANDLE_SQL = (
+        "INSERT INTO candles "
+        "(symbol, interval, ts_epoch_ms, open, high, low, close, volume) "
+        "VALUES (?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(symbol, interval, ts_epoch_ms) DO UPDATE SET "
+        "open=excluded.open, high=excluded.high, low=excluded.low, "
+        "close=excluded.close, volume=excluded.volume "
+        "WHERE candles.open IS NULL OR candles.high IS NULL "
+        "OR candles.low IS NULL OR candles.close IS NULL "
+        "OR excluded.interval = '1d' "
+        "OR (coalesce(candles.volume,0) > 0 AND "
+        "coalesce(excluded.volume,0) >= 0.95 * candles.volume) "
+        "OR (coalesce(candles.volume,0) = 0 "
+        "AND excluded.high >= candles.high AND excluded.low <= candles.low "
+        "AND (excluded.open = candles.open "
+        "OR excluded.high > candles.high OR excluded.low < candles.low))")
+
+    # v4.20 FEED.10 (fork-first) — THE 1m REFEREE. FEED.9/9b decide from the two
+    # versions alone, so they can catch a SHRUNKEN replay (10-08: the vendor's
+    # slice) but never an INFLATED one: on 2026-10-12 this box's own 16:11/16:17
+    # replays stored every complete QQQ 1h bar at EXACTLY 2.0x the volume of its
+    # 60 minutes (mainline's live-pushed 15:00 bar: 1,629,246 = the 1m sum; ours:
+    # 3,258,492), and a version with MORE volume always passes the 9b rule. For a
+    # CLOSED 5m/15m/1h bar whose every minute this store holds, the referee keeps
+    # whichever version (stored or replayed) is closer to the 1m aggregate
+    # (first open, max high, min low, last close, volume sum): volume first, then
+    # high/low; a 0-volume index compares high/low, then open/close. A tie keeps
+    # the stored row. Anything else - a forming bar, a minute missing, a stored
+    # NULL, any error - takes the FEED.9b rule unchanged, with NO extra read on
+    # a forming bar (every live update of the forming bar conflicts with its own
+    # stored row). ⚠️ THE REFEREE'S SOURCE IS THE SAME VENDOR: the 1m rows are
+    # themselves guarded only by FEED.9/9b and are never refereed, and
+    # completeness is by minute COUNT - a 1m slice (thin minutes) would pass as
+    # complete and mislead it. Named as an open limitation (BACKLOG FEED.10).
     def _upsert_candles_locked(self, rows: List[Tuple]):
-        # v4.13 FEED.9 — a stored bar is replaced only by a version that holds
-        # AT LEAST AS MUCH TAPE: volume no lower, range no narrower, and either
-        # the same open or strictly more of something. A forming bar only grows,
-        # so the live stream always passes; a history replay that carries only
-        # a slice of a closed bar is refused. Index volume is 0 (SQLite stores
-        # NaN as NULL), hence the coalesce; a stored NULL price always yields.
-        # Refusals are counted per (symbol, interval): *_EXT has two sources
-        # (the RTH guard's re-key and the EXT subscription).
-        groups: Dict[Tuple[str, str], List[Tuple]] = {}
+        # Refusals are reported per (symbol, interval) with the stored and the
+        # refused values: *_EXT has two sources (the RTH guard's re-key and the
+        # EXT subscription), and a refusal has to be judgeable after the fact.
+        refused: Dict[Tuple[str, str], List[Tuple]] = {}
+        overrode: Dict[Tuple[str, str], List[Tuple]] = {}
+        now_ms = _time.time() * 1000.0
         for r in rows:
-            groups.setdefault((r[0], r[1]), []).append(r)
-        for (sym, iv), grp in groups.items():
-            before = self.conn.total_changes
-            self._upsert_group_locked(grp)
-            refused = len(grp) - (self.conn.total_changes - before)
-            if refused > 0:
-                logger.info("FEED.9: kept %d stored %s %s bar(s) a smaller "
-                            "version would have overwritten", refused, sym, iv)
+            span = _REFEREE_SPAN_MIN.get(r[1])
+            if span is not None and r[2] + span * 60_000 + REFEREE_CLOSE_GRACE_S * 1000.0 <= now_ms:
+                done = self._referee_one_locked(r, span, refused, overrode)
+                if done:
+                    continue
+            if self.conn.execute(self._UPSERT_CANDLE_SQL, r).rowcount == 0:
+                refused.setdefault((r[0], r[1]), []).append(r)
+        for (sym, iv), rr in refused.items():
+            first = rr[0]
+            kept = self.conn.execute(
+                "SELECT open, high, low, close, volume FROM candles WHERE "
+                "symbol=? AND interval=? AND ts_epoch_ms=?",
+                (sym, iv, first[2])).fetchone()
+            logger.info("FEED.9: kept %d stored %s %s bar(s) a smaller "
+                        "version would have overwritten; first ts=%d kept "
+                        "OHLCV=%s refused OHLCV=%s", len(rr), sym, iv,
+                        first[2], kept, tuple(first[3:8]))
+        for (sym, iv), oo in overrode.items():
+            r, stored, agg, take = oo[0]
+            logger.info("FEED.10: the 1m referee overrode the FEED.9b rule on %d %s %s bar(s); "
+                        "first ts=%d %s stored OHLCV=%s replay OHLCV=%s 1m aggregate OHLCV=%s",
+                        len(oo), sym, iv, r[2], "TOOK the replay" if take else "KEPT the stored bar",
+                        stored, tuple(r[3:8]), agg)
         now = _time.time()
         touched = {(r[0], r[1]) for r in rows}
         self.conn.executemany(
             "INSERT OR REPLACE INTO feed_meta (symbol, interval, last_write_epoch) "
             "VALUES (?,?,?)", [(s, i, now) for (s, i) in touched])
 
-    def _upsert_group_locked(self, rows: List[Tuple]):
-        self.conn.executemany(
-            "INSERT INTO candles "
-            "(symbol, interval, ts_epoch_ms, open, high, low, close, volume) "
-            "VALUES (?,?,?,?,?,?,?,?) "
-            "ON CONFLICT(symbol, interval, ts_epoch_ms) DO UPDATE SET "
-            "open=excluded.open, high=excluded.high, low=excluded.low, "
-            "close=excluded.close, volume=excluded.volume "
-            "WHERE candles.open IS NULL OR candles.high IS NULL "
-            "OR candles.low IS NULL OR candles.close IS NULL OR ("
-            "coalesce(excluded.volume,0) >= coalesce(candles.volume,0) "
-            "AND excluded.high >= candles.high AND excluded.low <= candles.low "
-            "AND (excluded.open = candles.open "
-            "OR coalesce(excluded.volume,0) > coalesce(candles.volume,0) "
-            "OR excluded.high > candles.high OR excluded.low < candles.low))",
-            rows)
+    def _referee_one_locked(self, r: Tuple, span: int, refused, overrode) -> bool:
+        """FEED.10 for ONE closed 5m/15m/1h row. True when it handled the row; False
+        sends the row to the FEED.9b rule unchanged. Never raises."""
+        try:
+            if self.conn.execute(
+                    "INSERT OR IGNORE INTO candles "
+                    "(symbol, interval, ts_epoch_ms, open, high, low, close, volume) "
+                    "VALUES (?,?,?,?,?,?,?,?)", r).rowcount == 1:
+                return True                          # a new bar: nothing to referee
+            stored = self.conn.execute(
+                "SELECT open, high, low, close, volume FROM candles WHERE "
+                "symbol=? AND interval=? AND ts_epoch_ms=?", (r[0], r[1], r[2])).fetchone()
+            if stored is None or any(x is None for x in stored[:4]):
+                return False                         # a stored NULL yields: FEED.9b's case
+            want = _referee_minutes(r[0], r[2], span)
+            if not want:
+                return False
+            mins = self.conn.execute(
+                "SELECT ts_epoch_ms, open, high, low, close, volume FROM candles WHERE "
+                "symbol=? AND interval='1m' AND ts_epoch_ms>=? AND ts_epoch_ms<? "
+                "ORDER BY ts_epoch_ms", (r[0], want[0], want[-1] + 60_000)).fetchall()
+            got = [m for m in mins if m[0] in set(want)]
+            if len(got) != len(want) or any(x is None for m in got for x in m[1:5]):
+                return False                         # incomplete: the 9b rule decides
+            agg = (got[0][1], max(m[2] for m in got), min(m[3] for m in got), got[-1][4],
+                   sum((m[5] or 0.0) for m in got))
+            take = _referee_dist(tuple(r[3:8]), agg) < _referee_dist(stored, agg)
+            self.conn.execute("SAVEPOINT feed10")
+            took = self.conn.execute(self._UPSERT_CANDLE_SQL, r).rowcount > 0
+            if took and not take:
+                self.conn.execute("ROLLBACK TO feed10")
+            elif take and not took:
+                self.conn.execute(
+                    "UPDATE candles SET open=?, high=?, low=?, close=?, volume=? WHERE "
+                    "symbol=? AND interval=? AND ts_epoch_ms=?", tuple(r[3:8]) + tuple(r[0:3]))
+            self.conn.execute("RELEASE feed10")
+            if took != take:
+                overrode.setdefault((r[0], r[1]), []).append((r, tuple(stored), agg, take))
+            elif not take:
+                refused.setdefault((r[0], r[1]), []).append(r)
+            return True
+        except Exception as exc:                     # noqa: BLE001 — fall back, never raise
+            try:                                     # undo anything half-done, then close the savepoint
+                self.conn.execute("ROLLBACK TO feed10")
+                self.conn.execute("RELEASE feed10")
+            except Exception:                        # noqa: BLE001 — no savepoint was open
+                pass
+            if not getattr(self, "_referee_err_logged", False):
+                self._referee_err_logged = True
+                logger.warning("FEED.10: the 1m referee failed (%s) - falling back to the "
+                               "FEED.9b rule; said once", exc)
+            return False
 
     def purge_poison(self) -> int:
         """Delete any poison rows already in the store (v3.2). Runs at feed
