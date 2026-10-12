@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-447 Python modules across 12 local packages.
+448 Python modules across 12 local packages.
 
-**Reached by:** 128 imported · 27 declared entry points · 220 referenced from a script, unit or doc but never imported · **72 by nothing here**.
+**Reached by:** 128 imported · 27 declared entry points · 221 referenced from a script, unit or doc but never imported · **72 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -42,7 +42,7 @@ execution.exit_engine); every such edge is listed below like any other.
 - `analysis/market_state.py` - the structural state assembly.
   **Carries the vocabulary, classifies nothing.**
 
-**Where the evidence lives:** `tests/` holds 258 standing
+**Where the evidence lives:** `tests/` holds 259 standing
 checks (`check_*.py`, all run by `tools/boot_sweep.py` at boot)
 plus the studies that produced every threshold in
 `docs/TRADES.md`. **A number in a strategy file should be
@@ -211,7 +211,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `data/market_data.py`
 - **calls:** `config.py`, `data/candle_feed.py`, `data/tasty_client.py`, `utils/time_utils.py`
-- **called by:** `analysis/get_orb_range.py`, `data/data_cache.py`, `data/macro_data.py`, `derived/indicators.py`, `main.py`, `query.py`, `tests/check_bfly_vwap_band.py`, `tests/check_db_handles.py`, `tests/check_half_day.py`
+- **called by:** `analysis/get_orb_range.py`, `data/data_cache.py`, `data/macro_data.py`, `derived/indicators.py`, `main.py`, `query.py`, `tests/check_bfly_vwap_band.py`, `tests/check_db_handles.py`, `tests/check_half_day.py`, `tests/check_vwap_closed_bars.py`
 
 ### `data/open_interest.py`
 - **calls:** (none)
@@ -267,7 +267,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `derived/indicators.py`
 - **calls:** `data/market_data.py`, `derived/base.py`
-- **called by:** `derived/registry.py`, `tests/check_bfly_vwap_band.py`, `tests/check_indicator_votes.py`
+- **called by:** `derived/registry.py`, `tests/check_bfly_vwap_band.py`, `tests/check_indicator_votes.py`, `tests/check_vwap_closed_bars.py`
 
 ### `derived/level_book.py`
 - **calls:** `derived/__init__.py`, `derived/level_rules.py`
@@ -1552,6 +1552,10 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tests/check_volt_sizing.py`
 - **calls:** `main.py`, `risk/__init__.py`, `risk/risk_manager.py`, `strategy/base_strategy.py`, `strategy/volt_plan.py`, `strategy/volt_strategy.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/ENV.md`
+
+### `tests/check_vwap_closed_bars.py`
+- **calls:** `data/market_data.py`, `derived/indicators.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
 ### `tests/check_wake_box.py`
 - **calls:** (none)

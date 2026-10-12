@@ -1,5 +1,13 @@
 """
-derived/indicators.py  v4.4
+derived/indicators.py  v4.5
+v4.5  2026-10-12  OTV4TEST r274 (VWAP.2) — THE SESSION VWAP FOLDS ONLY CLOSED 1m BARS. The tick frame's
+      last row is the FORMING minute; it was folded the first time it was seen - seconds in - and then
+      skipped as already folded, so each minute counted only its first seconds. MEASURED 2026-10-12
+      14:52 ET: 940,524 shares summed where the closed bars held 7,138,959 (13%); over 25 sessions the
+      value sat a median 0.097 and up to 1.729 (09-28) from the closed-bar VWAP. A bar is folded once
+      its minute has ended plus VWAP_CLOSE_GRACE_S (the feed rewrites a bar until its last update
+      lands), complete. The operator, 2026-10-12 14:52 ET: "based on correct VWAP plus ranging. I know
+      we've struggled a little bit with our VWAP formulas." GATE tests/check_vwap_closed_bars.py V1-V3.
 v4.4  2026-09-22  OTV4TEST r101 — r96's COLD-START REBUILD WAS CALLED WITH AN
       EMPTY SYMBOL, AND FELL THROUGH IN SILENCE WHEN IT CAME BACK EMPTY. It
       read `self.symbol`, but `derive()` resolves `self.symbol or
@@ -96,6 +104,10 @@ def _f(v) -> Optional[float]:
     return None if f != f else f          # NaN -> None, not 0.0
 
 
+# r274 (VWAP.2): a 1m bar is folded only once its minute ended at least this long ago.
+VWAP_CLOSE_GRACE_S = 5.0
+
+
 class IndicatorEngine(DerivedEngine):
     name = "indicators"
     table = "indicator_series"
@@ -188,10 +200,13 @@ class IndicatorEngine(DerivedEngine):
                     logger.warning("VWAP cold start: deep 1m fetch failed (%s) "
                                    "— folding the tick frame only; the value "
                                    "may cover a partial session", _de)
+            _closed_before_ms = (time.time() - VWAP_CLOSE_GRACE_S) * 1000.0 - 60_000.0
             for ts, row in df_1m.iterrows():
                 ms = int(ts.timestamp() * 1000)
                 if ms < anchor_ms:
                     continue                       # belongs to a prior session
+                if ms > _closed_before_ms:
+                    break                          # r274: still forming - folded complete on a later tick
                 if self._last_bar_ms is not None and ms <= self._last_bar_ms:
                     continue                       # already folded
                 h, l, c = _f(row.get("high")), _f(row.get("low")), _f(row.get("close"))
