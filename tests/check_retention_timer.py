@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""tests/check_retention_timer.py — v1.1
+"""tests/check_retention_timer.py — v1.2
+v1.2  2026-10-12 — OTV4TEST r275 (OPS.23). T11/T12: THE PURGE STOPS THE CANDLE-FEED AROUND ITSELF.
+      Since 10-08 the purge's VACUUM out-waited the feed's 5 s sqlite timeout and the feed
+      crash-looped 7-18 times, replaying history on every restart. T11: the rendered unit runs
+      deploy/purge_feed_guard.sh stop as ExecStartPre and start as ExecStopPost, both with "+"
+      (root, past User=ubuntu). T12 DRIVES the real guard against a stub systemctl: it stops only
+      an ACTIVE feed, restarts only a feed IT stopped, and exits 0 even when systemctl fails.
+      The operator, 2026-10-12 16:15 ET: "Yes, fix it all. Land what you can."
 THE NIGHTLY RETENTION PURGE TIMER RENDERS A UNIT THAT CAN RUN, WHEN THE OPERATOR ASKED.
 
 v1.1  2026-09-19 — OTV4TEST r53. T5 REPINNED TO NIGHTLY 16:05 ET (operator: "You
@@ -73,6 +80,9 @@ def _scratch(tmp, with_venv):
               os.path.join(tree, "data"), etc, stub):
         os.makedirs(d)
     shutil.copy(os.path.join(_root, INSTALLER), os.path.join(tree, INSTALLER))
+    _g = os.path.join(_root, "deploy", "purge_feed_guard.sh")    # r275: T11 checks the rendered path exists
+    if os.path.isfile(_g):
+        shutil.copy(_g, os.path.join(tree, "deploy", "purge_feed_guard.sh"))
     shutil.copy(os.path.join(_root, "warehouse", "retention_purge.py"),
                 os.path.join(tree, "warehouse", "retention_purge.py"))
     if with_venv:
@@ -126,6 +136,12 @@ def main():
             code = [l for l in svc.splitlines() if not l.lstrip().startswith("#")]
             check("T7 the service stops and halts nothing",
                   not any("shutdown" in l or "systemctl" in l or "poweroff" in l for l in code))
+            guard = os.path.join(tree, "deploy", "purge_feed_guard.sh")
+            pre = [l for l in svc.splitlines() if l.startswith("ExecStartPre=")]
+            post = [l for l in svc.splitlines() if l.startswith("ExecStopPost=")]
+            check("T11 the unit wraps the purge in the feed guard: ExecStartPre=+ ... stop, ExecStopPost=+ ... start",
+                  pre == [f"ExecStartPre=+/bin/bash {guard} stop"] and post == [f"ExecStopPost=+/bin/bash {guard} start"]
+                  and os.path.isfile(guard), f"pre={pre} post={post}".replace(tree, "<repo>"))
             check("T8 it enables the timer (through the stub, never executed)",
                   "[stub] systemctl enable --now optbot-retention-purge.timer" in r.stdout, r.stdout[-120:])
     with tempfile.TemporaryDirectory() as tmp:
@@ -134,6 +150,40 @@ def main():
                            timeout=60, env={"PATH": path, "MH_ETC": etc, "HOME": tmp})
         check("T9 with no venv the installer REFUSES, writing no unit",
               r.returncode != 0 and not os.listdir(etc) and "refusing" in r.stderr, f"rc={r.returncode}")
+    # T12 - the REAL guard script against a stub systemctl (records every call; is-active and
+    # stop/start outcomes set per case). Nothing here can reach the real systemd.
+    _guard = os.path.join(_root, "deploy", "purge_feed_guard.sh")
+    def _run_guard(tmp, action, active, fail=False):
+        bindir = os.path.join(tmp, "bin"); os.makedirs(bindir, exist_ok=True)
+        log = os.path.join(tmp, "calls.log")
+        with open(os.path.join(bindir, "systemctl"), "w") as f:
+            f.write("#!/bin/bash\necho \"$*\" >> %s\n" % log
+                    + ("[ \"$1\" = is-active ] && exit %d\n" % (0 if active else 3))
+                    + ("exit 1\n" if fail else "exit 0\n"))
+        os.chmod(os.path.join(bindir, "systemctl"), 0o755)
+        r = subprocess.run(["bash", _guard, action], capture_output=True, text=True, timeout=30,
+                           env={"PATH": bindir + ":/usr/bin:/bin", "OT_PURGE_FEED_FLAG": os.path.join(tmp, "flag")})
+        calls = open(log).read().split("\n") if os.path.exists(log) else []
+        return r.returncode, [c for c in calls if c], os.path.exists(os.path.join(tmp, "flag"))
+    if not os.path.isfile(_guard):
+        check("T12 the feed guard exists", False, "deploy/purge_feed_guard.sh missing")
+    else:
+        with tempfile.TemporaryDirectory() as tmp:
+            a1 = _run_guard(tmp, "stop", active=True)
+            a2 = _run_guard(tmp, "start", active=False)
+        with tempfile.TemporaryDirectory() as tmp:
+            b1 = _run_guard(tmp, "stop", active=False)
+            b2 = _run_guard(tmp, "start", active=False)
+        with tempfile.TemporaryDirectory() as tmp:
+            c1 = _run_guard(tmp, "stop", active=True, fail=True)
+        unit = "candle-feed.service"
+        check("T12 the guard stops only an ACTIVE feed, restarts only one IT stopped, never fails",
+              a1[0] == 0 and a1[1] == [f"is-active --quiet {unit}", f"stop {unit}"] and a1[2]
+              and a2[0] == 0 and a2[1][-1:] == [f"start {unit}"] and not a2[2]
+              and b1[0] == 0 and b1[1] == [f"is-active --quiet {unit}"] and not b1[2]
+              and b2[0] == 0 and not any(x.startswith("start") for x in b2[1])
+              and c1[0] == 0 and not c1[2],
+              f"active={a1},{a2} inactive={b1},{b2} failing={c1}")
     sa = shutil.which("systemd-analyze")
     if sa:
         r = subprocess.run([sa, "calendar", "*-*-* 16:05:00 America/New_York"],

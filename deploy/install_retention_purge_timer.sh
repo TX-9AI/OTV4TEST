@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
-# deploy/install_retention_purge_timer.sh — v1.1
+# deploy/install_retention_purge_timer.sh — v1.2
+# v1.2  2026-10-12  OTV4TEST r275 (OPS.23). THE PURGE STOPS THE CANDLE-FEED AROUND ITSELF.
+#       ExecStartPre=+deploy/purge_feed_guard.sh stop / ExecStopPost=+... start (root, past
+#       User=ubuntu; ExecStopPost runs even when the purge fails, so the feed always comes
+#       back). Since 10-08 the VACUUM out-waited the feed's 5 s sqlite timeout and the feed
+#       crash-looped 7-18 times at 16:05-16:09 ET, replaying history on every restart. The
+#       midnight halt shuts the machine down, so there is no overnight slot: one deliberate
+#       ~4 min gap after the close replaces the loop. The guard stops only an ACTIVE feed and
+#       restarts only one it stopped. The operator, 2026-10-12 16:15 ET: "Yes, fix it all."
 # v1.1  2026-09-19  OTV4TEST r53. THE PURGE GOES NIGHTLY, 16:05 ET, BY INSTRUCTION.
 #       Operator: "You can make it a nightly purge, but have it run at 1605."
 #       🔴 AND THE CADENCE WAS FIRST CHANGED BY HAND ON THE LIVE UNIT, WHICH IS
@@ -87,7 +95,10 @@ After=network-online.target
 Type=oneshot
 User=ubuntu
 WorkingDirectory=$DIR
+# r275 (OPS.23): the feed is stopped for the purge and started after it ('+' = root).
+ExecStartPre=+/bin/bash $DIR/deploy/purge_feed_guard.sh stop
 ExecStart=$PY $DIR/warehouse/retention_purge.py --apply
+ExecStopPost=+/bin/bash $DIR/deploy/purge_feed_guard.sh start
 StandardOutput=append:$DIR/logs/retention_purge.log
 StandardError=append:$DIR/logs/retention_purge.log
 # The deletes and a gated vacuum of a ~600 MB feed store; an hour is generous.
