@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""check_entry_windows.py — v1.6
+"""check_entry_windows.py — v1.7
+v1.7  2026-10-12  OTV4TEST r273 (BFLY.10) — W4c: THE BUTTERFLIES OPEN AT 13:00, DRIVEN. The operator,
+      2026-10-12 12:26 ET: "For TEST repo, I want to reduce the fly window to 1300 or later starting
+      tomorrow". GEXPinButterfly prepare() is dormant on entry_window at 12:59 and records it at 13:00;
+      ENTRY_WINDOWS starts both flies (GEX, ATP) at (13, 0). Mirrors otv4 r484 W4c's method.
 v1.6  2026-10-02  OTV4TEST r187 (ROSTER.1) — W6 RE-POINTED BY THE RULING. The operator,
       2026-10-02: "let's impose a 1029 debit cutoff rule, but exempts the GEX pin fly".
       The directional debit cutoff is 10:30 (exclusive; last entry 10:29) and is the
@@ -162,6 +166,20 @@ def main():
     check("W4 the butterfly STRATEGY honours the config noon rule",
           _hm(_bf.EARLIEST_ET) == tuple(C.BUTTERFLY_ENTRY_START_ET),
           f"strategy {_bf.EARLIEST_ET} vs config {C.BUTTERFLY_ENTRY_START_ET}")
+
+    # ── W4c — r273 (BFLY.10): 13:00, DRIVEN through prepare(), not read off a constant ─
+    def _window_open(hhmm):
+        # Out of window prepare() returns dormant BEFORE recording the entry_window
+        # condition; in window it records it. The condition list is the signal.
+        p = _bf.GEXPinButterflyStrategy().prepare(gex=None, price_now=100.0, now_et=hhmm)
+        return "entry_window" in repr(getattr(p, "conditions", p))
+
+    _ew = C.ENTRY_WINDOWS
+    check("W4c both flies start at (13, 0) and GEX prepare() is dormant at 12:59, open at 13:00",
+          tuple(_ew["GEXPinButterfly"][0]) == (13, 0) and tuple(_ew["ATPButterfly"][0]) == (13, 0)
+          and not _window_open("12:59") and _window_open("13:00"),
+          f"GEX={_ew['GEXPinButterfly']} ATP={_ew['ATPButterfly']} "
+          f"12:59 open={_window_open('12:59')} 13:00 open={_window_open('13:00')}")
 
     # r128 — the constant the LIVE gate compares against (sweep_plan.py:132,
     # applied in prepare()), not sweep_credit_spread.EARLIEST_ET, which nothing

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tests/check_cap_fly_exempt.py  v1.0
+tests/check_cap_fly_exempt.py  v1.1
+v1.1  2026-10-12  OTV4TEST r273 (BFLY.10) — the in-window clock 12:30 -> 13:30 (IN_WINDOW, used by F6-F11). r273 (BFLY.10), by ruling - the operator, 2026-10-12: "reduce the fly window to 1300".
 
 At the DAILY CATASTROPHIC LOSS CAP every strategy is refused EXCEPT the two
 butterflies, which are still asked inside their own window and their own
@@ -28,7 +29,7 @@ Stores are scratch (the harness's, or this file's own when run by hand).
   F4   config.ADMISSION_RULES can switch an exemption OFF and cannot GRANT one
   F5   cap intact: the exemption changes no verdict (flag on vs flag off, every
        strategy, every half hour 09:30-16:00)
-  F6   REAL dispatch, capped, 12:30: the pin fly then the ATP fly are asked, and
+  F6   REAL dispatch, capped, 13:30: the pin fly then the ATP fly are asked, and
        NO other strategy is admitted or reaches the funnel
   F7   REAL dispatch, capped: a butterfly that fires is executed
   F8   REAL dispatch, capped, 10:00 (outside both windows): nothing is asked
@@ -102,7 +103,7 @@ import config                                                   # noqa: E402
 GEX, ATP = PMOD.GEXFLY, PMOD.ATPFLY
 FLIES = (GEX, ATP)
 TABLE = PMOD.rules()
-IN_WINDOW = (12, 30)            # inside both butterfly windows
+IN_WINDOW = (13, 30)            # inside both butterfly windows (r273: was 12:30)
 
 
 def _facts(name, now=IN_WINDOW, **kw):
@@ -304,18 +305,18 @@ _R = {}
 
 
 def _f6():
-    _R["f6"] = _drive((12, 30))
+    _R["f6"] = _drive(IN_WINDOW)
     asked, funnel, executed, admitted = _R["f6"]
     return (asked == ["GEX", "ATP"] and funnel == ["GEXPinButterfly", "ATPButterfly"]
             and executed == [] and admitted == sorted(FLIES))
 
 
-guard("F6 REAL dispatch, capped, 12:30: the pin fly then the ATP fly are asked; nothing else is admitted or reaches the funnel",
+guard("F6 REAL dispatch, capped, 13:30: the pin fly then the ATP fly are asked; nothing else is admitted or reaches the funnel",
       _f6, lambda: str(_R.get("f6")))
 
 
 def _f7():
-    _R["f7"] = _drive((12, 30), fire=_Fired())
+    _R["f7"] = _drive(IN_WINDOW, fire=_Fired())
     asked, funnel, executed, _adm = _R["f7"]
     return asked == ["GEX"] and executed == ["GEXPinButterfly"]
 
@@ -334,7 +335,7 @@ guard("F8 REAL dispatch, capped, 10:00 (outside both windows): nothing is asked"
 
 
 def _f9():
-    _R["f9"] = _drive((12, 30), pm_raises=True)
+    _R["f9"] = _drive(IN_WINDOW, pm_raises=True)
     return _R["f9"][:3] == ([], [], [])
 
 
@@ -343,7 +344,7 @@ guard("F9 REAL dispatch, capped, admission table unavailable: nothing is asked a
 
 
 def _f10():
-    _R["f10"] = _drive((12, 30), traded=("GEXPinButterfly", "ATPButterfly"))
+    _R["f10"] = _drive(IN_WINDOW, traded=("GEXPinButterfly", "ATPButterfly"))
     return _R["f10"][0] == [] and _R["f10"][2] == []
 
 
@@ -352,7 +353,7 @@ guard("F10 REAL dispatch, capped, both butterflies traded today: neither is aske
 
 
 def _f11():
-    _R["f11"] = _drive((12, 30), traded=("ATPButterfly",))
+    _R["f11"] = _drive(IN_WINDOW, traded=("ATPButterfly",))
     return _R["f11"][0] == ["GEX"]
 
 

@@ -20,8 +20,8 @@ is its `docs/PLAN_SPEC.md` section.
 | Breakout | `Breakout` | ON | none (`OT_BREAKOUT_END` moves its end) | 09:35-10:30 | section 7 below |
 | Liquidity hunt | `LiquidityHunt` | ON | none | 09:35-10:30 | PLAN_SPEC §37 |
 | ORCS | `OpeningRangeCreditSpread` | OFF | `OT_ORCS` | 09:45-10:30 | PLAN_SPEC §41 |
-| GEX pin butterfly | `GEXPinButterfly` | ON | `OT_GEX_BUTTERFLY` | 12:00-15:00 | PLAN_SPEC §32 |
-| ATP butterfly | `ATPButterfly` | OFF | `OT_ATP_BUTTERFLY` | 12:00-15:00 | PLAN_SPEC §39 |
+| GEX pin butterfly | `GEXPinButterfly` | ON | `OT_GEX_BUTTERFLY` | 13:00-15:00 | PLAN_SPEC §32 |
+| ATP butterfly | `ATPButterfly` | OFF | `OT_ATP_BUTTERFLY` | 13:00-15:00 | PLAN_SPEC §39 |
 | VOLT | `VOLT` | OFF | `OT_VOLT` | 09:35-10:30 | section 8 below |
 | ORB break + retest | `ORBStrategy` | OFF | `OT_ORB_TRADE` | 09:35-15:40 | PLAN_SPEC §29 |
 | Sweep credit spread | `SweepCreditSpread` | OFF | `OT_SWEEP_CS` | 09:35-15:40 | PLAN_SPEC §31 |

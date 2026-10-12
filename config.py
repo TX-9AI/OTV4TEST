@@ -1,5 +1,9 @@
 """
-config.py  v4.63
+config.py  v4.64
+v4.64  2026-10-12  OTV4TEST r273 (BFLY.10) - ENTRY_WINDOWS["GEXPinButterfly"] and ["ATPButterfly"] START 12:00 -> 13:00
+       (end 15:00 unchanged); BUTTERFLY_ENTRY_START_ET and GEX_BFLY_EARLIEST_ET follow (derived). The operator, 2026-10-12 12:26 ET: "For TEST repo, I want to reduce the fly window to 1300 or later starting tomorrow"; 12:31 ET: "Yes".
+       Mainline made the same move at otv4 r484 (FEE.4). Stated to him first: this box's 7 GEX flies made
+       +$4,603 before 13:00 (one +$4,334 at 12:54) - he ruled 13:00 anyway.
 v4.63  2026-10-12  OTV4TEST r272 (COMMIT.2 / COMMIT.3) - OT_COMMIT_GATE off|log|trade (UNSET = trade; a live box reads it
       as log; a refused value reads log, named) and OT_CAUTION_SIZE off|log (unset = log; trade refused, named) for
       analysis/commitment.py. The operator, 2026-10-12 11:35 ET: "Yes, do it".
@@ -909,8 +913,8 @@ ENTRY_WINDOWS = {
     "VOLT":                 ((9, 35),  (10, 30)),   # r187 (VOLT is also OFF by default)
     "SweepCreditSpread":    ((9, 35),  EOD_SCHEDULE["entries_stop"]),
     "TrendCreditSpread":    ((11, 31), EOD_SCHEDULE["entries_stop"]),
-    "GEXPinButterfly":      ((12, 0),  (15, 0)),
-    "ATPButterfly":         ((12, 0),  (15, 0)),   # r179: was 11:30 here while the plan itself stayed dormant until 12:00; the operator, 2026-09-30: "12:00 is fine"
+    "GEXPinButterfly":      ((13, 0),  (15, 0)),   # r273 (BFLY.10): was 12:00; the operator, 2026-10-12: "reduce the fly window to 1300"
+    "ATPButterfly":         ((13, 0),  (15, 0)),   # r273 (BFLY.10): was 12:00. r179: was 11:30 here while the plan itself stayed dormant until 12:00; the operator, 2026-09-30: "12:00 is fine"
     "OpeningRangeCreditSpread": ((9, 45), (10, 30)),  # r204 (ORCS): 09:45 beat 09:36; positive to 10:30, gone from 11:00 (X6/X7)
 }
 

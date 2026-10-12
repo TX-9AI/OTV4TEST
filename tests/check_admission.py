@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_admission.py  v1.10
+tests/check_admission.py  v1.11
+v1.11 2026-10-12  OTV4TEST r273 (BFLY.10) — both fly rows RE-POINTED 12:00 -> 13:00, and A8 asserts the ATP fly OUT at 12:59
+        and IN at 13:00. r273 (BFLY.10), by ruling - the operator, 2026-10-12: "reduce the fly window to 1300".
 THE ADMISSION TABLE, DRIVEN EXHAUSTIVELY (OTV4TEST r35).
 
 v1.10 2026-10-03  OTV4TEST r204 (PREM.2) — ORCS JOINS THE TABLE: 09:45-10:30, cap 2 (one put spread, one call spread).
@@ -129,8 +131,8 @@ def main():
         VOLT:    (((9, 35), (10, 30)), 1, None),   # r187 ROSTER.1: directional debits stop at 10:29
         SWEEP:   (((9, 35), (15, 40)), 2, None),
         TCS:     (((11, 31), (15, 40)), 1, None),   # r148: the minute its plan opens (AFD.1)
-        GEXFLY:  (((12, 0), (15, 0)), 1, 1),
-        ATPFLY:  (((12, 0), (15, 0)), 1, 1),     # r179: was 11:30
+        GEXFLY:  (((13, 0), (15, 0)), 1, 1),     # r273: was 12:00
+        ATPFLY:  (((13, 0), (15, 0)), 1, 1),     # r273: was 12:00 (r179: was 11:30)
         ORCS:    (((9, 45), (10, 30)), 2, None),  # r204
     }
     # ⚠️ r76 — CAPS RESTATED FROM THE OPERATOR'S RULING, 2026-09-21: *"With
@@ -158,10 +160,10 @@ def main():
               f"{before}={bool(ok(s,before))} {at_start}={bool(ok(s,at_start))} "
               f"{before_end}={bool(ok(s,before_end))} {at_end}={bool(ok(s,at_end))}")
 
-    check("A8 r149/r187: the ORB IN at 11:30, Runaway/Hunt/Breakout/VOLT IN at 10:29 and OUT at 10:30, the TCS OUT until 11:31, the ATP fly OUT until 12:00 (r179); at 15:40 every directional and credit entry is OUT",
+    check("A8 r149/r187: the ORB IN at 11:30, Runaway/Hunt/Breakout/VOLT IN at 10:29 and OUT at 10:30, the TCS OUT until 11:31, the ATP fly OUT until 13:00 (r273); at 15:40 every directional and credit entry is OUT",
           bool(ok(ORB, (11, 30)))
           and all(bool(ok(x, (10, 29))) and not ok(x, (10, 30)) for x in (RUNAWAY, HUNT, BREAKOUT, VOLT))
-          and not ok(TCS, (11, 30)) and bool(ok(TCS, (11, 31))) and not ok(ATPFLY, (11, 30)) and bool(ok(ATPFLY, (12, 0)))
+          and not ok(TCS, (11, 30)) and bool(ok(TCS, (11, 31))) and not ok(ATPFLY, (12, 59)) and bool(ok(ATPFLY, (13, 0)))
           and not any(ok(x, (15, 40)) for x in (ORB, RUNAWAY, HUNT, BREAKOUT, VOLT, SWEEP, TCS)),
           "directional debits stop at 10:29 (operator 2026-10-02); the TCS's one-minute gap is its plan's own (AFD.1)")
 

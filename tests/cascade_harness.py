@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/cascade_harness.py  v1.4
+tests/cascade_harness.py  v1.5
+v1.5  2026-10-12  OTV4TEST r273 (BFLY.10) — BUTTERFLY_ENTRY_START_ET (12, 0) -> (13, 0), the config's new fly start
+      (the operator, 2026-10-12: "reduce the fly window to 1300"). Caught by the full sweep's check_cascade_constants C1.
 v1.4  2026-09-26  OTV4TEST r149 — EOD.1 moves the copies with config: ORB_NO_ENTRY_AFTER_ET and
       DEBIT_DIRECTIONAL_CUTOFF_ET (11,30)->(15,40), the operator's all-day debit window;
       HARD_CLOSE_ET (15,45)->(15,55), the cross (unused by the model; compared only).
@@ -69,7 +71,7 @@ CONDOR_ENTRY_START_ET       = (11, 31)   # r92 — = CREDIT_ENTRY_START_ET
 # becoming stale. Same treatment ORB_NO_ENTRY_AFTER_ET already has.
 TCS_START_ET                = (11, 31)
 TCS_ENTRY_END_ET            = (15, 40)   # r92 — r81 unified every credit END
-BUTTERFLY_ENTRY_START_ET    = (12, 0)
+BUTTERFLY_ENTRY_START_ET    = (13, 0)   # r273 (BFLY.10): was (12, 0); mirrors config (check_cascade_constants C1)
 CONDOR_TRIGGER_APPROACH     = 0.65
 HARD_CLOSE_ET               = (15, 55)   # r149 — EOD_SCHEDULE cross_at
 

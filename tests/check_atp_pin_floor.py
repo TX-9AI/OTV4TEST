@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tests/check_atp_pin_floor.py  v1.0
+tests/check_atp_pin_floor.py  v1.1
+v1.1  2026-10-12  OTV4TEST r273 (BFLY.10) — A9 RE-POINTED: ATPButterfly 13:00-15:00, refused at 12:45, admitted at 13:00. r273 (BFLY.10), by ruling - the operator, 2026-10-12: "reduce the fly window to 1300".
 
 The ATP butterfly qualifies on ROUTE A (PINNING and its OWN concentration floor,
 0.15) or, only when A fails, ROUTE B (NOT TRENDING and the pin within ±0.05 x EM
@@ -31,8 +32,8 @@ is logged to the live bot.log.
   A7  the two floors are the declared ones: config.ATP_BFLY_PIN_CONC_MIN 0.15,
       the pin fly's PIN_CONC_MIN 0.25
   A8  the ATP plan declares PIN_CONC_MIN FOUNDATIONAL (WA 36)
-  A9  the entry-window table says what the plan does: ATPButterfly 12:00-15:00,
-      refused on its window at 11:45 and admitted at 12:00
+  A9  the entry-window table says what the plan does: ATPButterfly 13:00-15:00,
+      refused on its window at 12:45 and admitted at 13:00 (r273; was 12:00)
   B1  NEUTRAL, concentration 0.10, the pin 0.20 from VWAP (inside ±0.26 = 0.05x
       EM 5.21) -> TAKE on route B, and the row says route B
   B2  NEUTRAL, the pin 0.40 from VWAP (outside ±0.26; inside the old 0.10x band)
@@ -291,9 +292,9 @@ from execution import position_manager as PMOD                  # noqa: E402
 _w = config.ENTRY_WINDOWS.get("ATPButterfly")
 _f = lambda hm: PMOD.decide(PMOD.Facts(strategy="ATPButterfly", now_et=hm, trading_day=True,   # noqa: E731
                                        orb_established=True, cap_intact=True))
-check("A9 the window table matches the plan: ATPButterfly 12:00-15:00 (11:45 refused on window, 12:00 admitted)",
-      _w == ((12, 0), (15, 0)) and _f((11, 45)).gate == "window" and _f((12, 0)).admitted,
-      "table=%s 11:45=%s 12:00=%s" % (_w, _f((11, 45)).gate, _f((12, 0)).admitted))
+check("A9 the window table matches the plan: ATPButterfly 13:00-15:00 (12:45 refused on window, 13:00 admitted)",
+      _w == ((13, 0), (15, 0)) and _f((12, 45)).gate == "window" and _f((13, 0)).admitted,
+      "table=%s 12:45=%s 13:00=%s" % (_w, _f((12, 45)).gate, _f((13, 0)).admitted))
 
 print()
 if FAIL:

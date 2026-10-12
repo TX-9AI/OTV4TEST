@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tests/check_trade_switches.py  v1.2
+tests/check_trade_switches.py  v1.3
+v1.3  2026-10-12  OTV4TEST r273 (BFLY.10) — S9's fly rows RE-POINTED 12:00 -> 13:00. r273 (BFLY.10), by ruling - the operator, 2026-10-12: "reduce the fly window to 1300".
 v1.2  2026-10-03  OTV4TEST r189 (RUNW.1) — S11: OT_RUNAWAY_END MOVES RUNAWAY'S END AND NOTHING ELSE.
       In a fresh interpreter per case, every reader of the window - config.ENTRY_WINDOWS, the admission
       table (position_manager._DEFAULT_RULES), config.RUNAWAY_CUTOFF_ET, runaway_continuation.CUTOFF_ET,
@@ -219,9 +220,9 @@ def main():
     keep = {k: tuple(map(tuple, C.ENTRY_WINDOWS[k])) for k in ("ORBStrategy", "GEXPinButterfly", "ATPButterfly",
                                                               "SweepCreditSpread", "TrendCreditSpread")}
     eod = tuple(C.EOD_SCHEDULE["entries_stop"])
-    check("S9 UNCHANGED: ORB row, both flies (12:00-15:00), Sweep and TCS keep their windows",
-          keep["ORBStrategy"] == ((9, 35), eod) and keep["GEXPinButterfly"] == ((12, 0), (15, 0))
-          and keep["ATPButterfly"] == ((12, 0), (15, 0)) and keep["SweepCreditSpread"] == ((9, 35), eod)
+    check("S9 UNCHANGED: ORB row, both flies (13:00-15:00, r273), Sweep and TCS keep their windows",
+          keep["ORBStrategy"] == ((9, 35), eod) and keep["GEXPinButterfly"] == ((13, 0), (15, 0))
+          and keep["ATPButterfly"] == ((13, 0), (15, 0)) and keep["SweepCreditSpread"] == ((9, 35), eod)
           and keep["TrendCreditSpread"] == ((11, 31), eod), str(keep))
 
     # S10 — the ATP fly off by default, read in a fresh interpreter each way
