@@ -1,5 +1,13 @@
 """
-main.py  v4.101
+main.py  v4.102
+v4.102  2026-10-12  OTV4TEST r272 (COMMIT.1/2/3) — each tick puts analysis/commitment.observe() on ctx["commitment"]
+      (recorded per closed 1m bar); _execute_entry_signal, after sizing and before the order, does not place a
+      DIRECTIONAL entry whose side is ABANDONED when OT_COMMIT_GATE=trade (unset) on a paper box, records every
+      directional entry with its would-be order, and logs the caution size without changing it - BOTH candidates: S2
+      (0.5x unless COMMITTED) and SCALING-OFF (the SAME size_for call with scaled=False, for ORB/Breakout/VOLT; the
+      operator, 2026-10-12 11:52 ET: "Yes"). The order's size_for call goes through commitment.SizeCall, which records
+      its exact arguments for that repeat (the call keeps its explicit keywords: check_volt_sizing V7). The Service
+      mode line names " · commit_gate=<mode> · caution=<mode>". The operator, 2026-10-12 11:35 ET: "Yes, do it".
 v4.101  2026-10-11  OTV4TEST r270 (PMAP.1 + FILL.2, RECORD ONLY) — the end-of-tick sleep is execution/fill_observers.sleep_observing:
       the SAME total, in 2 s slices, between which the quote watch records any open position whose own quote crossed its
       premium stop (never wakes, exits or orders). The Service mode line names " · fill_observe=on|off" (OT_FILL_OBSERVE).
@@ -1342,6 +1350,8 @@ from config import (
     BREAKOUT_LATEST_ET, BREAKOUT_END_ENV_REFUSED,                   # r265 (BRK.9)
     BRK_NOPROG_MODE, BRK_NOPROG_ENV_REFUSED,                        # r265 (BRK.8)
     RESTING_STOP_MODE, RESTING_STOP_ENV_REFUSED,                    # r266 (STOP.1)
+    COMMIT_GATE_MODE, COMMIT_GATE_ENV_REFUSED,                      # r272 (COMMIT.2)
+    CAUTION_SIZE_MODE, CAUTION_SIZE_ENV_REFUSED,                    # r272 (COMMIT.3)
     NOISE_FLOOR_BAR_MULT, NOISE_FLOOR_LOOKBACK_BARS, NOISE_FLOOR_MIN_BARS,
     PIN_PROXIMITY_ACTIVE, PIN_PROXIMITY_MIN_FRAC,
     REASSESS_MINUTES, INSTRUMENT, INSTRUMENT_UNSET, INSTRUMENT_LISTED, SessionConfig, DIRECTIONAL_ONLY,
@@ -5220,6 +5230,14 @@ def _banner_dials() -> str:
         brk += " (LIVE: refused - stops close as before)"
     if RESTING_STOP_ENV_REFUSED:
         brk += f" (OT_RESTING_STOP={RESTING_STOP_ENV_REFUSED!r} REFUSED)"
+    brk += f" · commit_gate={COMMIT_GATE_MODE}"                            # r272 (COMMIT.2)
+    if COMMIT_GATE_MODE == "trade" and not PAPER_TRADING:
+        brk += " (LIVE: refused - logs only)"
+    if COMMIT_GATE_ENV_REFUSED:
+        brk += f" (OT_COMMIT_GATE={COMMIT_GATE_ENV_REFUSED!r} REFUSED)"
+    brk += f" · caution={CAUTION_SIZE_MODE}"                               # r272 (COMMIT.3)
+    if CAUTION_SIZE_ENV_REFUSED:
+        brk += f" (OT_CAUTION_SIZE={CAUTION_SIZE_ENV_REFUSED!r} REFUSED)"
     try:                                                                   # r270 (PMAP.1 + FILL.2)
         from execution.fill_observers import enabled as _fo_on
         brk += f" · fill_observe={'on' if _fo_on() else 'off'}"
@@ -5451,7 +5469,11 @@ def _execute_entry_signal(signal, ctx, ms, state, _sigj=None, *, additive: bool 
                        "the stop-distance gate stands down for this entry",
                        0 if _nf_df is None else len(_nf_df), NOISE_FLOOR_MIN_BARS)
 
-    sizing = risk_mgr.size_for(
+    # r272 (COMMIT.3) - the order's own size_for call goes through a recorder (analysis.commitment.SizeCall) so
+    # the caution log's scaling-off count is THIS call repeated with scaled=False - never a re-derivation.
+    from analysis import commitment as _cm
+    _size_rec = _cm.SizeCall(risk_mgr)
+    sizing = _size_rec.size_for(
         _struct,
         premium             = signal.entry_premium,
         # r131 option 2 — SIZING-ONLY stop premium for a signal carrying
@@ -5487,6 +5509,25 @@ def _execute_entry_signal(signal, ctx, ms, state, _sigj=None, *, additive: bool 
     # the field the order actually places.
     signal.contracts  = sizing.contracts
     signal.total_cost = sizing.total_cost
+
+    # ── r272 (COMMIT.2 / COMMIT.3) — WE ENTER ON COMMITMENT ───────────────────
+    # The operator, 2026-10-12 10:34 ET: "A good place to get out cannot be a good place to get in and vice
+    # versa"; 10:35 ET: "we enter on commitment and we exit on abandonment. We go with the market not against
+    # it." Here, after sizing (so the would-be order is whole) and before the order: a DIRECTIONAL entry whose
+    # side is ABANDONED on this tick's state (ctx["commitment"], analysis/commitment.py) is not placed when
+    # OT_COMMIT_GATE=trade (unset) on a PAPER box. Every directional entry is recorded with its would-be order
+    # (data/counterfactual/commit_gate.jsonl) so the old rule is replayable. An unreadable state ALLOWS the
+    # entry and says why. The caution size (S2) is LOGGED only - it never changes `sizing`.
+    if _cm.gate(signal, ctx, mode=COMMIT_GATE_MODE, paper=PAPER_TRADING, contracts=sizing.contracts):
+        if _sigj is not None:
+            try:
+                _sigj.journal("disposition", outcome="gate_block:commit_abandoned",
+                              signal=_sigj.signal_ctx(signal))
+            except Exception:                                  # noqa: BLE001
+                pass
+        return
+    _cm.caution(signal, ctx, mode=CAUTION_SIZE_MODE, contracts=sizing.contracts,
+                flat_size=(_size_rec.flat if getattr(signal, "strategy_name", "") in _SCALING_SWITCH else None))
 
     # ── Enter trade ───────────────────────────────────────────────────────────
     # ⚠️ r152 — no score argument; the scorer is gone.
@@ -6032,6 +6073,10 @@ def main_loop(state: BotState):
             # ── Main analysis ─────────────────────────────────────────────
             ctx = run_analysis(state, chain=_gex_chain)
             _obs_chain = ctx.get("chain")    # r270 (FILL.2)
+            # r272 (COMMIT.1) — the commitment state, once per tick, on ctx (the entry gate reads THIS, never the
+            # store); one row per side per new closed 1m bar to data/counterfactual/commitment.jsonl. Never raises.
+            from analysis import commitment as _cm
+            ctx["commitment"] = _cm.observe(time.time())
 
             # cheap (threshold checks over the ctx run_analysis already computed),
             # so we reclassify every tick — no throttle. Verified safe: the only

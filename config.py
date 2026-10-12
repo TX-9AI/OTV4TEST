@@ -1,5 +1,8 @@
 """
-config.py  v4.62
+config.py  v4.63
+v4.63  2026-10-12  OTV4TEST r272 (COMMIT.2 / COMMIT.3) - OT_COMMIT_GATE off|log|trade (UNSET = trade; a live box reads it
+      as log; a refused value reads log, named) and OT_CAUTION_SIZE off|log (unset = log; trade refused, named) for
+      analysis/commitment.py. The operator, 2026-10-12 11:35 ET: "Yes, do it".
 v4.62  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
       US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
       without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
@@ -867,6 +870,30 @@ else:
     RESTING_STOP_MODE = "off"
     if _rs_raw:
         RESTING_STOP_ENV_REFUSED = _rs_raw
+# ── r272 (COMMIT.2 / COMMIT.3) — ENTER ON COMMITMENT (analysis/commitment.py) ───
+# OT_COMMIT_GATE off | log | trade. UNSET = trade: a directional entry whose side is
+# ABANDONED is not placed (the operator, 2026-10-12 11:35 ET: trading on both paper
+# boxes). A LIVE box never acts on it: trade reads as log there and the Service mode
+# line says so. A refused value reads log (records, changes nothing) and is named.
+# OT_CAUTION_SIZE off | log. UNSET = log; "trade" is REFUSED in this revision (log only,
+# by ruling) and named.
+COMMIT_GATE_ENV_REFUSED = ""
+_cg_raw = os.environ.get("OT_COMMIT_GATE", "").strip().lower()
+if _cg_raw in ("off", "log", "trade"):
+    COMMIT_GATE_MODE = _cg_raw
+elif not _cg_raw:
+    COMMIT_GATE_MODE = "trade"
+else:
+    COMMIT_GATE_MODE = "log"
+    COMMIT_GATE_ENV_REFUSED = _cg_raw
+CAUTION_SIZE_ENV_REFUSED = ""
+_cz_raw = os.environ.get("OT_CAUTION_SIZE", "").strip().lower()
+if _cz_raw in ("off", "log"):
+    CAUTION_SIZE_MODE = _cz_raw
+else:
+    CAUTION_SIZE_MODE = "log"
+    if _cz_raw:
+        CAUTION_SIZE_ENV_REFUSED = _cz_raw
 RESTING_STOP_WAIT_S = 120.0
 RESTING_STOP_EMERGENCY_FRAC = 0.05
 BRK_NOPROG_STALL_BARS = 2      # consecutive closed 1m bars without a new favourable extreme

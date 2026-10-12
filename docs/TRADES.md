@@ -60,6 +60,11 @@ further. Unset = off: stops close at the mark as before.
 end-of-tick sleep records when its own quote crosses its premium stop (data/counterfactual/). Nothing here exits or orders.
 `OT_FILL_OBSERVE=off` turns both off.
 
+**The commitment state (r272, COMMIT.1/2/3).** Every closed 1m bar each side is COMMITTED, NEUTRAL or ABANDONED
+(analysis/commitment.py). A directional entry whose side is ABANDONED is not placed (`OT_COMMIT_GATE`, unset = trade on
+paper; a live box only logs); the caution size after the session's first directional loss is logged, never applied
+(`OT_CAUTION_SIZE`). Rows in data/counterfactual/.
+
 **The day.** New entries stop while the day's net loss is at or past the daily catastrophic
 loss cap (`OT_DAILY_LOSS_LIMIT`), and it re-arms if the day recovers (r162).
 
