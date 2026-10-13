@@ -1,5 +1,14 @@
 """
-execution/fill_observers.py  v1.0
+execution/fill_observers.py  v1.1
+v1.1  2026-10-13  OTV4TEST r280 (EXIT.5 on TEST; the mechanics of otv4 r482 0353b4e) - THE QUOTE WATCH NOW WAKES THE
+      TICK. When a Breakout or Runaway single long's own quote (<= 4 s old) is at or below the stop the engine enforces,
+      sleep_observing ENDS THE WAIT and the tick runs at once; the tick's evaluate()/decide() still decides, so the
+      resting stop (r266) and every exit rule act exactly as before, only sooner. Nothing here exits or orders.
+      The operator, 2026-10-13 13:19 ET: "Yes to all" (the relayed "Exit5, yes"); 13:22 ET, on its scope: "Breakout +
+      Runaway". Mainline watches ORB + Runaway (r482); TEST wakes on WAKE_STRATEGIES = Breakout + Runaway (ORB is
+      retired here). OT_FLOOR_WATCH=trade|log|off, unset = trade; log = v1.0's record-only behaviour; off = no watch.
+      COUNTERFACTUAL (operator 10-10): every wake writes a "woke" row with early_s = the seconds the old rule (the full
+      15 s sleep) would still have waited, beside its would_wake row in data/counterfactual/quote_watch.jsonl.
 v1.0  2026-10-11  OTV4TEST r270 (PMAP.1 + FILL.2) — TWO FILL OBSERVERS, RECORD ONLY. NOTHING HERE WAKES, EXITS OR ORDERS.
       The operator, 2026-10-11 19:14 ET: "I think we should have both 1 & 2, observe only to see if we can use it to
       improve fills" - (1) the fresh premium map, (2) the 2 s quote watch on premium stops.
@@ -44,6 +53,13 @@ WATCH_MAX_AGE_S = 4.0        # two chain_marks flush cycles
 WATCH_MIN_GAP_S = 10.0       # at most one would-wake per position per 10 s
 MAP_EVERY_S = 60.0           # one map row per position per minute
 EXCLUDED = ("LiquidityHunt", "VOLT", "ORBStrategy")
+WAKE_STRATEGIES = ("Breakout", "RunawayContinuation")   # r280: the strategies whose crossed stop WAKES the tick
+
+
+def floor_watch_mode() -> str:
+    """r280: OT_FLOOR_WATCH = trade (unset) | log | off. Unknown values read as log (never act on a typo)."""
+    v = (os.environ.get("OT_FLOOR_WATCH", "") or "trade").strip().lower()
+    return v if v in ("trade", "log", "off") else "log"
 
 _last_wake: dict = {}        # trade_id -> epoch of its last would-wake row
 _last_map: dict = {}         # trade_id -> (epoch, spot, iv, strike, call, expiry_close)
@@ -225,7 +241,7 @@ def observe_watch(records, chain, now: Optional[float] = None, db_path: Optional
     """Record each open position whose premium stop the latest quote has crossed. Returns the rows written."""
     out = []
     try:
-        if not enabled() or not records or chain is None:
+        if not (enabled() or floor_watch_mode() == "trade") or not records or chain is None:
             return out
         now = time.time() if now is None else float(now)
         want = {}
@@ -261,17 +277,30 @@ def observe_watch(records, chain, now: Optional[float] = None, db_path: Optional
     return out
 
 
-def sleep_observing(seconds: float, records_fn, chain_fn, _sleep=time.sleep, _clock=time.time) -> None:
-    """Sleep `seconds` in WATCH_EVERY_S slices, observing between them. The total is unchanged; never raises."""
+def sleep_observing(seconds: float, records_fn, chain_fn, _sleep=time.sleep, _clock=time.time) -> Optional[dict]:
+    """Sleep `seconds` in WATCH_EVERY_S slices, observing between them; never raises.
+
+    r280 (EXIT.5): with OT_FLOOR_WATCH=trade (the default) a fresh cross on a WAKE_STRATEGIES position ENDS the sleep
+    and returns its "woke" row, so the tick runs now. It only wakes: the tick decides. Otherwise the total is unchanged
+    and it returns None. A wrong level costs one early tick, never a trade.
+    """
     end = _clock() + max(0.0, float(seconds))
     while True:
         left = end - _clock()
         if left <= 0:
-            return
+            return None
         _sleep(min(WATCH_EVERY_S, left))
-        if not enabled():
+        mode = floor_watch_mode()
+        if not (enabled() or mode == "trade"):
             continue
         try:
-            observe_watch(records_fn() or [], chain_fn())
+            rows = observe_watch(records_fn() or [], chain_fn())
         except Exception:                                        # noqa: BLE001
-            pass
+            rows = []
+        if mode != "trade":
+            continue
+        for r in rows:
+            if r.get("strategy") in WAKE_STRATEGIES:
+                woke = dict(r, event="woke", early_s=round(max(0.0, end - _clock()), 3))
+                _row("quote_watch.jsonl", woke)
+                return woke

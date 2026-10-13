@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_fill_observers.py  v1.0
+tests/check_fill_observers.py  v1.1
+v1.1  2026-10-13  OTV4TEST r280 (EXIT.5). O3 RE-POINTED, NOT DROPPED (section 38.4): "off" now sets BOTH OT_FILL_OBSERVE and
+      OT_FLOOR_WATCH, because the acting watch (default trade) is its own switch; F6 in check_floor_watch pins that.
 TWO FILL OBSERVERS, RECORD ONLY (PMAP.1 + FILL.2, execution/fill_observers.py).
 v1.0  2026-10-11  OTV4TEST r270. The operator, 2026-10-11 19:14 ET: "I think we should have both 1 & 2, observe only to
       see if we can use it to improve fills".
@@ -34,6 +36,7 @@ for k, v in {"OT_TRADES_DB": "t.db", "OT_DERIVED_DB": "d.db", "OT_FEED_DB": "f.d
              "OT_RESTING_STOP_STATE": "rest_state.json"}.items():
     os.environ[k] = os.path.join(_TD, v)
 os.environ.pop("OT_FILL_OBSERVE", None)
+os.environ.pop("OT_FLOOR_WATCH", None)
 os.environ.pop("OT_RESTING_STOP", None)
 FAILED, RAN = [], []
 NOW = 1791822000.0          # 2026-10-12 12:20 ET - 3 h 40 m before the 10-12 expiry's 16:00 bell
@@ -134,9 +137,9 @@ def main():
     w5 = F.observe_watch([_rec("w1")], ch, now=NOW + 5.0,                                          # inside 10 s, FRESH
                          db_path=_feed([(".QQQ261012C750", 0.94, 0.98, NOW + 4.0)]))
     w6 = F.observe_watch([_rec("w1")], ch, now=NOW + 3.0 + 10.0, db_path=_feed([(".QQQ261012C750", 0.94, 0.98, NOW + 12.0)]))
-    os.environ["OT_FILL_OBSERVE"] = "off"
+    os.environ["OT_FILL_OBSERVE"] = "off"; os.environ["OT_FLOOR_WATCH"] = "off"   # r280: the acting watch has its own switch
     w7 = F.observe_watch([_rec("w7")], ch, now=NOW + 60.0, db_path=_feed([(".QQQ261012C750", 0.94, 0.98, NOW + 59.0)]))
-    os.environ.pop("OT_FILL_OBSERVE")
+    os.environ.pop("OT_FILL_OBSERVE"); os.environ.pop("OT_FLOOR_WATCH")
     rows3 = _rows("quote_watch.jsonl")[n0:]
     check("O3 the watch: one row for a fresh crossed quote; none stale / above / Hunt / inside 10 s / off; again after 10 s",
           len(w1) == 1 and w1[0]["mid"] == 0.96 and abs(w1[0]["quote_age_s"] - 2.0) < 1e-9 and w1[0]["level"] == 1.00

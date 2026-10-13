@@ -56,9 +56,11 @@ its risk, a nickel closes a leg. Every other exit rule lives in `strategy/manage
 120 s, filled there if price comes back, else closed at the mark - at once if the mark falls 5% of entry
 further. Unset = off: stops close at the mark as before.
 
-**The fill observers (r270, PMAP.1 + FILL.2, record only).** Every open single long gets a premium-map row a minute, and the
-end-of-tick sleep records when its own quote crosses its premium stop (data/counterfactual/). Nothing here exits or orders.
-`OT_FILL_OBSERVE=off` turns both off.
+**The fill observers (r270, PMAP.1 + FILL.2).** Every open single long gets a premium-map row a minute, and the
+end-of-tick sleep records when its own quote crosses its premium stop (data/counterfactual/). `OT_FILL_OBSERVE=off` turns
+the recording off. **The floor watch (r280, EXIT.5) WAKES THE TICK:** a Breakout or Runaway whose own quote (at most 4 s
+old) is at or below its enforced premium stop ends the 15 s wait and the tick runs at once; the tick still decides (the
+resting stop included). Nothing here exits or orders. `OT_FLOOR_WATCH=trade|log|off`, unset = trade.
 
 **The commitment state (r272, COMMIT.1/2/3).** Every closed 1m bar each side is COMMITTED, NEUTRAL or ABANDONED
 (analysis/commitment.py). A directional entry whose side is ABANDONED is not placed (`OT_COMMIT_GATE`, unset = trade on

@@ -1,5 +1,9 @@
 """
-main.py  v4.102
+main.py  v4.103
+v4.103  2026-10-13  OTV4TEST r280 (EXIT.5 on TEST) - the end-of-tick sleep ENDS EARLY when execution/fill_observers
+      finds a Breakout/Runaway position's fresh quote (<= 4 s) at or below its enforced premium stop, and logs
+      "[floor-watch] ... running the tick Ns early"; the tick then decides as before. The Service mode line names
+      " · floor_watch=trade|log|off" (OT_FLOOR_WATCH, unset = trade).
 v4.102  2026-10-12  OTV4TEST r272 (COMMIT.1/2/3) — each tick puts analysis/commitment.observe() on ctx["commitment"]
       (recorded per closed 1m bar); _execute_entry_signal, after sizing and before the order, does not place a
       DIRECTIONAL entry whose side is ABANDONED when OT_COMMIT_GATE=trade (unset) on a paper box, records every
@@ -5241,6 +5245,8 @@ def _banner_dials() -> str:
     try:                                                                   # r270 (PMAP.1 + FILL.2)
         from execution.fill_observers import enabled as _fo_on
         brk += f" · fill_observe={'on' if _fo_on() else 'off'}"
+        from execution.fill_observers import floor_watch_mode as _fw_mode  # r280 (EXIT.5)
+        brk += f" · floor_watch={_fw_mode()}"
     except Exception:                                                      # noqa: BLE001
         brk += " · fill_observe=?"
     return f" · pin_gate={'ON' if PIN_PROXIMITY_ACTIVE else 'OFF'}{end}{brk}"
@@ -6377,12 +6383,17 @@ def main_loop(state: BotState):
                 sys.exit(1)
 
         elapsed = time.time() - tick_start
-        # r270 (FILL.2, RECORD ONLY) — the SAME sleep, in 2 s slices: between them the quote watch records whether an
-        # open position's own quote crossed its premium stop. It never wakes the tick, exits or orders. Never raises.
+        # r270 (FILL.2) — the SAME sleep, in 2 s slices: between them the quote watch reads each open position's own
+        # quote against its premium stop. r280 (EXIT.5, OT_FLOOR_WATCH=trade, the default): a fresh cross on a Breakout
+        # or Runaway ENDS the sleep so the tick runs now; the tick still decides. It never exits or orders; never raises.
         from execution import fill_observers as _fo
-        _fo.sleep_observing(max(0, POLL_INTERVAL_SECONDS - elapsed),
-                            lambda: get_position_manager(state.paper_trading).get_open_records(),
-                            lambda: _obs_chain)
+        _woke = _fo.sleep_observing(max(0, POLL_INTERVAL_SECONDS - elapsed),
+                                    lambda: get_position_manager(state.paper_trading).get_open_records(),
+                                    lambda: _obs_chain)
+        if _woke:
+            logger.info("[floor-watch] %s %s mid %.3f <= stop %.4f (quote %.1fs old) - running the tick %.1fs early",
+                        str(_woke.get("trade_id"))[:8], _woke.get("strategy"), _woke.get("mid") or 0.0,
+                        _woke.get("level") or 0.0, _woke.get("quote_age_s") or 0.0, _woke.get("early_s") or 0.0)
 
 
 # Below this many seconds of system uptime, a startup is treated as a fresh
