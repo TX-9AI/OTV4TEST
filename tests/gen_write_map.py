@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/gen_write_map.py  v4.5
+tests/gen_write_map.py  v4.6
+v4.6  2026-10-13  OTV4TEST r279 - a call to a same-module SQL HELPER inside a constant
+      loop resolves through the helper (see _loop_sql). The purge's DELETEs moved into
+      `_delete_batched` (mirror of otv4 r416) and the map dropped them; W1/W1c caught it.
 
 v4.5  2026-09-20  OTV4TEST r70 — §20 IN THIS REPO'S OWN COMMENTARY. `RE_DELETE`
       matched the English sentence "a checker that had to DELETE FROM THE live
@@ -362,7 +365,36 @@ def _loop_sql(src: str):
         if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
             for sub in ast.walk(fn):
                 fn_of[id(sub)] = fn.name
+    # v4.6 (r279) — A HELPER THAT TAKES THE TABLE AS A PARAMETER. Since the
+    # mirror of otv4 r416 the purge no longer writes `f"DELETE FROM {table}"`
+    # inside its policy loops; it calls `_delete_batched(conn, table, ...)`,
+    # and the SQL lives in the helper with `table` as a PARAMETER. Without this
+    # the map silently dropped the purge as the deleter of 13 tables (caught by
+    # check_map_accuracy W1/W1c on the r279 build). DERIVED, NOT LISTED: any
+    # function in this module whose SQL substitutes one of its own parameters
+    # is a helper, and a call inside a constant loop that passes the loop
+    # variable in that position resolves to that SQL for every member.
+    helpers = {}
+    for fn in tree.body:
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        pnames = [a.arg for a in (fn.args.posonlyargs + fn.args.args)]
+        for idx, pn in enumerate(pnames):
+            for sub in ast.walk(fn):
+                tmpl = _sql_template(sub, pn)
+                if tmpl is not None:
+                    helpers.setdefault(fn.name, []).append((idx, pn, tmpl))
     out = []
+    # ... and a helper called with a LITERAL table (`_delete_batched(fc,
+    # "candles", ...)`) resolves to that table, loop or no loop.
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id in helpers):
+            for idx, pn, htmpl in helpers[node.func.id]:
+                arg = node.args[idx] if idx < len(node.args) else next(
+                    (k.value for k in node.keywords if k.arg == pn), None)
+                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                    out.append(htmpl.replace("\0", arg.value))
     for node in ast.walk(tree):
         if not isinstance(node, ast.For):
             continue
@@ -379,6 +411,13 @@ def _loop_sql(src: str):
             tmpl = _sql_template(sub, tgt.id)
             if tmpl is not None:
                 out.extend(tmpl.replace("\0", m) for m in members)
+            if (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name)
+                    and sub.func.id in helpers):
+                for idx, pn, htmpl in helpers[sub.func.id]:
+                    arg = sub.args[idx] if idx < len(sub.args) else next(
+                        (k.value for k in sub.keywords if k.arg == pn), None)
+                    if isinstance(arg, ast.Name) and arg.id == tgt.id:
+                        out.extend(htmpl.replace("\0", m) for m in members)
     return out
 
 

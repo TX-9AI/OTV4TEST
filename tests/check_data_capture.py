@@ -1,5 +1,7 @@
-"""tests/check_data_capture.py — v1.8
+"""tests/check_data_capture.py — v1.9
 
+v1.9  2026-10-13 — OTV4TEST r279 (mirror of otv4 r416). D6b RE-POINTED, NOT DROPPED (section 38.4): the purge's
+      DELETE moved into `_delete_batched`, so D6b finds that call after `_safe_cutoff` (segment 1500 -> 2500).
 v1.8  2026-10-10 — OTV4TEST r266 (STOP.1). D4 RE-POINTED, NOT DROPPED (section 38.4): the resting stop joined the
       menu as item 13, so Data capture is item 14 and Done 15. Properties unchanged.
 
@@ -423,9 +425,10 @@ def _d6b():
     b = src.find("list(DERIVED_CDC_DAYS.items()):")
     ok = []
     for start, ledger in ((a, "SERIES_LEDGER"), (b, "DSERIES_LEDGER")):
-        seg = src[start:start + 1500]
+        seg = src[start:start + 2500]   # r279: the dry-run COUNT block sits between clamp and delete
         clamp = seg.find("_safe_cutoff(table, cutoff, %s" % ledger)
-        delete = seg.find("DELETE FROM {table}")
+        # r279: the DELETE moved into `_delete_batched` (mirror of otv4 r416); the call is the delete.
+        delete = seg.find("_delete_batched(")
         ok.append(start >= 0 and 0 <= clamp < delete)
     return all(ok), ok
 

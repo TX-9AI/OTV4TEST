@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""tests/check_purge_lock.py — v1.1
+"""tests/check_purge_lock.py — v1.2
+v1.2  2026-10-13 — OTV4TEST r279 (mirror of otv4 r416). K0 pins `_delete_batched`;
+`_try_delete` is removed (every DELETE now goes through the batched path).
 v1.1  2026-09-14 — OTV4TEST r26 (HYG.9). L1 NO LONGER TAKES THE BOX'S REAL LOCK.
 Both the holder subprocess and this process called `acquire_lock` on the module's
 `LOCK_PATH` — `<repo>/data/retention_purge.lock` — so every run of this check
@@ -72,7 +74,7 @@ def main():
               f"{type(exc).__name__}: {exc}")
         print("\nRED — 1 failed: K0 (the checker could not run)")
         return 1
-    for n in ("acquire_lock", "_try_delete", "LOCK_PATH", "BUSY_MS"):
+    for n in ("acquire_lock", "_delete_batched", "LOCK_PATH", "BUSY_MS"):
         if not hasattr(rp, n):
             check(f"K0 retention_purge exposes {n}", False,
                   "absent — r256 has not landed in this checkout")

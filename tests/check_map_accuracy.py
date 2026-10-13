@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""tests/check_map_accuracy.py — v1.3
+"""tests/check_map_accuracy.py — v1.4
+v1.4  2026-10-13  OTV4TEST r279 — R1b admits circuit_breaker_events and R1c RE-POINTED (not dropped): the
+      literal-arg read it pinned as unresolved is now resolved by gen_write_map v4.6's helper rule.
 THE GENERATED MAPS ARE CHECKED FOR ACCURACY, NOT ONLY FOR FRESHNESS.
 
 v1.3  2026-10-03 — OTV4TEST r210 (AUD.9). M3 also requires tools/manifold_status.py - the operator's hand-run feed check,
@@ -31,7 +33,7 @@ v1.0  2026-09-14 — OTV4TEST r28 (MAP.2, MAP.3). Both `--check` gates ask "does
   W1c the rendered WRITE_MAP row for each of those tables names the purge
   R1  every table s3_push reads AT RUNTIME is credited to it on the map
   R1b ...and it is credited with nothing it does not read (over-attribution)
-  R1c the one unresolved shape (a literal-arg table) still has a named reader
+  R1c the literal-arg table (circuit_breaker_events) is credited to s3_push (r279)
   R2  no table on the "No external reader" line has a reader in its own row
   E1  every repo script a deploy/ unit launches is a declared ENTRY_POINT
   E1b ...and every one of them EXISTS (r21's defect class: a unit naming no file)
@@ -159,7 +161,10 @@ def main():
     # the failure mode a looser substitution actually produces.
     not_pushed = sorted(t for t in (set(creates) | set(writes)) - pushed
                         if "warehouse/s3_push.py" in reads.get(t, set())
-                        and t not in ("candles", "trades"))
+                        and t not in ("candles", "trades",
+                                      # r279: push_table(..., "circuit_breaker_events", ...) is a
+                                      # REAL read (s3_push.py, the circuit_breaker stage), now resolved
+                                      "circuit_breaker_events"))
     check("R1b s3_push is credited with NOTHING it does not read",
           not not_pushed, "over-attributed: " + ", ".join(not_pushed))
 
@@ -168,10 +173,15 @@ def main():
     # the resolver does not follow. It costs no flag only because that table
     # has another reader, so THAT is what is asserted: the day it does not,
     # this goes red and names the gap instead of the map quietly being wrong.
+    # 🔑 r279 — THE RESIDUE IS CLOSED. gen_write_map v4.6 follows a same-module
+    # SQL helper called with a literal table, so `push_table(..., "circuit_
+    # breaker_events", ...)` now credits s3_push. R1c RE-POINTED, NOT DROPPED:
+    # it asserts the credit the old resolver could not give, so a regression in
+    # the helper rule goes red here by name.
     cbe = reads.get("circuit_breaker_events", set())
-    check("R1c the unresolved literal-arg table still has a named reader",
-          bool(cbe - {"warehouse/s3_push.py"}),
-          ", ".join(sorted(cbe)) or "NO READER — the residue now costs a flag")
+    check("R1c the literal-arg table is credited to s3_push (r279: helper resolved)",
+          "warehouse/s3_push.py" in cbe,
+          ", ".join(sorted(cbe)) or "NO READER — the helper rule has regressed")
 
     # ⚠️ AND THE RENDERED FLAG MUST AGREE WITH THE RENDERED ROWS. The flag line
     # is what a human acts on when deciding a stream is dead weight; a row
