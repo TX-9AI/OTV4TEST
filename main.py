@@ -1,5 +1,8 @@
 """
-main.py  v4.103
+main.py  v4.104
+v4.104  2026-10-13  OTV4TEST r281 (RUN.1, mirror of otv4 r481) - ONE RUNAWAY PER SESSION ON THIS BOX, ENFORCED: the
+      dispatch binds `_rc_capped = _one_per_session_used("RunawayContinuation")`, writes the "one per session on this
+      box - already traded today" plan row, and asks RunawayContinuation only `if not _rc_capped`. It was `if True:`.
 v4.103  2026-10-13  OTV4TEST r280 (EXIT.5 on TEST) - the end-of-tick sleep ENDS EARLY when execution/fill_observers
       finds a Breakout/Runaway position's fresh quote (<= 4 s) at or below its enforced premium stop, and logs
       "[floor-watch] ... running the tick Ns early"; the tick then decides as before. The Service mode line names
@@ -4569,7 +4572,16 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     # r179 — ONE PER SESSION ON THIS BOX (operator, 2026-08-28: "Only one
     # runway debit trade aloud per session on a box … Simple"). DB-backed,
     # survives restarts, fails closed.
-    if True:                                        # r43 — no slot to claim
+    # 🔴 r281 / RUN.1 (mirror of otv4 r481 c839bcf) — THE CAP NOW GATES. Since
+    # OTV4TEST r3 this block read `if True:` under the comment above, so the
+    # cap was never applied on this tree: QQQ-TEST took 27 second-or-later
+    # Runaways in 21 sessions (-$987 gross). The per-BREAK rule
+    # (strategy/runaway_continuation.py, r174) stays inside the strategy.
+    _rc_capped = _one_per_session_used("RunawayContinuation")
+    if _rc_capped:
+        _plan_skip("RunawayContinuation", "one per session on this box — already "
+                   "traded today", gate="tries_per_session")
+    if not _rc_capped:                              # r43 — no slot to claim
         # OTV4TEST r3 — asked EVERY tick; the plan narrates (no direction /
         # waiting on the 50 accepted / break finished, re-validating / PREPARED)
         # and is dormant outside 09:35–11:30. `_is_runaway` no longer gates
