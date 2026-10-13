@@ -595,7 +595,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_bfly_vwap_band.py`
 - **calls:** `data/derived_store.py`, `data/market_data.py`, `derived/__init__.py`, `derived/anchors.py`, `derived/indicators.py`, `strategy/__init__.py`, `strategy/gex_pin_butterfly.py`, `strategy/plan.py`, `utils/time_utils.py`
-- **called by:** (not imported) — referenced in `docs/ENV.md`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/ENV.md`
 
 ### `tests/check_boot_brief.py`
 - **calls:** (none)

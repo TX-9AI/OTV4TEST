@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""tests/check_bfly_vwap_band.py  v1.3
+"""tests/check_bfly_vwap_band.py  v1.4
+v1.4  2026-10-13  OTV4TEST r278 - A7 drives derived.indicators' module clock to
+      its frame's last minute + VWAP_CLOSE_GRACE_S. Since r274 the fold takes
+      only closed minutes, so A7 (frame 12:30-12:59 today) was red at any
+      wall clock before ~13:00 ET - red on the 10-13 08:00 sweep, both boxes.
 v1.3  2026-09-22  OTV4TEST r101 - A8/A9: the cold-start deep fetch
       must use the CALLER's symbol, and an EMPTY fetch must WARN. Born red at
       1104492 where `_accumulate_vwap` takes no symbol and says nothing.
@@ -277,14 +281,25 @@ def main():
     _df = _pdq.DataFrame({"high": 100.5, "low": 99.5, "close": 100.0, "volume": 1000.0},
                          index=_idx)
     import data.market_data as _md
+    import derived.indicators as _ind
     _keep = getattr(_md, "fetch_candles", None)
     _md.fetch_candles = lambda *a, **k: None          # force the partial path
+    # r278: since r274 the fold takes only CLOSED minutes by the engine's module
+    # clock, so a wall clock before ~13:00 ET folded nothing and A7 was red on
+    # every 08:00 sweep. Drive that clock to the frame's last minute + grace.
+    _t7 = _idx[-1].timestamp() + 60.0 + _ind.VWAP_CLOSE_GRACE_S + 1.0
+    class _T7:
+        @staticmethod
+        def time(): return _t7
+    _time7 = _ind.time
+    _ind.time = _T7                       # the engine reads ITS module clock; nothing else is patched
     try:
         _e = _IE.__new__(_IE)
         _e.symbol = "TST"; _e._pv = _e._v = 0.0
         _e._anchor_ms = None; _e._last_bar_ms = None; _e._first_bar_ms = None
         _v7, _, _, _a7 = _e._accumulate_vwap(_df)
     finally:
+        _ind.time = _time7
         if _keep is not None:
             _md.fetch_candles = _keep
     _open_ms = int(_open.timestamp() * 1000)
