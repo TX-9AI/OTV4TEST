@@ -1,5 +1,12 @@
 """
-strategy/breakout_plan.py  v1.13
+strategy/breakout_plan.py  v1.14
+v1.14 2026-10-13  OTV4TEST r282 (BRK.10) — THE FIRST ENTRY IS THE TAPE'S FIRST BREAK, NOT THE BOOK'S FIRST FILL.
+      r131's "first entry per side fires on the break close" counted FILLED trades only, so a break the gates
+      refused (SPX-TEST 10-13: commit x2, pin x45, ENT.1 x12, 09:38-09:52) left the side "unfired" and the next close
+      beyond the edge fired 15 min later mid-range under the session high (-$927). first_break_before() reads the feed
+      store: when an EARLIER closed RTH 1m bar today already closed beyond the edge, this entry must also close beyond
+      the session extreme (r131's re-fire rule); an unreadable tape fails closed. The operator, 2026-10-13 17:17 ET:
+      "This is a fucking real problem"; 18:10 ET: "yes" (to building it tonight). tests/check_breakout_new_extreme.py.
 v1.13 2026-10-08  OTV4TEST r263 (BRK.7, found on SPX-TEST) — A ZERO-RISK BREAK IS REFUSED, NEVER RAISED. A break bar
       that CLOSED AT ITS OWN EXTREME (a short at its high, a long at its low) puts the stop on the close: risk 0,
       r None, and while `r` accepts "any" nothing refused it - prepare reached TAKE and trade_line raised
@@ -294,6 +301,47 @@ def session_extreme(symbol: str, day, before_ms: int, direction: str):
     return (max(vals) if direction == "long" else min(vals)), len(rows)
 
 
+def first_break_before(symbol: str, day, before_ms: int, direction: str, edge):
+    """The ts_ms of the FIRST RTH 1m bar of `day` (from the opening range's close, 09:35, up to, not including,
+    `before_ms`) whose CLOSE was beyond `edge` in `direction` - None when no
+    bar did - or a string naming why it could not be read. NEVER raises.
+
+    🔴 r282 (BRK.10) - THE BREAK IS READ FROM THE BOOK, NOT FROM A FILL. r131
+    let the first entry per side fire on any close beyond the edge because it
+    counted only FILLED trades. A break the gates refused (SPX 10-13: commit x2,
+    pin x45, ENT.1 x12, 09:38-09:52) left the side "unfired", and the next close
+    beyond the edge fired as a FIRST entry 15 min later, mid-range under the
+    session high (-$927). The day's first break is a fact of the tape.
+    """
+    from datetime import datetime
+    try:
+        import sqlite3
+        from zoneinfo import ZoneInfo
+        from data.candle_feed import feed_db_path
+        # ⚠️ FROM THE RANGE'S CLOSE, NOT 09:30: a bar INSIDE the opening range cannot break it,
+        # and the edge on the row need not contain every 09:30-09:34 1m close (QQQ 09-29: closes
+        # beyond the stored edge at 09:30 and 09:34) - counting them would call a TRUE first
+        # break "stale".
+        try:
+            from config import ORB_WINDOW_MINUTES as _orbm
+        except Exception:                                       # noqa: BLE001
+            _orbm = 5
+        open_ms = int(datetime(day.year, day.month, day.day, 9, 30,
+                               tzinfo=ZoneInfo(_ET_ZONE)).timestamp() * 1000) + int(_orbm) * 60_000
+        e = float(edge)
+        conn = sqlite3.connect(f"file:{feed_db_path()}?mode=ro", uri=True, timeout=5.0)
+        try:
+            q = ("SELECT ts_epoch_ms FROM candles WHERE symbol=? AND interval='1m' "
+                 "AND ts_epoch_ms >= ? AND ts_epoch_ms < ? AND close > 0 AND close "
+                 + (">" if direction == "long" else "<") + " ? ORDER BY ts_epoch_ms LIMIT 1")
+            row = conn.execute(q, (symbol, open_ms, int(before_ms), e)).fetchone()
+        finally:
+            conn.close()
+    except Exception as exc:                                    # noqa: BLE001
+        return f"session tape unreadable ({type(exc).__name__}: {exc})"
+    return int(row[0]) if row else None
+
+
 # v1.10 (BRK.6) - what an index records in place of a tape or a book it cannot have.
 NA_NO_TAPE = "n/a - cash index, no tape"
 NA_NO_BOOK = "n/a - cash index, no book"
@@ -562,7 +610,7 @@ class BreakoutPlan:
         # can fire again? A new high for a long, a new low for a short."* The
         # FIRST entry per side keeps the break trigger above untouched; every
         # later one must CLOSE beyond every prior RTH bar's extreme.
-        if not self._new_extreme(t, B, direction, df_1m, bc, symbol):
+        if not self._new_extreme(t, B, direction, df_1m, bc, symbol, edge=prep.edge):
             return prep
 
         # ── the structural bars: a contract, an R that clears the floor ────
@@ -618,7 +666,7 @@ class BreakoutPlan:
         return prep
 
     # ── r131: the re-fire gate ─────────────────────────────────────────────
-    def _new_extreme(self, t, B, direction, df_1m, bc, symbol) -> bool:
+    def _new_extreme(self, t, B, direction, df_1m, bc, symbol, edge=None) -> bool:
         """True when this side may fire. Refuses at `B.NEW_EXTREME` otherwise.
 
         ⚠️ EVERY FACT IT DECIDES ON IS READ FROM A BOOK, NEVER HELD HERE: the
@@ -636,9 +684,30 @@ class BreakoutPlan:
                            f"trades.db unreadable, failing closed")
             return False
         if fired == 0:
-            t.check(gate, bc, True, note=f"first {direction} entry today — "
-                                         f"the break close is the trigger")
-            return True
+            # 🔴 r282 (BRK.10) — "FIRST" MEANS THE TAPE'S FIRST BREAK, NOT THE BOOK'S
+            # FIRST FILL. An earlier closed bar beyond the edge (a break the gates
+            # refused) makes this a re-fire: it needs a new session extreme too.
+            if edge is None or sig_ts is None:
+                t.check(gate, bc, True, note=f"first {direction} entry today — "
+                                             f"the break close is the trigger")
+                return True
+            fb = first_break_before(symbol or self._symbol(), day,
+                                    int(sig_ts.timestamp() * 1000), direction, edge)
+            if isinstance(fb, str):
+                t.check("first_break", None, None)
+                t.refuse(gate, f"{fb} — cannot tell whether the {direction} break "
+                               f"already happened, failing closed")
+                return False
+            if fb is None:
+                t.check(gate, bc, True, note=f"first {direction} entry today — "
+                                             f"the break close is the trigger")
+                return True
+            from datetime import datetime as _dt
+            from zoneinfo import ZoneInfo as _Z
+            _fbt = _dt.fromtimestamp(fb / 1000, _Z(_ET_ZONE)).strftime("%H:%M")
+            t.check("first_break", float(fb), None,
+                    note=f"the {direction} break first closed at {_fbt} with no "
+                         f"{direction} filled since — this needs a new session extreme")
         if sig_ts is None:
             t.refuse(gate, "the signal bar carries no timestamp, so the prior "
                            "session bars cannot be bounded — failing closed")
@@ -647,14 +716,15 @@ class BreakoutPlan:
         # latest same-side entry's MINUTE is the earliest a fresh signal bar
         # may start: a bar starting before it had already closed when that
         # entry fired, so it cannot be "a new high" relative to it.
-        _last = ents[-1]
-        _fresh_from = _last.replace(second=0, microsecond=0)
-        if sig_ts < _fresh_from:
-            t.refuse(gate, f"no bar has closed since the last {direction} entry at "
-                           f"{_last.strftime('%H:%M:%S')} — the signal bar "
-                           f"{sig_ts.strftime('%H:%M')} already fired it "
-                           f"(fired {fired} on this side today)")
-            return False
+        if ents:
+            _last = ents[-1]
+            _fresh_from = _last.replace(second=0, microsecond=0)
+            if sig_ts < _fresh_from:
+                t.refuse(gate, f"no bar has closed since the last {direction} entry at "
+                               f"{_last.strftime('%H:%M:%S')} — the signal bar "
+                               f"{sig_ts.strftime('%H:%M')} already fired it "
+                               f"(fired {fired} on this side today)")
+                return False
         ext = session_extreme(symbol or self._symbol(), day,
                               int(sig_ts.timestamp() * 1000), direction)
         if isinstance(ext, str):

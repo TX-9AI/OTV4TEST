@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_breakout_new_extreme.py  v1.3
+tests/check_breakout_new_extreme.py  v1.4
+v1.4  2026-10-13  OTV4TEST r282 (BRK.10) — N10a-c: the FIRST entry is the tape's first break, not the book's first
+      fill. N10d pins that a close inside the 09:30-09:34 window never counts as the break. N10a (a stale break with no fill is refused under the session high) and N10c (an unreadable tape
+      fails closed on a first entry) are RED on d1fc9ab; N10b pins that a real new high still fires. N4a RE-POINTED,
+      NOT DROPPED (section 38.4): the mirrored short's first break is 09:35, so the per-side property is asked there.
 v1.3  2026-10-02  OTV4TEST r187 (ROSTER.1) — RE-POINTED BY THE RULING: Breakout's
       window now ends 10:30 (the operator, 2026-10-02: "let's impose a 1029
       debit cutoff rule"), and this fixture's re-fires sit at 10:49-11:01. This
@@ -127,8 +131,12 @@ def _write_feed(day):
               "volume REAL, PRIMARY KEY (symbol, interval, ts_epoch_ms))")
     o = int(datetime(day.year, day.month, day.day, 9, 30, tzinfo=ZoneInfo(ET)).timestamp() * 1000)
     gap = {m: b for m, b in _long_session().items() if m != 0}     # no 09:30 bar
+    tsw = dict(_long_session())                                     # r282: an in-window close beyond the edge
+    tsw[2] = (100.6, 101.30, 100.50, 101.20)                       # 09:32 closes 101.20 > 101.00 INSIDE the range
+    tsw[5] = (100.6, 100.95, 100.40, 100.80)                       # 09:35 no break
+    tsw[6] = (100.8, 101.40, 100.70, 101.30)                       # 09:36 the FIRST break after the range
     for sym, bars in (("TST", _long_session()), ("TSS", _mirror(_long_session())),
-                      ("TSG", gap)):
+                      ("TSG", gap), ("TSW", tsw)):
         for m, (op, h, l, cl) in bars.items():
             c.execute("INSERT OR REPLACE INTO candles VALUES (?,?,?,?,?,?,?,?)",
                       (sym, "1m", o + m * 60_000, op, h, l, cl, 1000.0))
@@ -250,6 +258,31 @@ def main():
           lambda: (p1.ready and p1.direction == "long"
                    and "session_extreme" not in p1.tick.checks, _why(p1)))
 
+    # ── N10 (r282, BRK.10) — NOTHING FILLED, BUT THE BREAK ALREADY HAPPENED ──
+    # The 09:35 long break was refused (no fill). At 09:59 a close beyond the
+    # edge but under the 09:40 session high is NOT a first break: refused.
+    p10a, _ = _tick(plan, spec, "TST", day, 30)              # signal 09:59 close 101.60 < 102.50
+    guard("N10a no fill, but the break first closed at 09:35: a 09:59 close under the session high is refused",
+          lambda: (_refused_at_gate(p10a) and "first_break" in p10a.tick.checks
+                   and abs(float(p10a.tick.checks["session_extreme"][0]) - 102.50) < 1e-9, _why(p10a)))
+    p10b, _ = _tick(plan, spec, "TST", day, 91)              # signal 11:00 close 102.70 > 102.50
+    guard("N10b no fill, stale break: a close ABOVE the session high still fires",
+          lambda: (p10b.ready and p10b.direction == "long", _why(p10b)))
+    p10d, _ = _tick(plan, spec, "TSW", day, 7)               # signal 09:36: the first break after 09:35
+    guard("N10d a close beyond the edge INSIDE the 09:30-09:34 range window does not make the first break stale",
+          lambda: (p10d.ready and p10d.direction == "long" and "first_break" not in p10d.tick.checks, _why(p10d)))
+    _feed10 = os.environ["OT_FEED_DB"]
+    os.environ["OT_FEED_DB"] = os.path.join(SCRATCH, "absent", "feed.db")
+    try:
+        p10c = plan.prepare(spec=spec, orb=_ORB(101.0, 100.0), price_now=101.5, now_et="09:36",
+                            chain=_Chain(101.5), df_1m=_frame_from(_feed10, "TST", day, 6),
+                            flow_conn=None, symbol="TST")
+    finally:
+        os.environ["OT_FEED_DB"] = _feed10
+    guard("N10c no fill and an unreadable feed store: the first break FAILS CLOSED at 'new_extreme'",
+          lambda: (not p10c.ready and p10c.tick.verdict == "DECLINE"
+                   and p10c.tick.plan.last()[2].startswith("new_extreme:"), _why(p10c)))
+
     # ── N9 — the long filled at 09:36:16; the 09:35 bar is STILL the last closed
     # bar for the rest of that minute (2026-09-25, 09:36:51, -$1,250) ────────────
     _log("call", 6, day)
@@ -281,7 +314,9 @@ def main():
     # the first short is taken at 09:59 — below the edge, NOT below the 09:40
     # session low — so only a per-SIDE count lets it through: a long in the
     # book must not make the first short need a new extreme.
-    p4a, _ = _tick(plan, spec, "TSS", day, 30)               # 98.40, session low 97.50
+    # r282 RE-POINTED, NOT DROPPED: the mirrored session's short break first closes at 09:35 (98.70), so 09:59
+    # is a STALE short break (N10's rule); the per-side property is asked on the TRUE first short, signal 09:35.
+    p4a, _ = _tick(plan, spec, "TSS", day, 6)                # 98.70 below the 99.00 edge: the first short break
     guard("N4a the first SHORT fires on the break close although a long already fired — the latch is per side",
           lambda: (p4a.ready and p4a.direction == "short"
                    and "session_extreme" not in p4a.tick.checks, _why(p4a)))
