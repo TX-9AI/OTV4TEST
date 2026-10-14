@@ -1,5 +1,8 @@
 """
-main.py  v4.104
+main.py  v4.105
+v4.105  2026-10-14  OTV4TEST r283 (LIVE.1 F5, mirror of otv4 r473 bfb0991) - a live credit vertical checks buying
+      power before it posts: (width - credit) x contracts x 100, via execution/buying_power.affordable, right
+      after B2's guard. Short or unreadable -> not posted. Code hunk verbatim from bfb0991. Paper unchanged.
 v4.104  2026-10-13  OTV4TEST r281 (RUN.1, mirror of otv4 r481) - ONE RUNAWAY PER SESSION ON THIS BOX, ENFORCED: the
       dispatch binds `_rc_capped = _one_per_session_used("RunawayContinuation")`, writes the "one per session on this
       box - already traded today" plan row, and asks RunawayContinuation only `if not _rc_capped`. It was `if True:`.
@@ -2732,6 +2735,15 @@ def _post_credit_vertical(short_contract, long_contract, contracts: int,
         if not _ok:
             logger.warning(f"[guard] credit vertical not posted: {_gwhy}")
             return EntryFill(filled=False, detail=f"guard: {_gwhy}"), _limit, _lwhy
+        # F5 (r473) — the margin a short vertical ties up is its width less the credit.
+        from execution import buying_power as _bp
+        _width = abs(float(getattr(short_contract, "strike", 0) or 0)
+                     - float(getattr(long_contract, "strike", 0) or 0))
+        _need = max(0.0, _width - float(_limit or 0.0)) * int(contracts) * 100.0
+        _bok, _bwhy = _bp.affordable(_need, _sess, _acct, what)
+        if not _bok:
+            logger.warning(f"[bp] credit vertical not posted: {_bwhy}")
+            return EntryFill(filled=False, detail=f"buying power: {_bwhy}"), _limit, _lwhy
     response = placer(_legs, _limit)
     if getattr(response, "errors", None):
         logger.error(f"Condor leg order failed: {response.errors}")

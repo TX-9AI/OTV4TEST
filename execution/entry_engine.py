@@ -1,5 +1,9 @@
 """
-execution/entry_engine.py  v4.15
+execution/entry_engine.py  v4.16
+v4.16 2026-10-14  OTV4TEST r283 (LIVE.1 F5, MIRROR OF otv4 r473 bfb0991, WA 38.2) — every live entry checks
+      buying power before it posts (execution/buying_power.affordable, right after B2's clear_to_post):
+      single leg at its limit, the standing ORB offer at its price, the butterfly at its mark cap, each
+      x contracts x 100. Short or unreadable -> not posted. Code hunks verbatim from bfb0991. Paper unchanged.
 v4.15 2026-10-04  OTV4TEST r244 (LIVE.1 B2, MIRROR OF otv4 r466 579354d, WA 38.2) — AN ERROR AFTER place_order NO LONGER FORGETS THE ORDER: execution/order_guard (after_failure cancels, records the order as suspect and pages; clear_to_post blocks the intent until the broker says CANCELLED/EXPIRED/REMOVED/PARTIALLY_REMOVED/REJECTED, pages once on FILLED, blocks when unreadable); the failed rung is refused. Code hunks applied verbatim; ONE hunk hand-placed: the butterfly guard sits after _fly_key and before this tree's r224 FLY.1 cap block (mainline's butterfly lines differ).
 v4.14 2026-10-04  OTV4TEST r242 (LIVE.1 B0, MIRROR OF otv4 r463 c912ce7, WA 38.2) — every Account call goes through tasty_client.sdk_result: on tastytrade 13.x the Account methods are coroutines and a bare call placed and closed NOTHING live (paper never calls them). Hunks applied verbatim from c912ce7.
 v4.13 2026-10-03  OTV4TEST r224 (FLY.1) — A BUTTERFLY ENTRY NEVER POSTS ABOVE ITS MARK. The operator, 2026-10-03: "They should still
@@ -202,6 +206,7 @@ from risk.risk_manager import SizingResult
 from database.trade_logger import TradeRecord, make_record, get_trade_logger
 from data.tasty_client import get_session, get_account, TastyClientError, sdk_result
 from execution import order_guard as _guard                          # B2
+from execution import buying_power as _bp                            # F5
 from config import (
     PAPER_TRADING, PAPER_FILL_SLIPPAGE_PCT,
     CONTRACT_MULTIPLIER, INSTRUMENT,
@@ -618,6 +623,11 @@ class EntryEngine:
                 logger.warning("[guard] single-leg %s not posted: %s", symbol, _gwhy)
                 return None, "", 0
             limit, _why = self._walk_price(_key, "buy", _bid, _ask, symbol, mid)
+            _bok, _bwhy = _bp.affordable(float(limit) * int(contracts) * 100.0,
+                                         session, account, f"single-leg {symbol}")   # F5
+            if not _bok:
+                logger.warning("[bp] single-leg %s not posted: %s", symbol, _bwhy)
+                return None, "", 0
             logger.info("[ladder] %s BUY %s @ %.2f — %s (bid %.2f / ask %.2f)",
                         symbol, "single", limit, _why, _bid, _ask)
             order = NewOrder(
@@ -743,6 +753,11 @@ class EntryEngine:
             _ok, _gwhy = _guard.clear_to_post(f"offer|{symbol}", session, account)   # B2
             if not _ok:
                 logger.warning("[guard] standing offer %s not posted: %s", symbol, _gwhy)
+                return None, "", 0
+            _bok, _bwhy = _bp.affordable(float(mark) * int(contracts) * 100.0,
+                                         session, account, f"standing offer {symbol}")   # F5
+            if not _bok:
+                logger.warning("[bp] standing offer %s not posted: %s", symbol, _bwhy)
                 return None, "", 0
             leg = Leg(instrument_type=InstrumentType.EQUITY_OPTION,
                       symbol=symbol, action=OrderAction.BUY_TO_OPEN,
@@ -874,6 +889,11 @@ class EntryEngine:
             if _cap is None:
                 logger.info("[ladder] BUTTERFLY not posted: mark %.4f is under one cent - "
                             "any valid limit would exceed it", float(mid or 0.0))
+                return None, "", 0
+            _bok, _bwhy = _bp.affordable(float(_cap) * int(contracts) * 100.0,
+                                         session, account, "butterfly")      # F5
+            if not _bok:
+                logger.warning("[bp] butterfly not posted: %s", _bwhy)
                 return None, "", 0
             for attempt in range(2):
                 if attempt == 0 and _fly_ask > 0:
