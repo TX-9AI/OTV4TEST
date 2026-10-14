@@ -1,5 +1,9 @@
 """
-config.py  v4.64
+config.py  v4.65
+v4.65  2026-10-14  OTV4TEST r284 (BRK.11) - OT_BRK_STOP5M off|log|trade (UNSET = trade) and BRK_STOP5M_BARS = 3: Breakout's
+       stop is the farther of the 1m break bar's extreme and the last 3 CLOSED 5m RTH bars' extreme (strategy/
+       breakout_plan.swing_5m_stop). A refused value reads as log and is named in BRK_STOP5M_ENV_REFUSED. The operator,
+       2026-10-14 11:47 ET: "Yes, we have to".
 v4.64  2026-10-12  OTV4TEST r273 (BFLY.10) - ENTRY_WINDOWS["GEXPinButterfly"] and ["ATPButterfly"] START 12:00 -> 13:00
        (end 15:00 unchanged); BUTTERFLY_ENTRY_START_ET and GEX_BFLY_EARLIEST_ET follow (derived). The operator, 2026-10-12 12:26 ET: "For TEST repo, I want to reduce the fly window to 1300 or later starting tomorrow"; 12:31 ET: "Yes".
        Mainline made the same move at otv4 r484 (FEE.4). Stated to him first: this box's 7 GEX flies made
@@ -865,6 +869,21 @@ else:
     BRK_NOPROG_MODE = "log"
     if _np_raw:
         BRK_NOPROG_ENV_REFUSED = _np_raw
+# ── r284 (BRK.11) — BREAKOUT'S STOP IS THE 5m SWING, NOT THE 1m BREAK BAR ──────
+# off | log | trade. UNSET = trade (the operator, 2026-10-14 11:47 ET: "Yes, we have
+# to"). trade: the stop is the farther of the break bar's extreme and the extreme
+# of the last BRK_STOP5M_BARS CLOSED 5m bars of today's RTH, so size and the
+# structural premium stop follow it; log: the 1m stop trades and the 5m stop is only
+# recorded; off: neither. A refused value reads as log and is named.
+BRK_STOP5M_ENV_REFUSED = ""
+_s5_raw = os.environ.get("OT_BRK_STOP5M", "").strip().lower()
+if _s5_raw in ("off", "log", "trade"):
+    BRK_STOP5M_MODE = _s5_raw
+else:
+    BRK_STOP5M_MODE = "log" if _s5_raw else "trade"
+    if _s5_raw:
+        BRK_STOP5M_ENV_REFUSED = _s5_raw
+BRK_STOP5M_BARS = 3
 # ── r266 (STOP.1) — THE RESTING STOP (execution/resting_stop.py) ─────────────
 RESTING_STOP_ENV_REFUSED = ""
 _rs_raw = os.environ.get("OT_RESTING_STOP", "").strip().lower()

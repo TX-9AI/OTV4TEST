@@ -1,5 +1,13 @@
 """
-strategy/breakout_plan.py  v1.14
+strategy/breakout_plan.py  v1.15
+v1.15 2026-10-14  OTV4TEST r284 (BRK.11) — THE STOP IS THE 5m SWING, NOT THE 1m BREAK BAR. The 1m break bar's extreme
+      put the stop inside one minute of noise (median 0.36 pt on QQQ-TEST's 98 Breakouts; 10-14 10:53: 0.76 pt, 46
+      contracts, out in 2 min on a 1-pt bounce in a 5-pt trend). swing_5m_stop() reads the feed store (read-only) for
+      the last BRK_STOP5M_BARS CLOSED 5m bars of TODAY'S RTH that ended by the signal bar's close; the stop is the
+      FARTHER of that extreme and the break bar's (never tighter than before). Size and the structural premium stop
+      follow underlying_stop unchanged (r91). OT_BRK_STOP5M=trade|log|off (unset = trade); an unreadable store keeps
+      the 1m stop and says so. COUNTERFACTUAL: every FIRE writes both stops to data/counterfactual/breakout_stop.jsonl.
+      The operator, 2026-10-14 11:47 ET: "Yes, we have to". tests/check_brk_stop5m.py.
 v1.14 2026-10-13  OTV4TEST r282 (BRK.10) — THE FIRST ENTRY IS THE TAPE'S FIRST BREAK, NOT THE BOOK'S FIRST FILL.
       r131's "first entry per side fires on the break close" counted FILLED trades only, so a break the gates
       refused (SPX-TEST 10-13: commit x2, pin x45, ENT.1 x12, 09:38-09:52) left the side "unfired" and the next close
@@ -342,6 +350,40 @@ def first_break_before(symbol: str, day, before_ms: int, direction: str, edge):
     return int(row[0]) if row else None
 
 
+def swing_5m_stop(symbol: str, day, sig_end_ms: int, direction: str, bars: int = 3):
+    """The extreme (short: highest high, long: lowest low) of the last `bars` CLOSED 5m
+    candles of `day`'s RTH (start >= 09:30 ET) that ENDED at or before `sig_end_ms`
+    (the signal bar's close) - None when there is none yet, or a string naming why
+    the store could not be read. NEVER raises.
+
+    🔴 r284 (BRK.11) - the 1m break bar's extreme is a stop inside one minute of
+    noise. Measured on QQQ-TEST's Breakouts 09-09..10-14 (underlying R, held to the
+    stop or 15:55, /var/tmp/structure_hold_1014/v2_brk.txt): winners 12 -> 33, full
+    stops 86 -> 59, the 1m-losing days -51.2 R -> -31.8 R; total +91.1 R -> +40.8 R
+    (09-21's few-cent stops carry the 1m total).
+    """
+    from datetime import datetime
+    try:
+        import sqlite3
+        from zoneinfo import ZoneInfo
+        from data.candle_feed import feed_db_path
+        open_ms = int(datetime(day.year, day.month, day.day, 9, 30,
+                               tzinfo=ZoneInfo(_ET_ZONE)).timestamp() * 1000)
+        conn = sqlite3.connect(f"file:{feed_db_path()}?mode=ro", uri=True, timeout=5.0)
+        try:
+            rows = conn.execute(
+                "SELECT high, low FROM candles WHERE symbol=? AND interval='5m' AND ts_epoch_ms >= ? "
+                "AND ts_epoch_ms + 300000 <= ? AND high > 0 AND low > 0 ORDER BY ts_epoch_ms DESC LIMIT ?",
+                (symbol, open_ms, int(sig_end_ms), int(bars))).fetchall()
+        finally:
+            conn.close()
+    except Exception as exc:                                    # noqa: BLE001
+        return f"5m bars unreadable ({type(exc).__name__}: {exc})"
+    if not rows:
+        return None
+    return float(max(h for h, _ in rows)) if direction == "short" else float(min(l for _, l in rows))
+
+
 # v1.10 (BRK.6) - what an index records in place of a tape or a book it cannot have.
 NA_NO_TAPE = "n/a - cash index, no tape"
 NA_NO_BOOK = "n/a - cash index, no book"
@@ -355,11 +397,31 @@ def _cash_index(symbol: str) -> bool:
         return False
 
 
+def _record_stop_choice(prep) -> None:
+    """r284 (BRK.11) COUNTERFACTUAL: every FIRE records the 1m stop the old rule
+    would have used beside the 5m swing and the stop that traded, so Saturday can
+    replay both roads. Never raises; a failed write is logged, never fatal."""
+    try:
+        import json, os, time
+        d = os.environ.get("OT_COUNTERFACTUAL_DIR") or os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "counterfactual")
+        os.makedirs(d, exist_ok=True)
+        row = {"ts_epoch": time.time(), "rule": "breakout_stop_5m",
+               "mode": getattr(config, "BRK_STOP5M_MODE", "trade"), "direction": prep.direction,
+               "entry": prep.price_now, "break_close": prep.break_close, "stop_1m": prep.stop_1m,
+               "stop_5m": prep.stop_5m, "stop_used": prep.stop, "premium": prep.premium,
+               "strike": float(getattr(prep.contract, "strike", 0) or 0)}
+        with open(os.path.join(d, "breakout_stop.jsonl"), "a") as fh:
+            fh.write(json.dumps(row) + "\n")
+    except Exception as exc:                                    # noqa: BLE001
+        logger.warning("[breakout] stop counterfactual row NOT written: %s", exc)
+
+
 class BreakoutPreparation:
     """What the search found. `ready` is True ONLY when every bar cleared."""
 
     __slots__ = ("tick", "spec", "conditions", "unmet", "ready", "direction", "side",
-                 "edge", "break_close", "stop", "risk", "target", "target_src",
+                 "edge", "break_close", "stop", "stop_1m", "stop_5m", "risk", "target", "target_src",
                  "contract", "premium", "r", "trigger", "invalidation",
                  "pool_price", "pool_name", "pool_dist_r", "verdict", "defer_to",
                  "defer_side", "defer_level", "defer_why", "price_now", "orb",
@@ -371,6 +433,7 @@ class BreakoutPreparation:
         self.ready = False
         self.direction = self.side = ""
         self.edge = self.break_close = self.stop = self.risk = None
+        self.stop_1m = self.stop_5m = None
         self.target = self.target_src = None
         self.contract = self.premium = self.r = None
         self.trigger = self.invalidation = None
@@ -465,6 +528,7 @@ class BreakoutPreparation:
         sig.breakout_target_src = self.target_src
         sig.disarms_retest = False          # the ORB keeps its own arm
         logger.info("[breakout] FIRE %s — %s", self.direction, self.trade_line())
+        _record_stop_choice(self)                                         # r284 (BRK.11)
         return self.tick.take(sig)
 
 
@@ -581,6 +645,25 @@ class BreakoutPlan:
         bhi = _f(bar.get("high") if hasattr(bar, "get") else bar["high"])
         blo = _f(bar.get("low") if hasattr(bar, "get") else bar["low"])
         prep.stop = blo if direction == "long" else bhi
+        prep.stop_1m = prep.stop
+        # r284 (BRK.11) - THE STOP IS THE 5m SWING: the farther of the break bar's
+        # extreme and the last closed 5m bars' (never tighter than the 1m stop).
+        _mode = getattr(config, "BRK_STOP5M_MODE", "trade")
+        if direction and prep.stop and _mode != "off":
+            _sts = _bar_stamp(df_1m, -2)
+            sw = (swing_5m_stop(symbol or self._symbol(), _sts.date(),
+                                int(_sts.timestamp() * 1000) + 60_000, direction,
+                                int(getattr(config, "BRK_STOP5M_BARS", 3)))
+                  if _sts is not None else "signal bar has no timestamp")
+            if isinstance(sw, str):
+                t.check("stop_5m", None, None, note=f"{sw} - the 1m stop stands")
+            elif sw is not None:
+                prep.stop_5m = (max(sw, prep.stop) if direction == "short" else min(sw, prep.stop))
+                t.check("stop_5m", prep.stop_5m, None,
+                        note=f"1m stop {prep.stop_1m:.2f}; OT_BRK_STOP5M={_mode}")
+                if _mode == "trade":
+                    prep.stop = prep.stop_5m
+        t.check("stop_1m", prep.stop_1m, None)
         prep.risk = abs(bc - prep.stop) if (bc and prep.stop) else None
 
         pool = self._pool(board, px, direction)

@@ -1,5 +1,7 @@
 """
-main.py  v4.105
+main.py  v4.106
+v4.106  2026-10-14  OTV4TEST r284 (BRK.11) - the Service mode line names Breakout's stop in force: " · brk_stop=5m(trade)|1m(log)|1m(off)"
+      (and a refused OT_BRK_STOP5M by name), read from config. The operator, 2026-10-14 11:47 ET: "Yes, we have to".
 v4.105  2026-10-14  OTV4TEST r283 (LIVE.1 F5, mirror of otv4 r473 bfb0991) - a live credit vertical checks buying
       power before it posts: (width - credit) x contracts x 100, via execution/buying_power.affordable, right
       after B2's guard. Short or unreadable -> not posted. Code hunk verbatim from bfb0991. Paper unchanged.
@@ -1359,6 +1361,7 @@ from config import (
     RUNAWAY_CUTOFF_ET, RUNAWAY_END_ENV_REFUSED,                     # r253 (RUNW.2)
     BREAKOUT_LATEST_ET, BREAKOUT_END_ENV_REFUSED,                   # r265 (BRK.9)
     BRK_NOPROG_MODE, BRK_NOPROG_ENV_REFUSED,                        # r265 (BRK.8)
+    BRK_STOP5M_MODE, BRK_STOP5M_ENV_REFUSED,                        # r284 (BRK.11)
     RESTING_STOP_MODE, RESTING_STOP_ENV_REFUSED,                    # r266 (STOP.1)
     COMMIT_GATE_MODE, COMMIT_GATE_ENV_REFUSED,                      # r272 (COMMIT.2)
     CAUTION_SIZE_MODE, CAUTION_SIZE_ENV_REFUSED,                    # r272 (COMMIT.3)
@@ -5253,6 +5256,9 @@ def _banner_dials() -> str:
     brk += f" · brk_noprog={BRK_NOPROG_MODE}"                              # r265 (BRK.8)
     if BRK_NOPROG_ENV_REFUSED:
         brk += f" (OT_BRK_NOPROG={BRK_NOPROG_ENV_REFUSED!r} REFUSED)"
+    brk += f" · brk_stop={'5m' if BRK_STOP5M_MODE == 'trade' else '1m'}({BRK_STOP5M_MODE})"   # r284 (BRK.11)
+    if BRK_STOP5M_ENV_REFUSED:
+        brk += f" (OT_BRK_STOP5M={BRK_STOP5M_ENV_REFUSED!r} REFUSED)"
     brk += f" · resting_stop={RESTING_STOP_MODE}"                          # r266 (STOP.1)
     if RESTING_STOP_MODE == "trade" and not PAPER_TRADING:
         brk += " (LIVE: refused - stops close as before)"
