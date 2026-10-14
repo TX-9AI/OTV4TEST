@@ -1,5 +1,13 @@
 """
-execution/exit_engine.py  v4.38
+execution/exit_engine.py  v4.39
+v4.39 2026-10-14  OTV4TEST r285 (HUNT.8) — THE HUNT'S THESIS LINE IS THE 5m SWING, NOT ONLY ITS BOUNDARY. A 1m close back
+      through the entry boundary killed right-way hunts inside one minute of noise (10-14 09:58 short: dead 10:03 on 737.28
+      vs 736.90; QQQ fell to 732.4). _hunt_line() makes the line the FARTHER of underlying_stop (the boundary, unchanged for
+      ENT.1) and strategy.breakout_plan.swing_5m_stop as of the ENTRY time (last 3 closed RTH 5m bars), read from the feed
+      store each time (a restart decides the same); unreadable -> the boundary. OT_HUNT_STOP5M=trade|log|off (unset = trade).
+      COUNTERFACTUAL data/counterfactual/hunt_stop.jsonl: the line chosen per trade, and the tick the OLD boundary would have
+      ended it (mark, underlying). MEASURED /var/tmp/structure_hold_1014/v2_hunt.txt (n21, 1m close): -16.3 R -> -5.5 R, the
+      1m-losing days -36.0 R -> -15.1 R. The operator, 2026-10-14 11:47 ET: "Yes, we have to". tests/check_hunt_stop5m.py.
 v4.38 2026-10-06  OTV4TEST r256 (F3, MIRROR OF otv4 r475 5270801, WA 38.9) — NO MARKET CLOSE FOR WANT OF A MARK BEFORE THE CROSS. A single-leg close with no mark (None or <= 0) sent a MARKET order at any hour - on a thin 0DTE contract that fills at whatever the bid is. Now, before the cross (hard_close_order_mode != "market"), it posts NOTHING, pages once per trade ("nomark"), and the caller retries next tick; at/after the cross it still crosses. force_market is unchanged. Live-only (reached only through _submit_live_close). The logic and decision points are otv4's verbatim; THE ONE DIFFERENCE IS THE CLOCK, read from this tree's limit_ladder: the cross is 15:55 here (EOD.1, r149), 15:45 on mainline - so the messages say "before the cross". _confirm_and_book_live_exit_pass returns unconfirmed "no mark before the cross; nothing posted" so the generic SUBMIT FAILED page does not also fire. Pinned by tests/check_no_mark_close.py (N1 N2 N3b N5 born red on cd613cb).
 v4.37 2026-10-04  OTV4TEST r248 (LIVE.1 BBK.1, MIRROR OF otv4 r470 b457102, WA 38.2) — a single-leg BUY_TO_CLOSE is priced as a BUY: _close_single_leg passed the literal "sell" to _exit_limit, so an adopted short's buy-back walked down from the ask and snapped up - paying above its mark (measured: 1.15 then 1.14 against a 1.10 mark; floor 1.15 vs 1.10). The side now follows the action. Diff verbatim; reviewed here BEFORE mainline landed it (the operator: "Have reporter do the buy-back & run the fix by you for a sanity check").
 v4.36 2026-10-04  OTV4TEST r245 (LIVE.1 B3, MIRROR OF otv4 r467 b32c73b, WA 38.2) — A PARTIAL LIVE EXIT SURVIVES A RESTART: the close's state (filled portions, the working order id) is saved to the row's new live_exit_state column after the submit and after every pass, and loaded first; a restart resumes the working order or submits only the REMAINDER, and the booked price is the weighted average of every fill. Code hunks applied verbatim; getsource sha256[:16] of _exit_state_load / _exit_state_save / _confirm_and_book_live_exit identical to b32c73b (a71ca216 / b44de96e / 1819bebc).
@@ -1689,6 +1697,61 @@ class ExitEngine:
             pass
         return 0.0
 
+    _HUNT_CF_SAID: set = set()
+
+    def _hunt_line(self, record, direction, boundary: float) -> float:
+        """r285 (HUNT.8) — the Hunt's thesis line: the FARTHER of its entry boundary and
+        the 5m swing (last 3 closed RTH 5m bars ended by the entry time). Read from the
+        feed store each call, so a restart decides the same; anything unreadable or
+        absent keeps the boundary. OT_HUNT_STOP5M=log records and keeps the boundary."""
+        mode = getattr(_cfg, "HUNT_STOP5M_MODE", "trade")
+        if mode == "off" or not boundary or direction not in ("long", "short"):
+            return boundary
+        sw = None
+        try:
+            from datetime import datetime as _dt
+            from zoneinfo import ZoneInfo as _Z
+            from strategy.breakout_plan import swing_5m_stop
+            t0 = self._entry_epoch(record)
+            if t0 > 0:
+                day = _dt.fromtimestamp(t0, _Z("America/New_York")).date()
+                sw = swing_5m_stop(str(record.get("symbol") or getattr(_cfg, "INSTRUMENT", "") or ""), day, int(t0 * 1000),
+                                   "short" if direction == "short" else "long",
+                                   int(getattr(_cfg, "BRK_STOP5M_BARS", 3)))
+        except Exception as exc:                                # noqa: BLE001
+            sw = f"unreadable ({type(exc).__name__}: {exc})"
+        line = boundary
+        if isinstance(sw, float):
+            line = max(boundary, sw) if direction == "short" else min(boundary, sw)
+        used = line if mode == "trade" else boundary
+        self._hunt_cf(record, {"event": "line", "mode": mode, "boundary": boundary,
+                               "stop_5m": sw if isinstance(sw, float) else None,
+                               "note": sw if isinstance(sw, str) else "", "line_used": used})
+        return used
+
+    def _hunt_cf(self, record, row: dict) -> None:
+        """Once per (trade, event) per process: data/counterfactual/hunt_stop.jsonl."""
+        tid = str(record.get("trade_id", "") or "")
+        key = (tid, row.get("event"))
+        if not tid or key in ExitEngine._HUNT_CF_SAID:
+            return
+        ExitEngine._HUNT_CF_SAID.add(key)
+        try:
+            import json as _json, os as _os, time as _time
+            d = _os.environ.get("OT_COUNTERFACTUAL_DIR") or _os.path.join(
+                _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "data", "counterfactual")
+            _os.makedirs(d, exist_ok=True)
+            out = {"ts_epoch": _time.time(), "trade_id": tid, "symbol": record.get("symbol"),
+                   "rule": "hunt_stop_5m", "direction": record.get("direction"), **row}
+            with open(_os.path.join(d, "hunt_stop.jsonl"), "a") as fh:
+                fh.write(_json.dumps(out) + "\n")
+            if row.get("event") == "line":
+                logger.info("[hunt] %s thesis line %.2f (boundary %.2f, 5m %s, OT_HUNT_STOP5M=%s)",
+                            tid[:8], row["line_used"], row["boundary"],
+                            "-" if row.get("stop_5m") is None else f"{row['stop_5m']:.2f}", row.get("mode"))
+        except Exception as exc:                                # noqa: BLE001
+            logger.warning("[hunt] stop counterfactual row NOT written for %s: %s", tid[:8], exc)
+
     def _hunt_at_target(self, record, df_1m) -> str:
         """The hunt's own take-off: the closed bar WICKED its target level with
         the close short of it -> off (the reversal is the sweep's trade, and
@@ -1751,11 +1814,15 @@ class ExitEngine:
                 return ""
             width = hi - lo
             tp50 = hi + width / 2 if direction == "long" else lo - width / 2
+            _hunt_old = None
             if record.get("strategy") == "LiquidityHunt":
                 # r12 — the hunt's thesis line is its ENTRY BOUNDARY (A1: the range
                 # edge it broke; A2: the far boundary it re-entered), carried in
                 # underlying_stop. The 50% level means nothing to it.
                 tp50 = float(record.get("underlying_stop") or 0.0) or tp50
+                # r285 (HUNT.8) — and no nearer than the 5m swing as of entry.
+                _hunt_old = tp50
+                tp50 = self._hunt_line(record, direction, tp50)
             last_close = float(df_1m.iloc[-2]["close"])
             # ══ r44 — THE LINE HAS A WIDTH, BECAUSE THE LEVEL DOES ═══════════
             # 🔴 THIS TEST HAD ZERO TOLERANCE AND IT COST A 2.68 POINT MOVE.
@@ -1785,6 +1852,13 @@ class ExitEngine:
                 band = 0.0
             lost = (last_close < tp50 - band if direction == "long"
                     else last_close > tp50 + band)
+            if _hunt_old is not None and not lost and _hunt_old != tp50:
+                _old_lost = (last_close < _hunt_old - band if direction == "long"
+                             else last_close > _hunt_old + band)
+                if _old_lost:
+                    self._hunt_cf(record, {"event": "old_line_would_exit", "line_old": _hunt_old,
+                                           "line_used": tp50, "last_close": last_close, "band": band,
+                                           "mark": current_premium, "entry_premium": entry_prem})
             if lost:
                 # ⚠️ THE LABEL NAMES THE STRATEGY IT FIRED FOR. "runaway_thesis_dead"
                 # on a LiquidityHunt row cost a wrong diagnosis on 2026-09-18:
@@ -1853,11 +1927,22 @@ class ExitEngine:
                     dials.append(f"premium_divergence {current_premium:.2f} vs peak {peak:.2f}")
             record["_fizzle_read"] = f"events={events} dials={dials}"
             if len(events) >= 2 or (len(events) >= 1 and len(dials) >= 1):
-                return f"runaway_fizzle: {'; '.join(events + dials)}"
+                # r285 (HUNT.8) — a Hunt held on its 5m line is not cut by a 1m fizzle read
+                # (10-14: the fizzle fires on the same 1m bounce the 5m line holds through).
+                # Recorded once as what the old rule would have done.
+                if (_hunt_old is not None and getattr(_cfg, "HUNT_STOP5M_MODE", "trade") == "trade"
+                        and tp50 != _hunt_old):
+                    self._hunt_cf(record, {"event": "fizzle_would_exit", "why": "; ".join(events + dials),
+                                           "last_close": last_close, "line_used": tp50,
+                                           "mark": current_premium, "entry_premium": entry_prem})
+                else:
+                    return f"runaway_fizzle: {'; '.join(events + dials)}"
             # ── structure backstop: a close back through the boundary ──
             boundary = hi if direction == "long" else lo
             if record.get("strategy") == "LiquidityHunt":
                 boundary = float(record.get("underlying_stop") or 0.0) or boundary   # r12: its entry boundary
+                if _hunt_old is not None:
+                    boundary = tp50          # r285 (HUNT.8): the same line the thesis test used
             crossed = last_close < boundary if direction == "long" else last_close > boundary
             if crossed:
                 return (f"runaway_backstop: 1m close {last_close:.2f} through the ORB boundary "

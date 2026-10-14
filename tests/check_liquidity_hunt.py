@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_liquidity_hunt.py  v1.1
+tests/check_liquidity_hunt.py  v1.2
+v1.2  2026-10-14  OTV4TEST r285 (HUNT.8) - OT_COUNTERFACTUAL_DIR is set to a scratch directory before any project
+      import: this file drives the exit engine with LiquidityHunt records, and r285's _hunt_cf would otherwise
+      write fixture rows into the repo's data/counterfactual/hunt_stop.jsonl - the LIVE log when the boot sweep
+      runs in the live tree. No check changed.
 v1.1  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
       US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
       without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
@@ -26,6 +30,7 @@ import os
 import sqlite3
 import sys
 import tempfile
+os.environ.setdefault("OT_COUNTERFACTUAL_DIR", tempfile.mkdtemp(prefix="cf_", dir="/var/tmp"))   # r285: never the live log
 import time
 import types
 

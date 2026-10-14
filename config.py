@@ -1,5 +1,8 @@
 """
-config.py  v4.65
+config.py  v4.66
+v4.66  2026-10-14  OTV4TEST r285 (HUNT.8) - OT_HUNT_STOP5M off|log|trade (UNSET = trade): the Hunt's thesis-dead line is
+       the farther of its entry boundary and the 5m swing as of entry (execution/exit_engine). The operator, 2026-10-14
+       11:47 ET: "Yes, we have to".
 v4.65  2026-10-14  OTV4TEST r284 (BRK.11) - OT_BRK_STOP5M off|log|trade (UNSET = trade) and BRK_STOP5M_BARS = 3: Breakout's
        stop is the farther of the 1m break bar's extreme and the last 3 CLOSED 5m RTH bars' extreme (strategy/
        breakout_plan.swing_5m_stop). A refused value reads as log and is named in BRK_STOP5M_ENV_REFUSED. The operator,
@@ -884,6 +887,18 @@ else:
     if _s5_raw:
         BRK_STOP5M_ENV_REFUSED = _s5_raw
 BRK_STOP5M_BARS = 3
+# ── r285 (HUNT.8) — THE HUNT'S THESIS LINE IS THE FARTHER OF ITS BOUNDARY AND THE
+# 5m SWING AS OF ENTRY (the same swing_5m_stop as BRK.11). off | log | trade, UNSET =
+# trade (the operator, 2026-10-14 11:47 ET: "Yes, we have to"). log: the boundary
+# decides and the 5m line is only recorded. A refused value reads as log, named.
+HUNT_STOP5M_ENV_REFUSED = ""
+_h5_raw = os.environ.get("OT_HUNT_STOP5M", "").strip().lower()
+if _h5_raw in ("off", "log", "trade"):
+    HUNT_STOP5M_MODE = _h5_raw
+else:
+    HUNT_STOP5M_MODE = "log" if _h5_raw else "trade"
+    if _h5_raw:
+        HUNT_STOP5M_ENV_REFUSED = _h5_raw
 # ── r266 (STOP.1) — THE RESTING STOP (execution/resting_stop.py) ─────────────
 RESTING_STOP_ENV_REFUSED = ""
 _rs_raw = os.environ.get("OT_RESTING_STOP", "").strip().lower()
