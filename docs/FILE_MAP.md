@@ -843,7 +843,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_entry_underwater.py`
 - **calls:** `main.py`, `strategy/base_strategy.py`
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `tools/land.sh`
 
 ### `tests/check_entry_windows.py`
 - **calls:** `config.py`, `strategy/__init__.py`, `strategy/gex_pin_butterfly.py`, `strategy/iron_condor_strategy.py`, `strategy/plan.py`, `strategy/relaxed.py`, `strategy/runaway_continuation.py`, `strategy/runaway_plan.py`, `strategy/sweep_credit_spread.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`
@@ -1067,7 +1067,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_liquidity_hunt.py`
 - **calls:** `config.py`, `data/derived_store.py`, `execution/__init__.py`, `execution/exit_engine.py`, `execution/handoff.py`, `execution/position_manager.py`, `strategy/__init__.py`, `strategy/liquidity_hunt.py`, `strategy/plan.py`
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/ENV.md`, `docs/PLAN_SPEC.md`, `docs/PORT_MANIFEST.md`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/ENV.md`, `docs/PLAN_SPEC.md`, `docs/PORT_MANIFEST.md` +1
 
 ### `tests/check_live_mark_fallback.py`
 - **calls:** `execution/position_manager.py`
@@ -1399,7 +1399,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_runaway_plan.py`
 - **calls:** `analysis/orb_engine.py`, `config.py`, `data/derived_store.py`, `database/trade_logger.py`, `execution/exit_engine.py`, `strategy/__init__.py`, `strategy/plan.py`, `strategy/runaway_continuation.py`, `strategy/runaway_plan.py`
-- **called by:** (not imported) — referenced in `devtools.sh`, `docs/ENV.md`, `docs/PLAN_SPEC.md`, `docs/PORT_MANIFEST.md`
+- **called by:** (not imported) — referenced in `devtools.sh`, `docs/ENV.md`, `docs/PLAN_SPEC.md`, `docs/PORT_MANIFEST.md` +1
 
 ### `tests/check_scaling_toggle.py`
 - **calls:** `main.py`, `risk/risk_manager.py`, `strategy/base_strategy.py`

@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""tests/check_entry_underwater.py — v1.0
+"""tests/check_entry_underwater.py — v1.1
+
+v1.1  2026-10-15  OTV4TEST r287 (CFDIR.1) — OT_COUNTERFACTUAL_DIR is set to a scratch directory before
+      main is imported. Driving the entry path writes caution_size.jsonl (analysis/commitment.py, COMMIT.3)
+      once the day has a first loss, and with nothing set that is the repo's data/counterfactual - the
+      LIVE log when run in the live tree. Found on r286's build 2026-10-15 (14 rows in a worktree after
+      the 10:00 loss); the operator, 2026-10-15 17:25 ET: "Yes" (to building the check_entry_underwater fix). No check changed.
 NO TRADE OPENS ALREADY THROUGH ITS OWN STOP (ENT.1).
 
 v1.0  2026-09-19  OTV4TEST r61 — built for the operator's ENT.1 ruling: STRICT
@@ -43,6 +49,8 @@ Run:  python3 tests/check_entry_underwater.py
 import ast
 import os
 import sys
+import tempfile
+os.environ.setdefault("OT_COUNTERFACTUAL_DIR", tempfile.mkdtemp(prefix="cf_", dir="/var/tmp"))   # r287: never the live log
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)

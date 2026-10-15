@@ -229,10 +229,10 @@ Unit `Environment=` lines set these; NEVER print a unit's Environment block to r
 | `OT_RESTING_DB` | (required), (set here) | `tests/check_breakout_new_extreme.py:88`, `tests/check_brk_noprog.py:39`, `tests/check_brk_stop5m.py:50`, `tests/check_cap_page_once.py:61`, `tests/check_db_handles.py:53`, `tests/check_expiry_settlement.py:55`, `tests/check_loss_cap_rearm.py:68`, `tests/check_no_zero_price.py:49`, `tests/check_offer_fill_price.py:56`, `tests/check_standing_offer.py:57` |
 | `OT_ROUTE_SELFTEST` | '0' | `tests/test_candle_routing.py:113` |
 | `OT_SEED_TOOL` | (none) | `tests/check_seed_candles.py:61` |
-| `OT_SWEEP_MIN_FREE_MB` | '180' | `tools/boot_sweep.py:104` |
-| `OT_SWEEP_NESTED` | (none) | `tools/boot_sweep.py:224` |
-| `OT_SWEEP_RESULT_DIR` | (none) | `tools/boot_sweep.py:93` |
-| `OT_SWEEP_TIMEOUT_S` | '300' | `tools/boot_sweep.py:105` |
+| `OT_SWEEP_MIN_FREE_MB` | '180' | `tools/boot_sweep.py:108` |
+| `OT_SWEEP_NESTED` | (none) | `tools/boot_sweep.py:229` |
+| `OT_SWEEP_RESULT_DIR` | (none) | `tools/boot_sweep.py:97` |
+| `OT_SWEEP_TIMEOUT_S` | '300' | `tools/boot_sweep.py:109` |
 | `OT_WAKE_LOG` | (none) | `tools/wake_box.py:53` |
 | `OT_WAKE_POLL_S` | '5' | `tools/wake_box.py:54` |
 | `OT_WAKE_REGION` | (none) | `tools/wake_box.py:78` |

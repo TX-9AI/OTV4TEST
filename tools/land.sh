@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# tools/land.sh — v1.18
+# tools/land.sh — v1.19
+# v1.19 (2026-10-15) — OTV4TEST r287 (CFDIR.1). THE SIXTH WRITER. Every CHECK also gets
+#   OT_COUNTERFACTUAL_DIR under $_scratch: seven bot modules append to data/counterfactual/, and a
+#   checker that drives them wrote fixture rows into the LIVE logs (r285: check_liquidity_hunt and
+#   check_runaway_plan; r287: check_entry_underwater). check_land_tooling T6.
 # v1.18 (2026-10-03) — OTV4TEST r194. THE FIFTH WRITER (BOX.16). Every CHECK also gets
 #   OT_LOG_FILE under $_scratch: main attaches its file handler to config.LOG_FILE at import,
 #   so every checker that imports main wrote into the box's live bot.log. check_land_tooling T6.
@@ -538,7 +542,7 @@ land_one() {
     # with the trades and derived stores pointed at scratch files, whatever it does.
     # r109 — AND THE RESTING-ORDER STORE, the third one r13 missed (v1.15 above).
     _scratch="$(mktemp -d /tmp/land-check.XXXXXX)"
-    if ( cd "$repo" && env -u LAND_ARCHIVE -u LAND_STAGE OT_TRADES_DB="$_scratch/trades.db" OT_DERIVED_DB="$_scratch/derived_store.db" OT_RESTING_DB="$_scratch/resting_orders.db" OT_SIGNAL_JOURNAL_DIR="$_scratch/signal_journal" OT_LOG_FILE="$_scratch/bot.log" OT_INSTRUMENT="${OT_INSTRUMENT:-QQQ}" python3 "$chk" ) >/dev/null 2>&1; then
+    if ( cd "$repo" && env -u LAND_ARCHIVE -u LAND_STAGE OT_TRADES_DB="$_scratch/trades.db" OT_DERIVED_DB="$_scratch/derived_store.db" OT_RESTING_DB="$_scratch/resting_orders.db" OT_SIGNAL_JOURNAL_DIR="$_scratch/signal_journal" OT_LOG_FILE="$_scratch/bot.log" OT_COUNTERFACTUAL_DIR="$_scratch/counterfactual" OT_INSTRUMENT="${OT_INSTRUMENT:-QQQ}" python3 "$chk" ) >/dev/null 2>&1; then
       pb_clear
       echo "  check: $chk PASS"
     else

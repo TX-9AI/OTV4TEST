@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tests/check_boot_sweep.py  v1.4
+tests/check_boot_sweep.py  v1.5
+v1.5  2026-10-15  OTV4TEST r287 (CFDIR.1) — B3/B3b REQUIRE THE COUNTERFACTUAL LOGS IN SCRATCH TOO.
 v1.4  2026-10-06  OTV4TEST r257 — B8/B8b: A SWEEP NEVER STARTS INSIDE ANOTHER. B1b's "real subset" drives
       `--only check_boot_sweep`, which recursed without bound (SPX-TEST 10-06: past B1b's 180 s timeout).
       B8 DRIVES the tool with OT_SWEEP_NESTED=1 and requires the refusal (exit 0, "NESTED", no result file,
@@ -128,7 +129,7 @@ check("B2 it reads MemAvailable and has a floor to skip under",
 check("B3 every checker runs against SCRATCH stores",
       ("OT_TRADES_DB" in _src) and ("OT_DERIVED_DB" in _src)
       and ("OT_RESTING_DB" in _src) and ("OT_SIGNAL_JOURNAL_DIR" in _src)
-      and ("OT_LOG_FILE" in _src)
+      and ("OT_LOG_FILE" in _src) and ("OT_COUNTERFACTUAL_DIR" in _src)
       and ("mkdtemp" in _src or "TemporaryDirectory" in _src),
       "checkers must never see the live trades/derived/resting stores")
 
@@ -161,7 +162,8 @@ def _b3b():
     finally:
         _m.subprocess.run = _orig
     env = seen.get("env") or {}
-    want = ("OT_TRADES_DB", "OT_DERIVED_DB", "OT_RESTING_DB", "OT_SIGNAL_JOURNAL_DIR", "OT_LOG_FILE")
+    want = ("OT_TRADES_DB", "OT_DERIVED_DB", "OT_RESTING_DB", "OT_SIGNAL_JOURNAL_DIR", "OT_LOG_FILE",
+            "OT_COUNTERFACTUAL_DIR")
     paths = {k: env.get(k) for k in want}
     parents = {os.path.dirname(v) for v in paths.values() if v}
     ok = (all(paths.values()) and len(parents) == 1

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""tools/boot_sweep.py — v1.5
+"""tools/boot_sweep.py — v1.6
+
+v1.6 (2026-10-15) — OTV4TEST r287 (CFDIR.1). THE COUNTERFACTUAL LOGS ARE SCRATCH TOO: run_one sets
+  OT_COUNTERFACTUAL_DIR under the same bootsweep- mkdtemp, so a checker that drives an exit, entry or
+  plan path no longer appends fixture rows to the live data/counterfactual/. check_boot_sweep B3/B3b.
 
 v1.5 (2026-10-06) — OTV4TEST r257. A SWEEP NEVER STARTS INSIDE ANOTHER SWEEP. check_boot_sweep's B1b drives
   `boot_sweep --only check_boot_sweep`, which runs check_boot_sweep, which drives it again - nothing bounded
@@ -135,6 +139,7 @@ def run_one(name: str) -> bool:
     env["OT_RESTING_DB"] = os.path.join(d, "resting_orders.db")     # r109
     env["OT_SIGNAL_JOURNAL_DIR"] = os.path.join(d, "signal_journal")  # r144
     env["OT_LOG_FILE"] = os.path.join(d, "bot.log")                   # r194 (BOX.16)
+    env["OT_COUNTERFACTUAL_DIR"] = os.path.join(d, "counterfactual")  # r287 (CFDIR.1)
     env["OT_SWEEP_NESTED"] = "1"     # r257: a checker that drives this tool gets a refusal, not a sweep
     env.setdefault("OT_INSTRUMENT", "QQQ")   # r146: an EXPLICIT fixture symbol; config no longer guesses one
     try:
