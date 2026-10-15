@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_liquidity_hunt.py  v1.2
+tests/check_liquidity_hunt.py  v1.3
+v1.3  2026-10-15  HUNT.9 (RECORD-ONLY) - H11a-i: after a boundary's A2, a far-side re-close then a close back inside
+      writes ONE hunt_rearm row and fires NOTHING (H11c); staying inside records nothing (H11a, H11e); A1 is unchanged
+      (H11d, and H11i: an A1 on a finished key is never recorded); off records nothing (H11f); log and off fire the
+      same signals (H11g, no order from the re-arm); there is no trade value (H11h). The operator, 2026-10-15 10:16 ET: "Concur on all" (to "record-only").
 v1.2  2026-10-14  OTV4TEST r285 (HUNT.8) - OT_COUNTERFACTUAL_DIR is set to a scratch directory before any project
       import: this file drives the exit engine with LiquidityHunt records, and r285's _hunt_cf would otherwise
       write fixture rows into the repo's data/counterfactual/hunt_stop.jsonl - the LIVE log when the boot sweep
@@ -22,6 +26,7 @@ v1.0  2026-09-10  OTV4TEST r12 — THE LIQUIDITY HUNT AND THE HANDOFF GRANT, ON
   H8   thesis dead: a close back through the ENTRY boundary (A2: the far one), not the 50
   H9   slot: an open hunt is NOT blocking; an open ORB does not block a hunt entry
   H10  the grant: live -> consumed on fire / expired after TTL, both recorded
+  H11  HUNT.9: a far-side re-close then back inside RECORDS the re-armed A2, never fires it; A1 unchanged
 
 Born red at r11: every H (no module).
 Run:  python3 tests/check_liquidity_hunt.py
@@ -29,6 +34,7 @@ Run:  python3 tests/check_liquidity_hunt.py
 import os
 import sqlite3
 import sys
+import subprocess
 import tempfile
 os.environ.setdefault("OT_COUNTERFACTUAL_DIR", tempfile.mkdtemp(prefix="cf_", dir="/var/tmp"))   # r285: never the live log
 import time
@@ -115,6 +121,85 @@ def main():
     check("H4 A2: the fake fails (close back inside) -> fires long from the FAR boundary 100.00, target 102.50",
           sig is not None and sig.hunt_entry == "A2" and sig.underlying_stop == 100.0 and sig.underlying_target == 102.5
           and abs(sig.run_at_entry - 2.3) < 1e-6, f"sig={sig and (sig.hunt_entry, sig.underlying_stop, sig.run_at_entry)} {r[1][-80:]}")
+    # H11 (HUNT.9) - A RETURN TO THE RANGE RE-ARMS A2: RECORDED, NEVER TRADED. The operator, 2026-10-14 10:28 ET:
+    # "It should be permitted if it goes back into the range"; 2026-10-15 10:16 ET: "Concur on all" (to
+    # "BRK.12 / HUNT.9: record-only"). Rows go to the scratch OT_COUNTERFACTUAL_DIR set above.
+    import json as _json
+    import config as _cfg
+    _cf = os.path.join(os.environ["OT_COUNTERFACTUAL_DIR"], "hunt_rearm.jsonl")
+    def _rows():
+        try:
+            with open(_cf) as fh:
+                return [_json.loads(x) for x in fh if x.strip()]
+        except FileNotFoundError:
+            return []
+    sig, r = tick2(4.5, 100.3, _frame([(100.2, 100.4, 100.1, 100.3), (100.3, 100.4, 100.2, 100.3)], "09:48"))
+    check("H11a staying inside after an A2 does not fire again and records nothing",
+          sig is None and r[0] == "HOLD" and not _rows(), f"sig={sig and sig.hunt_entry} rows={len(_rows())} {r[1][-70:]}")
+    sig, r = tick2(4.6, 99.7, _frame([(100.1, 100.2, 99.6, 99.7), (99.7, 99.8, 99.6, 99.7)], "09:49"))
+    check("H11b the far-side break re-asserts (a close back out below) -> not traded, AWAY, nothing recorded yet",
+          sig is None and r[0] == "HOLD" and "AWAY" in r[1] and not _rows(), r[1][-90:])
+    sig, r = tick2(4.7, 100.2, _frame([(99.8, 100.3, 99.7, 100.2), (100.2, 100.3, 100.1, 100.2)], "09:50"))
+    rr = _rows()
+    check("H11c ...and it goes BACK INTO THE RANGE -> NO ORDER (no signal), ONE hunt_rearm row: A2 long from 100.00",
+          sig is None and r[0] == "HOLD" and "RECORDED ONLY" in r[1] and len(rr) == 1 and rr[0]["entry"] == "A2"
+          and rr[0]["direction"] == "long" and rr[0]["boundary"] == 100.0 and rr[0]["mode"] == "log"
+          and abs(rr[0]["target"] - 102.5) < 1e-9,
+          f"sig={sig and sig.hunt_entry} rows={rr} {r[1][-80:]}")
+    sig, r = tick2(4.8, 100.25, _frame([(100.2, 100.3, 100.1, 100.25), (100.25, 100.3, 100.2, 100.25)], "09:51"))
+    check("H11e the next bar inside, with no new far-side close, records no second row and fires nothing",
+          sig is None and len(_rows()) == 1, f"sig={sig and sig.hunt_entry} rows={len(_rows())}")
+    # H11i - with BOTH breaks already hunted, a far-side re-close then a close straight out ABOVE is an A1 on a
+    # finished key: refused "one per break" and NOT recorded (the re-arm is A2's, never A1's).
+    sig_a1, _ = tick2(4.9, 101.3, _frame([(100.9, 101.4, 100.8, 101.3), (101.3, 101.4, 101.2, 101.3)], "09:56"))
+    tick2(4.91, 99.7, _frame([(100.1, 100.2, 99.6, 99.7), (99.7, 99.8, 99.6, 99.7)], "09:57"))
+    sig, r = tick2(4.92, 101.3, _frame([(100.9, 101.4, 100.8, 101.3), (101.3, 101.4, 101.2, 101.3)], "09:58"))
+    check("H11i a far-side re-close then a close straight out above (A1, already hunted) records NO row",
+          sig_a1 is not None and sig_a1.hunt_entry == "A1" and sig is None and "one per break" in r[1]
+          and len(_rows()) == 1, f"a1={sig_a1 and sig_a1.hunt_entry} sig={sig and sig.hunt_entry} rows={len(_rows())} {r[1][-50:]}")
+    hunt3 = LH.LiquidityHunt(); hunt3._store = ds; hunt3.planner.symbol = "TST"; LH.FINISHED.clear()
+    def tick3(n, px, frame, hhmm="09:55"):
+        P.begin_tick(n)
+        sig = hunt3.generate_signal(orb=orb, price_now=px, now_et=hhmm, atr_pct=0.14, chain=chain, df_1m=frame, atm_iv=0.25)
+        P.close_tick(st, "TST")
+        return sig, row()
+    sig1, _ = tick3(5.0, 101.3, _frame([(100.9, 101.4, 100.8, 101.3), (101.3, 101.4, 101.2, 101.3)], "09:52"))
+    tick3(5.1, 99.7, _frame([(100.1, 100.2, 99.6, 99.7), (99.7, 99.8, 99.6, 99.7)], "09:53"))
+    tick3(5.2, 100.2, _frame([(99.8, 100.3, 99.7, 100.2), (100.2, 100.3, 100.1, 100.2)], "09:54"))
+    sig, r = tick3(5.3, 101.3, _frame([(100.9, 101.4, 100.8, 101.3), (101.3, 101.4, 101.2, 101.3)], "09:55"))
+    check("H11d A1 is UNCHANGED: a far-side close never re-arms the bias-side break, and records no A1 row",
+          sig1 is not None and sig1.hunt_entry == "A1" and sig is None and "one per break" in r[1]
+          and all(x["entry"] == "A2" for x in _rows()),
+          f"first={sig1 and sig1.hunt_entry} then={sig and sig.hunt_entry} {r[1][-60:]}")
+    # OFF, and NO DECISION CHANGES: the same A2 -> re-assert -> back-inside sequence under log and under off
+    # yields the same signals (none after the first A2); off writes nothing.
+    def _seq(mode):
+        _saved = getattr(_cfg, "HUNT_REARM_MODE", "log"); _cfg.HUNT_REARM_MODE = mode
+        try:
+            h = LH.LiquidityHunt(); h._store = ds; h.planner.symbol = "TST"; LH.FINISHED.clear()
+            out = []
+            for n, px, bars, hhmm in ((6.0, 99.7, [(100.1, 100.2, 99.6, 99.7), (99.7, 99.9, 99.6, 99.8)], "10:00"),
+                                      (6.1, 100.2, [(99.8, 100.3, 99.7, 100.2), (100.2, 100.4, 100.1, 100.3)], "10:01"),
+                                      (6.2, 99.7, [(100.1, 100.2, 99.6, 99.7), (99.7, 99.8, 99.6, 99.7)], "10:02"),
+                                      (6.3, 100.2, [(99.8, 100.3, 99.7, 100.2), (100.2, 100.3, 100.1, 100.2)], "10:03")):
+                P.begin_tick(n)
+                sg = h.generate_signal(orb=orb, price_now=px, now_et=hhmm, atr_pct=0.14, chain=chain,
+                                       df_1m=_frame(bars, hhmm), atm_iv=0.25)
+                P.close_tick(st, "TST")
+                out.append(sg.hunt_entry if sg is not None else None)
+            return out
+        finally:
+            _cfg.HUNT_REARM_MODE = _saved
+    n0 = len(_rows()); s_off = _seq("off"); n_off = len(_rows()); s_log = _seq("log"); n_log = len(_rows())
+    check("H11f OT_HUNT_REARM=off: nothing recorded", n_off == n0, f"rows {n0}->{n_off}")
+    check("H11g RECORD-ONLY: log and off fire exactly the same signals (one A2, then none), log adds one row",
+          s_off == s_log == [None, "A2", None, None] and n_log == n_off + 1,
+          f"off={s_off} log={s_log} rows {n_off}->{n_log}")
+    _o = subprocess.run([sys.executable, "-c", "import config;print(config.HUNT_REARM_MODE, config.HUNT_REARM_ENV_REFUSED)"],
+                        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        env=dict(os.environ, OT_HUNT_REARM="trade"), capture_output=True, text=True, timeout=120)
+    check("H11h there is no trade value: OT_HUNT_REARM=trade reads as log and is named",
+          _o.stdout.split()[-2:] == ["log", "trade"], (_o.stdout + _o.stderr)[-160:])
 
     # exits
     import datetime as _dt

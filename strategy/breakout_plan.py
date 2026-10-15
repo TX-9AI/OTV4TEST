@@ -1,5 +1,12 @@
 """
-strategy/breakout_plan.py  v1.15
+strategy/breakout_plan.py  v1.16
+v1.16 2026-10-15  BRK.12 (FORK-ONLY) — A RETURN TO THE RANGE RE-ARMS THE SIDE, ONCE - RECORD-ONLY. The operator,
+      2026-10-14 11:38 ET: "I want a return of the range to enable another breakout in either direction" ("Breakout
+      only", "One re-arm per side"); 2026-10-15 10:16 ET: "Concur on all" (to "BRK.12 / HUNT.9: record-only").
+      range_rearm() reads the feed store: after the side's first break, a 1m close back inside the edge, and the
+      signal bar is the first close beyond it since. _new_extreme() writes that would-be fire, with the
+      new-extreme verdict beside it, to data/counterfactual/breakout_rearm.jsonl (once per side per signal bar)
+      and changes no decision. OT_BRK_REARM=log|off (unset = log). check_breakout_new_extreme N11.
 v1.15 2026-10-14  OTV4TEST r284 (BRK.11) — THE STOP IS THE 5m SWING, NOT THE 1m BREAK BAR. The 1m break bar's extreme
       put the stop inside one minute of noise (median 0.36 pt on QQQ-TEST's 98 Breakouts; 10-14 10:53: 0.76 pt, 46
       contracts, out in 2 min on a 1-pt bounce in a 5-pt trend). swing_5m_stop() reads the feed store (read-only) for
@@ -382,6 +389,75 @@ def swing_5m_stop(symbol: str, day, sig_end_ms: int, direction: str, bars: int =
     if not rows:
         return None
     return float(max(h for h, _ in rows)) if direction == "short" else float(min(l for _, l in rows))
+
+
+def range_rearm(symbol: str, day, before_ms: int, direction: str, edge):
+    """BRK.12 - (first_break_ms, return_ms) when the signal bar is this side's ONE re-armed break: an earlier
+    RTH 1m close beyond `edge` (from the range's close, 09:35), then a close back inside it, and NO close beyond
+    it since, up to (not including) `before_ms`. None when that is not so; a string when the tape is unreadable.
+    NEVER raises.
+
+    🔑 The operator, 2026-10-14 11:38 ET: *"I want a return of the range to enable another breakout in either
+    direction"* - scope "Breakout only", cap "One re-arm per side". RECORD-ONLY (the operator, 2026-10-15 10:16 ET:
+    "Concur on all", to "BRK.12 / HUNT.9: record-only"): the plan writes the would-be fire to
+    data/counterfactual/breakout_rearm.jsonl and the new-extreme rule alone decides.
+    """
+    from datetime import datetime
+    try:
+        import sqlite3
+        from zoneinfo import ZoneInfo
+        from data.candle_feed import feed_db_path
+        try:
+            from config import ORB_WINDOW_MINUTES as _orbm
+        except Exception:                                       # noqa: BLE001
+            _orbm = 5
+        open_ms = int(datetime(day.year, day.month, day.day, 9, 30,
+                               tzinfo=ZoneInfo(_ET_ZONE)).timestamp() * 1000) + int(_orbm) * 60_000
+        e = float(edge)
+        conn = sqlite3.connect(f"file:{feed_db_path()}?mode=ro", uri=True, timeout=5.0)
+        try:
+            rows = conn.execute(
+                "SELECT ts_epoch_ms, close FROM candles WHERE symbol=? AND interval='1m' "
+                "AND ts_epoch_ms >= ? AND ts_epoch_ms < ? AND close > 0 ORDER BY ts_epoch_ms",
+                (symbol, open_ms, int(before_ms))).fetchall()
+        finally:
+            conn.close()
+    except Exception as exc:                                    # noqa: BLE001
+        return f"session tape unreadable ({type(exc).__name__}: {exc})"
+    fb = ret = None
+    for ts, close in rows:
+        beyond = (float(close) > e) if direction == "long" else (float(close) < e)
+        if fb is None:
+            if beyond:
+                fb = int(ts)
+        elif ret is None:
+            if not beyond:
+                ret = int(ts)
+        elif beyond:
+            return None                                         # the side's one re-arm is already spent
+    return (fb, ret) if (fb is not None and ret is not None) else None
+
+
+_REARM_SAID: set = set()
+
+
+def _record_rearm(row: dict) -> None:
+    """BRK.12 COUNTERFACTUAL: once per (symbol, side, signal bar) per process, the re-armed break the plan did
+    NOT trade, to data/counterfactual/breakout_rearm.jsonl. Never raises; a failed write is logged."""
+    key = (row.get("symbol"), row.get("direction"), row.get("signal_bar_ms"))
+    if key in _REARM_SAID:
+        return
+    _REARM_SAID.add(key)
+    try:
+        import json, os, time
+        d = os.environ.get("OT_COUNTERFACTUAL_DIR") or os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "counterfactual")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "breakout_rearm.jsonl"), "a") as fh:
+            fh.write(json.dumps({"ts_epoch": time.time(), "rule": "breakout_rearm",
+                                 "mode": getattr(config, "BRK_REARM_MODE", "log"), **row}) + "\n")
+    except Exception as exc:                                    # noqa: BLE001
+        logger.warning("[breakout] re-arm counterfactual row NOT written: %s", exc)
 
 
 # v1.10 (BRK.6) - what an index records in place of a tape or a book it cannot have.
@@ -808,8 +884,33 @@ class BreakoutPlan:
                                f"{sig_ts.strftime('%H:%M')} already fired it "
                                f"(fired {fired} on this side today)")
                 return False
+        # 🔴 BRK.12 — A RETURN TO THE RANGE RE-ARMS THE SIDE, ONCE - RECORDED, NEVER TRADED. The operator,
+        # 2026-10-14 11:38 ET: "I want a return of the range to enable another breakout in either direction";
+        # 2026-10-15 10:16 ET: "Concur on all" (to "record-only"). The would-be fire is written below, after the
+        # new-extreme verdict it is set beside; that verdict alone decides.
+        ra = None
+        if edge is not None and getattr(config, "BRK_REARM_MODE", "log") == "log":
+            ra = range_rearm(symbol or self._symbol(), day, int(sig_ts.timestamp() * 1000), direction, edge)
+            if isinstance(ra, str):
+                t.check("range_rearm", None, None, note=f"{ra} — nothing recorded")
+                ra = None
+            elif ra:
+                from datetime import datetime as _dt
+                from zoneinfo import ZoneInfo as _Z
+                _rt = _dt.fromtimestamp(ra[1] / 1000, _Z(_ET_ZONE)).strftime("%H:%M")
+                t.check("range_rearm", float(ra[1]), None,
+                        note=f"the {direction} side returned into the range at {_rt} — a re-armed break, "
+                             f"RECORDED ONLY (BRK.12); the new-extreme rule decides")
         ext = session_extreme(symbol or self._symbol(), day,
                               int(sig_ts.timestamp() * 1000), direction)
+        if ra:
+            _record_rearm({"symbol": symbol or self._symbol(), "direction": direction,
+                           "signal_bar_ms": int(sig_ts.timestamp() * 1000), "edge": float(edge),
+                           "first_break_ms": ra[0], "return_ms": ra[1], "break_close": bc,
+                           "session_extreme": None if isinstance(ext, str) else ext[0],
+                           "new_extreme_ok": (None if isinstance(ext, str) or bc is None else
+                                              bool(bc > ext[0] if direction == "long" else bc < ext[0])),
+                           "fired_on_side": fired})
         if isinstance(ext, str):
             t.check("session_extreme", None, None)
             t.refuse(gate, f"{ext} — failing closed (fired {fired} {direction} today)")

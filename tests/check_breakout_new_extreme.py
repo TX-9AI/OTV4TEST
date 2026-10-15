@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
-tests/check_breakout_new_extreme.py  v1.4
+tests/check_breakout_new_extreme.py  v1.5
+v1.5  2026-10-15  BRK.12 (RECORD-ONLY) — N11a-g: a return to the range re-arms the side ONCE, and is RECORDED, never
+      traded (the operator, 2026-10-14 11:38 ET: "I want a return of the range to enable another breakout in either
+      direction"; 2026-10-15 10:16 ET: "Concur on all", to "record-only"). N11a/b/d: no order, one row per side per
+      signal bar; N11c: one re-arm per side; N11e: off records nothing; N11f: log and off decide identically on
+      every bar (no order is placed by the re-arm); N11g: there is no trade value. Rows go to a SCRATCH
+      OT_COUNTERFACTUAL_DIR, never the live one.
 v1.4  2026-10-13  OTV4TEST r282 (BRK.10) — N10a-c: the FIRST entry is the tape's first break, not the book's first
       fill. N10d pins that a close inside the 09:30-09:34 window never counts as the break. N10a (a stale break with no fill is refused under the session high) and N10c (an unreadable tape
       fails closed on a first entry) are RED on d1fc9ab; N10b pins that a real new high still fires. N4a RE-POINTED,
@@ -82,6 +88,7 @@ os.environ["OT_DERIVED_DB"] = os.path.join(SCRATCH, "derived.db")
 os.environ["OT_RESTING_DB"] = os.path.join(SCRATCH, "resting.db")
 os.environ["OT_FEED_DB"] = os.path.join(SCRATCH, "feed.db")
 os.environ["OT_BRK_RESEARCH_UNTIL"] = "2099-12-31"      # informers: accept any
+os.environ["OT_COUNTERFACTUAL_DIR"] = os.path.join(SCRATCH, "cf")   # BRK.12: never the LIVE data/counterfactual
 FAILED, RAN = [], []
 ET = "America/New_York"
 
@@ -135,8 +142,14 @@ def _write_feed(day):
     tsw[2] = (100.6, 101.30, 100.50, 101.20)                       # 09:32 closes 101.20 > 101.00 INSIDE the range
     tsw[5] = (100.6, 100.95, 100.40, 100.80)                       # 09:35 no break
     tsw[6] = (100.8, 101.40, 100.70, 101.30)                       # 09:36 the FIRST break after the range
+    tsr = dict(_long_session())                                     # BRK.12: a return to the range
+    tsr[11] = (101.8, 101.85, 100.50, 100.60)                      # 09:41 closes BACK INSIDE (100.60 <= 101.00)
+    tsr[12] = (100.6, 100.90, 100.50, 100.70)                      # 09:42 inside
+    tsr[13] = (100.7, 101.50, 100.65, 101.40)                      # 09:43 RE-BREAK 101.40 < session high 102.50
+    tsr[14] = (101.4, 101.45, 100.40, 100.50)                      # 09:44 back inside again
+    tsr[15] = (100.5, 101.35, 100.45, 101.30)                      # 09:45 a SECOND re-break, under the high
     for sym, bars in (("TST", _long_session()), ("TSS", _mirror(_long_session())),
-                      ("TSG", gap), ("TSW", tsw)):
+                      ("TSG", gap), ("TSW", tsw), ("TSR", tsr), ("TSRS", _mirror(tsr))):
         for m, (op, h, l, cl) in bars.items():
             c.execute("INSERT OR REPLACE INTO candles VALUES (?,?,?,?,?,?,?,?)",
                       (sym, "1m", o + m * 60_000, op, h, l, cl, 1000.0))
@@ -186,7 +199,7 @@ def _tick(plan, spec, sym, day, minute, keep=60):
     """Ask the plan at the START of `minute`: the last closed bar is minute-1."""
     df = _frame(sym, day, minute, keep)
     px = float(df.iloc[-1]["open"])
-    hi, lo = (100.00, 99.00) if sym == "TSS" else (101.00, 100.00)
+    hi, lo = (100.00, 99.00) if sym in ("TSS", "TSRS") else (101.00, 100.00)
     prep = plan.prepare(spec=spec, orb=_ORB(hi, lo), price_now=px, now_et=_hm(minute),
                         chain=_Chain(px), df_1m=df, flow_conn=None, symbol=sym)
     return prep, df
@@ -236,6 +249,7 @@ def main():
     try:
         from zoneinfo import ZoneInfo
         from datetime import datetime
+        globals().update(ZoneInfo=ZoneInfo, datetime=datetime)
         day = datetime.now(ZoneInfo(ET)).date()
         _write_feed(day)
         from database.trade_logger import get_trade_logger
@@ -244,6 +258,8 @@ def main():
         import strategy.breakout as B
         B.LATEST_ET = "15:40"                                # r187: re-fire logic, not the window (S8 pins 10:30)
         from strategy.breakout_plan import BreakoutPlan
+        import config as config_mod
+        globals()["config_mod"] = config_mod
         BreakoutPlan._flow = staticmethod(lambda conn, symbol: (0.2, 1.0))
         spec = Breakout()
         plan = spec._plan_()
@@ -282,6 +298,72 @@ def main():
     guard("N10c no fill and an unreadable feed store: the first break FAILS CLOSED at 'new_extreme'",
           lambda: (not p10c.ready and p10c.tick.verdict == "DECLINE"
                    and p10c.tick.plan.last()[2].startswith("new_extreme:"), _why(p10c)))
+
+    # ── N11 (BRK.12) — A RETURN TO THE RANGE RE-ARMS THE SIDE ONCE: RECORDED, NEVER TRADED ──
+    # The operator, 2026-10-14 11:38 ET: "I want a return of the range to enable another breakout in either
+    # direction" ("Breakout only", "One re-arm per side"); 2026-10-15 10:16 ET: "Concur on all" (to
+    # "BRK.12 / HUNT.9: record-only"). TSR: first break 09:35 (refused, no fill), session high 102.50 at
+    # 09:40, 09:41 closes back inside, 09:43 re-breaks at 101.40 under the high.
+    import json as _json
+    import strategy.breakout_plan as BP
+    _cf = os.path.join(os.environ["OT_COUNTERFACTUAL_DIR"], "breakout_rearm.jsonl")
+
+    def _rows(sym=None):
+        try:
+            with open(_cf) as fh:
+                rr = [_json.loads(x) for x in fh if x.strip()]
+        except FileNotFoundError:
+            return []
+        return [r for r in rr if sym is None or r.get("symbol") == sym]
+
+    p11a, _ = _tick(plan, spec, "TSR", day, 14)               # signal 09:43 close 101.40 < 102.50
+    r11a = _rows("TSR")
+    guard("N11a a return to the range then a re-break under the high: NO ORDER (refused at 'new_extreme') "
+          "and ONE breakout_rearm row (long, returned 09:41, new_extreme_ok False)",
+          lambda: (_refused_at_gate(p11a) and len(r11a) == 1 and r11a[0]["direction"] == "long"
+                   and r11a[0]["new_extreme_ok"] is False and r11a[0]["mode"] == "log"
+                   and abs(r11a[0]["break_close"] - 101.40) < 1e-9
+                   and _hm(11) == datetime.fromtimestamp(r11a[0]["return_ms"] / 1000, ZoneInfo(ET)).strftime("%H:%M"),
+                   f"rows={r11a} {_why(p11a)}"))
+    _tick(plan, spec, "TSR", day, 14)                         # the next 15 s tick: the SAME signal bar
+    guard("N11b the same signal bar asked again writes no second row (one per side per signal bar)",
+          lambda: (len(_rows("TSR")) == 1, f"rows={len(_rows('TSR'))}"))
+    p11c, _ = _tick(plan, spec, "TSR", day, 16)               # signal 09:45: a SECOND return + re-break
+    guard("N11c ONE re-arm per side: a second return and re-break writes no row, and is refused as before",
+          lambda: (_refused_at_gate(p11c) and len(_rows("TSR")) == 1, f"rows={len(_rows('TSR'))} {_why(p11c)}"))
+    p11d, _ = _tick(plan, spec, "TSRS", day, 14)              # the mirrored short, signal 09:43
+    r11d = _rows("TSRS")
+    guard("N11d the short side mirrors it (either direction): no order, one short row",
+          lambda: (_refused_at_gate(p11d) and len(r11d) == 1 and r11d[0]["direction"] == "short",
+                   f"rows={r11d} {_why(p11d)}"))
+    _saved_mode = getattr(config_mod, "BRK_REARM_MODE", "log")
+    config_mod.BRK_REARM_MODE = "off"
+    getattr(BP, "_REARM_SAID", set()).clear()
+    try:
+        p11e, _ = _tick(plan, spec, "TSRS", day, 14)
+    finally:
+        config_mod.BRK_REARM_MODE = _saved_mode
+    guard("N11e OT_BRK_REARM=off: not evaluated, no row, the same refusal",
+          lambda: (_refused_at_gate(p11e) and len(_rows("TSRS")) == 1 and "range_rearm" not in p11e.tick.checks,
+                   f"rows={len(_rows('TSRS'))} {_why(p11e)}"))
+    # NO DECISION CHANGES: every minute of the re-arm fixture, log vs off, gives the same ready/verdict.
+    _diff = []
+    for _sym in ("TSR", "TSRS"):
+        for _m in range(6, 21):
+            getattr(BP, "_REARM_SAID", set()).clear(); config_mod.BRK_REARM_MODE = "log"
+            _a, _ = _tick(plan, spec, _sym, day, _m)
+            config_mod.BRK_REARM_MODE = "off"
+            _b, _ = _tick(plan, spec, _sym, day, _m)
+            config_mod.BRK_REARM_MODE = _saved_mode
+            if (_a.ready, _a.tick.verdict) != (_b.ready, _b.tick.verdict):
+                _diff.append((_sym, _hm(_m - 1), _a.ready, _b.ready))
+    guard("N11f RECORD-ONLY: log and off reach the same decision on every bar 09:35-09:49 (both sides)",
+          lambda: (not _diff, f"differs={_diff}"))
+    _env = dict(os.environ, OT_BRK_REARM="trade")
+    _o = subprocess.run([sys.executable, "-c", "import config;print(config.BRK_REARM_MODE, config.BRK_REARM_ENV_REFUSED)"],
+                        cwd=ROOT, env=_env, capture_output=True, text=True, timeout=120)
+    guard("N11g there is no trade value: OT_BRK_REARM=trade reads as log and is named",
+          lambda: (_o.stdout.split()[-2:] == ["log", "trade"], (_o.stdout + _o.stderr)[-160:]))
 
     # ── N9 — the long filled at 09:36:16; the 09:35 bar is STILL the last closed
     # bar for the rest of that minute (2026-09-25, 09:36:51, -$1,250) ────────────

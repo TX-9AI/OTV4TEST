@@ -1,5 +1,11 @@
 """
-strategy/liquidity_hunt.py  v1.9
+strategy/liquidity_hunt.py  v1.10
+v1.10 2026-10-15  HUNT.9 (FORK-ONLY) — A2 RE-ARMED BY A RETURN TO THE RANGE IS RECORDED, NEVER TRADED. The operator,
+      2026-10-14 10:28 ET: "It should be permitted if it goes back into the range"; 2026-10-15 10:16 ET: "Concur on
+      all" (to "BRK.12 / HUNT.9: record-only"). After a boundary's A2 was taken, a 1m close on the far side again
+      followed by a close back inside writes the A2 it would have fired (boundary, price, target, runway) to
+      data/counterfactual/hunt_rearm.jsonl; FINISHED is untouched, so "one per break" still refuses it. A1 is
+      unchanged; an observed (past-cutoff) pass records nothing. OT_HUNT_REARM=log|off (unset = log).
 v1.9 2026-10-05  OTV4TEST r254 (OBS.1) — THE PLAN ALWAYS LOOKS, THE STRATEGY IS GATED ON THE HOUR: Breakout, Runaway and the Hunt are OBSERVED from their entry end to 15:40 - asked, recorded LOG-ONLY, never executed (the operator, 2026-10-05: "the plan always looks, but the strategies are gated on the hour of the day"; "Have those blocked TRADES just to Log only"). Here: past the cutoff the plan keeps looking only while observed; an observed fire never touches FINISHED.
 v1.8  2026-10-03  OTV4TEST r229 (EM.2) — records em_platform (the tastytrade platform's expected move) beside the session number its above_em / below_em records are measured in. Nothing here ever gated on either.
 v1.7  2026-10-03  OTV4TEST r220 (TIME.1) — its private HH:MM parser is utils.time_utils.parse_hm (eight plans carried the same copy), and an UNREADABLE clock is DORMANT - no trade - instead of skipping the window check.
@@ -103,6 +109,21 @@ CUTOFF_ET      = config.HUNT_CUTOFF_ET          # r148: no literal fallback
 MAX_LOSS_PCT   = float(config.HUNT_MAX_LOSS_PCT)
 
 FINISHED: set = set()          # (direction, boundary) — one hunt per break
+
+
+def _record_hunt_rearm(row: dict) -> None:
+    """HUNT.9 COUNTERFACTUAL: the A2 a return to the range would have fired, NOT traded, to
+    data/counterfactual/hunt_rearm.jsonl. Never raises; a failed write is logged, never fatal."""
+    try:
+        import json, os, time
+        d = os.environ.get("OT_COUNTERFACTUAL_DIR") or os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "counterfactual")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "hunt_rearm.jsonl"), "a") as fh:
+            fh.write(json.dumps({"ts_epoch": time.time(), "rule": "hunt_rearm",
+                                 "mode": getattr(config, "HUNT_REARM_MODE", "log"), **row}) + "\n")
+    except Exception as exc:                                    # noqa: BLE001
+        logger.warning("[hunt] re-arm counterfactual row NOT written: %s", exc)
 
 
 from utils.time_utils import parse_hm as _hm      # r220 (TIME.1): the one parser
@@ -290,6 +311,13 @@ class LiquidityHunt:
         if new_bar and state == far_side:
             fk["seen"] = fk["seen"] or bar_ts
             fk["failed"] = False
+            # HUNT.9 - RECORD-ONLY: the far-side break RE-ASSERTED after this boundary's A2 was taken. The
+            # next close back inside is the A2 a re-arm would fire; it is RECORDED below, never traded (the
+            # operator, 2026-10-14 10:28 ET: "It should be permitted if it goes back into the range";
+            # 2026-10-15 10:16 ET: "Concur on all", to "record-only"). FINISHED is never touched here.
+            if (not _obs and getattr(config, "HUNT_REARM_MODE", "log") == "log"
+                    and (bias, round(lo if bias == "long" else hi, 2)) in FINISHED):
+                fk["rearm"] = bar_ts
         if new_bar and fk["seen"] and state == "inside" and not fk["failed"]:
             fk["failed"] = True
             fk["failed_ts"] = bar_ts
@@ -316,6 +344,15 @@ class LiquidityHunt:
         key = (bias, round(boundary, 2))
         t.check("break_finished", 1.0 if key in FINISHED else 0.0, key not in FINISHED)
         if key in FINISHED:
+            if entry == "A2" and fk.get("rearm"):
+                _rs = fk.pop("rearm")
+                _record_hunt_rearm({"symbol": _symbol_of(), "direction": bias, "entry": entry,
+                                    "boundary": round(boundary, 2), "reasserted_bar": _rs, "signal_bar": bar_ts,
+                                    "price_now": price_now, "target": target,
+                                    "runway": round(abs(target - price_now), 4)})
+                t.hold(f"{head}. {entry} re-armed by a return to the range — RECORDED ONLY (HUNT.9); "
+                       f"this break already had its hunt — one per break")
+                return prep
             t.hold(f"{head}. {entry} armed but this break already had its hunt — one per break")
             return prep
         t.anchor(trigger=boundary, invalidation=boundary)

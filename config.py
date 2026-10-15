@@ -1,5 +1,8 @@
 """
-config.py  v4.66
+config.py  v4.67
+v4.67  2026-10-15  BRK.12 + HUNT.9 (FORK-ONLY) - OT_BRK_REARM and OT_HUNT_REARM log|off (UNSET = log, no trade value): a
+       return to the range is evaluated and recorded for Breakout and the Hunt, never traded. The operator, 2026-10-15
+       10:16 ET: "Concur on all" (to "BRK.12 / HUNT.9: record-only").
 v4.66  2026-10-14  OTV4TEST r285 (HUNT.8) - OT_HUNT_STOP5M off|log|trade (UNSET = trade): the Hunt's thesis-dead line is
        the farther of its entry boundary and the 5m swing as of entry (execution/exit_engine). The operator, 2026-10-14
        11:47 ET: "Yes, we have to".
@@ -899,6 +902,28 @@ else:
     HUNT_STOP5M_MODE = "log" if _h5_raw else "trade"
     if _h5_raw:
         HUNT_STOP5M_ENV_REFUSED = _h5_raw
+# ── BRK.12 / HUNT.9 — A RETURN TO THE RANGE RE-ARMS, RECORD-ONLY ──────────────
+# log | off. UNSET = log (the operator, 2026-10-15 10:16 ET, to QQQ-TEST's
+# "BRK.12 / HUNT.9: record-only": "Concur on all"). log: the re-arm is evaluated and
+# written to data/counterfactual/ (breakout_rearm.jsonl, hunt_rearm.jsonl) and NEVER
+# places an order - the existing rules alone decide; off: not evaluated. There is no
+# trade value. A refused value reads as log and is named.
+BRK_REARM_ENV_REFUSED = ""
+_br_raw = os.environ.get("OT_BRK_REARM", "").strip().lower()
+if _br_raw in ("off", "log"):
+    BRK_REARM_MODE = _br_raw
+else:
+    BRK_REARM_MODE = "log"
+    if _br_raw:
+        BRK_REARM_ENV_REFUSED = _br_raw
+HUNT_REARM_ENV_REFUSED = ""
+_hr_raw = os.environ.get("OT_HUNT_REARM", "").strip().lower()
+if _hr_raw in ("off", "log"):
+    HUNT_REARM_MODE = _hr_raw
+else:
+    HUNT_REARM_MODE = "log"
+    if _hr_raw:
+        HUNT_REARM_ENV_REFUSED = _hr_raw
 # ── r266 (STOP.1) — THE RESTING STOP (execution/resting_stop.py) ─────────────
 RESTING_STOP_ENV_REFUSED = ""
 _rs_raw = os.environ.get("OT_RESTING_STOP", "").strip().lower()
