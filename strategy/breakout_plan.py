@@ -1,5 +1,10 @@
 """
-strategy/breakout_plan.py  v1.16
+strategy/breakout_plan.py  v1.17
+v1.17 2026-10-18  OTV4TEST r299 (BRK.14) — AN UNREADABLE LEVEL BOARD IS NOT A CLEAN RANGE. _board() returned {} on any
+      failure (logged at debug, invisible), range_clean then counted 0 levels inside and room_to_run read "open air":
+      harmless while ACCEPTANCE=any (to BRK_RESEARCH_UNTIL), two informers silently disabled by a store hiccup after
+      it. Now the board carries its state, a non-"ok" board makes both readings None (admitted by "any", refused by a
+      numbered dial - accepts()' own rule), and the failure is said once per state per process. Audit 2026-10-18 D3.
 v1.16 2026-10-15  BRK.12 (FORK-ONLY) — A RETURN TO THE RANGE RE-ARMS THE SIDE, ONCE - RECORD-ONLY. The operator,
       2026-10-14 11:38 ET: "I want a return of the range to enable another breakout in either direction" ("Breakout
       only", "One re-arm per side"); 2026-10-15 10:16 ET: "Concur on all" (to "BRK.12 / HUNT.9: record-only").
@@ -664,10 +669,11 @@ class BreakoutPlan:
 
         # ── nothing live inside it (r39 retires them TRAVERSED) ────────────
         board = self._board(px, hi, lo)
+        board_ok = str(board.get("state") or "") == "ok"          # r299 (BRK.14)
         inside = [l for l in (board.get("above", []) + board.get("below", []))
                   if hi and lo and lo <= float(l.get("price") or 0) <= hi]
-        prep.cond("range_clean", float(len(inside)),
-                  B.accepts("range_clean", float(len(inside))))
+        _rc = float(len(inside)) if board_ok else None            # an unreadable board is not a clean range
+        prep.cond("range_clean", _rc, B.accepts("range_clean", _rc))
 
         # ── THE BREAK: a CLOSED bar's CLOSE beyond the edge (r5) ───────────
         bar = df_1m.iloc[-2]
@@ -750,8 +756,10 @@ class BreakoutPlan:
         t.check("pool_price", prep.pool_price, None)
         t.check("pool_name", None, None, note=str(prep.pool_name or "open air"))
         t.check("pool_dist_r", prep.pool_dist_r, None)
-        prep.cond("room_to_run", prep.pool_dist_r,
-                  bool(pool is None or B.accepts("room_to_run", prep.pool_dist_r or 0)))
+        # r299 (BRK.14): "no pool" is open air only when the board was READ; an unreadable board is None
+        prep.cond("room_to_run", prep.pool_dist_r if board_ok else None,
+                  bool((board_ok and pool is None)
+                       or B.accepts("room_to_run", (prep.pool_dist_r or 0) if board_ok else None)))
 
         # the reach: the NEARER of the measured move and the pool's near edge
         measured = (bc + width) if (direction == "long" and bc and width) else \
@@ -982,13 +990,26 @@ class BreakoutPlan:
         return prep
 
     # ── readers, each failing to None rather than raising ─────────────────
+    _BOARD_SAID: set = set()      # r299: the board's failure state is said ONCE per state per process
+
     def _board(self, px, hi, lo) -> dict:
+        """The level board, with its STATE. r299 (BRK.14): a failed read is no longer an empty dict
+        that range_clean counted as "nothing inside" and room_to_run as "open air" - after the
+        research window that was two informers silently disabled by a store hiccup (audit
+        2026-10-18 D3). The callers read `state`; anything but "ok" makes their readings None."""
         try:
             from derived.levels import board_for
-            return board_for(self._store_(), self._symbol(), px, hi, lo) or {}
+            b = board_for(self._store_(), self._symbol(), px, hi, lo) or {}
         except Exception as exc:                                # noqa: BLE001
-            logger.debug("[breakout] board unavailable: %s", exc)
-            return {}
+            b = {"state": f"unavailable ({type(exc).__name__}: {exc})", "above": [], "below": []}
+        st = str(b.get("state") or "unavailable (no state)")
+        if st != "ok" and st not in BreakoutPlan._BOARD_SAID:
+            BreakoutPlan._BOARD_SAID.add(st)
+            from strategy import breakout as _B               # this module imports the spec per method
+            logger.warning("[breakout] level board %s — range_clean and room_to_run read as UNREADABLE "
+                           "(admitted while ACCEPTANCE=any, refused once the dials get numbers on %s)",
+                           st, _B.RESEARCH_UNTIL)
+        return b
 
     @staticmethod
     def _symbol() -> str:

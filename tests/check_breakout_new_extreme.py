@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_breakout_new_extreme.py  v1.5
+tests/check_breakout_new_extreme.py  v1.6
+v1.6  2026-10-18  OTV4TEST r299 (BRK.14) — N12a-c: an unreadable level board reads None on range_clean / room_to_run
+      (not "0 inside" / "open air"), is said once, still fires inside the research window, and REFUSES both once the
+      dials carry numbers (audit 10-18 D3). N12a and N12c RED on 42906b9.
 v1.5  2026-10-15  BRK.12 (RECORD-ONLY) — N11a-g: a return to the range re-arms the side ONCE, and is RECORDED, never
       traded (the operator, 2026-10-14 11:38 ET: "I want a return of the range to enable another breakout in either
       direction"; 2026-10-15 10:16 ET: "Concur on all", to "record-only"). N11a/b/d: no order, one row per side per
@@ -481,6 +484,51 @@ def main():
     guard("N9d the LATEST same-side entry sets the fresh-bar bound, not the first",
           lambda: (_refused_at_gate(p9d) and "no bar has closed since" in p9d.tick.plan.last()[2]
                    and "11:01:16" in p9d.tick.plan.last()[2], _why(p9d)))
+
+    # ── N12 (r299, BRK.14) — AN UNREADABLE LEVEL BOARD IS NOT A CLEAN RANGE ──
+    # derived.levels.board_for raises; the plan's range_clean / room_to_run must read None (not "0 inside" /
+    # "open air"), say so once, still fire inside the research window ("any" admits an absent reading by the
+    # operator's ruling), and REFUSE on both once the dials carry numbers.
+    import logging as _lg
+    import derived.levels as _LV
+    _warn = []
+
+    class _H(_lg.Handler):
+        def emit(self, r):
+            if r.levelno >= _lg.WARNING and "level board" in r.getMessage():
+                _warn.append(r.getMessage())
+    _h = _H(); _lg.getLogger("strategy.breakout_plan").addHandler(_h)
+    _orig_bf = _LV.board_for
+
+    def _boom(*a, **k):
+        raise RuntimeError("derived store locked (fixture)")
+    _LV.board_for = _boom
+    _saved_ru = B.RESEARCH_UNTIL
+    with sqlite3.connect(os.environ["OT_TRADES_DB"]) as _c12:   # N9's logged entries would refuse any first break
+        _c12.execute("DELETE FROM trades")
+    try:
+        plan12 = spec._plan_()
+        p12, _ = _tick(plan12, spec, "TSW", day, 7)          # a first long break (TST carries N9's logged entries), board unreadable
+        rc12 = p12.conditions.get("range_clean") or (0.0, None, None)
+        rr12 = p12.conditions.get("room_to_run") or (0.0, None, None)
+        guard("N12a an unreadable board: range_clean and room_to_run read None (not 0 inside / open air), said ONCE",
+              lambda: (rc12[0] is None and rr12[0] is None and len(_warn) == 1,
+                       f"range_clean={rc12} room_to_run={rr12} warnings={len(_warn)}"))
+        guard("N12b inside the research window the break still fires (no decision change before the dials get numbers)",
+              lambda: (p12.ready and p12.direction == "long", _why(p12)))
+        B.RESEARCH_UNTIL = "2026-01-01"                      # the dials carry numbers now
+        plan12c = spec._plan_()
+        p12c, _ = _tick(plan12c, spec, "TSR", day, 6)        # another first break, on a symbol with no logged entry
+        rc12c = p12c.conditions.get("range_clean") or (0.0, None, True)
+        rr12c = p12c.conditions.get("room_to_run") or (0.0, None, True)
+        guard("N12c with numbered dials an unreadable board REFUSES range_clean and room_to_run (both unmet), no fire",
+              lambda: (rc12c[2] is False and rr12c[2] is False and not p12c.ready
+                       and len(_warn) == 1,
+                       f"range_clean={rc12c} room_to_run={rr12c} ready={p12c.ready} warnings={len(_warn)}"))
+    finally:
+        _LV.board_for = _orig_bf
+        B.RESEARCH_UNTIL = _saved_ru
+        _lg.getLogger("strategy.breakout_plan").removeHandler(_h)
     return _tail()
 
 

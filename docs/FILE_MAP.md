@@ -279,7 +279,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `derived/levels.py`
 - **calls:** `config.py`, `data/candle_feed.py`, `derived/__init__.py`, `derived/base.py`, `derived/forks.py`, `derived/level_book.py`, `derived/level_rules.py`, `derived/registry.py`
-- **called by:** `derived/anchors.py`, `derived/registry.py`, `strategy/breakout_plan.py`, `strategy/liquidity_hunt.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_fork_invalidation.py`, `tests/check_level_defences.py`, `tests/check_level_engine_book.py`, `tests/check_level_flip.py`, `tests/check_level_source.py`, `tests/check_levels_in_play.py`, `tests/check_rails_book.py`, `tests/check_zones.py`
+- **called by:** `derived/anchors.py`, `derived/registry.py`, `strategy/breakout_plan.py`, `strategy/liquidity_hunt.py`, `strategy/sweep_plan.py`, `strategy/tcs_plan.py`, `tests/check_breakout_new_extreme.py`, `tests/check_fork_invalidation.py`, `tests/check_level_defences.py`, `tests/check_level_engine_book.py`, `tests/check_level_flip.py`, `tests/check_level_source.py`, `tests/check_levels_in_play.py`, `tests/check_rails_book.py`, `tests/check_zones.py`
 
 ### `derived/notes.py`
 - **calls:** `analysis/order_flow.py`, `derived/base.py`, `strategy/plan.py`
@@ -634,7 +634,7 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** (not imported) — referenced in `docs/ENV.md`
 
 ### `tests/check_breakout_new_extreme.py`
-- **calls:** `config.py`, `database/trade_logger.py`, `strategy/breakout.py`, `strategy/breakout_plan.py`
+- **calls:** `config.py`, `database/trade_logger.py`, `derived/levels.py`, `strategy/breakout.py`, `strategy/breakout_plan.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/ENV.md`
 
 ### `tests/check_breakout_research.py`
