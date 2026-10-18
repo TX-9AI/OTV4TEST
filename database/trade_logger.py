@@ -1,5 +1,7 @@
 """
-database/trade_logger.py  v4.22
+database/trade_logger.py  v4.23
+v4.23 2026-10-18  OTV4TEST r298 (CAP.4) — today_summary's docstring stops claiming it equals realized_pnl_today(): since r288
+      the cap excludes PARK and the displays do not. Docstring only; no code change in this file.
 v4.22 2026-10-18  OTV4TEST r288 (PARK.1) — realized_pnl_today(exclude_strategies=()) - the catastrophic cap passes
       config.CAP_EXCLUDED_STRATEGIES (PARK: its own budget, outside the cap). Unset = every closed row, so status, query,
       EOD and today_summary are unchanged.
@@ -1347,9 +1349,12 @@ class TradeLogger:
                          if not ex or _strategy(r) not in ex))
 
     def today_summary(self) -> dict:
-        """Counts + net P&L for today's ET session. total_pnl is identical to
-        realized_pnl_today() — one computation, so displays and the circuit
-        breaker can never disagree."""
+        """Counts + net P&L for today's ET session, EVERY strategy - the displays' figure.
+        r298: NOT the circuit breaker's number since r288: the cap reads
+        realized_pnl_today(exclude_strategies=config.CAP_EXCLUDED_STRATEGIES), which
+        leaves PARK out; the two differ by PARK's P&L on a day PARK traded, by design
+        (TRADES §9). This docstring said "identical" for ten days after that stopped
+        being true (audit 2026-10-18 T3-10)."""
         rows = self._closed_today_rows()
         wins   = sum(1 for r in rows if (r["pnl_usd"] or 0) > 0)
         losses = sum(1 for r in rows if (r["pnl_usd"] or 0) < 0)

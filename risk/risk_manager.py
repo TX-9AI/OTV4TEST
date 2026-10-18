@@ -1,5 +1,9 @@
 """
-risk/risk_manager.py  v4.13
+risk/risk_manager.py  v4.14
+v4.14 2026-10-18  OTV4TEST r298 (CAP.4) — the restart seed (_ensure_seeded) takes the CAP's number, realized_pnl_today
+      with CAP_EXCLUDED_STRATEGIES, not today_summary's all-strategy total: a boot after a PARK loss past the limit read
+      halted and the first is_halted() logged a RE-ARMED event nothing had hit (audit 2026-10-18 A5). The getattr default
+      for CAP_EXCLUDED_STRATEGIES now equals config's ("PARK",), not ().
 v4.13 2026-10-18  OTV4TEST r288 (PARK.1) — day_realized_pnl() - the number the catastrophic cap gates on - leaves out
       config.CAP_EXCLUDED_STRATEGIES (PARK: its own budget, the operator 2026-10-17). A PARK loss never halts the morning
       strategies or the flies; a PARK win never buys them room.
@@ -317,7 +321,7 @@ class RiskManager:
         try:
             from database.trade_logger import get_trade_logger
             return float(get_trade_logger().realized_pnl_today(
-                exclude_strategies=getattr(config, "CAP_EXCLUDED_STRATEGIES", ())))
+                exclude_strategies=getattr(config, "CAP_EXCLUDED_STRATEGIES", ("PARK",))))   # r298: default = config's
         except Exception:
             # If the DB is briefly unavailable, fall back to the in-memory tally.
             return float(self._session_pnl_usd)
@@ -756,8 +760,19 @@ class RiskManager:
         # itself is unaffected: is_halted() re-reads the DB on every call.)
         try:
             from database.trade_logger import get_trade_logger
-            summary = get_trade_logger().today_summary()
-            self._session_pnl_usd = float(summary.get("total_pnl", 0.0) or 0.0)
+            _tl = get_trade_logger()
+            summary = _tl.today_summary()
+            pnl = float(summary.get("total_pnl", 0.0) or 0.0)
+            # r298 (CAP.4) — THE SEED IS THE CAP'S NUMBER, NOT THE DISPLAY'S. today_summary() counts every
+            # strategy (the displays' figure); the cap excludes CAP_EXCLUDED_STRATEGIES (PARK, r288). Seeding
+            # from the display meant a boot after a PARK loss past the limit read HALTED, and the first
+            # is_halted() then logged a RE-ARMED event nothing had hit (audit 2026-10-18 A5 / T3-2).
+            # The getattr keeps check_risk_seed_retry's shared fixture (a book with today_summary only)
+            # honest; the production logger always has realized_pnl_today.
+            _rp = getattr(_tl, "realized_pnl_today", None)
+            if callable(_rp):
+                pnl = float(_rp(exclude_strategies=getattr(config, "CAP_EXCLUDED_STRATEGIES", ("PARK",))))
+            self._session_pnl_usd = pnl
             if self._session_pnl_usd <= -self._daily_loss_limit:
                 self._session_halted = True
             self._seeded = True

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_park.py  v1.2
+tests/check_park.py  v1.3
 PARK - THE 11:00 FIRST-HOUR CONTINUATION (PARK.1): THE PLAN, THE STRATEGY, ITS SIZE, ITS EXITS, ITS OWN BUDGET.
+v1.3  2026-10-18  OTV4TEST r298 (CAP.4). K11c: RiskManager._ensure_seeded on K11b's rows (PARK -2,000, Breakout -500) reads
+      the cap's -500 and does not latch the halt; it read today_summary's -2,500 and halted (audit 10-18 A5).
 v1.2  2026-10-18  OTV4TEST r292 (GATE.1). K13a DRIVES attempt_new_entry() with the PARK attempt intercepted: the
       normal-day call must ask PARK with the chain. K13 pinned only the capped branch, by text; a scratch copy with
       main.py's uncapped call deleted stayed GREEN 21/21 (audit 10-18 B1). K13a is RED on that mutant.
@@ -303,6 +305,13 @@ def main():
     disp = TL.realized_pnl_today()
     check("K11b its own budget: the cap's day P&L is -500 (PARK left out), the displays' is -2,500",
           abs(cap + 500) < 1e-6 and abs(disp + 2500) < 1e-6, f"cap={cap} display={disp}")
+    # r298 (CAP.4): the RESTART SEED is the cap's number too. A fresh RiskManager booting on these rows must read
+    # -500 and NOT halted (limit 1,050); it read -2,500 and halted, then logged a RE-ARMED event nothing had hit.
+    _rm2 = RiskManager(risk_per_trade=1050.0, paper_trading=True)
+    _rm2._ensure_seeded()
+    check("K11c the restart seed reads the cap's -500 (PARK left out) and does not latch the halt",
+          _rm2._seeded is True and abs(_rm2._session_pnl_usd + 500) < 1e-6 and _rm2._session_halted is False,
+          f"seeded={_rm2._seeded} pnl={_rm2._session_pnl_usd} halted={_rm2._session_halted} limit={_rm2._daily_loss_limit}")
 
     def probe(env):
         e = {k: v for k, v in os.environ.items() if k != "OT_PARK"}
