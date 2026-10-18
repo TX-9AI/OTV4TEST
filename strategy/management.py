@@ -1,5 +1,11 @@
 """
-strategy/management.py  v2.10
+strategy/management.py  v2.11
+v2.11 2026-10-18  OTV4TEST r288 (BRK.13) — BREAKOUT'S DELTA FLOOR. After the spec stops, par delta and the target/nickel
+      rules, before no-progress and exhaustion: once BRK_DFLOOR_AFTER_S (600 s) have passed since entry, a readable
+      |delta| <= BRK_DELTA_FLOOR (0.30) closes the Breakout (OT_BRK_DFLOOR=trade, the default) or is recorded only (log).
+      None / 0.0 is UNREAD: hold. Every firing writes data/counterfactual/breakout_delta_floor.jsonl once per trade. The
+      operator, 2026-10-17 19:12 ET: "A is fine" (trade it with a counterfactual). MEASURED /var/tmp/sat_1017/bdelta,
+      added to today's stack: unseen QQQ 08-24..10-09 +1,363, 13 stocks +2,406 (7/13), top-3 days kept 100%.
 v2.10 2026-10-10  OTV4TEST r265 (BRK.8) — BREAKOUT'S NO-PROGRESS EXIT. `breakout_no_progress()` walks the CLOSED 1m bars
       after the entry bar: once BRK_NOPROG_STALL_BARS (2) consecutive bars make no new favourable extreme, it decides
       ONCE - cut if the best progress since entry is under BRK_NOPROG_MIN_R (0.5 R, R = |underlying_entry -
@@ -282,6 +288,53 @@ def breakout_no_progress(record, df_1m, now_epoch: Optional[float] = None) -> Op
     except Exception as exc:                                     # noqa: BLE001
         logger.debug("[manage] no-progress read failed: %s", exc)
         return None
+
+
+_DFLOOR_SAID: set = set()
+
+
+def breakout_delta_floor(record, now_epoch: Optional[float] = None) -> Optional[float]:
+    """r288 (BRK.13) - |delta| when the floor is crossed (readable, <= BRK_DELTA_FLOOR, at least
+    BRK_DFLOOR_AFTER_S after entry), else None. None / 0.0 / unparseable delta and an unreadable
+    entry_time are UNREAD: None (hold). Never raises."""
+    try:
+        t0 = _entry_epoch(record)
+        if t0 is None:
+            return None
+        now = _time.time() if now_epoch is None else float(now_epoch)
+        if now - t0 < float(_cfg.BRK_DFLOOR_AFTER_S):
+            return None
+        raw = record.get("current_delta")
+        d = abs(float(raw)) if raw not in (None, "") else 0.0
+        return d if 0.0 < d <= float(_cfg.BRK_DELTA_FLOOR) else None
+    except Exception:                                            # noqa: BLE001
+        return None
+
+
+def _record_delta_floor(record, delta: float, mode: str, prem, price) -> None:
+    """Once per trade per process: data/counterfactual/breakout_delta_floor.jsonl - when, at what
+    delta and mark the floor fired, so Saturday replays the old exits' road from the quote stream."""
+    tid = str(record.get("trade_id", "") or "")
+    if not tid or tid in _DFLOOR_SAID:
+        return
+    _DFLOOR_SAID.add(tid)
+    acted = mode == "trade"
+    logger.info("[manage] Breakout %s DELTA FLOOR %s: |delta| %.3f <= %.2f; mark %s (OT_BRK_DFLOOR=%s)",
+                tid[:8], "CLOSE" if acted else "would close (LOG ONLY)", delta, _cfg.BRK_DELTA_FLOOR,
+                _n(prem), mode)
+    try:
+        d = _os.environ.get("OT_COUNTERFACTUAL_DIR") or _os.path.join(
+            _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "data", "counterfactual")
+        _os.makedirs(d, exist_ok=True)
+        row = {"ts_epoch": _time.time(), "trade_id": tid, "symbol": record.get("symbol"),
+               "rule": "breakout_delta_floor", "mode": mode, "acted": acted, "delta": round(delta, 4),
+               "floor": _cfg.BRK_DELTA_FLOOR, "mark": prem, "bid": record.get("_exit_bid"), "underlying": price,
+               "entry_premium": record.get("entry_premium"), "option_symbol": record.get("option_symbol"),
+               "contracts": record.get("contracts")}
+        with open(_os.path.join(d, "breakout_delta_floor.jsonl"), "a") as fh:
+            fh.write(_json.dumps(row) + "\n")
+    except Exception as exc:                                     # noqa: BLE001
+        logger.warning("[manage] delta-floor counterfactual row NOT written for %s: %s", tid[:8], exc)
 
 
 _NOPROG_SAID: set = set()
@@ -598,6 +651,19 @@ class ManagementPlan:
                 intent = Intent("CLOSE", f"target_hit pnl={pnl:.1%}", "target", pnl_pct=pnl)
             if intent is None and credit and prem is not None and prem <= NICKEL:
                 intent = Intent("CLOSE", f"nickel_close pnl={pnl:.1%}", "nickel", pnl_pct=pnl)
+
+            # ── 1a0. r288 (BRK.13) — THE BREAKOUT'S DELTA FLOOR ─────────────
+            # After the spec stops, par delta and target/nickel; before no-progress and
+            # exhaustion. `trade` closes; `log` records and holds; `off` skips.
+            if (intent is None and strategy == "Breakout" and not credit
+                    and _cfg.BRK_DFLOOR_MODE in ("log", "trade")):
+                _df = breakout_delta_floor(record)
+                if _df is not None:
+                    _record_delta_floor(record, _df, _cfg.BRK_DFLOOR_MODE, prem, price)
+                    if _cfg.BRK_DFLOOR_MODE == "trade":
+                        intent = Intent("CLOSE", f"delta_floor: |delta| {_df:.3f} <= "
+                                                 f"{_cfg.BRK_DELTA_FLOOR:.2f} pnl={pnl:.1%}",
+                                        "delta_floor", pnl_pct=pnl)
 
             # ── 1a. r265 (BRK.8) — THE BREAKOUT'S NO-PROGRESS EXIT ───────────
             # After the spec stops and par delta (they always outrank it), before

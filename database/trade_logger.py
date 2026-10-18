@@ -1,5 +1,8 @@
 """
-database/trade_logger.py  v4.21
+database/trade_logger.py  v4.22
+v4.22 2026-10-18  OTV4TEST r288 (PARK.1) — realized_pnl_today(exclude_strategies=()) - the catastrophic cap passes
+      config.CAP_EXCLUDED_STRATEGIES (PARK: its own budget, outside the cap). Unset = every closed row, so status, query,
+      EOD and today_summary are unchanged.
 v4.21 2026-10-04  OTV4TEST r245 (LIVE.1 B3, MIRROR OF otv4 r467 b32c73b, WA 38.2) — A PARTIAL LIVE EXIT SURVIVES A RESTART: the close's state (filled portions, the working order id) is saved to the row's new live_exit_state column after the submit and after every pass, and loaded first; a restart resumes the working order or submits only the REMAINDER, and the booked price is the weighted average of every fill. Code hunks applied verbatim; getsource sha256[:16] of _exit_state_load / _exit_state_save / _confirm_and_book_live_exit identical to b32c73b (a71ca216 / b44de96e / 1819bebc).
 v4.20 2026-10-03  OTV4TEST r198 (MEAS.1, SHARED SHAPE) — pnl_pct IS SIGNED BY pnl_usd. log_exit stored (exit - entry) / entry for
       every trade, so every credit trade's loss read as a gain (11 of 11 SweepCreditSpread rows here; it corrupted a
@@ -1328,10 +1331,20 @@ class TradeLogger:
             """, (lower, self._mode_flag)).fetchall()
         return [r for r in rows if self._et_date(r["entry_time"]) == today_et]
 
-    def realized_pnl_today(self) -> float:
+    def realized_pnl_today(self, exclude_strategies=()) -> float:
         """DEFINITIVE realized net closed P&L for today's ET session (wins
-        offset losses). This is the number the daily loss limit gates on."""
-        return float(sum((r["pnl_usd"] or 0.0) for r in self._closed_today_rows()))
+        offset losses). This is the number the daily loss limit gates on.
+        r288: `exclude_strategies` drops those strategies' rows - the cap passes
+        config.CAP_EXCLUDED_STRATEGIES; every other caller passes nothing."""
+        ex = set(exclude_strategies or ())
+
+        def _strategy(r):                 # a row without the column (a fixture) is never excluded
+            try:
+                return r["strategy"]
+            except (KeyError, IndexError):
+                return None
+        return float(sum((r["pnl_usd"] or 0.0) for r in self._closed_today_rows()
+                         if not ex or _strategy(r) not in ex))
 
     def today_summary(self) -> dict:
         """Counts + net P&L for today's ET session. total_pnl is identical to

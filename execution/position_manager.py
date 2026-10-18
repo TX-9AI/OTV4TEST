@@ -1,5 +1,8 @@
 """
-execution/position_manager.py  v5.18
+execution/position_manager.py  v5.19
+v5.19 2026-10-18  OTV4TEST r288 (PARK.1) — PARK joins the admission table: its window (config.ENTRY_WINDOWS["PARK"],
+      11:01-11:03), one open and one try per session, and CAP-EXEMPT - its own budget, outside the morning's catastrophic
+      cap (the operator, 2026-10-17: "its own budget outside the morning cap"; "Trade it").
 v5.18 2026-10-11  OTV4TEST r270 (PMAP.1, RECORD ONLY) — _manage_one writes one premium-map row per position per minute
       (fill_observers.observe_map) after the mark is fetched; it decides nothing and never raises.
 v5.17 2026-10-11  OTV4TEST r268 (DEP.12, mirror of otv4 r478) — _vertical_close_due reads past_close_anchor: credit verticals close at
@@ -316,6 +319,7 @@ TCS = "TrendCreditSpread"
 GEXFLY = "GEXPinButterfly"
 ATPFLY = "ATPButterfly"
 ORCS = "OpeningRangeCreditSpread"     # r204
+PARK = "PARK"                         # r288 (PARK.1): the 11:00 first-hour continuation
 # r72 — VOLT (VOLume Trade), THE CONTROL ARM. Two gates and nothing else, in
 # the same window as the morning four, blocking nothing and blocked by nothing.
 # Its purpose is to make the OTHER strategies' gates measurable: if VOLT keeps
@@ -366,7 +370,7 @@ class AdmissionRule:
     blocks: frozenset = field(default_factory=frozenset)      # I block these from opening
     blocked_by: frozenset = field(default_factory=frozenset)  # these block me
     # r178 (CAP.2) — True: the daily catastrophic loss cap does not refuse this
-    # strategy. The two butterflies only, by ruling (2026-09-30).
+    # strategy. The two butterflies (ruling 2026-09-30) and PARK (r288, 2026-10-17).
     cap_exempt: bool = False
 
 
@@ -446,6 +450,9 @@ _DEFAULT_RULES = {
     ATPFLY:  AdmissionRule(config.ENTRY_WINDOWS[ATPFLY], max_open_of_type=1, max_tries_per_session=1, cap_exempt=True),
     # r204 — ORCS: one put spread and one call spread, so two of the type; it blocks nothing.
     ORCS:    AdmissionRule(config.ENTRY_WINDOWS[ORCS], max_open_of_type=2),
+    # r288 (PARK.1) — one per session, and its own budget: the cap neither refuses it nor counts its P&L
+    # (config.CAP_EXCLUDED_STRATEGIES).
+    PARK:    AdmissionRule(config.ENTRY_WINDOWS[PARK], max_open_of_type=1, max_tries_per_session=1, cap_exempt=True),
 }
 
 

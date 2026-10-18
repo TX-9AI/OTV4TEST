@@ -1,5 +1,11 @@
 """
-config.py  v4.67
+config.py  v4.68
+v4.68  2026-10-18  OTV4TEST r288 (PARK.1 + BRK.13) - (1) PARK, the operator's friend's 11:00 continuation, TRADED on
+       every box (the operator, 2026-10-17 18:21 ET: "Trade it, don't just log it. Paper is free. Call it PARK"; on
+       SPX "Use our actual numbers, trade it"): OT_PARK trade|log|off (UNSET = trade), its dials PARK_* and its entry
+       window ENTRY_WINDOWS["PARK"] = 11:01-11:03; CAP_EXCLUDED_STRATEGIES = ("PARK",) - its own budget, outside the
+       catastrophic cap. (2) OT_BRK_DFLOOR trade|log|off (UNSET = trade): Breakout exits when |delta| <= 0.30 from 10
+       min after entry (the operator, 2026-10-17 19:12 ET: "A is fine").
 v4.67  2026-10-15  BRK.12 + HUNT.9 (FORK-ONLY) - OT_BRK_REARM and OT_HUNT_REARM log|off (UNSET = log, no trade value): a
        return to the range is evaluated and recorded for Breakout and the Hunt, never traded. The operator, 2026-10-15
        10:16 ET: "Concur on all" (to "BRK.12 / HUNT.9: record-only").
@@ -924,6 +930,61 @@ else:
     HUNT_REARM_MODE = "log"
     if _hr_raw:
         HUNT_REARM_ENV_REFUSED = _hr_raw
+# ── r288 (PARK.1) — PARK: THE 11:00 FIRST-HOUR CONTINUATION ──────────────────
+# The operator's friend's strategy (CONT11), renamed PARK. The operator, 2026-10-17
+# 18:21 ET: "Trade it, don't just log it. Paper is free. Call it PARK (named after my
+# friend)"; on SPX: "Use our actual numbers, trade it—don't log it". trade | log |
+# off, UNSET = trade. log: the plan runs and a would-be fire is written to
+# data/counterfactual/park_signal.jsonl, never ordered; off: not asked. A refused
+# value reads as log and is named.
+PARK_ENV_REFUSED = ""
+_pk_raw = os.environ.get("OT_PARK", "").strip().lower()
+if _pk_raw in ("off", "log", "trade"):
+    PARK_MODE = _pk_raw
+else:
+    PARK_MODE = "log" if _pk_raw else "trade"
+    if _pk_raw:
+        PARK_ENV_REFUSED = _pk_raw
+# The read, frozen from /var/tmp/sat_1017/cont11/PREREG_CONT11.md (C0) and PARK.X
+# (/var/tmp/sat_1017/park, picks sha 85dca420): first-hour move = the 10:30 1m bar's
+# close against the 09:30 1m bar's open, |move| >= 0.20%; GATE-G - never against the
+# opening gap (09:30 open vs the prior close); the strike nearest the 11:00 1m close.
+PARK_MOVE_PCT = 0.20
+PARK_SIGNAL_BAR_ET = (10, 30)        # the first hour's last 1m bar (its CLOSE)
+PARK_SPOT_BAR_ET = (11, 0)           # the 1m bar whose close picks the strike
+PARK_MIN_ASK = 0.50                  # the study's floor: a cheaper ask is no trade
+# Exits (FIRST MATCH WINS, execution/exit_engine._evaluate_park): the lock - armed
+# once the bid reaches entry x (1 + ARM), then out when the bid falls to entry x (1 +
+# FLOOR); the delta floor - |delta| <= PARK_DELTA_FLOOR from PARK_DELTA_FROM_ET; else
+# the close at PARK_CLOSE_ET. No premium stop, no trail (the 25% trail was the worst
+# PARK exit on both symbols, 10-17).
+PARK_LOCK_ARM = 0.60
+PARK_LOCK_FLOOR = 0.20
+PARK_DELTA_FLOOR = 0.30
+PARK_DELTA_FROM_ET = (11, 30)
+PARK_CLOSE_ET = (15, 45)
+# Its own budget, outside the morning's catastrophic cap (the operator, 2026-10-17):
+# a PARK close never counts toward the cap's realized P&L, and the cap never refuses
+# PARK (position_manager: cap_exempt). Sizing is the box's own RISK_PER_TRADE_USD,
+# flat: floor(risk / (ask x 100)).
+CAP_EXCLUDED_STRATEGIES = ("PARK",)
+# ── r288 (BRK.13) — BREAKOUT'S DELTA FLOOR ──────────────────────────────────────
+# trade | log | off, UNSET = trade (the operator, 2026-10-17 19:12 ET: "A is fine", to
+# "trade it on QQQ-TEST with a counterfactual"). Breakout exits when |delta| <=
+# BRK_DELTA_FLOOR, checked from BRK_DFLOOR_AFTER_S after entry; log records the would-
+# be exit only. Every evaluation that fires (either mode) writes
+# data/counterfactual/breakout_delta_floor.jsonl. MEASURED /var/tmp/sat_1017/bdelta
+# (prereg 0c21a4b1, unseen QQQ 08-24..10-09 +1,363, 13 stocks +2,406, 7/13).
+BRK_DFLOOR_ENV_REFUSED = ""
+_bd_raw = os.environ.get("OT_BRK_DFLOOR", "").strip().lower()
+if _bd_raw in ("off", "log", "trade"):
+    BRK_DFLOOR_MODE = _bd_raw
+else:
+    BRK_DFLOOR_MODE = "log" if _bd_raw else "trade"
+    if _bd_raw:
+        BRK_DFLOOR_ENV_REFUSED = _bd_raw
+BRK_DELTA_FLOOR = 0.30
+BRK_DFLOOR_AFTER_S = 600
 # ── r266 (STOP.1) — THE RESTING STOP (execution/resting_stop.py) ─────────────
 RESTING_STOP_ENV_REFUSED = ""
 _rs_raw = os.environ.get("OT_RESTING_STOP", "").strip().lower()
@@ -975,6 +1036,7 @@ ENTRY_WINDOWS = {
     "GEXPinButterfly":      ((13, 0),  (15, 0)),   # r273 (BFLY.10): was 12:00; the operator, 2026-10-12: "reduce the fly window to 1300"
     "ATPButterfly":         ((13, 0),  (15, 0)),   # r273 (BFLY.10): was 12:00. r179: was 11:30 here while the plan itself stayed dormant until 12:00; the operator, 2026-09-30: "12:00 is fine"
     "OpeningRangeCreditSpread": ((9, 45), (10, 30)),  # r204 (ORCS): 09:45 beat 09:36; positive to 10:30, gone from 11:00 (X6/X7)
+    "PARK":                 ((11, 1),  (11, 3)),   # r288 (PARK.1): the ask 11:01-11:02 after the 11:00 bar closes
 }
 
 

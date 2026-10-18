@@ -1,5 +1,8 @@
 """
-risk/risk_manager.py  v4.12
+risk/risk_manager.py  v4.13
+v4.13 2026-10-18  OTV4TEST r288 (PARK.1) — day_realized_pnl() - the number the catastrophic cap gates on - leaves out
+      config.CAP_EXCLUDED_STRATEGIES (PARK: its own budget, the operator 2026-10-17). A PARK loss never halts the morning
+      strategies or the flies; a PARK win never buys them room.
 v4.12 2026-10-03  OTV4TEST r208 (CAP.4) — THE CAP COUNTERFACTUAL, LOG-ONLY. note_entry_risk(record) writes one JSON
       line to cap_counterfactual.jsonl (beside trades.db, so a checker's scratch DB takes it too) for EVERY entry: its risk at the stop and at max loss, the day's
       realized net, the limit, the headroom, and whether a rule "refuse an entry whose planned risk would breach
@@ -200,6 +203,7 @@ from datetime import datetime
 from dataclasses import dataclass
 from typing import Optional
 
+import config
 from config import (
     ORB_BUDGET_USD,
     ORB_RISK_USD,
@@ -312,7 +316,8 @@ class RiskManager:
         The one number every daily-loss decision references."""
         try:
             from database.trade_logger import get_trade_logger
-            return float(get_trade_logger().realized_pnl_today())
+            return float(get_trade_logger().realized_pnl_today(
+                exclude_strategies=getattr(config, "CAP_EXCLUDED_STRATEGIES", ())))
         except Exception:
             # If the DB is briefly unavailable, fall back to the in-memory tally.
             return float(self._session_pnl_usd)

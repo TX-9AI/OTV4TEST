@@ -26,6 +26,7 @@ is its `docs/PLAN_SPEC.md` section.
 | ORB break + retest | `ORBStrategy` | OFF | `OT_ORB_TRADE` | 09:35-15:40 | PLAN_SPEC §29 |
 | Sweep credit spread | `SweepCreditSpread` | OFF | `OT_SWEEP_CS` | 09:35-15:40 | PLAN_SPEC §31 |
 | Trend credit spread | `TrendCreditSpread` | OFF | `OT_TCS_ACTIVE` | 11:31-15:40 | PLAN_SPEC §34 |
+| PARK | `PARK` | ON | none (`OT_PARK=log` records it, `off` stops it) | 11:01-11:03 | section 9 below |
 
 A window's end is exclusive: 10:30 means the last entry is 10:29. A switch is on only at
 the literal `1`. ORCS is RETIRED (r249, the operator 2026-10-04: "Retire it on this repo"; PLAN_SPEC §41.13) - OT_ORCS=1 restores it, PAPER ONLY (a live box refuses it); its plan keeps recording. The ORB trade is retired but
@@ -745,6 +746,39 @@ carries where each now differs (the Hunt's window ends 10:30, not 11:30; its pre
 is recorded and never acted on, as §37 says: "no premium stop").
 
 ---
+
+## 9. PARK — `park.py` (the spec) + `park_plan.py` (the plan)
+
+**OTV4TEST r288 (PARK.1), 2026-10-18.** The operator's friend's 11:00 continuation, renamed PARK.
+The operator, 2026-10-17 18:21 ET: *"Trade it, don't just log it. Paper is free. Call it PARK
+(named after my friend)"*; on SPX: *"Use our actual numbers, trade it—don't log it"*; 18:30 ET:
+*"Make sure when you build it it's divided properly between the strategy and the plan."*
+
+**The split.** `strategy/park.py` says what must be true and confirms the quote on the firing
+tick; it reads nothing. `strategy/park_plan.py` reads the first hour from the feed store, picks
+the contract and builds the signal.
+
+**Entry, once per session, 11:01-11:03 ET:**
+- the first hour moved: the 10:30 1m close against the 09:30 1m open, |move| >= 0.20%; its sign
+  is the direction;
+- GATE-G: never against the opening gap (09:30 open vs the prior session's last RTH 1m close);
+- the strike nearest the 11:00 1m close, today's expiry, two-sided, ask >= 0.50, bought AT THE ASK;
+- sized flat on the box's own risk, floor(risk / (ask x 100)): $1,050 on QQQ-TEST, $2,500 on
+  SPX-TEST. No scaling, no pin-proximity gate (PIN_EXEMPT); what the gate would have said is a
+  counterfactual row on every PARK entry, `data/counterfactual/pin_gate.jsonl`.
+
+**Its own budget.** PARK is cap-exempt (admission) and its closes are left out of the
+catastrophic cap's day P&L (`config.CAP_EXCLUDED_STRATEGIES`). Displays still count it.
+
+**Exits, first match wins (`exit_engine._evaluate_park`):** the lock - armed once the bid reaches
++60%, out when the bid falls to +20%; the delta floor - |delta| <= 0.30 from 11:30 (unread delta
+holds); the close at 15:45. No premium stop, no trail. Every exit writes
+`data/counterfactual/park_exit.jsonl` so Saturday prices what holding to 15:45 would have done.
+
+**Measured** (read-only, 2026-10-17; fit week 10-12..16 reported separately): QQQ 41 days n11
++10,550 at $1,050 (+1,590 without the fit week); SPX 39 days n14 +13,320 at $2,500. PARK.X (picks
+sha 85dca420): the delta floor +11,786 on QQQ, +16,370 on SPX, every winner kept; take-profit and
+time exits cut the big days. Small n: the book rests on two or three days a month.
 
 ## Not specced, deliberately
 

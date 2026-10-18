@@ -1,5 +1,12 @@
 """
-main.py  v4.106
+main.py  v4.107
+v4.107  2026-10-18  OTV4TEST r288 (PARK.1 + BRK.13) - PARK is asked every tick through _attempt_park() (dormant outside
+      11:01-11:03): in the normal dispatch and ALSO in the capped branch beside the butterflies, because PARK is
+      cap-exempt (its own budget, the operator 2026-10-17); one per session; OT_PARK=off is never asked. The pin-proximity
+      gate does not refuse PARK (PIN_EXEMPT - PARK was measured without it); what the gate would have said is a
+      counterfactual row on every PARK entry, data/counterfactual/pin_gate.jsonl (the operator, 2026-10-17 20:06 ET:
+      "I want a counterfactual on the pin gate recorded on the entries").
+      _STRUCTURE_BY_NAME declares PARK long_debit. The Service line adds " · park=<mode>" and " · brk_dfloor=<mode>".
 v4.106  2026-10-14  OTV4TEST r284 (BRK.11) - the Service mode line names Breakout's stop in force: " · brk_stop=5m(trade)|1m(log)|1m(off)"
       (and a refused OT_BRK_STOP5M by name), read from config. The operator, 2026-10-14 11:47 ET: "Yes, we have to".
 v4.105  2026-10-14  OTV4TEST r283 (LIVE.1 F5, mirror of otv4 r473 bfb0991) - a live credit vertical checks buying
@@ -1596,6 +1603,8 @@ _sweep_cs_strategy = SweepCreditSpreadStrategy()
 _gex_bfly_strategy = GEXPinButterflyStrategy()
 _atp_bfly_strategy = ATPButterflyStrategy()
 _liquidity_hunt = LiquidityHunt()                                      # OTV4TEST r12
+from strategy.park import Park as _Park                                 # r288 (PARK.1)
+_park_strategy = _Park()
 from strategy.breakout import Breakout as _BreakoutStrategy            # OTV4TEST r51
 _breakout = _BreakoutStrategy()                                        # BRK.1
 _iron_condor_strategy = IronCondorStrategy()
@@ -3961,6 +3970,8 @@ _STRUCTURE_BY_NAME = {
     # this map's own warning is that a missing name is silently long_debit, and
     # relying on the fallback to be right is how it stops being right.
     "VOLT":                 "long_debit",
+    # r288 (PARK.1) — a long single option bought at 11:01; declared, not defaulted.
+    "PARK":                 "long_debit",
 }
 
 
@@ -4247,6 +4258,7 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
             _plan_skip_all("CATASTROPHIC LOSS CAP reached and the admission table is "
                            "unavailable — nothing is asked", gate="catastrophic_cap")
             return
+        _attempt_park(ctx, ms, state)                    # r288 (PARK.1): cap-exempt, its own budget
         _attempt_butterfly(ctx, ms, state, additive=True)
         return
 
@@ -4705,6 +4717,7 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     # revision spent its morning removing everywhere else.
     # ⚠️ ALWAYS ADDITIVE NOW: the butterfly never took a slot (r161) and after
     # r43 there is no slot left to take.
+    _attempt_park(ctx, ms, state, chain=chain)          # r288 (PARK.1)
     _attempt_butterfly(ctx, ms, state, additive=True)
 
 
@@ -4933,6 +4946,36 @@ def _attempt_sweep_on_grant(ctx, ms, state) -> None:
         logger.warning("[handoff] sweep on grant failed: %s", exc)
 
 
+def _attempt_park(ctx, ms, state, chain=None) -> None:
+    """r288 (PARK.1) — ask PARK (its plan is dormant outside 11:01-11:03) and, on a fire, execute it ADDITIVE.
+    Called from the normal dispatch AND the capped branch: PARK is cap-exempt (admission) and its P&L is outside
+    the cap (config.CAP_EXCLUDED_STRATEGIES). One per session on this box, DB-backed (fails closed).
+    OT_PARK=off: never asked. OT_PARK=log: asked, the would-be fire recorded by the strategy, nothing executed."""
+    from config import PARK_MODE
+    if PARK_MODE == "off":
+        return
+    if _one_per_session_used("PARK"):
+        _plan_skip("PARK", "one per session on this box — already traded today", gate="tries_per_session")
+        return
+    _ch, _hhmm = chain, ""
+    try:
+        _t = now_et()
+        _hhmm = _t.strftime("%H:%M")
+        if _ch is None and (11, 0) <= (_t.hour, _t.minute) < (11, 5):   # the capped branch has no chain
+            _ch = ctx.get("chain") or get_chain_fetcher().fetch_chain()
+    except Exception:                                   # noqa: BLE001
+        _ch = chain
+    sig = _safe_strategy("PARK",
+                         lambda: _park_strategy.generate_signal(
+                             price_now   = ctx.get("price"),
+                             now_et      = _hhmm,
+                             chain       = _ch,
+                             prior_close = (ctx.get("gap") or {}).get("prior_close"),
+                         ), ctx)
+    if sig is not None:
+        _execute_entry_signal(sig, ctx, ms, state, None, additive=True)
+
+
 def _attempt_butterfly(ctx, ms, state, *, additive: bool) -> None:
     # r179 — ONE PER SESSION ON THIS BOX (operator: "Only one GEX Pin
     # butterfly allowed per session on a box"). Checked BEFORE the strategy
@@ -5127,6 +5170,39 @@ def _noise_floor_of(df_1m) -> float:
 # r161 (SIZE.2) — WHICH TRADES SCALE. Keyed on the strategy's OWN name, the
 # same names _STRUCTURE_BY_NAME carries; a strategy not listed here never
 # supplied geometry in the first place, so True for it changes nothing.
+PIN_EXEMPT = ("PARK",)          # r288 (PARK.1): measured without the pin-proximity gate; logged, never refused
+
+
+def _record_pin_counterfactual(signal, ctx, verdict, error: str = "") -> None:
+    """r288 (PARK.1) — one row per PIN_EXEMPT entry: what the pin-proximity gate would have said
+    (would_refuse / stood_down, the EM fraction, the pin, the regime), beside the entry it did not gate:
+    data/counterfactual/pin_gate.jsonl. `verdict` is pin_proximity_verdict(ctx)'s tuple; None with `error`
+    when the gate could not be read. Never raises."""
+    try:
+        import json as _json, time as _time
+        _r, _fr, _env, _pin, _why = verdict if verdict else (None, None, None, None, error or "no verdict")
+        if _fr is None:
+            said = "stood down (%s)" % (_why or "unmeasurable")
+        else:
+            said = ("REFUSED (%.3f EM from pin %g)" % (_fr, _pin)) if _r else ("passed (%.3f EM)" % _fr)
+        logger.info("[pin] %s NOT gated (PIN_EXEMPT) — the gate would have %s", signal.strategy_name, said)
+        d = os.environ.get("OT_COUNTERFACTUAL_DIR") or os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "data", "counterfactual")
+        os.makedirs(d, exist_ok=True)
+        _c = getattr(signal, "contract", None)
+        row = {"ts_epoch": _time.time(), "rule": "pin_gate", "strategy": signal.strategy_name,
+               "symbol": INSTRUMENT, "acted": False,
+               "would_refuse": None if _fr is None else bool(_r), "stood_down": _fr is None,
+               "em_frac": _fr, "min_frac": PIN_PROXIMITY_MIN_FRAC, "pin": _pin,
+               "regime": None if _env is None else str(_env), "why": _why or "",
+               "price": ctx.get("price") if hasattr(ctx, "get") else None,
+               "direction": getattr(signal, "direction", ""), "option_side": getattr(signal, "option_side", ""),
+               "strike": float(getattr(signal, "strike", 0) or 0), "entry_premium": getattr(signal, "entry_premium", None),
+               "streamer_symbol": getattr(_c, "streamer_symbol", "") if _c is not None else ""}
+        with open(os.path.join(d, "pin_gate.jsonl"), "a") as fh:
+            fh.write(_json.dumps(row, default=str) + "\n")
+    except Exception as exc:                                    # noqa: BLE001
+        logger.warning("[pin] pin-gate counterfactual row NOT written: %s", exc)
 _SCALING_SWITCH = {"ORBStrategy": "SCALE_ORB", "Breakout": "SCALE_BREAKOUT",
                    "VOLT": "SCALE_VOLT"}
 
@@ -5259,6 +5335,13 @@ def _banner_dials() -> str:
     brk += f" · brk_stop={'5m' if BRK_STOP5M_MODE == 'trade' else '1m'}({BRK_STOP5M_MODE})"   # r284 (BRK.11)
     if BRK_STOP5M_ENV_REFUSED:
         brk += f" (OT_BRK_STOP5M={BRK_STOP5M_ENV_REFUSED!r} REFUSED)"
+    from config import BRK_DFLOOR_MODE, BRK_DFLOOR_ENV_REFUSED, PARK_MODE, PARK_ENV_REFUSED   # r288
+    brk += f" · brk_dfloor={BRK_DFLOOR_MODE}"                              # r288 (BRK.13)
+    if BRK_DFLOOR_ENV_REFUSED:
+        brk += f" (OT_BRK_DFLOOR={BRK_DFLOOR_ENV_REFUSED!r} REFUSED)"
+    brk += f" · park={PARK_MODE}"                                          # r288 (PARK.1)
+    if PARK_ENV_REFUSED:
+        brk += f" (OT_PARK={PARK_ENV_REFUSED!r} REFUSED)"
     brk += f" · resting_stop={RESTING_STOP_MODE}"                          # r266 (STOP.1)
     if RESTING_STOP_MODE == "trade" and not PAPER_TRADING:
         brk += " (LIVE: refused - stops close as before)"
@@ -5459,7 +5542,15 @@ def _execute_entry_signal(signal, ctx, ms, state, _sigj=None, *, additive: bool 
     # ⚠️ FAILS OPEN AND SAYS SO. No gex, no pin, no EM -> the gate stands down
     # and logs it; "could not measure" must never look like "measured and
     # passed" (§0.5).
-    if PIN_PROXIMITY_ACTIVE and _struct == "long_debit":
+    if PIN_PROXIMITY_ACTIVE and _struct == "long_debit" and signal.strategy_name in PIN_EXEMPT:
+        # r288 (PARK.1) — not refused: PARK was measured without this gate. What it would have said is a
+        # COUNTERFACTUAL row on every entry (the operator, 2026-10-17 20:06 ET: "I want a counterfactual on the pin
+        # gate recorded on the entries"): data/counterfactual/pin_gate.jsonl.
+        try:
+            _record_pin_counterfactual(signal, ctx, pin_proximity_verdict(ctx))
+        except Exception as _pg_exc:                           # noqa: BLE001
+            _record_pin_counterfactual(signal, ctx, None, error=f"{type(_pg_exc).__name__}: {_pg_exc}")
+    elif PIN_PROXIMITY_ACTIVE and _struct == "long_debit":
         _refuse, _pin_frac, _pin_env, _pin, _pin_why = pin_proximity_verdict(ctx)
         if _pin_frac is None:
             logger.warning("[pin] proximity gate STOOD DOWN (%s) — this entry "

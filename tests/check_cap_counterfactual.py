@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_cap_counterfactual.py  v1.0
+tests/check_cap_counterfactual.py  v1.1
+v1.1  2026-10-18  OTV4TEST r288 (PARK.1) — the fake realized_pnl_today takes the cap's new exclude_strategies argument
+      (RiskManager.day_realized_pnl passes config.CAP_EXCLUDED_STRATEGIES); no check changed.
 v1.0  2026-10-03  OTV4TEST r208 (CAP.4) — THE CAP COUNTERFACTUAL IS RECORDED FOR EVERY ENTRY AND REFUSES NOTHING.
 
   The operator, 2026-10-03, on refusing an entry whose planned risk would breach
@@ -75,7 +77,7 @@ def main():
         return [json.loads(x) for x in open(path)] if os.path.exists(path) else []
 
     def day(v):
-        TLM._trade_logger.realized_pnl_today = lambda: v
+        TLM._trade_logger.realized_pnl_today = lambda *a, **k: v   # r288: the cap passes exclude_strategies
 
     long_opt = {"trade_id": "aaaaaaaa-1", "strategy": "RunawayContinuation", "entry_premium": 1.00,
                 "stop_premium": 0.80, "contracts": 10, "total_cost": 1000.0, "max_loss": 0.0}

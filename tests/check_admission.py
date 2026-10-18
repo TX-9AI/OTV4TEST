@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_admission.py  v1.11
+tests/check_admission.py  v1.12
+v1.12 2026-10-18  OTV4TEST r288 (PARK.1) — PARK JOINS THE TABLE: 11:01-11:03, cap 1, ONE try per session, by ruling (the
+      operator, 2026-10-17 18:21 ET: "Trade it ... Call it PARK"). Restated in SPEC from the ruling, not from rules().
 v1.11 2026-10-12  OTV4TEST r273 (BFLY.10) — both fly rows RE-POINTED 12:00 -> 13:00, and A8 asserts the ATP fly OUT at 12:59
         and IN at 13:00. r273 (BFLY.10), by ruling - the operator, 2026-10-12: "reduce the fly window to 1300".
 THE ADMISSION TABLE, DRIVEN EXHAUSTIVELY (OTV4TEST r35).
@@ -134,6 +136,7 @@ def main():
         GEXFLY:  (((13, 0), (15, 0)), 1, 1),     # r273: was 12:00
         ATPFLY:  (((13, 0), (15, 0)), 1, 1),     # r273: was 12:00 (r179: was 11:30)
         ORCS:    (((9, 45), (10, 30)), 2, None),  # r204
+        "PARK":  (((11, 1), (11, 3)), 1, 1),      # r288 (PARK.1): the ask 11:01-11:02, one per session
     }
     # ⚠️ r76 — CAPS RESTATED FROM THE OPERATOR'S RULING, 2026-09-21: *"With
     # rare exception, there are no blocking TRADES and no maximum number of

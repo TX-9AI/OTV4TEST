@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_cap_fly_exempt.py  v1.1
+tests/check_cap_fly_exempt.py  v1.2
+v1.2  2026-10-18  OTV4TEST r288 (PARK.1) — PARK IS THE THIRD CAP-EXEMPT NAME, by ruling (the operator, 2026-10-17: PARK
+      on "its own budget outside the morning cap"; "Trade it"). F1 now refuses every strategy that is NOT a butterfly and
+      NOT PARK; F12 (new) pins PARK admitted at the cap inside 11:01-11:03; F6 lets PARK reach the funnel (asked every
+      tick, refused by its window at 13:30) and still requires that nothing but the two flies is ADMITTED or executed.
 v1.1  2026-10-12  OTV4TEST r273 (BFLY.10) — the in-window clock 12:30 -> 13:30 (IN_WINDOW, used by F6-F11). r273 (BFLY.10), by ruling - the operator, 2026-10-12: "reduce the fly window to 1300".
 
 At the DAILY CATASTROPHIC LOSS CAP every strategy is refused EXCEPT the two
@@ -114,10 +118,15 @@ def _facts(name, now=IN_WINDOW, **kw):
 
 
 # ── F1 — the cap still refuses everything else ──────────────────────────────
-others = [n for n in TABLE if n not in FLIES]
+EXEMPT = FLIES + ("PARK",)          # r288: PARK, its own budget
+others = [n for n in TABLE if n not in EXEMPT]
 _f1 = {n: PMOD.decide(_facts(n)).gate for n in others}
-check("F1 cap broken: every non-butterfly strategy is refused on catastrophic_cap",
+check("F1 cap broken: every strategy but the two butterflies and PARK is refused on catastrophic_cap",
       bool(others) and all(g == "catastrophic_cap" for g in _f1.values()), str(_f1))
+# ── F12 (r288) — PARK is admitted at the cap inside its own window ───────────
+_f12 = PMOD.decide(_facts("PARK", now=(11, 1)))
+check("F12 cap broken: PARK is admitted at 11:01 (cap-exempt, its own budget)",
+      bool(_f12.admitted), f"{_f12.admitted} {_f12.gate}")
 
 # ── F2 — both butterflies admitted ──────────────────────────────────────────
 _f2 = {n: (PMOD.decide(_facts(n)).admitted, PMOD.decide(_facts(n)).gate) for n in FLIES}
@@ -307,7 +316,8 @@ _R = {}
 def _f6():
     _R["f6"] = _drive(IN_WINDOW)
     asked, funnel, executed, admitted = _R["f6"]
-    return (asked == ["GEX", "ATP"] and funnel == ["GEXPinButterfly", "ATPButterfly"]
+    # r288: PARK is ASKED in the capped branch every tick (refused by its window at 13:30, never admitted)
+    return (asked == ["GEX", "ATP"] and [f for f in funnel if f != "PARK"] == ["GEXPinButterfly", "ATPButterfly"]
             and executed == [] and admitted == sorted(FLIES))
 
 

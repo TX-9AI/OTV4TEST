@@ -1,5 +1,13 @@
 """
-execution/exit_engine.py  v4.39
+execution/exit_engine.py  v4.40
+v4.40 2026-10-18  OTV4TEST r288 (PARK.1) — PARK GETS ITS OWN EVALUATOR. The operator, 2026-10-17 18:21 ET: "Trade it ...
+      Call it PARK"; "Are you sure we want to hold decaying zero DTE so long ...? Consider or study a delta based exit."
+      _evaluate_park(), FIRST MATCH WINS: (1) the +60% / +20% LOCK on the BID (armed once bid >= entry x 1.60 - or, after a
+      restart, the persisted mfe_premium mark - then out when bid <= entry x 1.20); (2) the DELTA FLOOR |delta| <= 0.30
+      from 11:30 ET (PARK.X, picks sha 85dca420: QQQ +10,550 -> +11,786, SPX +13,320 -> +16,370, every winner kept); an
+      unreadable delta (None or 0.0) HOLDS; (3) the 15:45 close; (4) the EOD schedule as a backstop. NO premium stop and
+      NO trail - none applies to PARK. Every PARK exit writes data/counterfactual/park_exit.jsonl (bid, mark, delta, the
+      contract) so Saturday can price what holding to 15:45 would have done.
 v4.39 2026-10-14  OTV4TEST r285 (HUNT.8) — THE HUNT'S THESIS LINE IS THE 5m SWING, NOT ONLY ITS BOUNDARY. A 1m close back
       through the entry boundary killed right-way hunts inside one minute of noise (10-14 09:58 short: dead 10:03 on 737.28
       vs 736.90; QQQ fell to 732.4). _hunt_line() makes the line the FARTHER of underlying_stop (the boundary, unchanged for
@@ -1199,6 +1207,9 @@ class ExitEngine:
             return self._evaluate_orb(record, current_premium, df_1m, df_5m)
         elif strategy == "LiquidityHunt":                       # r12: the runaway's family
             return self._evaluate_orb(record, current_premium, df_1m, df_5m)
+        elif strategy == "PARK":
+            # r288 (PARK.1) — its own exits; none of the sweep defaults (25% stop, trail) apply.
+            return self._evaluate_park(record, current_premium)
         elif strategy == "VOLT":
             # r72 — THE CONTROL ARM GETS ITS OWN EVALUATOR, AND THAT IS THE
             # POINT. Routing it to `_evaluate_orb` would hand it theta bleed,
@@ -1226,6 +1237,76 @@ class ExitEngine:
             return self._evaluate_sweep(record, current_premium, df_1m, df_5m)
 
     # \u2500\u2500\u2500 ORB Exit \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+    _PARK_CF_SAID: set = set()
+
+    def _evaluate_park(self, record: TradeRecord, current_premium: float) -> ExitDecision:
+        """PARK exits (r288). FIRST MATCH WINS:
+          1. LOCK        - armed once the BID reaches entry x (1 + PARK_LOCK_ARM); armed, out when the bid falls
+                           to entry x (1 + PARK_LOCK_FLOOR). After a restart the persisted mfe_premium (a MARK)
+                           re-arms it - slightly looser than the bid, stated.
+          2. DELTA FLOOR - |delta| <= PARK_DELTA_FLOOR from PARK_DELTA_FROM_ET. None or 0.0 is UNREAD: hold.
+          3. THE CLOSE   - at PARK_CLOSE_ET.
+          4. EOD         - the schedule's own close, a backstop only.
+        The bid is the r105 stash (_exit_bid); without one the mark stands in."""
+        from config import (PARK_LOCK_ARM, PARK_LOCK_FLOOR, PARK_DELTA_FLOOR, PARK_DELTA_FROM_ET,
+                            PARK_CLOSE_ET)
+        from utils.time_utils import ET as _ET
+        decision = ExitDecision()
+        e = float(record.get("entry_premium", 0.0) or 0.0)
+        n = float(record.get("contracts", 0) or 0)
+        if e > 0:
+            decision.current_pnl_pct = (current_premium - e) / e
+            decision.current_pnl_usd = (current_premium - e) * n * CONTRACT_MULTIPLIER
+        bid = record.get("_exit_bid")
+        bid = float(bid) if bid not in (None, 0, 0.0) else float(current_premium or 0.0)
+        hm = datetime.now(_ET)
+        hm = (hm.hour, hm.minute)
+        why = ""
+        if e > 0:
+            arm = e * (1 + PARK_LOCK_ARM)
+            mfe = float(record.get("mfe_premium") or 0.0)
+            if not record.get("_park_armed") and (bid >= arm or mfe >= arm):
+                record["_park_armed"] = 1
+                logger.info("[park] %s lock ARMED: bid %.2f / best mark %.2f >= %.2f",
+                            str(record.get("trade_id", ""))[:8], bid, mfe, arm)
+            if record.get("_park_armed") and bid <= e * (1 + PARK_LOCK_FLOOR):
+                why = f"park_lock: bid {bid:.2f} <= {e * (1 + PARK_LOCK_FLOOR):.2f} after +{PARK_LOCK_ARM:.0%}"
+        d = record.get("current_delta")
+        d = abs(float(d)) if d not in (None, "") else None
+        if not why and hm >= tuple(PARK_DELTA_FROM_ET) and d and d <= PARK_DELTA_FLOOR:
+            why = f"park_delta_floor: |delta| {d:.3f} <= {PARK_DELTA_FLOOR:.2f}"
+        if not why and hm >= tuple(PARK_CLOSE_ET):
+            why = "park_close_%02d:%02d_ET" % tuple(PARK_CLOSE_ET)
+        if not why and _eod_due(record):
+            why = _eod_label(record)
+        if why:
+            decision.should_exit = True
+            decision.exit_reason = why
+            self._park_cf(record, why, bid, current_premium, d)
+            logger.info("[park] %s EXIT %s", str(record.get("trade_id", ""))[:8], why)
+        return decision
+
+    def _park_cf(self, record, why, bid, mark, delta) -> None:
+        """Once per trade per process: data/counterfactual/park_exit.jsonl. Never raises."""
+        tid = str(record.get("trade_id", "") or "")
+        if not tid or tid in ExitEngine._PARK_CF_SAID:
+            return
+        ExitEngine._PARK_CF_SAID.add(tid)
+        try:
+            import json as _json, os as _os, time as _time
+            d = _os.environ.get("OT_COUNTERFACTUAL_DIR") or _os.path.join(
+                _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "data", "counterfactual")
+            _os.makedirs(d, exist_ok=True)
+            out = {"ts_epoch": _time.time(), "trade_id": tid, "symbol": record.get("symbol"), "rule": "park_exit",
+                   "reason": why, "bid": bid, "mark": mark, "delta": delta,
+                   "entry_premium": record.get("entry_premium"), "contracts": record.get("contracts"),
+                   "option_symbol": record.get("option_symbol"), "streamer_symbol": record.get("streamer_symbol"),
+                   "mfe_premium": record.get("mfe_premium")}
+            with open(_os.path.join(d, "park_exit.jsonl"), "a") as fh:
+                fh.write(_json.dumps(out) + "\n")
+        except Exception as exc:                                # noqa: BLE001
+            logger.warning("[park] exit counterfactual row NOT written for %s: %s", tid[:8], exc)
 
     def _evaluate_volt(self, record: TradeRecord,
                        current_premium: float,
