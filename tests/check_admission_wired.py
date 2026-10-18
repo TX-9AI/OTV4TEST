@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_admission_wired.py  v1.3
+tests/check_admission_wired.py  v1.4
 THE ADMISSION TABLE IS LIVE: A STRATEGY OUTSIDE ITS WINDOW IS NEVER ASKED.
+
+v1.4  2026-10-18  OTV4TEST r293 (ADM.2) — A10: an unreadable rules() table fails CLOSED (nothing asked) and WARNS once;
+      _admission_allows returned True with no line (audit 10-18 D1).
 
 v1.3  2026-10-03  OTV4TEST r204 (PREM.2) — A1, A2 and A4 PROBE THE GEX BUTTERFLY, NOT THE TCS. The TCS is retired by
       ruling ("Retire the sweep & TCS") and _safe_strategy no longer asks it whatever admission says, so it
@@ -157,6 +160,35 @@ def main():
         return "if not pos_mgr.has_blocking_position():" not in src
     guard("A9 has_blocking_position() NO LONGER gates the open branch — ADM.1 closed",
           gate_gone, "the last of r35's seven admission mechanisms")
+
+    # r293 (ADM.2) — an UNREADABLE table fails CLOSED and says so once. It returned True with no line.
+    def a10():
+        import logging as _lg
+        from execution import position_manager as _pm
+        lines = []
+
+        class _H(_lg.Handler):
+            def emit(self, r):
+                lines.append((r.levelname, r.getMessage()))
+        h = _H(); log = _lg.getLogger("main"); log.addHandler(h); log.setLevel(_lg.INFO)
+        _orig = _pm.rules
+
+        def _boom():
+            raise RuntimeError("rules table unreadable (fixture)")
+        _pm.rules = _boom
+        try:
+            M._set_admission({"Breakout"})
+            r1 = M._admission_allows("Breakout")
+            r2 = M._admission_allows("Breakout")
+        finally:
+            _pm.rules = _orig
+            M._set_admission(None)
+            log.removeHandler(h)
+        warns = [m for lv, m in lines if lv == "WARNING" and "UNREADABLE" in m]
+        print(f"        a10: allows={r1},{r2} warnings={len(warns)}")
+        return r1 is False and r2 is False and len(warns) == 1      # guard() wants a bool here
+    guard("A10 rules() raising: the strategy is NOT asked (fails closed) and one WARNING names it", a10,
+          "it returned True with no line when the table could not be read")
 
     print()
     if FAILED:

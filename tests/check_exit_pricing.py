@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_exit_pricing.py  v1.1
+tests/check_exit_pricing.py  v1.2
+v1.2  2026-10-18  OTV4TEST r293 (DELTA.2) — P6b drives PositionManager._fetch_current_premium with a quoted contract whose
+      delta is None, then 0.0: current_delta must be None and the r209 warning must fire once; 0.45 restores it. The
+      production stash stored 0.0 and flagged it readable, so P6's warning never fired in production (audit 10-18 D2).
 v1.1  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
       US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
       without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
@@ -206,6 +209,38 @@ def main():
               and run.get("current_delta") is None, f"warnings {len(w)}/{len(w2)}, delta {dark}, back {len(back)}")
     except Exception as exc:                                  # noqa: BLE001
         check("P6 (did not run)", False, f"{type(exc).__name__}: {exc}")
+
+    # r293 (DELTA.2) — THROUGH THE REAL FETCH. P6 drove _delta_readable by hand; the production stash stored
+    # float(delta or 0.0) and then called _delta_readable(record, True), so the warning P6 proves could never fire.
+    try:
+        import execution.position_manager as PM
+        h = _Logs(); lg = logging.getLogger("execution.position_manager"); lg.addHandler(h); lg.setLevel(logging.INFO)
+        pm = PM.PositionManager(paper_trading=True)
+
+        class _C:
+            def __init__(self, strike, mark, delta):
+                self.strike, self.mark, self.bid, self.ask = strike, mark, mark - 0.01, mark + 0.01
+                self.delta, self.theta, self.iv, self.gamma = delta, -0.02, 0.30, 0.01
+
+        class _Chain:
+            def __init__(self, c):
+                self.calls, self.puts = [c], []
+        rec = {"trade_id": "d2", "strategy": "Breakout", "option_side": "call", "strike": 100.0,
+               "entry_premium": 1.0, "current_delta": 0.55, "is_butterfly": 0}
+        m1 = pm._fetch_current_premium(rec, _Chain(_C(100.0, 1.20, None)))
+        d_none = rec.get("current_delta", "unset")
+        m2 = pm._fetch_current_premium(rec, _Chain(_C(100.0, 1.25, 0.0)))     # the chain's missing-greek sentinel
+        d_zero = rec.get("current_delta", "unset")
+        w = [m for lv, m in h.lines if lv == "WARNING" and "UNREADABLE" in m]
+        m3 = pm._fetch_current_premium(rec, _Chain(_C(100.0, 1.30, 0.45)))
+        back = [m for lv, m in h.lines if "readable again" in m]
+        lg.removeHandler(h)
+        check("P6b THE REAL FETCH: delta None then 0.0 on the quoted contract -> current_delta None, ONE warning; 0.45 restores it, said once",
+              m1 == 1.20 and m2 == 1.25 and m3 == 1.30 and d_none is None and d_zero is None and len(w) == 1
+              and rec.get("current_delta") == 0.45 and len(back) == 1,
+              f"marks {m1},{m2},{m3} delta {d_none!r}/{d_zero!r}/{rec.get('current_delta')!r} warnings {len(w)} back {len(back)}")
+    except Exception as exc:                                  # noqa: BLE001
+        check("P6b (did not run)", False, f"{type(exc).__name__}: {exc}")
 
     try:
         src = open(os.path.join(_root, "risk", "session_guard.py")).read()

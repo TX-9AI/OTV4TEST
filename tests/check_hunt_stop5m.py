@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_hunt_stop5m.py  v1.1
+tests/check_hunt_stop5m.py  v1.2
+v1.2  2026-10-18  OTV4TEST r293 (DIAL.2) — H8b: the Service line (main._banner_dials) names hunt_stop and rearm and prints
+      a refused OT_HUNT_STOP5M / OT_HUNT_REARM by value; config recorded the refusal and nothing read it (audit 10-18 G2).
+      OT_LOG_FILE joins this checker's own scratch env (it imports main now).
 v1.1  2026-10-18  OTV4TEST r290 (HUNT.10) — THROUGH THE FRONT DOOR. H1-H7 drove _runaway_thesis_exits directly; the
       live 2026-10-15 Hunt (ddeb0fab) was HELD there and then killed by _evaluate_orb's step 2 on the bare boundary,
       a path this checker never reached. H9a-c drive ExitEngine.evaluate() with the clock seam pinned:
@@ -48,7 +51,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 SCRATCH = tempfile.mkdtemp(prefix="chk_hunt_s5_", dir="/var/tmp")
 for k, v in (("OT_TRADES_DB", "trades.db"), ("OT_DERIVED_DB", "derived.db"), ("OT_RESTING_DB", "resting.db"),
-             ("OT_FEED_DB", "feed.db"), ("OT_COUNTERFACTUAL_DIR", "cf"), ("OT_SIGNAL_JOURNAL_DIR", "sj")):
+             ("OT_FEED_DB", "feed.db"), ("OT_COUNTERFACTUAL_DIR", "cf"), ("OT_SIGNAL_JOURNAL_DIR", "sj"),
+             ("OT_LOG_FILE", "bot.log")):        # r293: H8b imports main, whose file handler follows config.LOG_FILE
     os.environ[k] = os.path.join(SCRATCH, v)
 os.environ.pop("OT_HUNT_STOP5M", None)
 FAILED, RAN = [], []
@@ -141,7 +145,7 @@ def main():
         import execution.exit_engine as XE
         eng = XE.ExitEngine(paper_trading=True)
     except Exception as exc:                                    # noqa: BLE001
-        for n in ("H1", "H2", "H3", "H4", "H5", "H6", "H7", "H8", "H9a", "H9b", "H9c"):
+        for n in ("H1", "H2", "H3", "H4", "H5", "H6", "H7", "H8", "H8b", "H9a", "H9b", "H9c"):
             check(f"{n} setup", False, f"{type(exc).__name__}: {exc}")
         return _tail()
 
@@ -186,6 +190,27 @@ def main():
     got = [_cfg({}), _cfg({"OT_HUNT_STOP5M": "OFF"}), _cfg({"OT_HUNT_STOP5M": "log"}), _cfg({"OT_HUNT_STOP5M": "yes"})]
     guard("H8 config: unset -> trade, OFF -> off, log -> log, junk -> log refused by name",
           lambda: (got == ["trade ''", "off ''", "log ''", "log 'yes'"], repr(got)))
+
+    # r293 (DIAL.2) — "named" has to mean the Service line. config recorded the refusal; nothing printed it.
+    def _h8b():
+        import main as _MN
+        _saved = {k: getattr(config, k) for k in ("HUNT_STOP5M_MODE", "HUNT_STOP5M_ENV_REFUSED",
+                                                   "BRK_REARM_MODE", "HUNT_REARM_ENV_REFUSED")}
+        try:
+            config.HUNT_STOP5M_MODE, config.HUNT_STOP5M_ENV_REFUSED = "trade", ""
+            config.BRK_REARM_MODE, config.HUNT_REARM_ENV_REFUSED = "log", ""
+            clean = _MN._banner_dials()
+            config.HUNT_STOP5M_MODE, config.HUNT_STOP5M_ENV_REFUSED = "log", "1"
+            config.BRK_REARM_MODE, config.HUNT_REARM_ENV_REFUSED = "off", "yes"
+            typo = _MN._banner_dials()
+        finally:
+            for k, v in _saved.items():
+                setattr(config, k, v)
+        ok = (" · hunt_stop=5m(trade)" in clean and " · rearm=brk:log/hunt:" in clean and "REFUSED" not in clean.split("hunt_stop=")[1]
+              and " · hunt_stop=1m(log) (OT_HUNT_STOP5M='1' REFUSED)" in typo
+              and " · rearm=brk:off/hunt:" in typo and "(OT_HUNT_REARM='yes' REFUSED)" in typo)
+        return ok, f"clean={clean[-160:]!r} typo={typo[-200:]!r}"
+    guard("H8b the Service line names hunt_stop and rearm, and a refused OT_HUNT_STOP5M / OT_HUNT_REARM by value", _h8b)
 
     # ── r290 (HUNT.10): the same questions asked of evaluate(), the entry point the bot calls ──
     XE.is_hard_close_time = lambda: False          # the one clock seam every checker pins

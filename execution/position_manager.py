@@ -1,5 +1,7 @@
 """
-execution/position_manager.py  v5.19
+execution/position_manager.py  v5.20
+v5.20 2026-10-18  OTV4TEST r293 (DELTA.2) — an UNREAD delta on the quoted contract is stored as None and said once
+      (_delta_readable False), never as 0.0 flagged readable (audit 10-18 D2). The exits already held on None.
 v5.19 2026-10-18  OTV4TEST r288 (PARK.1) — PARK joins the admission table: its window (config.ENTRY_WINDOWS["PARK"],
       11:01-11:03), one open and one try per session, and CAP-EXEMPT - its own budget, outside the morning's catastrophic
       cap (the operator, 2026-10-17: "its own budget outside the morning cap"; "Trade it").
@@ -1183,10 +1185,22 @@ class PositionManager:
                         # breakeven velocity is |theta| / (|delta| * 1440), so
                         # theta alone cannot answer "is this position gaining or
                         # bleeding right now". Same stash, same guard.
-                        record["current_delta"] = float(getattr(match, "delta", 0.0) or 0.0)
                         _note_quote(record, getattr(match, "bid", 0.0), getattr(match, "ask", 0.0),
                                     getattr(match, "iv", None))       # r195
-                        _delta_readable(record, True)                 # r209
+                        # r293 (DELTA.2) — an UNREAD delta is None and SAID, never 0.0. r209's
+                        # `float(delta or 0.0)` then `_delta_readable(record, True)` stored 0.0 and
+                        # flagged it readable, so the r209 warning could never fire and the delta-par /
+                        # delta-floor exits went dark without a line (audit 10-18 D2). The chain writes
+                        # 0.0 for a missing greek (options_chain.py:598), so 0.0 IS the unread sentinel.
+                        try:
+                            _dval = float(getattr(match, "delta", None))
+                        except (TypeError, ValueError):
+                            _dval = 0.0
+                        if _dval == 0.0:
+                            _delta_readable(record, False, "delta missing on the quoted contract")
+                        else:
+                            record["current_delta"] = _dval
+                            _delta_readable(record, True)             # r209
                         return match.mark
                     _delta_readable(record, False, "no quoted contract at the strike")   # r209
             except Exception as _dexc:                                # noqa: BLE001

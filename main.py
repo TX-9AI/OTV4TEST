@@ -1,5 +1,8 @@
 """
-main.py  v4.107
+main.py  v4.108
+v4.108  2026-10-18  OTV4TEST r293 (DIAL.2 + ADM.2) - the Service line names hunt_stop and rearm (and their REFUSED values:
+      config recorded HUNT_STOP5M/BRK_REARM/HUNT_REARM refusals that nothing read - audit 10-18 G2); _admission_allows
+      FAILS CLOSED with one WARNING when the rules table cannot be read (it returned True silently - audit 10-18 D1).
 v4.107  2026-10-18  OTV4TEST r288 (PARK.1 + BRK.13) - PARK is asked every tick through _attempt_park() (dormant outside
       11:01-11:03): in the normal dispatch and ALSO in the capped branch beside the butterflies, because PARK is
       cap-exempt (its own budget, the operator 2026-10-17); one per session; OT_PARK=off is never asked. The pin-proximity
@@ -3330,6 +3333,9 @@ def _set_admission(names) -> None:
     _ADMITTED = None if names is None else frozenset(names)
 
 
+_ADMISSION_UNREADABLE_SAID = False       # r293 (ADM.2)
+
+
 def _admission_allows(name: str) -> bool:
     """May `name` be ASKED this tick? Unknown names and an unset tick pass."""
     if _ADMITTED is None:
@@ -3339,8 +3345,18 @@ def _admission_allows(name: str) -> bool:
         from execution import position_manager as _pmod
         if key not in _pmod.rules():
             return True                 # admission has no opinion about it
-    except Exception:                                          # noqa: BLE001
-        return True                     # the table is unreadable — do not gate
+    except Exception as _aexc:                                 # noqa: BLE001
+        # r293 (ADM.2) — FAIL CLOSED, AND SAY SO ONCE. This returned True ("the table is
+        # unreadable - do not gate") with no line: an admission table that cannot be read
+        # silently un-gated every strategy (audit 10-18 D1). The strict side is the safe
+        # side (strategy/criteria.relaxed_active); a strategy that is not asked for one
+        # tick costs a tick, a strategy asked outside its table costs a trade.
+        global _ADMISSION_UNREADABLE_SAID
+        if not _ADMISSION_UNREADABLE_SAID:
+            _ADMISSION_UNREADABLE_SAID = True
+            logger.warning("[admission] the rules table is UNREADABLE (%s: %s) - nothing is asked "
+                           "until it reads (said once per process)", type(_aexc).__name__, _aexc)
+        return False
     return key in _ADMITTED
 
 
@@ -5342,6 +5358,18 @@ def _banner_dials() -> str:
     brk += f" · park={PARK_MODE}"                                          # r288 (PARK.1)
     if PARK_ENV_REFUSED:
         brk += f" (OT_PARK={PARK_ENV_REFUSED!r} REFUSED)"
+    # r293 (DIAL.2) — the three dials whose refusal was recorded by config and read by NOTHING: a typo on
+    # OT_HUNT_STOP5M moved every Hunt back to the 1m boundary with no line anywhere (audit 10-18 G2).
+    from config import (HUNT_STOP5M_MODE, HUNT_STOP5M_ENV_REFUSED, BRK_REARM_MODE, BRK_REARM_ENV_REFUSED,
+                        HUNT_REARM_MODE, HUNT_REARM_ENV_REFUSED)
+    brk += f" · hunt_stop={'5m' if HUNT_STOP5M_MODE == 'trade' else '1m'}({HUNT_STOP5M_MODE})"   # r285 (HUNT.8)
+    if HUNT_STOP5M_ENV_REFUSED:
+        brk += f" (OT_HUNT_STOP5M={HUNT_STOP5M_ENV_REFUSED!r} REFUSED)"
+    brk += f" · rearm=brk:{BRK_REARM_MODE}/hunt:{HUNT_REARM_MODE}"         # r286 (BRK.12 / HUNT.9)
+    if BRK_REARM_ENV_REFUSED:
+        brk += f" (OT_BRK_REARM={BRK_REARM_ENV_REFUSED!r} REFUSED)"
+    if HUNT_REARM_ENV_REFUSED:
+        brk += f" (OT_HUNT_REARM={HUNT_REARM_ENV_REFUSED!r} REFUSED)"
     brk += f" · resting_stop={RESTING_STOP_MODE}"                          # r266 (STOP.1)
     if RESTING_STOP_MODE == "trade" and not PAPER_TRADING:
         brk += " (LIVE: refused - stops close as before)"
