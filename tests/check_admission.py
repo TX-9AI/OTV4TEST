@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_admission.py  v1.12
+tests/check_admission.py  v1.13
+v1.13 2026-10-18  OTV4TEST r292 (GATE.1) — PARK JOINS `ALL`. v1.12 put it in SPEC but not in the list the B-section iterates -
+      the r78 defect this header already records - so the B checks and B8 never asked about it (audit 10-18 B2).
 v1.12 2026-10-18  OTV4TEST r288 (PARK.1) — PARK JOINS THE TABLE: 11:01-11:03, cap 1, ONE try per session, by ruling (the
       operator, 2026-10-17 18:21 ET: "Trade it ... Call it PARK"). Restated in SPEC from the ruling, not from rules().
 v1.11 2026-10-12  OTV4TEST r273 (BFLY.10) — both fly rows RE-POINTED 12:00 -> 13:00, and A8 asserts the ATP fly OUT at 12:59
@@ -100,7 +102,7 @@ def main():
     #    stacked — 19 positions off one opening range — was the one this
     #    checker never asked about. Added; it is not a new belief, it is the
     #    belief SPEC already held going unexercised since r51.
-    ALL = [ORB, RUNAWAY, HUNT, BREAKOUT, SWEEP, TCS, GEXFLY, ATPFLY, VOLT, ORCS]
+    ALL = [ORB, RUNAWAY, HUNT, BREAKOUT, SWEEP, TCS, GEXFLY, ATPFLY, VOLT, ORCS, "PARK"]   # r292: PARK was in SPEC, not here (the r78 defect again)
 
     def ok(strategy, hhmm, **kw):
         return decide(Facts(strategy=strategy, now_et=hhmm, orb_established=True, **kw))

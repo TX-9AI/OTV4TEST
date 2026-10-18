@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_land_tooling.py  v1.4
+tests/check_land_tooling.py  v1.5
+v1.5  2026-10-18  OTV4TEST r292 (GATE.1) — T6 also requires OT_FEED_DB, OT_RESTING_STOP_STATE and OT_WAREHOUSE_STATE under
+      $_scratch on every CHECK line (audit 10-18 B4).
 v1.4  2026-10-15  OTV4TEST r287 (CFDIR.1) — T6 also requires OT_COUNTERFACTUAL_DIR under $_scratch on every CHECK line.
 v1.3  2026-10-03  OTV4TEST r194 (BOX.16) — T6 also requires OT_LOG_FILE under $_scratch on every CHECK line.
 v1.2  2026-09-25  OTV4TEST r144 — T6 also requires OT_SIGNAL_JOURNAL_DIR under $_scratch
@@ -118,9 +120,11 @@ def main():
              if 'python3 "$chk"' in ln and not ln.lstrip().startswith("#")]
     _need = ('OT_TRADES_DB="$_scratch/', 'OT_DERIVED_DB="$_scratch/',
              'OT_RESTING_DB="$_scratch/', 'OT_SIGNAL_JOURNAL_DIR="$_scratch/',
-             'OT_LOG_FILE="$_scratch/', 'OT_COUNTERFACTUAL_DIR="$_scratch/')   # r194, r287
+             'OT_LOG_FILE="$_scratch/', 'OT_COUNTERFACTUAL_DIR="$_scratch/',    # r194, r287
+             'OT_FEED_DB="$_scratch/', 'OT_RESTING_STOP_STATE="$_scratch/',
+             'OT_WAREHOUSE_STATE="$_scratch/')                                  # r292 (GATE.1)
     _bad = [ln.strip()[:90] for ln in _runs if not all(n in ln for n in _need)]
-    check("T6 every CHECK invocation isolates the trades, derived, resting stores, the journal, the log AND the counterfactual logs",
+    check("T6 every CHECK invocation isolates the trades, derived, resting stores, the journal, the log, the counterfactual logs, the feed store, the resting-stop state and the warehouse state",
           bool(_runs) and not _bad,
           f"{len(_runs)} invocation line(s)" + (f"; missing on: {_bad}" if _bad else ""))
 

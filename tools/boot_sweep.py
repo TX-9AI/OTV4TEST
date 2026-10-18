@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""tools/boot_sweep.py — v1.6
+"""tools/boot_sweep.py — v1.7
+v1.7 (2026-10-18) — OTV4TEST r292 (GATE.1). THREE MORE STORES ARE SCRATCH: OT_FEED_DB (the live feed_store.db -
+42 checkers import modules whose r284/r285/r288 paths resolve feed_db_path() at call time, so under the sweep they READ
+the live 2.5 GB tape and a checker's verdict depended on live retention), OT_RESTING_STOP_STATE (a checker driving the
+resting stop would write the live data/resting_stop_state.json) and OT_WAREHOUSE_STATE (the push/purge ledgers under
+~/.vertigo_warehouse). Found by the 2026-10-18 audit (B4). check_boot_sweep B3/B3b.
 
 v1.6 (2026-10-15) — OTV4TEST r287 (CFDIR.1). THE COUNTERFACTUAL LOGS ARE SCRATCH TOO: run_one sets
   OT_COUNTERFACTUAL_DIR under the same bootsweep- mkdtemp, so a checker that drives an exit, entry or
@@ -140,6 +145,9 @@ def run_one(name: str) -> bool:
     env["OT_SIGNAL_JOURNAL_DIR"] = os.path.join(d, "signal_journal")  # r144
     env["OT_LOG_FILE"] = os.path.join(d, "bot.log")                   # r194 (BOX.16)
     env["OT_COUNTERFACTUAL_DIR"] = os.path.join(d, "counterfactual")  # r287 (CFDIR.1)
+    env["OT_FEED_DB"] = os.path.join(d, "feed_store.db")              # r292 (GATE.1): the 2.5 GB live tape
+    env["OT_RESTING_STOP_STATE"] = os.path.join(d, "resting_stop_state.json")   # r292: a rest survives a restart
+    env["OT_WAREHOUSE_STATE"] = os.path.join(d, "warehouse_state")    # r292: the push/purge ledgers
     env["OT_SWEEP_NESTED"] = "1"     # r257: a checker that drives this tool gets a refusal, not a sweep
     env.setdefault("OT_INSTRUMENT", "QQQ")   # r146: an EXPLICIT fixture symbol; config no longer guesses one
     try:

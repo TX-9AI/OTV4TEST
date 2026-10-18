@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_park.py  v1.1
+tests/check_park.py  v1.2
 PARK - THE 11:00 FIRST-HOUR CONTINUATION (PARK.1): THE PLAN, THE STRATEGY, ITS SIZE, ITS EXITS, ITS OWN BUDGET.
+v1.2  2026-10-18  OTV4TEST r292 (GATE.1). K13a DRIVES attempt_new_entry() with the PARK attempt intercepted: the
+      normal-day call must ask PARK with the chain. K13 pinned only the capped branch, by text; a scratch copy with
+      main.py's uncapped call deleted stayed GREEN 21/21 (audit 10-18 B1). K13a is RED on that mutant.
 v1.1  2026-10-18  OTV4TEST r291 (PARK.2). K10b was a fixture that hand-set mfe_premium=1.65 - a column no open row ever
       carries - so it proved only the in-memory branch (audit 10-18 A3 / T1-10). Now K10b logs a PARK entry through the
       real TradeLogger, ticks update_current_premium (1.65 then 1.30), rehydrates the row with get_open_trades() and asks
@@ -319,6 +322,36 @@ def main():
     check("K13 main: PARK declared long_debit, PIN_EXEMPT names it, the capped branch asks _attempt_park",
           '"PARK":                 "long_debit"' in src and 'PIN_EXEMPT = ("PARK",)' in src
           and "_attempt_park(ctx, ms, state)" in capped and "def _attempt_park(" in src, capped[-300:])
+
+    # r292 (GATE.1) — K13a DRIVES THE NORMAL-DAY DISPATCH. K13 pinned the capped branch by text and nothing pinned
+    # main.py's uncapped `_attempt_park(ctx, ms, state, chain=chain)`: deleting it left this checker green (audit
+    # 10-18 B1). Here attempt_new_entry() itself runs, with the PARK attempt and the butterflies intercepted, on a ctx
+    # that already carries a chain (so no fetch) - every other strategy runs its real path on the empty scratch
+    # stores and declines. The recorder must see PARK asked WITH the chain (the capped branch passes none).
+    import main as _MN0
+    _calls = []
+    _orig_park, _orig_fly = _MN0._attempt_park, _MN0._attempt_butterfly
+    _MN0._attempt_park = lambda ctx, ms, state, chain=None: _calls.append(("park", chain is not None))
+    _MN0._attempt_butterfly = lambda *a, **k: _calls.append(("fly",))
+
+    class _MS:
+        adx, trend_direction, structure_sequence = 20.0, "NEUTRAL", ""
+
+    class _Chain:
+        calls, puts, spot = [], [], 702.4
+    _st = _MN0.BotState()
+    _st.paper_trading = True
+    with sqlite3.connect(os.environ["OT_TRADES_DB"]) as _c:      # K11b's closed rows would trip the cap -> capped branch
+        _c.execute("DELETE FROM trades WHERE trade_id IN ('p1', 'b1')")
+    _err = ""
+    try:
+        _MN0.attempt_new_entry({"price": 702.4, "chain": _Chain(), "macro": {}, "symbol": SYM}, _MS(), _st)
+    except Exception as _e:                                     # noqa: BLE001
+        _err = f"{type(_e).__name__}: {_e}"
+    finally:
+        _MN0._attempt_park, _MN0._attempt_butterfly = _orig_park, _orig_fly
+    check("K13a DRIVEN: attempt_new_entry() asks _attempt_park WITH the chain on the normal-day path",
+          ("park", True) in _calls and not _err, f"calls={_calls} err={_err}")
 
     spec = open(os.path.join(ROOT, "strategy", "park.py")).read()
     from strategy import plan as PL
