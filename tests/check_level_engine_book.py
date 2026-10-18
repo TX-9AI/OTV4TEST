@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_level_engine_book.py  v1.4
+tests/check_level_engine_book.py  v1.5
+v1.5  2026-10-18  OTV4TEST r296 (LVL.19) — E12: a bar still being built is never judged (audit 10-18 H1: 10 of the 40
+      newest REJECTED rows were judged 12-19 s into their bar on a provisional close). E7 RE-POINTED: the hour it judges
+      on is judged once it has CLOSED (its old clock stood 60 s into the hour - the same defect on the hourly candle);
+      the test widens BOOK_FRESH_S locally to keep the hourly-pierce publish path under test.
 v1.4  2026-10-01  OTV4TEST FLIP.1 — E5 RE-POINTED BY THE RULING, NOT DELETED: the breach
       bar now also publishes the lone level's FLIPPED row, so E5 pins "a second derive
       publishes nothing new" (n0 == n1) and exactly one NON-flip event.
@@ -252,7 +256,11 @@ def _e7():
     from data.derived_store import DerivedStore
     import derived.levels as L
     t_ev = D + 24 * H + 15 * H
-    L.time.time = lambda: t_ev / 1000.0 + 60
+    # r296 (LVL.19): the hour is judged once it has CLOSED (t_ev + H), not 60 s into it; an hourly event is
+    # then older than BOOK_FRESH_S, so the window is widened HERE to keep the hourly-pierce publish path under test.
+    L.time.time = lambda: (t_ev + H) / 1000.0 + 60
+    _fresh = L.BOOK_FRESH_S
+    L.BOOK_FRESH_S = 4000.0
     fails = []
 
     class _Catch(logging.Handler):
@@ -270,6 +278,7 @@ def _e7():
         eng.derive({"symbol": "QQQ", "price": 100.5, "df_1m": df1})
     finally:
         logging.getLogger("derived.levels").removeHandler(h)
+        L.BOOK_FRESH_S = _fresh
     ev = [e for e in events(store) if e[2] == "REJECTED" and e[0] == "QQQ:resistance:101.00"]
     want = round(0.30 / 101.0, 6)
     ok = not fails and len(ev) == 1 and abs(ev[0][3] - want) < 1e-6
@@ -346,6 +355,27 @@ def _e11():
 
 guard("E10 latest_rejection() filters by kind and by time", _e10)
 guard("E11 no tape in the feed -> the ledger is left exactly as it was", _e11)
+
+
+def _e12():
+    """r296 (LVL.19): the 09:40 HELD bar is in the store (the feed flushes the forming minute within 2 s)
+    but the clock stands 20 s INTO it - nothing may be judged on it yet; 65 s later it is closed and the
+    REJECTED publishes with the same bar_ts and pierce E2 pins."""
+    import derived.levels as L
+    cut = RTH + 11 * M                                       # the store holds bars up to and including 09:40
+    forming = (RTH + 10 * M) / 1000.0 + 20                   # 09:40:20 - the 09:40 bar is still being built
+    eng, store, _ = engine_at(cut, forming)
+    early = [e for e in events(store) if e[2] == "REJECTED"]
+    L.time.time = lambda: (RTH + 11 * M) / 1000.0 + 5        # 09:41:05 - the 09:40 bar is closed
+    eng._book_sync("QQQ")
+    late = [e for e in events(store) if e[2] == "REJECTED"]
+    want = round(0.30 / 101.0, 6)
+    ok = (early == [] and len(late) == 1 and late[0][0] == "QQQ:resistance:101.00"
+          and late[0][1].startswith("2026-09-22 09:40") and abs(late[0][3] - want) < 1e-6)
+    return ok, f"while forming: {early}; after the close: {late}"
+
+
+guard("E12 a bar still being built is never judged: no REJECTED at 09:40:20, the REJECTED at 09:41:05 (r296)", _e12)
 
 shutil.rmtree(WORK, ignore_errors=True)
 print()

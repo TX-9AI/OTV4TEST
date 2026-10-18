@@ -1,5 +1,10 @@
 """
-derived/levels.py  v6.8
+derived/levels.py  v6.9
+v6.9  2026-10-18  OTV4TEST r296 (LVL.19) — THE BOOK REPLAYS CLOSED BARS ONLY. _book_sync fed build() every 1m/1h bar in
+      the store, the forming minute included (the feed flushes it within 2 s), and level_rules decided HELD on that
+      provisional close; _book_emitted then kept the verdict for good. Audit 2026-10-18 H1: 10 of the 40 newest
+      REJECTED/FLIP_REJECTED rows were judged 12-19 s into their bar with a close that differs from the final one.
+      Now a 1m bar counts once ts+60 s <= now, an hourly once ts+3600 s <= now, and build() receives now_ms.
 v6.8  2026-10-03  OTV4TEST r214 (LVL.18) — A LEVEL'S DEFENCES AND FAILURES ARE COUNTED, RECORD-ONLY, IN NEW COLUMNS. The
       operator, 2026-10-03: "a sweep of a level is a successful defense. and any level that historically
       repeats that process is a higher quality level", and "I would much rather have fewer levels if they're
@@ -1054,7 +1059,21 @@ class LevelEngine(DerivedEngine):
             logger.warning("[level] book: no tape in %s (1h=%s 1m=%s) — ledger unchanged",
                            db, len(h1 or []), len(m1 or []))
             return 0
-        book = B.build(sym, h1, m1, spike_reject=LEVEL_SPIKE_REJECT)
+        # r296 (LVL.19) — CLOSED BARS ONLY. load_bars has no upper bound and the feed flushes the
+        # forming minute within 2 s, so the replay's last tape bar was the bar still being built and
+        # level_rules decided HELD on its provisional close - permanently (_book_emitted dedupes).
+        # Measured 2026-10-18 on the 40 newest REJECTED/FLIP_REJECTED rows: 10 were judged 12-19 s
+        # into their bar and recorded a close that differs from the bar's final close (e.g. 10-14
+        # 10:40 support 735.69 recorded vs 736.13 final). A bar counts once its whole span has
+        # elapsed; the hour likewise. now_ms also goes to build() so the session blocks agree.
+        now_ms = int(time.time() * 1000)
+        m1 = [b for b in m1 if b[0] + 60_000 <= now_ms] or None
+        h1 = [b for b in h1 if b[0] + 3_600_000 <= now_ms] or None
+        if not h1 or not m1:
+            logger.info("[level] book: no CLOSED tape yet (1h=%s 1m=%s) — ledger unchanged",
+                        len(h1 or []), len(m1 or []))
+            return 0
+        book = B.build(sym, h1, m1, now_ms=now_ms, spike_reject=LEVEL_SPIKE_REJECT)
         self._zone_width = getattr(book, "width", None)   # v6.5 — board() groups by it
         now = time.time()
         written = 0
