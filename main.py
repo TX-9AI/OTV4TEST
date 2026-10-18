@@ -1,5 +1,7 @@
 """
-main.py  v4.108
+main.py  v4.109
+v4.109  2026-10-18  OTV4TEST r295 (LIVE.2) - _touch_heartbeat delegates to utils.heartbeat.touch (same file, same format);
+      the live poll loops touch it too, so a serial close ladder never reads as a hung bot to the emergency watchdog.
 v4.108  2026-10-18  OTV4TEST r293 (DIAL.2 + ADM.2) - the Service line names hunt_stop and rearm (and their REFUSED values:
       config recorded HUNT_STOP5M/BRK_REARM/HUNT_REARM refusals that nothing read - audit 10-18 G2); _admission_allows
       FAILS CLOSED with one WARNING when the rules table cannot be read (it returned True silently - audit 10-18 D1).
@@ -5993,14 +5995,10 @@ def _touch_heartbeat(tick: int) -> None:
     stuck). ⚠️ NEVER RAISES: a heartbeat that could stop the loop would be the
     hang it exists to catch. A failed write warns once and the watchdog, seeing
     the file age, pages - the loud direction."""
-    global _heartbeat_warned
-    try:
-        with open(_HEARTBEAT, "w") as f:
-            f.write(f"{time.time():.0f} {tick}\n")
-    except Exception as exc:                                    # noqa: BLE001
-        if not _heartbeat_warned:
-            _heartbeat_warned = True
-            logger.warning("heartbeat write failed (%s) — the emergency watchdog will read this bot as stuck", exc)
+    # r295 (LIVE.2): one writer, utils.heartbeat.touch, shared with the live poll loops; this
+    # keeps the tick number and the _HEARTBEAT seam the watchdog checker pins (W12).
+    from utils.heartbeat import touch as _hb_touch
+    _hb_touch(str(tick), _HEARTBEAT)
 
 
 def main_loop(state: BotState):

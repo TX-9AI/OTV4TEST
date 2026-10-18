@@ -1,5 +1,8 @@
 """
-execution/exit_engine.py  v4.43
+execution/exit_engine.py  v4.44
+v4.44 2026-10-18  OTV4TEST r295 (LIVE.2) — the live close's broker poll touches the heartbeat on every iteration
+      (utils.heartbeat.touch); with LIVE_FILL_DEADLINE_SECONDS at 8 (config v4.69) a five-position ladder is ~70 s
+      and never silent, where 5 x 36 s was >180 s = the watchdog's SIGKILL at ~15:53. Audit 2026-10-18 C2.
 v4.43 2026-10-18  OTV4TEST r294 (EXIT.6; MIRROR OF otv4 r493 1c60b69, hunks VERBATIM) — A RESTART KEEPS THE LOCKED TRAIL.
       _seed_trail_from_record re-armed _trail_active only for ADOPTED, so for every other strategy the first tick at or
       above the activation level took _update_trail's first-activation branch and wrote the activation seed (here: the
@@ -798,6 +801,7 @@ from tastytrade.order import (
 )
 
 import config as _cfg   # live fill knobs read at CALL time (test/env tunable)
+from utils.heartbeat import touch as _hb_touch   # r295 (LIVE.2): never raises
 
 from database.trade_logger import TradeRecord, get_trade_logger
 from data.tasty_client import get_session, get_account, TastyClientError, sdk_result
@@ -3580,6 +3584,7 @@ class ExitEngine:
         deadline = time.monotonic() + float(getattr(_cfg, "LIVE_FILL_DEADLINE_SECONDS", 30.0))
         cancel_requested = False
         while True:
+            _hb_touch("live-exit poll")      # r295 (LIVE.2): the watchdog must not read a laddering bot as hung
             try:
                 placed = sdk_result(account.get_order(session, order_id))   # B0
             except Exception as e:

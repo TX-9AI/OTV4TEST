@@ -1,5 +1,9 @@
 """
-config.py  v4.68
+config.py  v4.69
+v4.69  2026-10-18  OTV4TEST r295 (LIVE.2; the deadline half is a MIRROR of otv4 r474 674e0cc) - LIVE_FILL_DEADLINE_SECONDS
+      30 -> 8: a live close waited up to 30 s per position for a fill (+6 s cancel grace), serially, with the main loop
+      frozen; five unfilled positions at the 15:50 ladder = >180 s without a heartbeat = the emergency watchdog's kill.
+      Audit 2026-10-18 C2; LIVE.1 F1 (never mirrored on 10-05).
 v4.68  2026-10-18  OTV4TEST r288 (PARK.1 + BRK.13) - (1) PARK, the operator's friend's 11:00 continuation, TRADED on
        every box (the operator, 2026-10-17 18:21 ET: "Trade it, don't just log it. Paper is free. Call it PARK"; on
        SPX "Use our actual numbers, trade it"): OT_PARK trade|log|off (UNSET = trade), its dials PARK_* and its entry
@@ -2842,7 +2846,7 @@ BOT_NAME                    = os.environ.get("OT_BOT_NAME", "OptionsTrader")
 LIVE_FILL_POLL_SECONDS      = float(os.environ.get("OT_LIVE_FILL_POLL_SECONDS", "2"))
 # Total seconds to wait for a fill before cancelling and handing the position
 # back to the caller's retry loop (15:45→16:00 hard-close retries + paging).
-LIVE_FILL_DEADLINE_SECONDS  = float(os.environ.get("OT_LIVE_FILL_DEADLINE_SECONDS", "30"))
+LIVE_FILL_DEADLINE_SECONDS  = float(os.environ.get("OT_LIVE_FILL_DEADLINE_SECONDS", "8"))   # r295: 30 -> 8, mirror of otv4 r474 (F1); the operator, 10-05: "get it down to eight seconds"
 # Marketable-limit buffer ($/share THROUGH the mark) for multi-leg closes.
 # tastytrade rejects MARKET orders on spreads, so closes go out as aggressive
 # limits: vertical debit = min(mark + buffer, spread width); butterfly credit

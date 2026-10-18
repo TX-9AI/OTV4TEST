@@ -1,5 +1,6 @@
 """
-execution/position_manager.py  v5.20
+execution/position_manager.py  v5.21
+v5.21 2026-10-18  OTV4TEST r295 (LIVE.2) — flatten_all touches the heartbeat once per position (utils.heartbeat.touch).
 v5.20 2026-10-18  OTV4TEST r293 (DELTA.2) — an UNREAD delta on the quoted contract is stored as None and said once
       (_delta_readable False), never as 0.0 flagged readable (audit 10-18 D2). The exits already held on None.
 v5.19 2026-10-18  OTV4TEST r288 (PARK.1) — PARK joins the admission table: its window (config.ENTRY_WINDOWS["PARK"],
@@ -864,7 +865,9 @@ class PositionManager:
         failed: List[str] = []
         held: List[str] = []
         resting: List[str] = []
+        from utils.heartbeat import touch as _hb_touch   # r295 (LIVE.2)
         for record in list(self._open_records):
+            _hb_touch("flatten")
             trade_id = record.get("trade_id", "")
             # 🔴 r99 — CREDIT VERTICALS HOLD TO VERTICAL_HOLD_TO_ET (15:45).
             # This loop ran from 15:40 (FLATTEN_WINDOW_OPEN) over EVERY record,
