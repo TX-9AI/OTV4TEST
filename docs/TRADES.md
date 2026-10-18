@@ -771,7 +771,7 @@ the contract and builds the signal.
 catastrophic cap's day P&L (`config.CAP_EXCLUDED_STRATEGIES`). Displays still count it.
 
 **Exits, first match wins (`exit_engine._evaluate_park`):** the lock - armed once the bid reaches
-+60%, out when the bid falls to +20%; the delta floor - |delta| <= 0.30 from 11:30 (unread delta
++60%, out when the bid falls to +20% (after a restart the persisted best MARK, `max_premium_seen`, re-arms it once - r291); the delta floor - |delta| <= 0.30 from 11:30 (unread delta
 holds); the close at 15:45. No premium stop, no trail. Every exit writes
 `data/counterfactual/park_exit.jsonl` so Saturday prices what holding to 15:45 would have done.
 

@@ -1,5 +1,11 @@
 """
-execution/exit_engine.py  v4.41
+execution/exit_engine.py  v4.42
+v4.42 2026-10-18  OTV4TEST r291 (PARK.2) — THE PARK LOCK ARMS ON THE BID, AND A RESTART RE-ARMS FROM A COLUMN THAT EXISTS.
+      r288's _evaluate_park read `mfe_premium` for the restart re-arm; trade_logger writes it only in log_exit, so a
+      rehydrated open PARK had NULL and the +60%/+20% lock was forgotten (audit 10-18 A3). And `or mfe >= arm` ran every
+      tick on the in-memory mark MFE, arming half a spread early vs the study's bid rule. Now: one seed per process from
+      max_premium_seen (per-tick, SELECT * rehydrates it), then bid-only. check_park K10a2/K10b drive both through
+      get_open_trades() on a scratch trades.db.
 v4.41 2026-10-18  OTV4TEST r290 (HUNT.10) — THE HUNT'S STRUCTURE BACKSTOP JUDGES r285's LINE. _evaluate_orb step 2 read
       `underlying_stop` (the Hunt's ENTRY BOUNDARY) with no band, after _runaway_thesis_exits had already held the trade
       on the farther 5m line: QQQ 2026-10-15 ddeb0fab, line 721.15, exited "orb_structure_stop 717.03 > 717.01", -148.
@@ -1248,8 +1254,9 @@ class ExitEngine:
     def _evaluate_park(self, record: TradeRecord, current_premium: float) -> ExitDecision:
         """PARK exits (r288). FIRST MATCH WINS:
           1. LOCK        - armed once the BID reaches entry x (1 + PARK_LOCK_ARM); armed, out when the bid falls
-                           to entry x (1 + PARK_LOCK_FLOOR). After a restart the persisted mfe_premium (a MARK)
-                           re-arms it - slightly looser than the bid, stated.
+                           to entry x (1 + PARK_LOCK_FLOOR). After a restart the persisted best MARK
+                           (max_premium_seen, written every tick) re-arms it once - slightly looser than the
+                           bid, stated (r291; r288 read mfe_premium, a column written only at the close).
           2. DELTA FLOOR - |delta| <= PARK_DELTA_FLOOR from PARK_DELTA_FROM_ET. None or 0.0 is UNREAD: hold.
           3. THE CLOSE   - at PARK_CLOSE_ET.
           4. EOD         - the schedule's own close, a backstop only.
@@ -1270,11 +1277,31 @@ class ExitEngine:
         why = ""
         if e > 0:
             arm = e * (1 + PARK_LOCK_ARM)
-            mfe = float(record.get("mfe_premium") or 0.0)
-            if not record.get("_park_armed") and (bid >= arm or mfe >= arm):
+            if not record.get("_park_seeded"):
+                # r291 (PARK.2) — THE RESTART SEED, ONCE PER PROCESS, FROM THE COLUMN THAT IS
+                # ACTUALLY WRITTEN. r288 read `mfe_premium` here, but trade_logger writes that
+                # column only in log_exit (the CLOSE); the per-tick best mark lives in
+                # `max_premium_seen` (update_current_premium), which SELECT * rehydrates. And
+                # r288's `or mfe >= arm` ran on EVERY tick with the in-memory mark MFE, so the
+                # lock armed on the mark's best print, not the bid the frozen study armed on.
+                # Now: the persisted best mark is consulted once (a rehydrated record), stated
+                # as a mark; afterwards only the BID arms.
+                # ⚠️ max_premium_seen ONLY. The in-memory record carries mfe_premium from
+                # _track_excursion (the mark, this very tick), so reading it here would arm
+                # on the mark again; max_premium_seen is never set in memory, only read back.
+                record["_park_seeded"] = 1
+                try:
+                    best = float(record.get("max_premium_seen") or 0.0)
+                except (TypeError, ValueError):
+                    best = 0.0
+                if not record.get("_park_armed") and best >= arm:
+                    record["_park_armed"] = 1
+                    logger.info("[park] %s lock RE-ARMED after a restart: persisted best mark %.2f >= %.2f",
+                                str(record.get("trade_id", ""))[:8], best, arm)
+            if not record.get("_park_armed") and bid >= arm:
                 record["_park_armed"] = 1
-                logger.info("[park] %s lock ARMED: bid %.2f / best mark %.2f >= %.2f",
-                            str(record.get("trade_id", ""))[:8], bid, mfe, arm)
+                logger.info("[park] %s lock ARMED: bid %.2f >= %.2f",
+                            str(record.get("trade_id", ""))[:8], bid, arm)
             if record.get("_park_armed") and bid <= e * (1 + PARK_LOCK_FLOOR):
                 why = f"park_lock: bid {bid:.2f} <= {e * (1 + PARK_LOCK_FLOOR):.2f} after +{PARK_LOCK_ARM:.0%}"
         d = record.get("current_delta")

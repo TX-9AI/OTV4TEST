@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """
-tests/check_park.py  v1.0
+tests/check_park.py  v1.1
 PARK - THE 11:00 FIRST-HOUR CONTINUATION (PARK.1): THE PLAN, THE STRATEGY, ITS SIZE, ITS EXITS, ITS OWN BUDGET.
+v1.1  2026-10-18  OTV4TEST r291 (PARK.2). K10b was a fixture that hand-set mfe_premium=1.65 - a column no open row ever
+      carries - so it proved only the in-memory branch (audit 10-18 A3 / T1-10). Now K10b logs a PARK entry through the
+      real TradeLogger, ticks update_current_premium (1.65 then 1.30), rehydrates the row with get_open_trades() and asks
+      evaluate() at bid 1.19: park_lock. K10a2: mark 1.70 / bid 1.50 must NOT arm (the bid rule), then bid 1.20 holds.
+      Both RED on cdcde8b.
 v1.0  2026-10-18  OTV4TEST r288. The operator, 2026-10-17 18:21 ET: "Trade it, don't just log it. Paper is free. Call it
       PARK (named after my friend)"; on SPX: "Use our actual numbers, trade it"; 18:30 ET: "Make sure when you build it
       it's divided properly between the strategy and the plan". Terms: /var/tmp/sat_1017/cont11/PREREG_CONT11.md (C0)
@@ -221,10 +226,34 @@ def main():
           not d_pre.should_exit and not d_arm.should_exit and d_out.should_exit
           and d_out.exit_reason.startswith("park_lock"), f"{d_pre.exit_reason!r} {d_arm.exit_reason!r} {d_out.exit_reason!r}")
 
-    rb = rec("k10b", mfe_premium=1.65)
+    # r291 (PARK.2): the bid arms, not the mark. A tick whose MARK prints +70% while the BID is +50% must not arm.
+    ra2 = rec("k10a2")
+    d_m1 = ev(ra2, 1.70, 12, 20, bid=1.50)
+    d_m2 = ev(ra2, 1.22, 12, 25, bid=1.20)
+    check("K10a2 mark 1.70 / bid 1.50 does NOT arm (bid rule); the next bid 1.20 holds, no park_lock",
+          not d_m1.should_exit and not d_m2.should_exit, f"{d_m1.exit_reason!r} {d_m2.exit_reason!r}")
+
+    # r291 (PARK.2): the restart re-arm, through the real store - log_entry, per-tick update_current_premium, then
+    # get_open_trades() rehydrates the row (mfe_premium is NULL on an open row; max_premium_seen carries the best mark).
+    from database.trade_logger import get_trade_logger as _gtl, make_record as _mr
+    _TL = _gtl()
+    _TL.log_entry(_mr(trade_id="k10b-db", symbol=SYM, strategy="PARK", direction="long", option_side="call",
+                      strike=600.0, expiry=str(DAY), contracts=6, entry_premium=1.0, stop_premium=0.0,
+                      option_symbol="X", paper_trade=1, is_butterfly=0))
+    _TL.update_current_premium("k10b-db", 1.65)
+    _TL.update_current_premium("k10b-db", 1.30)
+    _rows = [r for r in _TL.get_open_trades() if r.get("trade_id") == "k10b-db"]
+    rb = _rows[0] if _rows else rec("k10b-missing")
+    rb["current_delta"] = 0.5
+    _mfe0, _best0 = rb.get("mfe_premium"), rb.get("max_premium_seen")     # as rehydrated, before evaluate() touches it
     d_b = ev(rb, 1.21, 13, 0, bid=1.19)
-    check("K10b a restart re-arms from the persisted mfe_premium (1.65): bid 1.19 exits park_lock",
-          d_b.should_exit and d_b.exit_reason.startswith("park_lock"), f"{d_b.exit_reason!r}")
+    check("K10b a restart re-arms from the PERSISTED best mark: get_open_trades() row (mfe_premium NULL, "
+          "max_premium_seen 1.65) at bid 1.19 exits park_lock",
+          bool(_rows) and _mfe0 is None and float(_best0 or 0) == 1.65
+          and d_b.should_exit and d_b.exit_reason.startswith("park_lock"),
+          f"rows={len(_rows)} mfe={_mfe0!r} best={_best0!r} {d_b.exit_reason!r}")
+    with sqlite3.connect(os.environ["OT_TRADES_DB"]) as _c:
+        _c.execute("DELETE FROM trades WHERE trade_id='k10b-db'")
 
     rc = rec("k10c", current_delta=0.29)
     d_c1 = ev(rc, 0.6, 11, 29, bid=0.58)
