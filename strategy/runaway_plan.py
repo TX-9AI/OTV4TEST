@@ -1,5 +1,7 @@
 """
-strategy/runaway_plan.py  v1.7
+strategy/runaway_plan.py  v1.8
+v1.8 2026-10-18  OTV4TEST r289 (RUN.9, mirror of otv4 r492) — passes note= to gamma_leverage_pick and DECLINEs with its
+     reason when the first OTM strike of the chain is not a candidate (no nearest-survivor fallback any more).
 v1.7 2026-10-05  OTV4TEST r254 (OBS.1) — THE PLAN ALWAYS LOOKS, THE STRATEGY IS GATED ON THE HOUR: Breakout, Runaway and the Hunt are OBSERVED from their entry end to 15:40 - asked, recorded LOG-ONLY, never executed (the operator, 2026-10-05: "the plan always looks, but the strategies are gated on the hour of the day"; "Have those blocked TRADES just to Log only"). Here: past the cutoff the plan keeps looking only while observed.
 v1.6  2026-10-03  OTV4TEST r220 (TIME.1) — its private HH:MM parser is utils.time_utils.parse_hm (eight plans carried the same copy), and an UNREADABLE clock is DORMANT - no trade - instead of skipping the window check.
 v1.5  2026-10-03  OTV4TEST r193 (CFG.1) — its config dials are read as config.NAME with NO literal fallback; config v4.48 now defines them (they were getattr defaults on names config never had). Values unchanged.
@@ -398,11 +400,15 @@ class RunawayPlan:
             prep.starved.append("chain")
         else:
             contracts = chain.calls if prep.side == "call" else chain.puts
+            why_none: list = []
             c, lev, n, spread_rej = gamma_leverage_pick(
-                contracts, direction, price_now, run * prep.band, floor_pct=MAX_LOSS_PCT)
+                contracts, direction, price_now, run * prep.band, floor_pct=MAX_LOSS_PCT,
+                note=why_none)
             t.check("considered", n, n > 0)
             t.check("spread_rejected", spread_rej, None)
-            if c is None:
+            if c is None and why_none:                     # r289 / RUN.9 (mirror of r492)
+                prep.structural.append(("contract", f"{prep.side}: {why_none[0]}"))
+            elif c is None:
                 prep.structural.append(("contract",
                     f"no {prep.side} whose {MAX_LOSS_PCT:.0%} floor clears its own bid/ask "
                     f"spread ({spread_rej} rejected) inside a {prep.band:g}x band on a "

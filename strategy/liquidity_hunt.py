@@ -1,5 +1,7 @@
 """
-strategy/liquidity_hunt.py  v1.10
+strategy/liquidity_hunt.py  v1.11
+v1.11 2026-10-18  OTV4TEST r289 (RUN.9, mirror of otv4 r492) — the Hunt calls the same gamma_leverage_pick: it passes note=
+      and DECLINEs with its reason when the chain's first OTM strike is not a candidate (no nearest-survivor fallback).
 v1.10 2026-10-15  HUNT.9 (FORK-ONLY) — A2 RE-ARMED BY A RETURN TO THE RANGE IS RECORDED, NEVER TRADED. The operator,
       2026-10-14 10:28 ET: "It should be permitted if it goes back into the range"; 2026-10-15 10:16 ET: "Concur on
       all" (to "BRK.12 / HUNT.9: record-only"). After a boundary's A2 was taken, a 1m close on the far side again
@@ -367,10 +369,14 @@ class LiquidityHunt:
             prep.starved.append("chain")
         elif not prep.structural and not prep.unmet:
             contracts = chain.calls if prep.side == "call" else chain.puts
-            c, lev, n, spread_rej = gamma_leverage_pick(contracts, bias, price_now, runway, floor_pct=MAX_LOSS_PCT)
+            why_none: list = []
+            c, lev, n, spread_rej = gamma_leverage_pick(contracts, bias, price_now, runway, floor_pct=MAX_LOSS_PCT,
+                                                        note=why_none)
             t.check("considered", n, n > 0)
             t.check("spread_rejected", spread_rej, None)
-            if c is None:
+            if c is None and why_none:                     # r289 / RUN.9 (mirror of r492)
+                prep.structural.append(("contract", f"{prep.side}: {why_none[0]}"))
+            elif c is None:
                 prep.structural.append(("contract", f"no {prep.side} whose {MAX_LOSS_PCT:.0%} floor clears its own "
                                                     f"spread over a {runway:.2f} runway ({spread_rej} rejected)"))
             else:
