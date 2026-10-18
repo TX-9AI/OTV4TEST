@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_liquidity_hunt.py  v1.3
+tests/check_liquidity_hunt.py  v1.4
+v1.4  2026-10-18  OTV4TEST r297 (HUNT.11) - H12a-d: one per break SURVIVES A RESTART. A fresh plan (FINISHED empty) with
+      today's Hunt row for the break in the scratch trades.db does not fire (H12a); another boundary's row does not
+      block (H12b); an unreadable book holds, named (H12c); no row -> fires as before (H12d). OT_TRADES_DB joins this
+      checker's own scratch env (H12 logs rows through the real TradeLogger). H12a and H12c RED on 64c483e.
 v1.3  2026-10-15  HUNT.9 (RECORD-ONLY) - H11a-i: after a boundary's A2, a far-side re-close then a close back inside
       writes ONE hunt_rearm row and fires NOTHING (H11c); staying inside records nothing (H11a, H11e); A1 is unchanged
       (H11d, and H11i: an A1 on a finished key is never recorded); off records nothing (H11f); log and off fire the
@@ -37,6 +41,8 @@ import sys
 import subprocess
 import tempfile
 os.environ.setdefault("OT_COUNTERFACTUAL_DIR", tempfile.mkdtemp(prefix="cf_", dir="/var/tmp"))   # r285: never the live log
+_H12_DIR = tempfile.mkdtemp(prefix="chk_hunt_db_")
+os.environ.setdefault("OT_TRADES_DB", os.path.join(_H12_DIR, "trades.db"))   # r297: H12 logs Hunt rows through the real TradeLogger
 import time
 import types
 
@@ -248,6 +254,55 @@ def main():
     check("H10b ...expires after its TTL, recorded, no longer live", g["expired"] and H.live("SweepCreditSpread") is None)
     H.reset(); g2 = H.grant("LiquidityHunt", "SweepCreditSpread", 102.5, "call", ttl=8); H.tick(); H.consume(g2)
     check("H10c ...or is consumed on the sweep's fire, with the tick it fired on", g2["fired"] and g2.get("fired_tick") == 1)
+
+    # ── H12 (r297, HUNT.11): one per break SURVIVES A RESTART - trades.db decides, the set only remembers ──
+    from database.trade_logger import get_trade_logger as _gtl, make_record as _mr
+    _TL = _gtl()
+
+    def _hunt_row(tid, boundary):
+        _TL.log_entry(_mr(trade_id=tid, symbol="TST", strategy="LiquidityHunt", direction="long", option_side="call",
+                          strike=101.0, expiry="2026-09-10", contracts=5, entry_premium=0.95, stop_premium=0.0,
+                          underlying_stop=float(boundary), orb_range_high=101.0, orb_range_low=100.0,
+                          option_symbol="O101", paper_trade=1, is_butterfly=0))
+
+    def _fresh():                                            # a new process: nothing in memory
+        h = LH.LiquidityHunt(); h._store = ds; h.planner.symbol = "TST"; LH.FINISHED.clear(); H.reset()
+        return h
+
+    def _tick(h, n):
+        P.begin_tick(n)
+        sg = h.generate_signal(orb=orb, price_now=101.3, now_et="09:42", atr_pct=0.14, chain=chain,
+                               df_1m=_frame([(100.9, 101.4, 100.8, 101.3), (101.3, 101.5, 101.2, 101.4)], "09:42"),
+                               atm_iv=0.25)
+        P.close_tick(st, "TST")
+        return sg, row()
+
+    _hunt_row("h12a", 101.0)                                 # today's Hunt on THIS break, from before the "restart"
+    sig, r = _tick(_fresh(), 9.0)
+    check("H12a after a restart (FINISHED empty) today's Hunt row on the 101.00 break stops the A1: no fire, one per break",
+          sig is None and "one per break" in r[1], f"sig={sig and sig.hunt_entry} {r[1][-80:]}")
+    with sqlite3.connect(os.environ["OT_TRADES_DB"]) as _c:
+        _c.execute("DELETE FROM trades WHERE trade_id='h12a'")
+    _hunt_row("h12b", 100.0)                                 # a Hunt on the OTHER boundary only
+    sig, r = _tick(_fresh(), 9.1)
+    check("H12b a row for another boundary (100.00) does not block the 101.00 break: it fires",
+          sig is not None and sig.hunt_entry == "A1" and sig.underlying_stop == 101.0, f"sig={sig and sig.hunt_entry} {r[0]}")
+    with sqlite3.connect(os.environ["OT_TRADES_DB"]) as _c:
+        _c.execute("DELETE FROM trades WHERE trade_id='h12b'")
+    _orig_fin = getattr(LH, "break_finished_in_book", None)     # absent before r297: a FAIL line, not a crash
+    if _orig_fin is not None:
+        LH.break_finished_in_book = lambda *a, **k: "unreadable"
+    try:
+        sig, r = _tick(_fresh(), 9.2)
+    finally:
+        if _orig_fin is not None:
+            LH.break_finished_in_book = _orig_fin
+    check("H12c an UNREADABLE book fails closed: no fire, the hold names it",
+          _orig_fin is not None and sig is None and "UNREADABLE" in r[1] and "one per break" in r[1],
+          f"reader={'present' if _orig_fin else 'ABSENT'} sig={sig and sig.hunt_entry} {r[1][-90:]}")
+    sig, r = _tick(_fresh(), 9.3)
+    check("H12d with no Hunt row today the fresh process fires as before (the book is read, nothing found)",
+          sig is not None and sig.hunt_entry == "A1", f"sig={sig and sig.hunt_entry} {r[0]}")
     print()
     if FAILED:
         print(f"FAIL — {len(FAILED)} check(s): {FAILED}"); return 1

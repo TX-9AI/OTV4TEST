@@ -1,5 +1,10 @@
 """
-strategy/liquidity_hunt.py  v1.11
+strategy/liquidity_hunt.py  v1.12
+v1.12 2026-10-18  OTV4TEST r297 (HUNT.11) — ONE HUNT PER BREAK SURVIVES A RESTART. FINISHED was an in-memory set and nothing
+      read trades.db, so a restart with no Hunt open re-fired the same boundary (audit 2026-10-18 A6; the Runaway's twin
+      has been DB-backed since r281). break_finished_in_book() keys today's Hunt rows by option_side + underlying_stop
+      (the entry boundary); the plan asks it when the set does not already know, caches a True, and HOLDS named on an
+      unreadable book. A LOG-ONLY (observed) fire still never touches the set or the book.
 v1.11 2026-10-18  OTV4TEST r289 (RUN.9, mirror of otv4 r492) — the Hunt calls the same gamma_leverage_pick: it passes note=
       and DECLINEs with its reason when the chain's first OTM strike is not a candidate (no nearest-survivor fallback).
 v1.10 2026-10-15  HUNT.9 (FORK-ONLY) — A2 RE-ARMED BY A RETURN TO THE RANGE IS RECORDED, NEVER TRADED. The operator,
@@ -110,7 +115,54 @@ WINDOW_OPEN_ET = config.ENTRY_OPEN_ET   # r148: no literal fallback
 CUTOFF_ET      = config.HUNT_CUTOFF_ET          # r148: no literal fallback
 MAX_LOSS_PCT   = float(config.HUNT_MAX_LOSS_PCT)
 
-FINISHED: set = set()          # (direction, boundary) — one hunt per break
+FINISHED: set = set()          # (direction, boundary) this process has hunted - a CACHE since r297; trades.db decides
+
+
+def break_finished_in_book(direction: str, boundary, session_date=None):
+    """r297 (HUNT.11) — what trades.db says about THIS break today. NEVER raises.
+
+      True          — a Hunt (open or closed) already traded this (direction, boundary) today
+      False         — none has: it may trade
+      "unreadable"  — the book could not be read; the caller FAILS CLOSED
+
+    The in-memory FINISHED set died with every restart, so a restart with no Hunt open re-fired the
+    same boundary (audit 2026-10-18 A6); the Runaway's twin has read trades.db since r281. A Hunt row
+    keys its break by option_side (call = long, put = short) and underlying_stop, which the Hunt
+    writes as its ENTRY BOUNDARY (ENT.1). ANY row counts - a win finishes the break as surely as a stop.
+    """
+    from datetime import datetime, timedelta
+    try:
+        from zoneinfo import ZoneInfo
+        _et, _utc = ZoneInfo("America/New_York"), ZoneInfo("UTC")
+        day = session_date or datetime.now(_et).date()
+        bnd = round(float(boundary), 2)
+        lo = (datetime.combine(day, datetime.min.time(), _et)
+              - timedelta(hours=1)).astimezone(_utc).isoformat()
+        from database.trade_logger import get_trade_logger
+        conn = get_trade_logger()._connect()
+        try:
+            rows = conn.execute(
+                "SELECT entry_time, option_side, underlying_stop FROM trades "
+                "WHERE strategy='LiquidityHunt' AND entry_time >= ?", (lo,)).fetchall()
+        finally:
+            conn.close()
+    except Exception as exc:                                    # noqa: BLE001
+        logger.warning("[hunt] break status unreadable from trades.db (%s) — failing closed", exc)
+        return "unreadable"
+    for et_, side, ustop in rows:
+        sd = str(side or "").lower()
+        d = "long" if sd.startswith("c") else ("short" if sd.startswith("p") else "")
+        if d != direction:
+            continue
+        try:
+            if ustop is None or round(float(ustop), 2) != bnd:
+                continue
+            if datetime.fromisoformat(str(et_)).astimezone(_et).date() != day:
+                continue
+        except (TypeError, ValueError):
+            continue
+        return True
+    return False
 
 
 def _record_hunt_rearm(row: dict) -> None:
@@ -344,6 +396,17 @@ class LiquidityHunt:
         prep.side = "call" if bias == "long" else "put"
         t.direction = bias
         key = (bias, round(boundary, 2))
+        # r297 (HUNT.11): the book decides, the set only remembers. A restart emptied FINISHED and re-fired
+        # the same boundary; now a Hunt row for this break today finishes it, and an unreadable book HOLDS.
+        if key not in FINISHED and not _obs:
+            _fin = break_finished_in_book(bias, boundary)
+            if _fin == "unreadable":
+                t.check("break_finished", 1.0, False)
+                t.hold(f"{head}. {entry} {bias} at {_n(boundary)} — trades.db is UNREADABLE, so this break "
+                       f"cannot be proven untraded today; failing closed (one per break)")
+                return prep
+            if _fin:
+                FINISHED.add(key)
         t.check("break_finished", 1.0 if key in FINISHED else 0.0, key not in FINISHED)
         if key in FINISHED:
             if entry == "A2" and fk.get("rearm"):
