@@ -1,5 +1,10 @@
 """
-data/options_chain.py  v4.6
+data/options_chain.py  v4.7
+v4.7  2026-10-18  OTV4TEST r301 (LOG.1) — A ZERO-MARKS CHAIN OUTSIDE RTH IS SAID ONCE AT INFO, NOT EVERY MINUTE AT ERROR.
+      The r101 rehearsal builds the chain every 60 s all evening and the marks are gone after the bell, so FAIL-LOUD
+      logged 2,417 ERROR lines in the week of 10-12 - all 16:00-23:59 ET, none inside RTH - and a real ERROR was
+      invisible in them (audit 2026-10-18 E3). zero_marks_log_level(): inside RTH unchanged (ERROR every build);
+      outside, INFO once per (symbol, expiry) per process, then silent. An unreadable clock stays LOUD.
 v4.6  2026-10-04  OTV4TEST r241 (SPXW.1, LIVE.1 F6) — THE MORNING EXPIRATION IS NEVER TRADED. fetch_chain drops every settlement_type "AM" contract BEFORE the date is chosen, so an AM-only date never becomes "today"; the drop is logged once per (symbol, date); chain_map stays whole for the archival aux tenors. The operator, 2026-10-04: "Never trade the morning expiration on SPX." MEASURED by dry-run probe the same day: 10-16 lists 1,060 SPX/AM beside 938 SPXW/PM, 11-20 944 / 840 - the literal is "AM". Authored on SPX-TEST (gate tests/check_spxw_only.py W1-W7, sha 63499c5b...), shared with mainline: 1-REPORTER adopts the same text.
 v4.5  2026-10-03  OTV4TEST r218 (PATH.1) — _feed_db_path delegates to utils.paths.feed_db_path: its own copy defaulted to a hard-coded ~/options-trader. Same path on the box.
 v4.4  2026-10-02  OTV4TEST r186 (ZBID.1) — A CONTRACT WITH NO BID IS NEVER SELECTED.
@@ -223,6 +228,31 @@ class OptionsChain:
             return 0.0
 
 
+
+_ZERO_MARKS_SAID: set = set()          # r301 (LOG.1): (symbol, expiry) said once per process outside RTH
+
+
+def zero_marks_log_level(symbol: str, today_str: str, in_rth=None) -> str:
+    """r301 (LOG.1) — how loud a ZERO-live-marks chain is. INSIDE RTH it is the v3.1 FAIL-LOUD:
+    "error" on every build (a corpse during the session is the failure that costs the session).
+    OUTSIDE RTH the chain has no marks by nature - the rehearsal (r101) builds it every 60 s all
+    evening - so the first build per (symbol, expiry) per process is "info" and the rest are
+    "" (silent). Measured 2026-10-12..16: 2,417 ERROR lines, all 16:00-23:59 ET, 0 inside RTH.
+    `in_rth` is injectable for the gate; None reads the clock."""
+    try:
+        if in_rth is None:
+            from utils.time_utils import is_rth
+            in_rth = bool(is_rth())
+    except Exception:                                           # noqa: BLE001
+        in_rth = True                                           # an unreadable clock stays LOUD
+    if in_rth:
+        return "error"
+    key = (str(symbol), str(today_str))
+    if key in _ZERO_MARKS_SAID:
+        return ""
+    _ZERO_MARKS_SAID.add(key)
+    return "info"
+
 class OptionsChainFetcher:
     """
     Fetches the 0DTE options chain from TastyTrade and populates
@@ -408,12 +438,21 @@ class OptionsChainFetcher:
                         f"for the feed to populate chain_marks"
                     )
                 else:
-                    logger.error(
-                        f"Chain FAIL-LOUD: {symbol} {today_str} built with ZERO "
-                        f"live marks ({len(chain.calls)}C/{len(chain.puts)}P) — "
-                        f"feed marks absent/stale; returning None instead of a "
-                        f"corpse (is candle-feed v3.4 healthy?)"
-                    )
+                    _lvl = zero_marks_log_level(symbol, today_str)        # r301 (LOG.1)
+                    if _lvl == "error":
+                        logger.error(
+                            f"Chain FAIL-LOUD: {symbol} {today_str} built with ZERO "
+                            f"live marks ({len(chain.calls)}C/{len(chain.puts)}P) — "
+                            f"feed marks absent/stale; returning None instead of a "
+                            f"corpse (is candle-feed v3.4 healthy?)"
+                        )
+                    elif _lvl == "info":
+                        logger.info(
+                            f"Chain has no live marks outside RTH: {symbol} {today_str} "
+                            f"({len(chain.calls)}C/{len(chain.puts)}P) — expected after the bell; "
+                            f"the rehearsal runs without a chain. Said once per expiry per process; "
+                            f"inside RTH this is FAIL-LOUD at ERROR on every build."
+                        )
                 return None
 
             logger.info(

@@ -1,5 +1,7 @@
 """
-main.py  v4.109
+main.py  v4.110
+v4.110  2026-10-18  OTV4TEST r301 (LOG.1) - the rehearsal's "Could not fetch options chain" is INFO once per ET date
+      (2,428 WARNINGs in the week of 10-12, all after the bell); inside RTH it stays WARNING every tick. _chain_miss_say().
 v4.109  2026-10-18  OTV4TEST r295 (LIVE.2) - _touch_heartbeat delegates to utils.heartbeat.touch (same file, same format);
       the live poll loops touch it too, so a serial close ladder never reads as a hung bot to the emergency watchdog.
 v4.108  2026-10-18  OTV4TEST r293 (DIAL.2 + ADM.2) - the Service line names hunt_stop and rearm (and their REFUSED values:
@@ -4096,6 +4098,31 @@ def _supervise_offers(ctx: dict, state: BotState) -> None:
         logger.warning("offer supervision skipped this tick: %s", exc)
 
 
+
+_CHAIN_MISS_SAID: set = set()          # r301 (LOG.1): the rehearsal's chain miss, once per ET date per process
+
+
+def _chain_miss_say(rehearsing: bool) -> str:
+    """r301 (LOG.1) — how the 'no chain this tick' line is said. INSIDE RTH: WARNING every tick, as
+    since v1 (a missing chain in the session is a real condition). In the REHEARSAL (outside RTH)
+    the chain has no marks by nature, so it is said once per ET date per process at INFO and then
+    not at all; the plan rows (gate no_chain) still record every tick. Measured 2026-10-12..16:
+    2,428 of these WARNINGs, all after the bell. Returns the level used ("warning"/"info"/"")."""
+    if not rehearsing:
+        logger.warning("Could not fetch options chain — skipping entry attempt")
+        return "warning"
+    try:
+        from utils.time_utils import now_et
+        key = now_et().strftime("%Y-%m-%d")
+    except Exception:                                           # noqa: BLE001
+        key = "?"
+    if key in _CHAIN_MISS_SAID:
+        return ""
+    _CHAIN_MISS_SAID.add(key)
+    logger.info("[rehearsal] no options chain outside RTH (no live marks after the bell) — the rehearsal "
+                "runs without one; said once per day, the plan rows carry every tick (gate no_chain)")
+    return "info"
+
 def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     """Try to generate and execute a trade signal."""
     # ⚠️ r40 — CLEARED FIRST, BEFORE ANY EARLY RETURN CAN SKIP IT. `_ADMITTED`
@@ -4283,7 +4310,7 @@ def attempt_new_entry(ctx: dict, ms: MarketState, state: BotState):
     # ── Fetch options chain (shared across strategies) ────────────────────────
     chain = ctx.get("chain") or get_chain_fetcher().fetch_chain()
     if chain is None:
-        logger.warning("Could not fetch options chain — skipping entry attempt")
+        _chain_miss_say(_rehearsing)                              # r301 (LOG.1)
         _plan_skip_all("no options chain this tick", gate="no_chain")
         return
 

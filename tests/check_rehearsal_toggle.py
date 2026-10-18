@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_rehearsal_toggle.py  v1.0
+tests/check_rehearsal_toggle.py  v1.1
+v1.1  2026-10-18  OTV4TEST r301 (LOG.1) — G6a-c: outside RTH a zero-marks chain is INFO once per expiry and the
+      rehearsal's chain miss INFO once per day; inside RTH both stay as loud as before (audit 10-18 E3). RED before.
 
 r108 — THE PRE-OPEN REHEARSAL HAS A GO-RED TOGGLE, AND IT FAILS TOWARD RUNNING.
 
@@ -81,6 +83,45 @@ check("G5d and it is not paper-only: nothing in the gate reads PAPER_TRADING",
           n for n in ast.walk(ast.parse(open(
               os.path.join(ROOT, "utils/time_utils.py")).read()))
           if isinstance(n, ast.FunctionDef) and n.name == "entries_open")))
+
+# ── G6 (r301, LOG.1) — THE REHEARSAL IS QUIET ABOUT THE CHAIN IT CANNOT HAVE ──────
+# Measured 2026-10-12..16: 2,417 "Chain FAIL-LOUD" ERROR lines and 2,428 "Could not fetch options chain"
+# WARNINGs, every one between 16:00 and 23:59 ET - the r101 rehearsal asking for marks that are gone
+# after the bell. Inside RTH both stay exactly as loud as before.
+import logging as _lg
+try:
+    import data.options_chain as _OC
+    _OC._ZERO_MARKS_SAID.clear()
+    seq_out = [_OC.zero_marks_log_level("QQQ", "2026-10-19", in_rth=False) for _ in range(3)]
+    seq_in = [_OC.zero_marks_log_level("QQQ", "2026-10-19", in_rth=True) for _ in range(3)]
+    other = _OC.zero_marks_log_level("QQQ", "2026-10-20", in_rth=False)
+    check("G6a outside RTH a zero-marks chain is INFO once per expiry, then silent; another expiry is said once",
+          seq_out == ["info", "", ""] and other == "info", f"outside={seq_out} other={other!r}")
+    check("G6b inside RTH it is ERROR on every build (FAIL-LOUD unchanged)", seq_in == ["error"] * 3, f"inside={seq_in}")
+except AttributeError as exc:
+    check("G6a outside RTH a zero-marks chain is INFO once per expiry, then silent", False, f"no helper: {exc}")
+    check("G6b inside RTH it is ERROR on every build (FAIL-LOUD unchanged)", False, f"no helper: {exc}")
+try:
+    _lines = []
+
+    class _Cap(_lg.Handler):
+        def emit(self, r):
+            _lines.append((r.levelname, r.getMessage()))
+    _h = _Cap(); _lg.getLogger("main").addHandler(_h); _lg.getLogger("main").setLevel(_lg.INFO)
+    try:
+        _m._CHAIN_MISS_SAID.clear()
+        r1 = [_m._chain_miss_say(True) for _ in range(3)]
+        r2 = [_m._chain_miss_say(False) for _ in range(2)]
+    finally:
+        _lg.getLogger("main").removeHandler(_h)
+    infos = [l for l in _lines if l[0] == "INFO" and "no options chain outside RTH" in l[1]]
+    warns = [l for l in _lines if l[0] == "WARNING" and "Could not fetch options chain" in l[1]]
+    check("G6c the rehearsal's chain miss is INFO once per day; inside RTH it stays a WARNING every tick",
+          r1 == ["info", "", ""] and r2 == ["warning", "warning"] and len(infos) == 1 and len(warns) == 2,
+          f"rehearsal={r1} rth={r2} infos={len(infos)} warnings={len(warns)}")
+except AttributeError as exc:
+    check("G6c the rehearsal's chain miss is INFO once per day; inside RTH it stays a WARNING every tick", False,
+          f"no helper: {exc}")
 
 print(f"\n{'PASS' if not FAILURES else 'FAIL'}: {len(FAILURES)} problem(s) {FAILURES}")
 sys.exit(1 if FAILURES else 0)
