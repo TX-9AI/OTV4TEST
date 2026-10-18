@@ -1,5 +1,11 @@
 """
-data/open_interest.py  v4.3
+data/open_interest.py  v4.4
+v4.4  2026-10-18  OTV4TEST r294 (OI.2; MIRROR OF otv4 r493 1c60b69 = its v4.3, function hunk VERBATIM) — the fetch runs
+      on tasty_client's shared background loop (run_coroutine_threadsafe, 15 s bound), not under asyncio.run(): the
+      throw-away loop bound the Session's one pooled httpx connection and was then closed, so the next SDK call failed
+      "Event loop is closed" (here: the 10:00 ET structure refresh, 11/11 trading days since 10-02; September: the OI
+      fetch itself, 9x). On a live box the victim is the first entry's buying-power read. Audit 10-18 A4; the operator,
+      2026-10-18 16:25 ET: "Yes to both".
 v4.3  2026-09-19  OTV4TEST r66 — A FALSE ALARM ON EVERY CYCLE, AND THE RETRY
       WAS NEVER BROKEN. `OI: fetch failed for 100 symbol(s)` has appeared on
       13 of 13 cycles over seven days, always exactly _BATCH — and it is
@@ -107,6 +113,7 @@ _CACHE_DAY: Optional[str] = None
 _LAST_ATTEMPT: float = 0.0
 _RETRY_S = 300.0            # a failed fetch should not hammer the API per tick
 _BATCH = 100                # keep REST payloads modest
+_FETCH_TIMEOUT_S = 15.0     # r493 — the tick waits at most this (asyncio.run had no bound); measured 10-18: every fetch <= 1 s (~1,500 fetches, QQQ/SPX/NVDA/TSLA, SPX 496 symbols)
 
 
 def _today() -> str:
@@ -132,17 +139,36 @@ def _await(coro):
 
     The SDK offers ONLY async variants (checked: `get_market_data` and
     `get_market_data_by_type` are both `async def`), so the bridge lives here.
-    Both call contexts are handled because this is reached from the sync chain
-    fetch AND, on some paths, from inside a running loop: `asyncio.run` raises
-    if a loop is already running, so that case is handed to a worker thread
-    with its own loop rather than crashing.
+    r493: the coroutine runs on tasty_client's background loop, from any thread
+    (run_coroutine_threadsafe), bounded by _FETCH_TIMEOUT_S. Reached from the
+    shared loop itself it refuses rather than deadlock; the caller's except
+    logs it and GEX runs without OI that cycle, retried after _RETRY_S.
     """
+    # 🔴 r493 / OI.2 — ON THE SHARED SDK LOOP, NEVER A LOOP OF ITS OWN. The
+    # Session holds ONE httpx AsyncClient, and its pooled connection is bound
+    # to the loop it was used on. asyncio.run() made a throw-away loop and then
+    # closed it, so whichever side came second failed "Event loop is closed":
+    # the next run_async call (the 10:00 structure refresh on paper; on a live
+    # box the first entry's buying-power read, which refuses the entry), or
+    # this fetch itself after a run_async call (GEX without OI that day).
+    # Measured 19-43 days per box on the fleet. Everything else reaches the
+    # SDK through tasty_client's background loop, so this does too.
+    from data import tasty_client as _tc
     try:
-        asyncio.get_running_loop()
+        running = asyncio.get_running_loop()
     except RuntimeError:
-        return asyncio.run(coro)          # no loop here - the common case
-    with cf.ThreadPoolExecutor(max_workers=1) as ex:
-        return ex.submit(asyncio.run, coro).result()
+        running = None
+    if running is not None and running is _tc._loop:
+        # blocking the shared loop from inside itself would deadlock it
+        coro.close()
+        raise RuntimeError("OI fetch reached from the shared SDK loop itself - "
+                           "it cannot block that loop; skipped this cycle")
+    fut = asyncio.run_coroutine_threadsafe(coro, _tc.get_loop())
+    try:
+        return fut.result(timeout=_FETCH_TIMEOUT_S)
+    except cf.TimeoutError:
+        fut.cancel()
+        raise
 
 
 def fetch_open_interest(session, occ_symbols: Iterable[str],

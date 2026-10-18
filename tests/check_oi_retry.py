@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
-"""tests/check_oi_retry.py — v1.0
+"""tests/check_oi_retry.py — v1.1
 THE OI WARNING FIRES ONLY WHEN THE RETRY ALSO FAILS (OI.1).
+
+v1.1  2026-10-18  OTV4TEST r294 (OI.2) — the fixture keeps the REAL `tastytrade` package and replaces only
+      `tastytrade.market_data` (carrying the real module's other names): r294's _await imports data.tasty_client,
+      which imports tastytrade.Session, and the old fake package had no Session (O1/O2/O4 red on the mirror for a
+      fixture reason). No check changed.
 
 v1.0  2026-09-19  OTV4TEST r66 — `OI: fetch failed for 100 symbol(s)` fires on
       13 of 13 cycles and is a FALSE ALARM. v4.2's guard keys only the LOGGING
@@ -78,11 +83,24 @@ def _install_fake(fail_times):
             raise RuntimeError(REAL_ERR)
         return [_Row(s, 100 + i) for i, s in enumerate(options or [])]
 
+    # r294 (OI.2): the REAL package stays - _await now imports data.tasty_client, which needs
+    # tastytrade.Session; only the market_data submodule is replaced, and the fake carries the
+    # real module's other names so any `from tastytrade.market_data import X` still resolves.
+    try:
+        import tastytrade as pkg                       # the real one, if the venv has it
+        import tastytrade.market_data as _real_md
+        _real_attrs = dict(vars(_real_md))
+    except Exception:                                  # noqa: BLE001
+        pkg = sys.modules.get("tastytrade") or types.ModuleType("tastytrade")
+        _real_attrs = {}
     mod = types.ModuleType("tastytrade.market_data")
+    for _k, _v in _real_attrs.items():
+        if not _k.startswith("__"):
+            setattr(mod, _k, _v)
     mod.get_market_data_by_type = get_market_data_by_type
-    pkg = sys.modules.get("tastytrade") or types.ModuleType("tastytrade")
     sys.modules["tastytrade"] = pkg
     sys.modules["tastytrade.market_data"] = mod
+    setattr(pkg, "market_data", mod)
     return state
 
 
