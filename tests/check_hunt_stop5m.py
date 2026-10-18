@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """
-tests/check_hunt_stop5m.py  v1.0
+tests/check_hunt_stop5m.py  v1.1
+v1.1  2026-10-18  OTV4TEST r290 (HUNT.10) — THROUGH THE FRONT DOOR. H1-H7 drove _runaway_thesis_exits directly; the
+      live 2026-10-15 Hunt (ddeb0fab) was HELD there and then killed by _evaluate_orb's step 2 on the bare boundary,
+      a path this checker never reached. H9a-c drive ExitEngine.evaluate() with the clock seam pinned:
+  H9a evaluate(): a close of 100.50 through the boundary, under the 5m line, keeps the trade   (RED before)
+  H9b evaluate(): a close of 101.40 beyond the line exits as hunt_thesis_dead, not orb_structure_stop
+  H9c the 10-15 replay: real QQQ 5m bars 09:30-09:55 and 1m bars 09:52-10:00, entry 09:54:17, boundary
+      717.01, line 721.15 - the 09:59 close of 717.03 keeps the trade                              (RED before)
 v1.0  2026-10-14  OTV4TEST r285 (HUNT.8) — THE HUNT'S THESIS LINE IS THE FARTHER OF ITS BOUNDARY AND THE 5m SWING.
 
 THE OPERATOR, 2026-10-14 11:47 ET: "Yes, we have to" (the 5m structure stop for the Hunt as
@@ -134,7 +141,7 @@ def main():
         import execution.exit_engine as XE
         eng = XE.ExitEngine(paper_trading=True)
     except Exception as exc:                                    # noqa: BLE001
-        for n in ("H1", "H2", "H3", "H4", "H5", "H6", "H7", "H8"):
+        for n in ("H1", "H2", "H3", "H4", "H5", "H6", "H7", "H8", "H9a", "H9b", "H9c"):
             check(f"{n} setup", False, f"{type(exc).__name__}: {exc}")
         return _tail()
 
@@ -179,6 +186,51 @@ def main():
     got = [_cfg({}), _cfg({"OT_HUNT_STOP5M": "OFF"}), _cfg({"OT_HUNT_STOP5M": "log"}), _cfg({"OT_HUNT_STOP5M": "yes"})]
     guard("H8 config: unset -> trade, OFF -> off, log -> log, junk -> log refused by name",
           lambda: (got == ["trade ''", "off ''", "log ''", "log 'yes'"], repr(got)))
+
+    # ── r290 (HUNT.10): the same questions asked of evaluate(), the entry point the bot calls ──
+    XE.is_hard_close_time = lambda: False          # the one clock seam every checker pins
+
+    def _ev(sym, tid, close, **kw):
+        rec = _rec(day, sym, tid)
+        rec.update({"stop_premium": 0.0, "target_premium": 9.99, "trail_activation": 9.99, "contracts": 1})
+        rec.update(kw)
+        return eng.evaluate(rec, 0.80, df_1m=_df(day, close), df_5m=None)
+
+    d9a = _ev("H5W", "t-h9a", 100.50)
+    guard("H9a evaluate(): 100.50 through the boundary, under the 101.00 line, keeps the trade (no step-2 backstop)",
+          lambda: (not d9a.should_exit, repr(d9a.exit_reason)))
+    d9b = _ev("H5W", "t-h9b", 101.40)
+    guard("H9b evaluate(): 101.40 beyond the line exits as hunt_thesis_dead naming 101.00, not orb_structure_stop",
+          lambda: (d9b.should_exit and str(d9b.exit_reason).startswith("hunt_thesis_dead") and "101.00" in d9b.exit_reason,
+                   repr(d9b.exit_reason)))
+
+    # the 10-15 replay, from the feed store and trades.db of that day
+    from datetime import date as _date, datetime as _dtm, timezone as _tz
+    import pandas as pd
+    d15 = _date(2026, 10, 15)
+    o15 = _o(d15)
+    c = sqlite3.connect(os.environ["OT_FEED_DB"])
+    for m, (op, hi, lo, cl) in {0: (718.57, 719.42, 717.01, 717.89), 5: (717.8, 720.5944, 717.07, 720.47),
+                                 10: (720.47, 720.93, 719.19, 720.37), 15: (720.191, 721.15, 718.37, 718.67),
+                                 20: (718.63, 719.11, 715.83, 715.84), 25: (715.86, 717.19, 715.435, 717.03)}.items():
+        c.execute("INSERT OR REPLACE INTO candles VALUES (?,?,?,?,?,?,?,?)", ("Q1015", "5m", o15 + m * 60_000, op, hi, lo, cl, 5000.0))
+    c.commit(); c.close()
+    bars = [(22, 718.5139, 718.5139, 717.1303, 717.5), (23, 717.54, 717.7, 716.21, 716.285), (24, 716.27, 716.62, 715.83, 715.84),
+            (25, 715.86, 716.16, 715.6599, 716.06), (26, 716.06, 716.46, 715.61, 716.32), (27, 716.315, 716.45, 715.435, 715.6301),
+            (28, 715.6, 716.67, 715.57, 716.61), (29, 716.6, 717.19, 716.26, 717.03), (30, 717.0008, 717.83, 716.94, 717.52)]
+    df15 = pd.DataFrame([(o15 + m * 60_000, op, hi, lo, cl, 1000.0) for m, op, hi, lo, cl in bars],
+                        columns=["ts", "open", "high", "low", "close", "volume"])
+    df15.index = pd.to_datetime(df15.pop("ts"), unit="ms", utc=True).dt.tz_convert(ET)
+    rec15 = {"trade_id": "ddeb0fab-replay", "symbol": "Q1015", "strategy": "LiquidityHunt", "direction": "short",
+             "underlying_stop": 717.01, "underlying_entry": 716.56, "underlying_target": 715.08,
+             "orb_range_high": 719.42, "orb_range_low": 717.01, "entry_premium": 2.56, "stop_premium": 0.0,
+             "target_premium": 9.99, "trail_activation": 9.99, "contracts": 4,
+             "entry_time": _dtm(2026, 10, 15, 13, 54, 17, tzinfo=_tz.utc).isoformat()}
+    d9c = eng.evaluate(rec15, 2.19, df_1m=df15, df_5m=None)
+    line15 = [x for x in _cf_rows() if x.get("trade_id") == "ddeb0fab-replay" and x.get("event") == "line"]
+    guard("H9c the 10-15 replay: line 721.15 from the 09:35-09:45 5m bars; the 09:59 close 717.03 vs boundary 717.01 is HELD",
+          lambda: (not d9c.should_exit and line15 and line15[0].get("line_used") == 721.15,
+                   f"{d9c.exit_reason!r} line={line15[:1]}"))
     return _tail()
 
 

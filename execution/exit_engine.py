@@ -1,5 +1,10 @@
 """
-execution/exit_engine.py  v4.40
+execution/exit_engine.py  v4.41
+v4.41 2026-10-18  OTV4TEST r290 (HUNT.10) — THE HUNT'S STRUCTURE BACKSTOP JUDGES r285's LINE. _evaluate_orb step 2 read
+      `underlying_stop` (the Hunt's ENTRY BOUNDARY) with no band, after _runaway_thesis_exits had already held the trade
+      on the farther 5m line: QQQ 2026-10-15 ddeb0fab, line 721.15, exited "orb_structure_stop 717.03 > 717.01", -148.
+      Found by the 2026-10-18 audit (A1). Step 2 now asks _hunt_line() for a LiquidityHunt record (log/off keep the
+      boundary, as before). tests/check_hunt_stop5m H9a-c drive evaluate() - the front door - incl. the 10-15 replay.
 v4.40 2026-10-18  OTV4TEST r288 (PARK.1) — PARK GETS ITS OWN EVALUATOR. The operator, 2026-10-17 18:21 ET: "Trade it ...
       Call it PARK"; "Are you sure we want to hold decaying zero DTE so long ...? Consider or study a delta based exit."
       _evaluate_park(), FIRST MATCH WINS: (1) the +60% / +20% LOCK on the BID (armed once bid >= entry x 1.60 - or, after a
@@ -1616,7 +1621,16 @@ class ExitEngine:
         #    dollars are gone (theta, retracement, or the two combined) even when
         #    this structure level is still intact \u2014 the two are an AND, not an OR.
         if df_1m is not None and len(df_1m) >= 2:
-            stop_level = record.get("underlying_stop", 0.0)
+            stop_level = float(record.get("underlying_stop", 0.0) or 0.0)
+            if _is_hunt and stop_level > 0:
+                # r290 (HUNT.10) — THE HUNT'S BACKSTOP JUDGES ITS LINE, NOT THE BARE BOUNDARY.
+                # r285 moved thesis-dead to _hunt_line (the FARTHER of the boundary and the 5m
+                # swing) and said the backstop followed; it did not - this block still read
+                # `underlying_stop`, the entry boundary, with no band. QQQ 2026-10-15 ddeb0fab:
+                # line 721.15 logged 09:54, exited here 10:00 on a 1m close of 717.03 vs 717.01
+                # (-148) with _runaway_thesis_exits having HELD it the same tick. Same line,
+                # same mode rule (log/off = the boundary), read from the store each call.
+                stop_level = float(self._hunt_line(record, direction, stop_level) or stop_level)
             if stop_level > 0:
                 last_close = float(df_1m.iloc[-2]["close"])
                 if direction == "long" and last_close < stop_level:
