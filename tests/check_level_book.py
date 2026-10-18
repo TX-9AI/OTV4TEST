@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_level_book.py  v1.3
+tests/check_level_book.py  v1.4
 THE LEVEL BOOK, DRIVEN ON HAND-BUILT TAPES.
+
+v1.4  2026-10-18  OTV4TEST r300 (LVL.20) — K15: the RTH block ends at the day's bell (13:00 on the 2026-11-27 half day,
+      16:00 on 11-25) in et_blocks, blocks_for and _in_rth. RED on 6bfd250 (fixed 16:00 everywhere).
 
 v1.3  2026-10-01  OTV4TEST FLIP.1 — K5 RE-POINTED BY THE RULING, NOT DELETED: it judges
       the original level's own events; the operator's flip (2026-10-01) adds a
@@ -397,6 +400,32 @@ def _k14():
 
 
 guard("K14 ruling: a level inside the 09:30-09:34 opening range retires TRAVERSED at 09:35", _k14)
+
+
+def _k15():
+    """r300 (LVL.20): the RTH block ends at the day's BELL. 2026-11-27 closes 13:00 (utils/market_calendar);
+    2026-11-25 is a full day. Pinned against each other so an always-shift mutant dies."""
+    from datetime import date, datetime
+    from zoneinfo import ZoneInfo
+    et = ZoneInfo("America/New_York")
+
+    def _ms(d, hh, mm):
+        return int(datetime(d.year, d.month, d.day, hh, mm, tzinfo=et).timestamp() * 1000)
+    half, full = date(2026, 11, 27), date(2026, 11, 25)
+    eb_h, eb_f = B.et_blocks(half), B.et_blocks(full)
+    rth_h_end = datetime.fromtimestamp(eb_h[2][1] / 1000, et).strftime("%H:%M")
+    ah_h_start = datetime.fromtimestamp(eb_h[3][0] / 1000, et).strftime("%H:%M")
+    rth_f_end = datetime.fromtimestamp(eb_f[2][1] / 1000, et).strftime("%H:%M")
+    bf_h, bf_f = B.blocks_for(half), B.blocks_for(full)
+    ok = (rth_h_end == "13:00" and ah_h_start == "13:00" and rth_f_end == "16:00"
+          and bf_h[2] == (14, 18) and bf_f[2] == (14, 21)
+          and B._in_rth(_ms(half, 12, 59)) and not B._in_rth(_ms(half, 13, 0))
+          and B._in_rth(_ms(full, 15, 59)) and not B._in_rth(_ms(full, 16, 0)))
+    return ok, (f"11-27 RTH ends {rth_h_end}, AH starts {ah_h_start}, blocks {bf_h[2]}; 11-25 RTH ends {rth_f_end}, "
+                f"blocks {bf_f[2]}; _in_rth 11-27 12:59/13:00 = {B._in_rth(_ms(half, 12, 59))}/{B._in_rth(_ms(half, 13, 0))}")
+
+
+guard("K15 the RTH block ends at the day's bell: 13:00 on 2026-11-27, 16:00 on 2026-11-25 (et_blocks, blocks_for, _in_rth)", _k15)
 
 print()
 if FAILED:

@@ -270,7 +270,7 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** `derived/registry.py`, `tests/check_bfly_vwap_band.py`, `tests/check_indicator_votes.py`, `tests/check_vwap_closed_bars.py`
 
 ### `derived/level_book.py`
-- **calls:** `derived/__init__.py`, `derived/level_rules.py`
+- **calls:** `derived/__init__.py`, `derived/level_rules.py`, `utils/__init__.py`, `utils/market_calendar.py`
 - **called by:** `derived/levels.py`, `tests/check_level_book.py`, `tests/check_level_engine_book.py`, `tests/check_level_flip.py`, `tests/check_level_tape.py`, `tests/check_zones.py`
 
 ### `derived/level_rules.py`
@@ -1859,7 +1859,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `utils/__init__.py`
 - **calls:** (none)
-- **called by:** `data/candle_feed.py`, `main.py`, `tests/check_claude_boot.py`, `tests/check_eod_schedule.py`, `tests/check_half_day.py`, `tests/check_holiday_aware.py`, `tests/check_instrument_unset.py`, `tests/check_level_tape.py`, `tests/check_low_price_symbols.py`, `tests/check_market_calendar.py`, `tests/check_rebuild_1m.py`, `tests/check_shutdown_cause.py`, `tests/check_store_paths.py`, `tests/check_time_parse.py`, `tools/rebuild_1m_from_last_trade.py`, `tools/seed_candles_from_warehouse.py`, `utils/time_utils.py`
+- **called by:** `data/candle_feed.py`, `derived/level_book.py`, `main.py`, `tests/check_claude_boot.py`, `tests/check_eod_schedule.py`, `tests/check_half_day.py`, `tests/check_holiday_aware.py`, `tests/check_instrument_unset.py`, `tests/check_level_tape.py`, `tests/check_low_price_symbols.py`, `tests/check_market_calendar.py`, `tests/check_rebuild_1m.py`, `tests/check_shutdown_cause.py`, `tests/check_store_paths.py`, `tests/check_time_parse.py`, `tools/rebuild_1m_from_last_trade.py`, `tools/seed_candles_from_warehouse.py`, `utils/time_utils.py`
 
 ### `utils/agent_status.py`
 - **calls:** (none)
@@ -1883,7 +1883,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `utils/market_calendar.py`
 - **calls:** (none)
-- **called by:** `data/candle_feed.py`, `tests/check_half_day.py`, `tests/check_holiday_aware.py`, `tests/check_market_calendar.py`, `tools/emergency_watchdog.py`, `tools/open_scan.py`, `tools/rebuild_1m_from_last_trade.py`, `utils/time_utils.py`
+- **called by:** `data/candle_feed.py`, `derived/level_book.py`, `tests/check_half_day.py`, `tests/check_holiday_aware.py`, `tests/check_market_calendar.py`, `tools/emergency_watchdog.py`, `tools/open_scan.py`, `tools/rebuild_1m_from_last_trade.py`, `utils/time_utils.py`
 
 ### `utils/math_utils.py`
 - **calls:** (none)

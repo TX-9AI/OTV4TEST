@@ -1,5 +1,9 @@
 """
-derived/level_book.py  v1.3
+derived/level_book.py  v1.4
+v1.4  2026-10-18  OTV4TEST r300 (LVL.20) — THE RTH BLOCK ENDS AT THE DAY'S BELL. _in_rth, et_blocks and blocks_for carried a
+      fixed 16:00; on 2026-11-27 (13:00 close) the 13:00-16:00 bars would have been RTH to the book: session extremes,
+      spike detection and the opening-range retirement all read the wrong block. One helper, _bell_minutes(d), reads
+      utils/market_calendar.close_time. Audit 2026-10-18 H6 (the feed's own fixed bell is mainline-shared: 1-REPORTER).
 THE ONE LEVEL BOOK: closed session extremes, walked by recency, grouped into
 zones, judged HELD / BREACHED on the 1-minute tape by `derived/level_rules`.
 
@@ -158,24 +162,40 @@ def blocks_for(d) -> Tuple[Tuple[int, int], ...]:
     00->24Z with no gap in either DST offset. Only the RTH hours are a fact;
     every other block is the span between its neighbours."""
     off = datetime(d.year, d.month, d.day, 12, tzinfo=_ET).utcoffset()
-    r0, r1 = (13, 20) if off == timedelta(hours=-4) else (14, 21)
+    r0 = 13 if off == timedelta(hours=-4) else 14
+    # r300 (LVL.20): the RTH block ends at the day's BELL, not a fixed 16:00 - on a 13:00
+    # close (2026-11-27) the hours 13:00-16:00 ET are after-hours. Hour-granular like r0.
+    r1 = r0 + -(-(_bell_minutes(d) - (9 * 60 + 30)) // 60)      # ceil of the RTH span in hours
     return ((0, _OVERNIGHT_SPLIT_UTC), (_OVERNIGHT_SPLIT_UTC, r0), (r0, r1), (r1, 24))
+
+
+def _bell_minutes(d) -> int:
+    """r300 — the session's closing bell on ET day `d`, in minutes after midnight: the listed
+    early close (utils/market_calendar.close_time), else 16:00. Never raises; unreadable = 16:00."""
+    try:
+        from utils import market_calendar as _mc
+        b = _mc.close_time(d)
+        return b.hour * 60 + b.minute
+    except Exception:                                           # noqa: BLE001
+        return 16 * 60
 
 
 def et_blocks(d) -> List[Tuple[int, int]]:
     """The four session blocks that END on ET calendar day `d`, on the ET wall
     clock (DST-safe): overnight 20:00(d-1)->04:00, pre-market 04:00->09:30,
-    RTH 09:30->16:00, after-hours 16:00->20:00. Epoch ms, contiguous."""
+    RTH 09:30->the bell (16:00, 13:00 on a listed half day - r300), after-hours
+    the bell->20:00. Epoch ms, contiguous."""
     def at(day, hh, mm):
         return int(datetime(day.year, day.month, day.day, hh, mm, tzinfo=_ET).timestamp() * 1000)
     prev = d - timedelta(days=1)
+    bh, bm = divmod(_bell_minutes(d), 60)                        # r300: the day's bell, 13:00 on a half day
     return [(at(prev, 20, 0), at(d, 4, 0)), (at(d, 4, 0), at(d, 9, 30)),
-            (at(d, 9, 30), at(d, 16, 0)), (at(d, 16, 0), at(d, 20, 0))]
+            (at(d, 9, 30), at(d, bh, bm)), (at(d, bh, bm), at(d, 20, 0))]
 
 
 def _in_rth(ts_ms: int) -> bool:
     t = datetime.fromtimestamp(ts_ms / 1000, _ET)
-    return (9, 30) <= (t.hour, t.minute) < (16, 0)
+    return (9 * 60 + 30) <= (t.hour * 60 + t.minute) < _bell_minutes(t.date())    # r300: the day's bell
 
 
 def spike_extremes(m1: Sequence[Bar], min_reject: float) -> Dict[int, Tuple[bool, bool]]:
