@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_missed_inert.py  v1.0
+tests/check_missed_inert.py  v1.1
+v1.1  2026-10-19  OTV4TEST r303 (PSTATE.1) — its subject ORBStrategy (M1) / the M2 ledger row is DORMANT by default and a dormant plan now
+      writes nothing by ruling, so this run switches it ACTIVE (OT_ORB_TRADE=1, OT_SWEEP_CS=1); what it pins is unchanged.
 
 r95 — A MISSED SETUP IS A HEADSTONE, NOT A LOCK.
 
@@ -45,6 +47,8 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+os.environ["OT_ORB_TRADE"] = "1"   # r303: the subject writes (check_plan_states pins dormant)
+os.environ["OT_SWEEP_CS"] = "1"   # r303: the subject writes (check_plan_states pins dormant)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FAILURES: list = []
@@ -107,7 +111,9 @@ def main() -> int:
     # firing sequence does not take another valid entry off the table."
     # The pairing gate counts OPEN TRADES. A ledger row — of any state — is not
     # a trade and must not consume a side.
-    missed_call = led.open_plan("IronCondorStrategy", "DECIDED", {"price": 706.0},
+    # r303: IronCondorStrategy is DORMANT for good (no entry of its own) and opens no row; M2's rule is
+    # strategy-agnostic (a ledger row of any state never consumes a side), so its row is a sweep leg's.
+    missed_call = led.open_plan("SweepCreditSpread", "DECIDED", {"price": 706.0},
                                 direction="SHORT", short_strike=712.0)
     led.transition(missed_call, "MISSED", "TRIGGER_FIRED_WHILE_DOWN")
     rows = led._store.conn.execute(

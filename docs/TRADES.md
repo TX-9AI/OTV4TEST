@@ -28,11 +28,25 @@ is its `docs/PLAN_SPEC.md` section.
 | Trend credit spread | `TrendCreditSpread` | OFF | `OT_TCS_ACTIVE` | 11:31-15:40 | PLAN_SPEC §34 |
 | PARK | `PARK` | ON | none (`OT_PARK=log` records it, `off` stops it) | 11:01-11:03 | section 9 below |
 
-A window's end is exclusive: 10:30 means the last entry is 10:29. A switch is on only at
-the literal `1`. ORCS is RETIRED (r249, the operator 2026-10-04: "Retire it on this repo"; PLAN_SPEC §41.13) - OT_ORCS=1 restores it, PAPER ONLY (a live box refuses it); its plan keeps recording. The ORB trade is retired but
+A window's end is exclusive: 10:30 means the last entry is 10:29. A switch is ACTIVE at
+`1` or `active` (r303 below). ORCS is RETIRED (r249, the operator 2026-10-04: "Retire it on this repo"; PLAN_SPEC §41.13) - OT_ORCS=1 restores it, PAPER ONLY (a live box refuses it); since r303 its plan is DORMANT with it and records nothing (the operator, 2026-10-19: "1. Yes"). The ORB trade is retired but
 the opening-range ENGINE is not: Runaway, Breakout and the Hunt read it, and since r222 its
 range is checked against the official print. The condor is a management plan with no entry
 of its own; with both credit entries retired it has nothing to manage.
+
+**Plan states (r303, PSTATE.1; `strategy/plan_state.py`).** Every plan is ACTIVE (evaluated, written, trades), LOG
+(evaluated and written, every fire recorded LOG-ONLY and never executed) or DORMANT (never asked, writes nothing: no
+plan_tick / plan_check / plan_ledger / plan_heartbeat row, not on the `[plans]` line). The operator, 2026-10-19: "dormant
+plans should not write to the ledger, unless we are studying them as 'log only' - I would like each plan to have 3 states".
+Each switch takes `active` | `log` | `off` (`1` still = active; for an OFF-by-default trade anything else stays dormant;
+a value nobody recognises keeps the default and is named at start). Runaway, Breakout and the Hunt gained switches
+(`OT_RUNAWAY`, `OT_BREAKOUT`, `OT_HUNT`, unset = active); PARK keeps `OT_PARK` trade/log/off. Unset, every plan is in
+the state the table above shows: no decision changed. Each plan is also HOUR-gated (asked only in its window - every
+row above) or CONDITION-gated (the management plans, while their own position is open; CondorManagement and
+CreditRoll, while a credit position is open, and off the `[plans]` line otherwise; the condor, which has no entry). A
+condition-gated plan writes NOTHING while its condition is absent - no "nothing to manage" row, no heartbeat - and writes
+the moment a position of its own is open (the operator, 2026-10-19 09:54 ET: "Yes"). The
+start logs one `[plans] states` line and writes `data/plan_states.json`, which the devtools plans panel reads.
 
 **The close (`config.EOD_SCHEDULE`).** No new entry at or after **15:40**. Anything with
 a short leg rests a best-case close from **15:45**. Everything else walks the mark ladder

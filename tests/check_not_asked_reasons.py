@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """
-tests/check_not_asked_reasons.py  v1.0
+tests/check_not_asked_reasons.py  v1.1
+v1.1  2026-10-19  OTV4TEST r303 (PSTATE.1) — its subjects SweepCreditSpread / TrendCreditSpread are DORMANT by default, and a
+      dormant plan now writes nothing by ruling, so this run switches both ACTIVE (OT_SWEEP_CS=1, OT_TCS_ACTIVE=1)
+      to test the board's mechanics on plans that write. tests/check_plan_states.py pins the dormant side.
+      N1 RE-POINTED by ruling (the operator, 2026-10-19 09:54 ET: "Yes" - a condition-gated plan writes nothing
+      while its condition is absent): on a flat tick NO management plan writes a row, and none reads as a dispatch
+      gap. N3 pins the setdefault precedence where it now lives - the skip reasons close_tick reads - since the
+      management row it used to read is no longer written.
 v1.0  2026-09-01  r213 (chunk E) — EVERY SKIP NAMES ITSELF.
 
 Operator, 2026-09-01, reading the DECISIONS panel: *"I don't like 'NOT ASKED'
@@ -42,6 +49,8 @@ import sys
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
+os.environ["OT_SWEEP_CS"] = "1"     # r303: the subjects write (dormant plans write nothing - check_plan_states)
+os.environ["OT_TCS_ACTIVE"] = "1"
 
 _fails = []
 
@@ -90,10 +99,9 @@ def main():
             st.conn.execute("SELECT strategy, verdict, reason FROM plan_tick"
                             " WHERE ts_epoch=500.0")}
     mgmt = ("CondorManagement", "CreditRoll", "ORBStrategy/manage")
-    named = [m for m in mgmt
-             if m in rows and "nothing to manage" in (rows[m][1] or "")]
-    check("N1 every management plan is named on a flat tick",
-          len(named) == 3, f"named: {named}")
+    written = [m for m in mgmt if m in rows]
+    check("N1 on a flat tick no management plan writes a row (r303: condition absent), none as a dispatch gap",
+          not written, f"written: {[(m, rows[m]) for m in written]}")
 
     # ── N2 — and an ENTRY strategy is NOT swept up with them ─────────────
     # ⚠️ THE SEPARATION IS THE POINT. "Nothing to manage" is true of the
@@ -112,12 +120,10 @@ def main():
     P.begin_tick(501.0)
     P.skipped("CondorManagement", "DIRECTIONAL_ONLY box")
     P.skipped_management("no open position — nothing to manage")
+    r501 = P._SKIPPED.get("CondorManagement")                   # r303: the reason close_tick would read
     P.close_tick(st, "TST")
-    r501 = st.conn.execute("SELECT reason FROM plan_tick WHERE ts_epoch=501.0"
-                           " AND strategy='CondorManagement'").fetchone()
     check("N3 a specific skip reason is not overwritten by the generic one",
-          r501 and "DIRECTIONAL_ONLY" in (r501["reason"] or ""),
-          f"{dict(r501) if r501 else None}")
+          r501 and "DIRECTIONAL_ONLY" in r501, f"{r501!r}")
 
     # ── N4 — the fallback admits it is a DISPATCH GAP ───────────────────
     # It fires only where main.py named nothing, so it must read as a defect

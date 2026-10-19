@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_prepares.py  v1.23
+tests/check_plan_prepares.py  v1.24
+v1.24 2026-10-19  OTV4TEST r303 (PSTATE.1) — its subject SweepCreditSpread / TrendCreditSpread is DORMANT by default and a dormant plan now writes
+      nothing by ruling, so this run switches it ACTIVE (OT_SWEEP_CS=1, OT_TCS_ACTIVE=1); what it pins is unchanged.
 v1.23 2026-10-05  OTV4TEST r255 — PINNED TO QQQ, the instrument its fixtures are written for (found and named by
       SPX-TEST): M2/M3 build a 1-wide QQQ grid, and under OT_INSTRUMENT=SPX config.STRIKE_INCREMENT is 5, so
       condor_roll's proximity read the call as TESTED (M2) and priced the roll on SPX's grid (M3). Red on
@@ -171,6 +173,8 @@ import sys
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
+os.environ["OT_SWEEP_CS"] = "1"     # r303: the subjects write (check_plan_states pins dormant)
+os.environ["OT_TCS_ACTIVE"] = "1"
 # ⚠️ r106 — THE LANDER RUNS CHECKS UNDER SYSTEM `python3`, NOT THE VENV, and
 # the repo imports below reach `tastytrade`, which lives only in the venv — so
 # this file could never be DECLARED as a CHECK. It passed by hand and failed

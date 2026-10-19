@@ -1,5 +1,8 @@
 """
-strategy/volt_plan.py  v1.6
+strategy/volt_plan.py  v1.7
+v1.7  2026-10-19  OTV4TEST r303 (PSTATE.1) — the switch is strategy/plan_state.py's: OT_VOLT=active|log|off ("1" still = active).
+      DORMANT (the default) writes its row only if asked - main._safe_strategy no longer asks it; LOG evaluates
+      exactly as active and the strategy records the fire LOG-ONLY (take()).
 v1.6  2026-10-03  OTV4TEST r220 (TIME.1) — its private HH:MM parser is utils.time_utils.parse_hm (eight plans carried the same copy), and an UNREADABLE clock is DORMANT - no trade - instead of skipping the window check.
 v1.5  2026-10-02  OTV4TEST r187 (ROSTER.1) — VOLT IS OFF BY DEFAULT. prepare() goes
       DORMANT at gate `enabled` unless os.environ OT_VOLT is the literal "1",
@@ -301,10 +304,11 @@ class VoltPlan:
         t = self.planner.tick(price_now)
         prep = VoltPreparation(t)
         prep.price = price_now
-        # r187 (ROSTER.1): OFF unless OT_VOLT is the literal "1" (read now, not at import)
-        if os.environ.get("OT_VOLT", "0") != "1":
+        # r187 (ROSTER.1): OFF by default; r303 (PSTATE.1): the state is plan_state's, read now - LOG evaluates
+        from strategy import plan_state as _ps
+        if _ps.is_dormant("VOLT"):
             t.dormant("enabled", "VOLT is OFF by the operator's ruling 2026-10-02 "
-                                 "(OT_VOLT=1 restores it)")
+                                 "(OT_VOLT=active restores it, OT_VOLT=log records it)")
             return prep
 
         bars = _bars_1m(df_1m)

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_status.py  v1.3
+tests/check_plan_status.py  v1.4
+v1.4  2026-10-19  OTV4TEST r303 (PSTATE.1) — its subject TrendCreditSpread is DORMANT by default and a dormant plan now writes
+      nothing by ruling, so this run switches it ACTIVE (OT_TCS_ACTIVE=1); the status rules it pins are unchanged.
 EVERY PLAN IS WORKING OR INACTIVE, AND INACTIVE SAYS SO ONCE.
 
 v1.3  2026-10-06  OTV4TEST r258 (HYG.17) — S13-S16: A NON-WINDOW REASON THAT COMES BACK DECLARES ITSELF.
@@ -50,6 +52,7 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+os.environ["OT_TCS_ACTIVE"] = "1"   # r303: the subject writes (check_plan_states pins dormant)
 os.environ.setdefault("OT_TRADES_DB", os.path.join(tempfile.mkdtemp(), "t.db"))
 os.environ.setdefault("OT_DERIVED_DB", os.path.join(tempfile.mkdtemp(), "d.db"))
 FAILED, RAN = [], []

@@ -1,5 +1,10 @@
 """
-derived/plan_ledger.py  v4.1
+derived/plan_ledger.py  v4.2
+v4.2  2026-10-19  OTV4TEST r303 (PSTATE.1) — A DORMANT PLAN OPENS NO LEDGER ROW. open_plan() returns None for a
+      strategy strategy/plan_state.py calls DORMANT (the operator, 2026-10-19: "dormant plans should not write to
+      the ledger"). This is the one door every writer passes - Plan._ledger_open, the ORB rows main.run_analysis
+      writes from the opening-range ENGINE whatever OT_ORB_TRADE said, and the condor - so none needs its own
+      check. A None id is what every caller already handles (an unrecorded plan). The engine itself still runs.
 v4.1  2026-09-01  r212 (chunk D) — A PLAN CLOSES WHEN ITS TRADE DOES.
       🔴 ROWS OPENED BY `PlanTick.take()` WERE NEVER CLOSED BY ANYTHING.
       `transition()` had exactly two callers — main.py's ORB plan and the
@@ -173,9 +178,15 @@ class PlanLedger:
     # ── writes ──────────────────────────────────────────────────────────
     def open_plan(self, strategy: str, state: str, ctx: dict,
                   **fields) -> Optional[str]:
-        """Record a new intent. Returns plan_id, or None if unrecorded."""
+        """Record a new intent. Returns plan_id, or None if unrecorded (r303: always None for a DORMANT plan)."""
         if self._store is None:
             return None
+        try:
+            from strategy import plan_state as _ps
+            if _ps.is_dormant(strategy):
+                return None
+        except Exception:                                       # noqa: BLE001
+            pass
         pid = uuid.uuid4().hex[:16]
         now = time.time()
         try:

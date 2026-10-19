@@ -1,5 +1,7 @@
 """
-strategy/orb_plan.py  v1.11
+strategy/orb_plan.py  v1.12
+v1.12  2026-10-19  OTV4TEST r303 (PSTATE.1) — the ORB trade's state is strategy/plan_state.py's: OT_ORB_TRADE=active|log|off
+      ("1" still = active). LOG evaluates and records the fire LOG-ONLY. The opening-range ENGINE is not this plan.
 v1.11  2026-10-06  OTV4TEST r259 (STRK.2) — select_contract gains keyword `inside` (default False: every
        existing caller is unchanged, and the default rule still mirrors select_orb_strike, check_orb_plan
        P4). inside=True considers only strikes AT or INSIDE the reach - at/below it for a long call,
@@ -263,10 +265,11 @@ class ORBPlan:
         t.check("target_50pct", getattr(orb, "target_50pct", None))
         t.check("target_100pct", getattr(orb, "target_100pct", None))
 
-        # r187 (ROSTER.1): the ORB TRADE is retired unless OT_ORB_TRADE is "1"
-        if os.environ.get("OT_ORB_TRADE", "0") != "1":
+        # r187 (ROSTER.1): the ORB TRADE is retired by default; r303 (PSTATE.1): plan_state decides, read now
+        from strategy import plan_state as _ps
+        if _ps.is_dormant("ORBStrategy"):
             t.dormant("enabled", "the ORB trade is RETIRED by the operator's ruling "
-                                 "2026-10-02 (BRT.1); OT_ORB_TRADE=1 restores it")
+                                 "2026-10-02 (BRT.1); OT_ORB_TRADE=active restores it, =log records it")
             return prep
 
         # ── window: OUTSIDE IT THE PLAN OBSERVES AND DOES NOT WRITE ────

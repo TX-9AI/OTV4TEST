@@ -1,5 +1,10 @@
 """
-main.py  v4.110
+main.py  v4.111
+v4.111  2026-10-19  OTV4TEST r303 (PSTATE.1) - every plan is ACTIVE, LOG or DORMANT (strategy/plan_state.py; the operator,
+      2026-10-19 08:43 ET: "each plan to have 3 states: active, dormant or log only"). _safe_strategy never asks a DORMANT
+      plan; _retired_reason lets a LOG sweep / TCS be asked; _execute_condor_leg refuses a LOG plan's signal at its top
+      (_log_only, the credit door r254 never had); _log_only names which rule refused; the start names every plan's
+      state and writes data/plan_states.json (_announce_plan_states). Defaults = today's roster: no decision changes.
 v4.110  2026-10-18  OTV4TEST r301 (LOG.1) - the rehearsal's "Could not fetch options chain" is INFO once per ET date
       (2,428 WARNINGs in the week of 10-12, all after the bell); inside RTH it stays WARNING every tick. _chain_miss_say().
 v4.109  2026-10-18  OTV4TEST r295 (LIVE.2) - _touch_heartbeat delegates to utils.heartbeat.touch (same file, same format);
@@ -1636,9 +1641,10 @@ def _retired_reason(name: str) -> str:
     """r204 — the sweep and the TCS are retired by ruling (2026-10-03: "Retire the sweep & TCS").
     '' when `name` may be asked. Read at call time so a checker can flip the switch."""
     import config as _c
-    if name in ("SweepCreditSpread", "SweepForLeg2") and not _c.SWEEP_CS_ENABLED:
+    from strategy import plan_state as _ps                      # r303: a LOG sweep / TCS is asked (recorded only)
+    if name in ("SweepCreditSpread", "SweepForLeg2") and not _c.SWEEP_CS_ENABLED and not _ps.is_log("SweepCreditSpread"):
         return "retired by the operator's ruling 2026-10-03 (OT_SWEEP_CS=1 restores it)"
-    if name == "TrendCreditSpread" and not _c.TREND_CREDIT_ACTIVE:
+    if name == "TrendCreditSpread" and not _c.TREND_CREDIT_ACTIVE and not _ps.is_log("TrendCreditSpread"):
         return "retired by the operator's ruling 2026-10-03 (OT_TCS_ACTIVE=1 restores it)"
     return ""
 
@@ -2890,6 +2896,11 @@ def _execute_condor_leg(signal: "OptionsSignal", state: BotState,
     single CREDIT limit order via TastyTrade (same SDK pattern as entry_engine).
     """
     _stamp_vix(signal, ctx)                                     # r200: before the record is built
+    # r303 (PSTATE.1) — THE CREDIT DOOR. A LOG plan's vertical is recorded and never executed; r254's three
+    # doors were all on the debit side, so nothing stopped a credit signal before this line. (After the VIX
+    # stamp, which only annotates the signal: check_vix_stamp V4 pins it as the first statement.)
+    if _log_only(signal, ctx):
+        return
     from config import (CONTRACT_MULTIPLIER, CONDOR_NICKEL_CLOSE,
                         CONDOR_STOP_LOSS_PCT, INSTRUMENT)
     from database.trade_logger import make_record, get_trade_logger
@@ -3387,6 +3398,14 @@ def _safe_strategy(name: str, fn, ctx=None):
     # r40 — NOT ADMITTED THIS TICK: not asked, and nothing journalled.
     if not _admission_allows(name):
         return None
+    # r303 (PSTATE.1) — DORMANT: never asked, and it writes nothing (strategy/plan_state.py). The operator,
+    # 2026-10-19: "dormant plans should not write to the ledger, unless we are studying them as 'log only'".
+    try:
+        from strategy import plan_state as _ps
+        if _ps.is_dormant(name):
+            return None
+    except Exception as _ps_exc:                                # noqa: BLE001
+        logger.warning("[plans] state of %s unreadable (%s) - asked as before", name, _ps_exc)
     # r204 — RETIRED BY RULING: not asked, and the board says why (once).
     _ret = _retired_reason(name)
     if _ret:
@@ -5422,6 +5441,19 @@ def _banner_dials() -> str:
     return f" · pin_gate={'ON' if PIN_PROXIMITY_ACTIVE else 'OFF'}{end}{brk}"
 
 
+def _announce_plan_states() -> None:
+    """r303 (PSTATE.1) — ONE line naming every plan's state and category, and data/plan_states.json for the
+    devtools plans panel, so a DORMANT plan's silence is explained rather than mistaken for a fault (WA §0.5).
+    Never raises."""
+    try:
+        from strategy import plan as _pb, plan_state as _ps
+        _names = list(_pb.REGISTRY)
+        logger.info("[plans] states — %s", _ps.summary(_names))
+        _ps.write_states_file(names=_names)
+    except Exception as exc:                                    # noqa: BLE001
+        logger.warning("[plans] plan states not announced (%s: %s)", type(exc).__name__, exc)
+
+
 def _log_only(signal, ctx) -> bool:
     """r254 (OBS.1) - True when `signal` comes from a strategy OBSERVED this tick (past its
     entry end): it is RECORDED - once per setup at INFO, with what the pin-proximity gate
@@ -5444,10 +5476,15 @@ def _log_only(signal, ctx) -> bool:
         key = (name, str(getattr(signal, "direction", "")), strike,
                round(float(getattr(signal, "underlying_stop", 0) or 0), 2))
         if _observe.first_time(key):
+            try:                                                # r303: say WHICH rule made it log-only
+                from strategy import plan_state as _ps
+                _rule = "its plan is switched to LOG; PSTATE.1" if _ps.is_log(name) else "past its entry end; OBS.1"
+            except Exception:                                   # noqa: BLE001
+                _rule = "past its entry end; OBS.1"
             logger.info("[observe] LOG-ONLY %s %s %s @ %.2f stop %.2f - %s - NOT executed "
-                        "(past its entry end; OBS.1)", name, getattr(signal, "direction", ""),
+                        "(%s)", name, getattr(signal, "direction", ""),
                         strike, float(getattr(signal, "entry_premium", 0) or 0),
-                        float(getattr(signal, "underlying_stop", 0) or 0), pin)
+                        float(getattr(signal, "underlying_stop", 0) or 0), pin, _rule)
     except Exception as exc:                                    # noqa: BLE001
         logger.debug("[observe] record failed for %s: %s", name, exc)
     return True
@@ -7126,6 +7163,7 @@ def main():
                 "configure.sh item 2.", ORB_RISK_ENV_IGNORED, RISK_PER_TRADE_USD)
     else:
         session_config = _interactive_startup()
+    _announce_plan_states()                                     # r303 (PSTATE.1)
 
     # Initialize TastyTrade client
     # TastyTrade session initializes lazily on first use via get_session()

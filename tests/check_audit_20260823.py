@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_audit_20260823.py  v1.1
+tests/check_audit_20260823.py  v1.2
+v1.2  2026-10-19  OTV4TEST r303 (PSTATE.1) — a3 drives IronCondorStrategy's own ledger path, and the condor is DORMANT for
+      good (no entry of its own), so a3 lifts the state for that one call; the invariant it pins (an abandoned plan closes its row) is unchanged.
 v1.1  2026-09-14  OTV4TEST r26 — 🔴 A1 RAN THE REAL RETENTION PURGE, WITH --apply, ON THE BOX'S
       OWN FEED STORE. `self_close.main()` was driven with only `subprocess.run`
       faked; after the (faked) verifier said OK it called
@@ -168,7 +170,13 @@ def a3():
                                  short_put_strike=0, long_put_strike=0,
                                  underlying_at_decision=0, expected_move=0)
     strat._plan = plan
-    strat._ledger_open(plan, {})
+    from strategy import plan_state as _ps                 # r303: the condor is DORMANT for good; lift it for a3
+    _orig_state = _ps.state
+    _ps.state = lambda n: "active" if _ps.base(n) == "IronCondorStrategy" else _orig_state(n)
+    try:
+        strat._ledger_open(plan, {})
+    finally:
+        _ps.state = _orig_state
     pid = strat._plan_id
     strat._ledger_expire("past_cutoff")
     row = store.conn.execute("SELECT state, closed_ts FROM plan_ledger WHERE plan_id=?",

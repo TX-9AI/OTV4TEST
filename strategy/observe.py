@@ -1,7 +1,11 @@
 """
-strategy/observe.py  v1.0
+strategy/observe.py  v1.1
 THE PLAN ALWAYS LOOKS; THE STRATEGY IS GATED ON THE HOUR (OBS.1).
 
+v1.1  2026-10-19  OTV4TEST r303 (PSTATE.1). A plan switched to LOG (strategy/plan_state.py; the operator,
+      2026-10-19: "active, dormant or log only") is observed on EVERY tick it is asked: is_active() is True for it,
+      so take() records LOG-ONLY and every main.py door refuses the signal. set_active() and the r254 scope are
+      unchanged; with every switch unset no plan is LOG, so nothing here moves.
 v1.0  2026-10-05  OTV4TEST r254 (OBS.1). The operator, 2026-10-05 09:34 ET: "I think a better
       way to frame it would be the plan always looks, but the strategies are gated on the
       hour of the day"; 09:36 ET, scope: "A for sure" (Breakout, Runaway and the Hunt only);
@@ -56,9 +60,15 @@ def clear() -> None:
 
 
 def is_active(name: str) -> bool:
-    """Is `name` being observed (asked, recorded, never executed) this tick?"""
+    """Is `name` being observed (asked, recorded, never executed) this tick? r303: a LOG-state plan always is."""
     try:
-        return str(name or "") in _ACTIVE
+        if str(name or "") in _ACTIVE:
+            return True
+    except Exception:                                           # noqa: BLE001
+        return False
+    try:
+        from strategy import plan_state as _ps
+        return _ps.is_log(str(name or ""))
     except Exception:                                           # noqa: BLE001
         return False
 

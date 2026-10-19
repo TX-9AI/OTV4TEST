@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_time_parse.py  v1.0
+tests/check_time_parse.py  v1.1
+v1.1  2026-10-19  OTV4TEST r303 (PSTATE.1) — its subject ORCS / SweepCreditSpread / TrendCreditSpread (T3) is DORMANT by default and a dormant plan now
+      writes nothing by ruling, so this run switches it ACTIVE (OT_ORCS=1, OT_SWEEP_CS=1, OT_TCS_ACTIVE=1); what it pins is unchanged.
 v1.0  2026-10-03  OTV4TEST r220 (TIME.1) — ONE HH:MM PARSER, AND AN UNREADABLE CLOCK IS NO TRADE.
 
   The 10-03 audit (C3): eight plans each carried a private copy of the same
@@ -29,6 +31,9 @@ import tempfile
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
+os.environ["OT_ORCS"] = "1"   # r303: the subject writes (check_plan_states pins dormant)
+os.environ["OT_SWEEP_CS"] = "1"   # r303: the subject writes (check_plan_states pins dormant)
+os.environ["OT_TCS_ACTIVE"] = "1"   # r303: the subject writes (check_plan_states pins dormant)
 for _sp in _glob.glob(os.path.join(_root, "venv", "lib", "python*", "site-packages")):
     if _sp not in sys.path:                                  # r106 venv bootstrap
         sys.path.insert(1, _sp)

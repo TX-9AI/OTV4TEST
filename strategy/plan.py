@@ -1,5 +1,6 @@
 """
-strategy/plan.py  v2.7
+strategy/plan.py  v2.8
+v2.8 2026-10-19  OTV4TEST r303 (PSTATE.1) — A DORMANT PLAN WRITES NOTHING. The operator, 2026-10-19 08:43 ET: "The intent is dormant plans should not write to the ledger, unless we are studying them as 'log only'". strategy/plan_state.py decides each plan's state (active / log / dormant); here, a DORMANT name gets no plan_tick or plan_check row (write_row), no INACTIVE row from close_tick, no plan_heartbeat upsert, and no place on the [plans] line; CondorManagement / CreditRoll leave the line while they have no credit position (the "legs" check both already record, kept per plan by _close as _last_checks). A LOG plan is OBSERVED (strategy/observe.is_active), so take() writes LOG-ONLY as r254 does. AND A CONDITION-GATED PLAN WRITES NOTHING WHILE ITS CONDITION IS ABSENT (the operator, 09:54 ET: "Yes"): a /manage plan or CondorManagement / CreditRoll that was not run this tick gets no INACTIVE row (and no "dispatch gap" default) and no heartbeat, and the condor plans' "legs" < 1 HOLD rows are not written; they write the moment a position of theirs is open, and NO PLAN (asked, wrote nothing) still reports. Nothing here decides a trade. tests/check_plan_states.py.
 v2.7 2026-10-06  OTV4TEST r258 (HYG.17) — A NON-WINDOW REASON THAT COMES BACK DECLARES ITSELF. _status_changed kept every token of an inactive episode in one SET, so a reason said once was silent for the rest of the episode: SPX-TEST's Breakout/manage went "no open position" -> "position open — managing" -> "no open position" (10:14 / 10:42 / 10:49 ET 10-06) and the return was never written - plan.last(), the heartbeat and the [plans] line read "managing" on a flat book until 16:00 (_STATUS held the truth). The operator's r42 rule is two-sided: the WINDOW is said once per episode; "if something other than the window made it inactive it should declare that". So a non-window token is now written whenever it differs from the LAST token written for that plan (_LAST_SAID); the window keeps its once-per-episode set exactly as before (window -> cap -> window is still two rows). DISPLAY ONLY - traced 10-06: no trading path reads plan.last(), plan_heartbeat, the latest plan_tick, _STATUS or plan_status(). tests/check_plan_status.py S13-S15 (born red on 2feb827).
 v2.6 2026-10-05  OTV4TEST r254 (OBS.1) — THE PLAN ALWAYS LOOKS, THE STRATEGY IS GATED ON THE HOUR: Breakout, Runaway and the Hunt are OBSERVED from their entry end to 15:40 - asked, recorded LOG-ONLY, never executed (the operator, 2026-10-05: "the plan always looks, but the strategies are gated on the hour of the day"; "Have those blocked TRADES just to Log only"). Here: take() writes LOG-ONLY for an observed strategy - never TAKE, no plan_ledger row, no gate-report clear.
 v2.5  2026-10-03  OTV4TEST r211 (PLN.2) — EVERY TAKE OPENS ITS PLAN_LEDGER ROW. The ledger held ORB plans and nothing else
@@ -339,6 +340,23 @@ def _symbol() -> str:
 
 
 
+def _dormant(name: str) -> bool:
+    """r303 (PSTATE.1) — is `name` switched DORMANT (writes nothing)? An error reads False: the row is
+    written, which is the old behaviour, never a lost decision."""
+    try:
+        from strategy import plan_state as _ps
+        return _ps.is_dormant(name)
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
+def _condition_plan(name: str) -> bool:
+    """r303 — a CONDITION-gated plan: run only while a position of its own is open (the /manage plans) or a
+    credit position is (CondorManagement, CreditRoll)."""
+    n = str(name or "")
+    return n.endswith("/manage") or n in _MANAGEMENT_PLANS
+
+
 def ensure_tables(store) -> bool:
     """CREATE IF NOT EXISTS, at first use — an empty table is a measurement,
     a missing table is a mystery (r133)."""
@@ -442,7 +460,10 @@ def write_row(store, symbol: str, ts: float, strategy: str, verdict: str,
               check_notes: Optional[Dict[str, str]] = None
               ) -> bool:
     """One spine row plus its check rows. Never raises; returns False on a
-    failed spine write (and WARNS — a lost row is data lost, r133)."""
+    failed spine write (and WARNS — a lost row is data lost, r133). r303: a DORMANT plan's row is not
+    written at all (returns False, silently - its silence is announced once at start, by name)."""
+    if _dormant(strategy):
+        return False
     if store is None or not ensure_tables(store):
         return False
     try:
@@ -788,6 +809,17 @@ class PlanTick:
             return
         self.closed = True
         self.verdict = verdict
+        self.plan._last_checks = dict(self.checks or {})        # r303: the board reads a condor plan's "legs"
+        # r303 (PSTATE.1) — a condor management plan with no credit leg open has nothing to manage: its
+        # condition is absent, so the row is not written (and the tick does not count as written).
+        if self.strategy in _MANAGEMENT_PLANS:
+            try:
+                _legs = float((self.checks.get("legs") or (None, None))[0])
+            except (TypeError, ValueError):
+                _legs = None
+            if _legs is not None and _legs < 1:
+                logger.debug("[plan] %s silent - no credit leg open (%s)", self.strategy, reason)
+                return
         self.plan._last = (self.n, verdict, reason)
         try:
             write_row(self.plan._store_ref(), self.plan.symbol, self.ts,
@@ -1129,6 +1161,8 @@ def close_tick(store=None, symbol: str = "") -> int:
         _day = ""
     try:
         for name, plan in list(REGISTRY.items()):
+            if _dormant(name):                                  # r303 (PSTATE.1): no row, ever
+                continue
             if plan.wrote_this_tick():
                 # r41 — WORKING: it spoke for itself this tick, and a working
                 # plan keeps its per-tick row. Recording the state here is what
@@ -1149,6 +1183,10 @@ def close_tick(store=None, symbol: str = "") -> int:
                 else:
                     continue
             else:
+                if _condition_plan(name):
+                    # r303 (PSTATE.1) — not run this tick = its condition is absent: no row, no
+                    # "dispatch gap" default (the operator, 2026-10-19 09:54 ET: "Yes").
+                    continue
                 # 🔴 r213 (chunk E) — THE DEFAULT ADMITS WHAT IT IS. Operator,
                 # 2026-09-01: *"I don't like 'NOT ASKED' as a reason. It makes
                 # no sense. Not asked? why or Why not?"* He is right: the old
@@ -1215,6 +1253,10 @@ def _write_heartbeats(store, symbol: str, n: int, ts: float) -> None:
     try:
         rows = []
         for name, plan in list(REGISTRY.items()):
+            if _dormant(name):                                  # r303 (PSTATE.1): no heartbeat either
+                continue
+            if _condition_plan(name) and not plan.wrote_this_tick() and name not in _ASKED:
+                continue                                        # r303: condition absent - silent
             _, verdict, why = plan.last()
             if plan.wrote_this_tick():
                 state = "EVALUATING"
@@ -1258,10 +1300,22 @@ def _write_heartbeats(store, symbol: str, n: int, ts: float) -> None:
 
 
 def board_line() -> str:
-    """One line: every registered strategy's last verdict, for the log."""
+    """One line: every registered strategy's last verdict, for the log. r303 (PSTATE.1): a DORMANT plan is
+    not on it, and CondorManagement / CreditRoll are on it only while they have a credit position to manage
+    (the operator, 2026-10-19: "2. Yes")."""
     bits = []
     for name, plan in sorted(REGISTRY.items()):
+        if _dormant(name):
+            continue
         _, v, why = plan.last()
+        if name in _MANAGEMENT_PLANS:
+            # both condor plans check "legs" on every tick they run; a flat book reads INACTIVE
+            try:
+                _legs = float(((getattr(plan, "_last_checks", None) or {}).get("legs") or (0, None))[0] or 0)
+            except (TypeError, ValueError):
+                _legs = 0.0
+            if v == "INACTIVE" or _legs < 1:
+                continue
         short = (why or "")[:48].replace("\n", " ")
         bits.append(f"{name}={v or '-'}" + (f"({short})" if short else ""))
     return " · ".join(bits)

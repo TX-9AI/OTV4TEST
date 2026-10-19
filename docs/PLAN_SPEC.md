@@ -1,5 +1,7 @@
 # PLAN_SPEC.md — every strategy declares its intent BEFORE the trigger
 
+**v1.40 · 2026-10-19 · OTV4TEST r303 — PSTATE.1: every plan is ACTIVE, LOG or DORMANT (§42); a dormant plan writes nothing, ORCS's included (§41.13 amended).**
+
 **v1.39 · 2026-10-04 · OTV4TEST r249 — PREM.6: ORCS IS RETIRED by ruling (§41.13); the plan keeps recording.**
 
 **v1.35 · 2026-10-03 · OTV4TEST r229 — EM.2: ORCS's implied move is the tastytrade platform's expected move (§41.10); the butterflies keep theirs by ruling.**
@@ -1620,6 +1622,27 @@ The operator: *"On rolling/defending the ORCS, adopt the condor logic verbatim."
 
 
 ### 41.13 r249 — RETIRED (operator 2026-10-04)
-The operator, 2026-10-04 20:12 ET: "Retire it on this repo." ORCS_ENABLED now defaults OFF; OT_ORCS=1 restores the trade (paper only, as before). The plan (strategy/orcs_plan) keeps locating and recording both sides every tick of its window, so the forward data does not stop.
+The operator, 2026-10-04 20:12 ET: "Retire it on this repo." ORCS_ENABLED now defaults OFF; OT_ORCS=1 restores the trade (paper only, as before). The plan (strategy/orcs_plan) keeps locating and recording both sides every tick of its window, so the forward data does not stop. **Superseded r303 (2026-10-19):** with the trade off the plan is DORMANT and records nothing (the operator: "1. Yes" to including ORCS); OT_ORCS=log records it without trading (§42).
 **Why.** Measured that evening, read-only, on 50 SPX sessions (07-24..10-02), every study's terms hashed before results: (1) the r207 shape scaled x7.5 (0.20 delta, 20 wide, condor defence) made ~+$20/day net with 36% losing days - no shape in the delta x wing x EM-floor grid passed; holding beat the condor defence in almost every cell (/var/tmp/orcs_spx_1004). (2) his EM-extremes, tight-wing, untested-roll shape: none passed, losing days 28-68% (/var/tmp/orcs_em_1005). (3) his 2-SD open condor, one-strike wings, roll: -$52/day held, -$37 rolled (/var/tmp/orcs_2sd_1005). In every study a NATURAL fill turned nearly every cell negative: the edge sits inside the bid-ask spread. On QQQ (10-03, X9/X10) the r207 shape made ~+$22/day and lost in the first half of its history. His words, 19:59 ET: "Why the fuck is it spec'd to make less than pocket change on a $1000 at risk?"
 **As built (OTV4TEST r249):** `config.py` v4.58; `docs/TRADES.md` §0; gate `tests/check_orcs.py` v1.6 O8 re-pointed (the default is OFF, still read from config).
+
+## 42. OTV4TEST r303 — PLAN STATES: ACTIVE, LOG ONLY, DORMANT; HOUR- OR CONDITION-GATED (operator 2026-10-19)
+The operator, 2026-10-19 08:34 ET: "Going forward, I want all the trades that are turned off to stop writing to the plan
+Log"; 08:43 ET: "The intent is dormant plans should not write to the ledger, unless we are studying them as 'log only' - I
+would like each plan to have 3 states: active, dormant or log only, they can be further categorized as hour-gated or
+conditional gated"; 08:45 ET: "That looks right to me".
+- **One authority:** `strategy/plan_state.py` TABLE - per plan its switch, default state and category. `state(name)` is
+  read at call time; the config flags still decide ACTIVE for the switches config reads.
+- **ACTIVE:** as before. **LOG:** the plan is observed every tick it is asked (`strategy/observe.is_active`): `take()`
+  writes LOG-ONLY and opens no plan_ledger row; `main._log_only` refuses the signal at `_fire`, the hunt, 
+  `_execute_entry_signal` and (new) `_execute_condor_leg`. **DORMANT:** `main._safe_strategy` never asks it; `write_row`,
+  `close_tick`, `_write_heartbeats`, `board_line` and `PlanLedger.open_plan` write nothing for it.
+- **Categories:** HOUR (asked only in its `config.ENTRY_WINDOWS` slot) or CONDITION (the `/manage` plans, CondorManagement
+  and CreditRoll, the condor). CondorManagement and CreditRoll are on the `[plans]` line only while their "legs" check
+  reads one or more. A CONDITION-gated plan writes nothing while its condition is absent (09:54 ET: "Yes"): not run this
+  tick = no INACTIVE row, no dispatch-gap default, no heartbeat; a condor plan's legs < 1 HOLD is not written. NO PLAN
+  (asked and silent) still reports. The plans panel reads such a plan's old heartbeat as IDLE unless trades.db holds an
+  open position it manages.
+- **Explained silence:** the start logs `[plans] states — active: ... · log: ... · dormant: ...` and writes
+  `data/plan_states.json`; `query.py`'s plans panel lists DORMANT and LOG ONLY plans from it instead of STALE / NOT RUNNING.
+- **Gate:** `tests/check_plan_states.py` (S1-S3 states, D1-D10 driven on scratch stores; every check but the D5 control RED on f07f7a4).

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""check_chain_ordering.py — v1.3
+"""check_chain_ordering.py — v1.4
+v1.4  2026-10-19  OTV4TEST r303 (PSTATE.1) — its subject SweepCreditSpread (C9/C10) is DORMANT by default and a dormant plan now writes
+      nothing by ruling, so this run switches it ACTIVE (OT_SWEEP_CS=1); what it pins is unchanged.
 v1.3  2026-10-03  OTV4TEST r196 (AUD.5) — C13/C14: THE VOLATILITY MEASURES REACH THE ENGINES. They were
       computed after run_all, so character_axis_sample's realised vols, vol_ratio and close_capture were
       NULL on 3,580 of 3,580 rows. C13 pins the order in run_analysis; C14 drives the real port into the
@@ -34,6 +36,7 @@ import sys
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
+os.environ["OT_SWEEP_CS"] = "1"   # r303: the subject writes (check_plan_states pins dormant)
 _fails = []
 
 

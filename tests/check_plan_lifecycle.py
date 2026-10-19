@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_lifecycle.py  v1.0
+tests/check_plan_lifecycle.py  v1.1
+v1.1  2026-10-19  OTV4TEST r303 (PSTATE.1) — its subject SweepCreditSpread is DORMANT by default and a dormant plan now
+      writes nothing by ruling, so this run switches it ACTIVE (OT_SWEEP_CS=1); what it pins is unchanged.
 v1.0  2026-09-01  r212 (chunk D) — A PLAN CLOSES WHEN ITS TRADE DOES.
 
 🔴 THE DEFECT, MEASURED FROM THE OPERATOR'S OWN PANEL. On 2026-09-01 QQQ showed
@@ -40,6 +42,7 @@ import sys
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
+os.environ["OT_SWEEP_CS"] = "1"   # r303: the subject writes (check_plan_states pins dormant)
 
 _fails = []
 

@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_admission_wired.py  v1.4
+tests/check_admission_wired.py  v1.5
+v1.5  2026-10-19  OTV4TEST r303 (PSTATE.1) — A3's ORB trade is DORMANT by default and a dormant plan is never asked by ruling,
+      so this run switches it ACTIVE (OT_ORB_TRADE=1). A5 asks a name NEITHER table carries (UnlistedStrategy):
+      IronCondorStrategy is now DORMANT (no entry of its own), and admission's no-opinion rule is what A5 pins.
 THE ADMISSION TABLE IS LIVE: A STRATEGY OUTSIDE ITS WINDOW IS NEVER ASKED.
 
 v1.4  2026-10-18  OTV4TEST r293 (ADM.2) — A10: an unreadable rules() table fails CLOSED (nothing asked) and WARNS once;
@@ -36,6 +39,7 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+os.environ["OT_ORB_TRADE"] = "1"   # r303: A3's subject is active (check_plan_states pins dormant)
 os.environ.setdefault("OT_TRADES_DB", os.path.join(tempfile.mkdtemp(), "t.db"))
 os.environ.setdefault("OT_DERIVED_DB", os.path.join(tempfile.mkdtemp(), "d.db"))
 FAILED, RAN = [], []
@@ -93,7 +97,7 @@ def main():
     guard("A4 with NO admission computed, every strategy is asked (pre-r40 exactly)",
           lambda: probe("GEXPinButterfly", None)[0] is True)
     guard("A5 a name the table does not carry is asked — admission has no opinion",
-          lambda: probe("IronCondorStrategy", ["SweepCreditSpread"])[0] is True,
+          lambda: probe("UnlistedStrategy", ["SweepCreditSpread"])[0] is True,     # r303: IronCondorStrategy is DORMANT
           "IronCondorStrategy is retired as an entry; a silent veto would hide that")
     guard("A5b a management dispatch is never gated by the entry table",
           lambda: probe("CondorManagement", [])[0] is True)

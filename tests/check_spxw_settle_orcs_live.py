@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_spxw_settle_orcs_live.py  v1.0
+tests/check_spxw_settle_orcs_live.py  v1.1
+v1.1  2026-10-19  OTV4TEST r303 (PSTATE.1) — its subject OpeningRangeCreditSpread is DORMANT by default and a dormant plan now
+      writes nothing by ruling, so this run switches it ACTIVE (OT_ORCS=1); what it pins is unchanged.
 v1.0  2026-10-04  OTV4TEST r247 (FORK-ONLY) — TWO LIVE-PATH FINDINGS FROM SPX-TEST'S AUDIT, FIXED BY THE
       OPERATOR'S ORDER ("Fix the SPXW settlement", "Fix the ORCS ledger rows issue").
 
@@ -21,6 +23,7 @@ from types import SimpleNamespace
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+os.environ["OT_ORCS"] = "1"   # r303: the subject writes (check_plan_states pins dormant)
 FAILED = []
 
 

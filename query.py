@@ -1,5 +1,11 @@
 """
-query.py  v4.19
+query.py  v4.20
+v4.20  2026-10-19  OTV4TEST r303 (PSTATE.1) - THE PLANS PANEL KNOWS A DORMANT PLAN FROM A BROKEN ONE. A dormant plan
+      writes no heartbeat (the operator, 2026-10-19: "dormant plans should not write to the ledger"), so the panel
+      read its last row as STALE and an absent one as NOT RUNNING. It now reads data/plan_states.json (written by the
+      bot at start) and lists DORMANT and LOG ONLY plans by name; an absent file is said, not assumed. A /manage plan
+      or CondorManagement / CreditRoll whose heartbeat is old reads IDLE (nothing to manage) unless trades.db holds an
+      open position it manages - it writes no heartbeat while its condition is absent (operator, 09:54 ET: "Yes").
 v4.19  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
       US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
       without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
@@ -906,11 +912,46 @@ def show_decisions(dc):
     # four hours wrong all session.
     _et = lambda t: datetime.fromtimestamp(t, ET).strftime("%H:%M:%S") if t else "--:--:--"
     seen, live, quiet, broken = {}, [], [], []
+    # r303 (PSTATE.1) — the bot's published plan states. A DORMANT plan writes no heartbeat by ruling, so its
+    # old row (or none) is neither STALE nor NOT RUNNING.
+    try:
+        from strategy import plan_state as _ps
+        _sdoc = _ps.read_states_file()
+    except Exception:                                           # noqa: BLE001
+        _sdoc = {}
+    _states = {k: (v or {}).get("state", "") for k, v in ((_sdoc.get("plans") or {}).items())}
+    _dormant = sorted(k for k, v in _states.items() if v == "dormant")
+    _logonly = sorted(k for k, v in _states.items() if v == "log")
+    def _idle_condition(plan):
+        """r303 — '' unless `plan` is condition-gated AND nothing it manages is open (then the reason).
+        Reads this box's trades.db read-only; an unreadable book says '' (the old STALE stands)."""
+        if not (plan.endswith("/manage") or plan in ("CondorManagement", "CreditRoll")):
+            return ""
+        try:
+            _tc = sqlite3.connect("file:%s?mode=ro" % DB_PATH, uri=True, timeout=5)
+            try:
+                if plan.endswith("/manage"):
+                    n = _tc.execute("SELECT COUNT(*) FROM trades WHERE status='OPEN' AND strategy=?",
+                                    (plan[:-len("/manage")],)).fetchone()[0]
+                    return "" if n else f"no open {plan[:-len('/manage')]} position"
+                n = _tc.execute("SELECT COUNT(*) FROM trades WHERE status='OPEN' AND (is_condor_leg=1 OR "
+                                "COALESCE(credit_received, 0) > 0)").fetchone()[0]
+                return "" if n else "no open credit position"
+            finally:
+                _tc.close()
+        except Exception:                                       # noqa: BLE001
+            return ""
     for plan, ts, tick, state, gate, verdict, watching in hb:
         seen[plan] = True
+        if plan in _dormant:
+            continue
         age = now_ts - (ts or 0)
         w = (watching or "").strip()
-        if age > STALE_S:
+        if age > STALE_S and _idle_condition(plan):
+            # r303 (PSTATE.1) — a condition-gated plan with nothing to manage writes no heartbeat by
+            # ruling; its old row is not STALE. It is STALE only while a position it manages is open.
+            quiet.append((plan, "IDLE", f"nothing to manage - {_idle_condition(plan)}", _et(ts)))
+        elif age > STALE_S:
             broken.append((plan, f"STALE — last heartbeat {_et(ts)} ET "
                                  f"({age/60:.0f}m ago, tick #{tick})", w))
         elif state == "NO PLAN":
@@ -944,7 +985,15 @@ def show_decisions(dc):
         expected = set(_rules().keys())
     except Exception:                                           # noqa: BLE001
         expected = set()
-    missing = sorted(e for e in expected if e not in seen)
+    if _sdoc:
+        _when = datetime.fromtimestamp(float(_sdoc.get("written_epoch") or 0), ET).strftime("%m-%d %H:%M")
+        print(f"  ── PLAN STATES (bot start {_when} ET) ──")
+        print(f"    DORMANT (switched off, writes nothing): {', '.join(_dormant) or 'none'}")
+        print(f"    LOG ONLY (recorded, never traded):      {', '.join(_logonly) or 'none'}")
+    else:
+        print("  ── PLAN STATES ──")
+        print("    data/plan_states.json not found - a dormant plan cannot be told from a broken one")
+    missing = sorted(e for e in expected if e not in seen and e not in _dormant)
     for m in missing:
         broken.append((m, "NOT RUNNING — in the admission table, never "
                           "heartbeat today", ""))

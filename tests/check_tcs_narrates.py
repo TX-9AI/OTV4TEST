@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_tcs_narrates.py  v1.2
+tests/check_tcs_narrates.py  v1.3
+v1.3  2026-10-19  OTV4TEST r303 (PSTATE.1) — its subject TrendCreditSpread is DORMANT by default and a dormant plan now writes
+      nothing by ruling, so this run switches it ACTIVE (OT_TCS_ACTIVE=1); what it pins is unchanged.
 v1.2  2026-09-23  OTV4TEST r112 — the r106 venv bootstrap; red under system python3 on `pytz`.
 v1.1  2026-09-09  OTV4TEST r9 — re-pointed at the TCS plan (store-driven, EM input); the
       rule it pins is unchanged: a named row on every path, never NOT ASKED.
@@ -21,6 +23,7 @@ import types
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
+os.environ["OT_TCS_ACTIVE"] = "1"   # r303: the subject writes (check_plan_states pins dormant)
 # r112 — the r106 venv bootstrap: the lander runs CHECKs under system python3,
 # where `pytz` (and pandas) are absent, so this checker could never be DECLARED.
 import glob as _glob

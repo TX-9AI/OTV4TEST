@@ -1,5 +1,8 @@
 """
-strategy/gex_pin_butterfly.py  v5.10
+strategy/gex_pin_butterfly.py  v5.11
+v5.11  2026-10-19  OTV4TEST r303 (PSTATE.1) — the `enabled` condition is met when the plan is ACTIVE (ENABLED, as before)
+      or switched to LOG (OT_GEX_BUTTERFLY=log): LOG reaches take(), which records LOG-ONLY, and main refuses the
+      signal at _execute_entry_signal. A DORMANT fly is never asked (main._safe_strategy).
 v5.10  2026-10-03  OTV4TEST r225 (FLY.2) — leg_quote_facts: on the wings it picks, the plan RECORDS how many bought wings had no bid and whether a strict (all three two-sided) or a role (wings need an ask, the sold body a bid) rule would have refused. Log-only for two weeks by ruling; nothing is gated.
 v5.9  2026-10-03  OTV4TEST r223 (EM.1) — expected_move delegates to analysis.volatility_measures.expected_move_session (moved verbatim; the 15-minute floor and the 3 h fallback are unchanged).
 v5.8  2026-10-03  OTV4TEST r193 (CFG.1) — its config dials are read as config.NAME with NO literal fallback; config v4.48 now defines them (they were getattr defaults on names config never had). Values unchanged.
@@ -661,7 +664,9 @@ class GEXPinButterflyStrategy:
             t.dormant("entry_window", f"outside the butterfly slot {_early}-{_late}")
             return prep
         prep.cond("entry_window", None, self.CONDITIONS["entry_window"], True)
-        prep.cond("enabled", 1.0 if ENABLED else 0.0, self.CONDITIONS["enabled"], ENABLED)
+        from strategy import plan_state as _ps                  # r303: LOG is "enabled" too (recorded only)
+        _on = bool(ENABLED) or _ps.is_log("GEXPinButterfly")
+        prep.cond("enabled", 1.0 if _on else 0.0, self.CONDITIONS["enabled"], _on)
         price_now = safe_float(price_now)
         if not price_now or price_now <= 0:
             prep.starved.append("price_now")

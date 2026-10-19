@@ -1,5 +1,7 @@
 """
-strategy/atp_butterfly_plan.py  v1.4
+strategy/atp_butterfly_plan.py  v1.5
+v1.5  2026-10-19  OTV4TEST r303 (PSTATE.1) — the `enabled` condition is met when the plan is ACTIVE (ENABLED, as before)
+      or switched to LOG (OT_ATP_BUTTERFLY=log): LOG reaches take(), which records LOG-ONLY. DORMANT is never asked.
 v1.4  2026-10-03  OTV4TEST r225 (FLY.2) — records the same three leg-quote facts as the pin butterfly on the wings it picks (gex_pin_butterfly.leg_quote_facts). Log-only.
 v1.3  2026-09-30  OTV4TEST r179 (BFLY.9) — THE ATP FLY'S OWN PIN-CONCENTRATION FLOOR, 0.15.
       The operator, 2026-09-30, reading the ATP fly HOLD all afternoon on a PINNING tape at the pin: "The ATP fly should be accepting the plan for the EXACT reason GEX pin fly is declining (price too close to pin)", then "Drop the ATP to .19" and, minutes later, "Actually .15 sounds better".
@@ -197,7 +199,9 @@ class ATPButterflyPlan:
             t.dormant("entry_window", f"outside the butterfly slot {_early}-{_late}")
             return prep
         prep.cond("entry_window", None, self.CONDITIONS["entry_window"], True)
-        prep.cond("enabled", 1.0 if ENABLED else 0.0, self.CONDITIONS["enabled"], ENABLED)
+        from strategy import plan_state as _ps                  # r303: LOG is "enabled" too (recorded only)
+        _on = bool(ENABLED) or _ps.is_log("ATPButterfly")
+        prep.cond("enabled", 1.0 if _on else 0.0, self.CONDITIONS["enabled"], _on)
         price_now = safe_float(price_now)
         if not price_now or price_now <= 0:
             prep.starved.append("price_now")

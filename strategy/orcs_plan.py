@@ -1,5 +1,10 @@
 """
-strategy/orcs_plan.py  v1.8
+strategy/orcs_plan.py  v1.9
+v1.9  2026-10-19  OTV4TEST r303 (PSTATE.1) — A READY ORCS THAT WILL NOT TRADE IS NOT A TAKE. The READY row was verdict
+      TAKE whether or not the trade was on (strategy/orcs.py returns no signal when ORCS_ENABLED is off), so the
+      'off' ORCS wrote TAKE rows all window. Now TAKE only when the plan is ACTIVE, LOG-ONLY when it is switched to
+      log (OT_ORCS=log); DORMANT (the default, reversing r249's "the plan keeps recording" by the operator's
+      2026-10-19 "1. Yes") is never asked.
 v1.8  2026-10-04  OTV4TEST r234 (SCALE.1) — THE WING AND THE CREDIT FLOOR SCALE WITH THE BOX'S CONTRACT PRICE. ORCS_WING_USD and ORCS_MIN_CREDIT here are config's QQQ dollars x config.CONTRACT_SCALE (QQQ 1.0 - unchanged; SPX 7.5 - a 22.50 target wing, so the listed strike nearest it, 20 or 25 on a 5-dollar chain, and a 0.75 floor). The operator, 2026-10-04: "SPX cap, ramp & wing search CANNOT be the same as QQQ ... It needs to scale with the contract price differences."
 v1.7  2026-10-03  OTV4TEST r230 (PREM.5) — the HOLD row's text says 'defended as a condor' (was 'held to the close'); nothing else.
 v1.6  2026-10-03  OTV4TEST r229 (EM.2) — THE IMPLIED MOVE IS THE TASTYTRADE PLATFORM'S EXPECTED MOVE (analysis.volatility_measures.expected_move_platform: 60% ATM straddle + 30% first strangle + 10% second), no longer the bare ATM straddle. The operator, 2026-10-03: "Use the one that's built into the tasty trade platform." Measured 10-01/10-02 at 09:45-10:29: 0.87-0.91 of the straddle, so the 1.0x distance floor sits 9-13% nearer; the delta cap is unchanged. The straddle is still recorded (atm_straddle).
@@ -298,5 +303,7 @@ class ORCSPlan:
                 t.hold(f"{prep.why} - defended as a condor. {head}")
             return prep
         t.direction = "neutral"
-        t.hold(f"READY at the mark, to the entry ladder: {', '.join(prep.ready)}. {head}", verdict="TAKE")
+        from strategy import plan_state as _ps, observe as _obs   # r303: TAKE only when it will trade
+        t.hold(f"READY at the mark, to the entry ladder: {', '.join(prep.ready)}. {head}",
+               verdict=("TAKE" if _ps.state("OpeningRangeCreditSpread") == _ps.ACTIVE else _obs.LOG_ONLY))
         return prep

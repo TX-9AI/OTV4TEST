@@ -1,5 +1,9 @@
 """
-strategy/volt_strategy.py  v1.1
+strategy/volt_strategy.py  v1.2
+v1.2  2026-10-19  OTV4TEST r303 (PSTATE.1) — THE FIRE GOES THROUGH take(). The ready path returned the signal
+      with the plan's tick still open, so a switched-on VOLT's fire would have written "NO PLAN - ASKED and returned
+      a signal but wrote no plan row" (close_tick) and opened no plan_ledger row (r211). take() writes TAKE and opens
+      the row when VOLT is active, and LOG-ONLY (no row) when it is switched to log.
 v1.1  2026-09-24  OTV4TEST r131 — THE SIGNAL CARRIES `sizing_distance = risk_px`.
       The operator, 2026-09-24: *"VOLT needs to adopt the breakout sizing
       model."* main._geometry_inputs sizes any signal carrying it on
@@ -155,4 +159,4 @@ class VoltStrategy(BaseOptionsStrategy):
         logger.info("STRATEGY: VOLT %s %s @ %.2f  stop %.2f (R %.2f)  vol %.2fx  size %d",
                     prep.direction, prep.side, price_now, prep.stop,
                     prep.risk_px, prep.vol_ratio, prep.size_provisional)
-        return signal
+        return prep.tick.take(signal)                           # r303: TAKE (active) / LOG-ONLY (log)

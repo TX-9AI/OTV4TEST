@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_tcs_plan.py  v1.2
+tests/check_tcs_plan.py  v1.3
+v1.3  2026-10-19  OTV4TEST r303 (PSTATE.1) — its subject TrendCreditSpread is DORMANT by default and a dormant plan now writes
+      nothing by ruling, so this run switches it ACTIVE (OT_TCS_ACTIVE=1); what it pins is unchanged.
 v1.2  2026-10-11  OTV4TEST r269 (OPS.22, mirror of otv4 r479) - the zone NAME is "America/New_York", the zone the legacy link
       US/Eastern pointed to: identical rules, no behaviour change. tzdata 2026c moved the US/* links into tzdata-legacy;
       without it ZoneInfo of the old name raises (it broke control's fleet.py on 10-09).
@@ -44,6 +46,7 @@ import types
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
+os.environ["OT_TCS_ACTIVE"] = "1"   # r303: the subject writes (check_plan_states pins dormant)
 # r112 — the r106 venv bootstrap: the lander runs CHECKs under system python3,
 # where pandas is absent and this checker died before printing a line.
 import glob as _glob

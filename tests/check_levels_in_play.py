@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_levels_in_play.py  v1.1
+tests/check_levels_in_play.py  v1.2
+v1.2  2026-10-19  OTV4TEST r303 (PSTATE.1) — its subject SweepCreditSpread is DORMANT by default and a dormant plan now
+      writes nothing by ruling, so this run switches it ACTIVE (OT_SWEEP_CS=1); what it pins is unchanged.
 v1.1  2026-09-22  OTV4TEST r104 - C1-C5: EVERY CONSUMER, NOT JUST THE
       SWEEP. r15, r19 and r33 each settled this at the producer and gated the
       producer; nothing asserted what a READER did next, so the conjunction was
@@ -57,6 +59,7 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+os.environ["OT_SWEEP_CS"] = "1"   # r303: the subject writes (check_plan_states pins dormant)
 # ⚠️ The lander runs CHECKs under system `python3`; the SDK lives in the venv.
 for _sp in glob.glob(os.path.join(ROOT, "venv", "lib", "python*", "site-packages")):
     if _sp not in sys.path:

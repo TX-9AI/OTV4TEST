@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_ledger_take.py  v1.0
+tests/check_plan_ledger_take.py  v1.1
+v1.1  2026-10-19  OTV4TEST r303 (PSTATE.1) — L4's ORCS is DORMANT by default and a dormant plan opens no ledger row by ruling,
+      so this run switches ORCS ACTIVE (OT_ORCS=1) to test the per-leg rows. check_plan_states D3 pins dormant.
 v1.0  2026-10-03  OTV4TEST r211 (PLN.2) — EVERY TAKE OPENS ITS PLAN_LEDGER ROW, IN THE STORE THAT IS BOUND.
 
   The 10-03 audit: plan_ledger held ORB plans and nothing else. `_ledger_open`
@@ -30,6 +32,7 @@ import types
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
+os.environ["OT_ORCS"] = "1"   # r303: L4's subject is active (check_plan_states pins dormant)
 for _sp in _glob.glob(os.path.join(_root, "venv", "lib", "python*", "site-packages")):
     if _sp not in sys.path:                                  # r106 venv bootstrap
         sys.path.insert(1, _sp)

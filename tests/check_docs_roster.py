@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_docs_roster.py  v1.0
+tests/check_docs_roster.py  v1.1
+v1.1  2026-10-19  OTV4TEST r303 (PSTATE.1) — R3 reads every switch's default from strategy/plan_state.py (the one
+      place that decides active / log / dormant), not from two source literals that no longer exist.
 v1.0  2026-10-03  OTV4TEST r226 (DOC.31) — docs/TRADES.md §0 IS PINNED TO config.py.
 
   The 10-03 audit (D4) found PLAN_SPEC and TRADES disagreeing with the code in ~25
@@ -37,11 +39,12 @@ out = {
   "OT_ORCS": bool(c.ORCS_ENABLED), "OT_GEX_BUTTERFLY": bool(c.GEX_BUTTERFLY_ENABLED),
   "OT_ATP_BUTTERFLY": bool(c.ATP_BUTTERFLY_ENABLED), "OT_SWEEP_CS": bool(c.SWEEP_CS_ENABLED),
   "OT_TCS_ACTIVE": bool(c.TREND_CREDIT_ACTIVE),
-  "OT_VOLT": 'os.environ.get("OT_VOLT", "0") != "1"' not in src("strategy/volt_plan.py"),
-  "OT_ORB_TRADE": 'os.environ.get("OT_ORB_TRADE", "0") != "1"' not in src("strategy/orb_plan.py"),
  },
  "stops": [c.RUNAWAY_MAX_LOSS_PCT, c.MAX_LOSS_PCT, c.BUTTERFLY_STOP_LOSS_PCT],
 }
+# r303 (PSTATE.1): every plan's switch is ON when its default state is ACTIVE - plan_state decides
+from strategy import plan_state as S
+out["on"].update({S.switch(n): S.state(n) == "active" for n in S.TABLE if S.switch(n)})
 print("@@" + json.dumps(out))
 '''
 

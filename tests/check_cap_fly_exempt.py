@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_cap_fly_exempt.py  v1.2
+tests/check_cap_fly_exempt.py  v1.3
+v1.3  2026-10-19  OTV4TEST r303 (PSTATE.1) — its subject ATPButterfly (F6: both flies asked at the cap) is DORMANT by default and a dormant plan now writes
+      nothing by ruling, so this run switches it ACTIVE (OT_ATP_BUTTERFLY=1); what it pins is unchanged.
 v1.2  2026-10-18  OTV4TEST r288 (PARK.1) — PARK IS THE THIRD CAP-EXEMPT NAME, by ruling (the operator, 2026-10-17: PARK
       on "its own budget outside the morning cap"; "Trade it"). F1 now refuses every strategy that is NOT a butterfly and
       NOT PARK; F12 (new) pins PARK admitted at the cap inside 11:01-11:03; F6 lets PARK reach the funnel (asked every
@@ -70,6 +72,7 @@ for _base in (ROOT, os.path.expanduser("~/options-trader")):
     if _found:
         break
 sys.path.insert(0, ROOT)
+os.environ["OT_ATP_BUTTERFLY"] = "1"   # r303: F6's second fly is active (check_plan_states pins dormant)
 
 # Self-isolating: run by hand without the harness, no live store is touched.
 _SCR = tempfile.mkdtemp(prefix="check_cap_fly_exempt_",

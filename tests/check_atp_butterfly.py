@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""tests/check_atp_butterfly.py  v1.3
+"""tests/check_atp_butterfly.py  v1.4
+v1.4  2026-10-19  OTV4TEST r303 (PSTATE.1) — the ATP fly is DORMANT by default and a dormant plan writes nothing by ruling;
+      setting the plan's module ENABLED alone no longer switches it on, so this run sets OT_ATP_BUTTERFLY=1 too.
 THE ATP (AT-THE-PIN) BUTTERFLY — ITS PLAN, ITS STRATEGY, ITS EXITS AND ITS SESSION CAP.
 
 v1.3  2026-09-30  OTV4TEST r179 (BFLY.9) — P7 RE-POINTED: the ATP fly's own
@@ -62,6 +64,7 @@ from datetime import datetime, timezone
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
 os.environ.setdefault("OT_PAPER_TRADING", "1")
+os.environ["OT_ATP_BUTTERFLY"] = "1"   # r303: the subject is active (check_plan_states pins dormant)
 _fails = []
 
 
