@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_liquidity_hunt.py  v1.4
+tests/check_liquidity_hunt.py  v1.5
+v1.5  2026-10-19  OTV4TEST r304 (HUNT.12) - H13a-d: A REFUSED ENTRY DOES NOT SPEND THE BREAK, through main's REAL
+      _attempt_hunt door with execution stubbed: a fire whose execution opens nothing (QQQ 10-19 10:13: COMMIT.2 blocked
+      the A2) leaves the break open and the next tick fires again (H13a); a fire that left a trades.db row stays spent
+      (H13b); an unreadable book stays spent (H13c, fail closed). H13a RED on f07f7a4 (nothing released the break). This
+      checker now imports main, so every store main opens is pointed at its own scratch dir first.
 v1.4  2026-10-18  OTV4TEST r297 (HUNT.11) - H12a-d: one per break SURVIVES A RESTART. A fresh plan (FINISHED empty) with
       today's Hunt row for the break in the scratch trades.db does not fire (H12a); another boundary's row does not
       block (H12b); an unreadable book holds, named (H12c); no row -> fires as before (H12d). OT_TRADES_DB joins this
@@ -43,6 +48,10 @@ import tempfile
 os.environ.setdefault("OT_COUNTERFACTUAL_DIR", tempfile.mkdtemp(prefix="cf_", dir="/var/tmp"))   # r285: never the live log
 _H12_DIR = tempfile.mkdtemp(prefix="chk_hunt_db_")
 os.environ.setdefault("OT_TRADES_DB", os.path.join(_H12_DIR, "trades.db"))   # r297: H12 logs Hunt rows through the real TradeLogger
+for _k, _v in (("OT_DERIVED_DB", "d.db"), ("OT_FEED_DB", "f.db"), ("OT_LOG_FILE", "bot.log"),        # r304: H13 imports main
+               ("OT_SIGNAL_JOURNAL_DIR", "sj"), ("OT_RESTING_DB", "r.db"), ("OT_RESTING_STOP_STATE", "rs.json"),
+               ("OT_WAREHOUSE_STATE", "ws"), ("OT_PLAN_STATES_FILE", "ps.json")):
+    os.environ.setdefault(_k, os.path.join(_H12_DIR, _v))
 import time
 import types
 
@@ -303,6 +312,55 @@ def main():
     sig, r = _tick(_fresh(), 9.3)
     check("H12d with no Hunt row today the fresh process fires as before (the book is read, nothing found)",
           sig is not None and sig.hunt_entry == "A1", f"sig={sig and sig.hunt_entry} {r[0]}")
+    # ── H13 (r304, HUNT.12): a REFUSED entry does not spend the break - main's real _attempt_hunt door ──
+    try:
+        import main as _M
+        _M._set_admission(None)
+        _orig_exec, _orig_lh = _M._execute_entry_signal, _M._liquidity_hunt
+        _execs = []
+        _M._execute_entry_signal = lambda *a, **k: _execs.append(1)     # execution opens NOTHING (a refusal)
+
+        class _St:
+            paper_trading = True
+
+        def _door(h, n):
+            _M._liquidity_hunt = h
+            P.begin_tick(n)
+            _M._attempt_hunt({"price": 101.3, "df_1m": _frame([(100.9, 101.4, 100.8, 101.3), (101.3, 101.5, 101.2, 101.4)],
+                                                                  "09:42"), "atm_iv": 0.25},
+                             None, _St(), orb=orb, chain=chain, now_hhmm="09:42", atr_pct=0.14)
+            P.close_tick(st, "TST")
+            return row()
+        try:
+            h13 = _fresh()
+            _door(h13, 9.4)
+            r2 = _door(h13, 9.5)
+            check("H13a a fire whose execution opened nothing leaves the break OPEN: the next tick fires again",
+                  len(_execs) == 2 and ("FIRES" in r2[1] or r2[0] == "TAKE"),
+                  f"executions {len(_execs)}, second tick: {r2[0]} {r2[1][-80:]}")
+            h13b = _fresh(); _execs.clear()
+            _door(h13b, 9.6)                                 # fires; this time it TRADED (the row is in the book)
+            _hunt_row("h13b", 101.0)
+            _M._release_unfilled_hunt(types.SimpleNamespace(direction="long", underlying_stop=101.0, hunt_entry="A1"), _St())
+            r3 = _door(h13b, 9.7)
+            check("H13b a fire that left today's trades.db row stays SPENT: one per break",
+                  len(_execs) == 1 and "one per break" in r3[1], f"executions {len(_execs)}, {r3[1][-80:]}")
+            with sqlite3.connect(os.environ["OT_TRADES_DB"]) as _c:
+                _c.execute("DELETE FROM trades WHERE trade_id='h13b'")
+            _fresh()
+            _orig_fin = LH.break_finished_in_book
+            LH.FINISHED.add(("long", 101.0))                 # what the fire does, before execution
+            LH.break_finished_in_book = lambda *a, **k: "unreadable"
+            try:
+                _M._release_unfilled_hunt(types.SimpleNamespace(direction="long", underlying_stop=101.0, hunt_entry="A1"), _St())
+                held = ("long", 101.0) in LH.FINISHED
+            finally:
+                LH.break_finished_in_book = _orig_fin
+            check("H13c ...but with the book UNREADABLE the break stays spent (fail closed)", held, f"held {held}")
+        finally:
+            _M._execute_entry_signal, _M._liquidity_hunt = _orig_exec, _orig_lh
+    except Exception as exc:                                    # noqa: BLE001
+        check("H13 main's _attempt_hunt door could be driven", False, f"{type(exc).__name__}: {exc}")
     print()
     if FAILED:
         print(f"FAIL — {len(FAILED)} check(s): {FAILED}"); return 1

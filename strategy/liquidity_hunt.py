@@ -1,5 +1,10 @@
 """
-strategy/liquidity_hunt.py  v1.12
+strategy/liquidity_hunt.py  v1.13
+v1.13 2026-10-19  OTV4TEST r304 (HUNT.12) — release_break(direction, boundary): main.py hands a break BACK when its fire
+      opened nothing (QQQ 10-19 10:13: the A2 long from 718.36 was BLOCKED by COMMIT.2, yet the fire had already put the
+      break in FINISHED, so the plan held "this break already had its hunt" and only the late A1 at 720.49 - past its own
+      720.40 target - was left, -$87.50). The operator, 2026-10-19 11:16 ET: "1. Yes". The fire still marks the break
+      (one per break inside the tick is unchanged); only main.py's door, after execution, can release it.
 v1.12 2026-10-18  OTV4TEST r297 (HUNT.11) — ONE HUNT PER BREAK SURVIVES A RESTART. FINISHED was an in-memory set and nothing
       read trades.db, so a restart with no Hunt open re-fired the same boundary (audit 2026-10-18 A6; the Runaway's twin
       has been DB-backed since r281). break_finished_in_book() keys today's Hunt rows by option_side + underlying_stop
@@ -116,6 +121,19 @@ CUTOFF_ET      = config.HUNT_CUTOFF_ET          # r148: no literal fallback
 MAX_LOSS_PCT   = float(config.HUNT_MAX_LOSS_PCT)
 
 FINISHED: set = set()          # (direction, boundary) this process has hunted - a CACHE since r297; trades.db decides
+
+
+def release_break(direction: str, boundary) -> bool:
+    """r304 (HUNT.12) — forget that (direction, boundary) was hunted, because its fire opened NOTHING (main.py
+    calls this only after execution left no Hunt position and no trades.db row for the break). True if it was
+    held. Never raises."""
+    try:
+        key = (str(direction), round(float(boundary), 2))
+        held = key in FINISHED
+        FINISHED.discard(key)
+        return held
+    except Exception:                                           # noqa: BLE001
+        return False
 
 
 def break_finished_in_book(direction: str, boundary, session_date=None):

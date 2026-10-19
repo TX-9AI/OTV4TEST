@@ -1,5 +1,8 @@
 """
-main.py  v4.111
+main.py  v4.112
+v4.112  2026-10-19  OTV4TEST r304 (HUNT.12) - _attempt_hunt hands the break back (_release_unfilled_hunt) when its fire
+      opened nothing: no open Hunt and no trades.db row for the break after _execute_entry_signal (the commit gate, a
+      zero size, a failed order). An unreadable book keeps it spent (fails closed). The operator, 2026-10-19: "1. Yes".
 v4.111  2026-10-19  OTV4TEST r303 (PSTATE.1) - every plan is ACTIVE, LOG or DORMANT (strategy/plan_state.py; the operator,
       2026-10-19 08:43 ET: "each plan to have 3 states: active, dormant or log only"). _safe_strategy never asks a DORMANT
       plan; _retired_reason lets a LOG sweep / TCS be asked; _execute_condor_leg refuses a LOG plan's signal at its top
@@ -4983,8 +4986,31 @@ def _attempt_hunt(ctx, ms, state, *, orb, chain, now_hhmm, atr_pct) -> None:
             chain=chain, df_1m=ctx.get("df_1m"), atm_iv=ctx.get("atm_iv")), ctx)
         if sig is not None and not _log_only(sig, ctx):     # r254 (OBS.1)
             _execute_entry_signal(sig, ctx, ms, state, None, additive=True)
+            _release_unfilled_hunt(sig, state)                  # r304 (HUNT.12)
     except Exception as exc:                                   # noqa: BLE001
         logger.warning("[hunt] attempt failed: %s", exc)
+
+
+def _release_unfilled_hunt(sig, state) -> None:
+    """r304 (HUNT.12) — A REFUSED ENTRY DOES NOT SPEND THE BREAK. The fire put (direction, boundary) in
+    liquidity_hunt.FINISHED before execution; if execution opened nothing - no open Hunt on this box AND no
+    trades.db row for the break today - the break is handed back, as if the fire never happened. An
+    unreadable book keeps it spent (fail closed, HUNT.11's rule). Never raises."""
+    try:
+        _pm = get_position_manager(state.paper_trading)
+        if any(str(r.get("strategy") or "") == "LiquidityHunt" for r in _pm.get_open_records()):
+            return
+        from strategy import liquidity_hunt as _lh
+        _d, _b = str(getattr(sig, "direction", "") or ""), getattr(sig, "underlying_stop", None)
+        if not _d or _b is None:
+            return
+        if _lh.break_finished_in_book(_d, _b) is not False:     # True = it traded; "unreadable" = fail closed
+            return
+        if _lh.release_break(_d, _b):
+            logger.info("[hunt] %s %s from %.2f opened nothing - the break stays open (HUNT.12)",
+                        getattr(sig, "hunt_entry", "?"), _d, float(_b))
+    except Exception as exc:                                   # noqa: BLE001
+        logger.warning("[hunt] break release check failed (%s) - the break stays spent", exc)
 
 
 def _attempt_sweep_on_grant(ctx, ms, state) -> None:
