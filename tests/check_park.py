@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_park.py  v1.3
+tests/check_park.py  v1.4
 PARK - THE 11:00 FIRST-HOUR CONTINUATION (PARK.1): THE PLAN, THE STRATEGY, ITS SIZE, ITS EXITS, ITS OWN BUDGET.
+v1.4  2026-10-19  OTV4TEST r302 (GATE.2). K13a ran attempt_new_entry() on the WALL CLOCK, so before 09:35 ET
+      session_guard refused it ("opening range still forming") and PARK was never asked: RED at every 08:00 boot
+      sweep (first seen 2026-10-19), GREEN at the 16:00-19:00 build sweeps that landed it. K13a now pins every
+      loaded module's now_et/now_utc to DAY 11:01 ET (PARK's own window, inside RTH) for the one call.
 v1.3  2026-10-18  OTV4TEST r298 (CAP.4). K11c: RiskManager._ensure_seeded on K11b's rows (PARK -2,000, Breakout -500) reads
       the cap's -500 and does not latch the halt; it read today_summary's -2,500 and halted (audit 10-18 A5).
 v1.2  2026-10-18  OTV4TEST r292 (GATE.1). K13a DRIVES attempt_new_entry() with the PARK attempt intercepted: the
@@ -353,12 +357,25 @@ def main():
     with sqlite3.connect(os.environ["OT_TRADES_DB"]) as _c:      # K11b's closed rows would trip the cap -> capped branch
         _c.execute("DELETE FROM trades WHERE trade_id IN ('p1', 'b1')")
     _err = ""
+    # r302 (GATE.2) - THE CLOCK IS PINNED, not read off the wall: before 09:35 ET session_guard refuses every
+    # entry, so an unpinned K13a was red at each 08:00 boot sweep. DAY 11:01 ET is PARK's window, inside RTH.
+    # Every loaded module that holds the real now_et / now_utc (by identity) gets the pinned one; restored after.
+    import utils.time_utils as _TU
+    _pin = datetime(DAY.year, DAY.month, DAY.day, 11, 1, 30, tzinfo=ET)
+    _real = {"now_et": _TU.now_et, "now_utc": _TU.now_utc}
+    _fake = {"now_et": lambda: _pin, "now_utc": lambda: _pin.astimezone(timezone.utc)}
+    _swapped = [(_m, _n) for _m in list(sys.modules.values()) for _n in _real
+                if _m is not None and getattr(_m, _n, None) is _real[_n]]
+    for _m, _n in _swapped:
+        setattr(_m, _n, _fake[_n])
     try:
         _MN0.attempt_new_entry({"price": 702.4, "chain": _Chain(), "macro": {}, "symbol": SYM}, _MS(), _st)
     except Exception as _e:                                     # noqa: BLE001
         _err = f"{type(_e).__name__}: {_e}"
     finally:
         _MN0._attempt_park, _MN0._attempt_butterfly = _orig_park, _orig_fly
+        for _m, _n in _swapped:
+            setattr(_m, _n, _real[_n])
     check("K13a DRIVEN: attempt_new_entry() asks _attempt_park WITH the chain on the normal-day path",
           ("park", True) in _calls and not _err, f"calls={_calls} err={_err}")
 
