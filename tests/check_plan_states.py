@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_plan_states.py  v1.0
+tests/check_plan_states.py  v1.1
+v1.1  2026-10-19  OTV4TEST r305 (GATE.3) — D8/D10 write their heartbeat rows under the symbol the plans panel READS
+      (query.INSTRUMENT, which takes the live unit's OT_INSTRUMENT before the checker's), not a literal 'QQQ': on
+      SPX-TEST the panel filters WHERE symbol='SPX', so D10 saw no row and went RED 12/13 (found by SPX-TEST,
+      MSG-SPX-1019-06; a scratch copy with only that literal changed was GREEN 13/13). Test-only.
 EVERY PLAN IS ACTIVE, LOG ONLY OR DORMANT, AND DORMANT WRITES NOTHING (PSTATE.1).
 
 v1.0  2026-10-19  OTV4TEST r303 (PSTATE.1). The operator, 2026-10-19 08:34 ET: "Going forward, I want all the
@@ -276,6 +280,9 @@ def main():
     pc.commit()
     try:
         import query as Q
+        _psym = Q.INSTRUMENT if Q.INSTRUMENT and Q.INSTRUMENT != "UNSET" else "QQQ"   # r305: the panel's symbol
+        pc.execute("UPDATE plan_heartbeat SET symbol=?", (_psym,))
+        pc.commit()
         Q.now_et = lambda: now
         buf = io.StringIO()
         with redirect_stdout(buf):
@@ -321,8 +328,9 @@ def main():
         tc.execute("CREATE TABLE IF NOT EXISTS trades (trade_id TEXT PRIMARY KEY, strategy TEXT, status TEXT, "
                    "is_condor_leg INTEGER DEFAULT 0, credit_received REAL)")
         tc.commit()
-        pc.execute("INSERT OR REPLACE INTO plan_heartbeat VALUES ('QQQ','LiquidityHunt/manage',?,1,'IDLE','','INACTIVE','old')",
-                   (now.timestamp() - 7200,))
+        _psym = Q.INSTRUMENT if Q.INSTRUMENT and Q.INSTRUMENT != "UNSET" else "QQQ"   # r305: the panel's symbol
+        pc.execute("INSERT OR REPLACE INTO plan_heartbeat VALUES (?,'LiquidityHunt/manage',?,1,'IDLE','','INACTIVE','old')",
+                   (_psym, now.timestamp() - 7200))
         pc.commit()
 
         def panel():
