@@ -1,5 +1,8 @@
 """
-config.py  v4.69
+config.py  v4.70
+v4.70  2026-10-19  OTV4TEST r306 (RENT.2) - OT_REENTRY_GATE off|log|trade (unset = trade; LIVE reads log; a bogus value
+      reads log and is named): REENTRY_GATE_MODE / REENTRY_GATE_ENV_REFUSED for analysis/reentry.py's 20 s gate after a
+      same-side PREMIUM exit. The operator, 2026-10-19 20:17 ET: "Yes".
 v4.69  2026-10-18  OTV4TEST r295 (LIVE.2; the deadline half is a MIRROR of otv4 r474 674e0cc) - LIVE_FILL_DEADLINE_SECONDS
       30 -> 8: a live close waited up to 30 s per position for a fill (+6 s cancel grace), serially, with the main loop
       frozen; five unfilled positions at the 15:50 ladder = >180 s without a heartbeat = the emergency watchdog's kill.
@@ -1022,6 +1025,18 @@ else:
     CAUTION_SIZE_MODE = "log"
     if _cz_raw:
         CAUTION_SIZE_ENV_REFUSED = _cz_raw
+# ── r306 (RENT.2) — NO RE-ENTRY WITHIN 20 s OF A SAME-SIDE PREMIUM EXIT (analysis/reentry.py) ───
+# OT_REENTRY_GATE off | log | trade. UNSET = trade (the operator, 2026-10-19 20:17 ET: "Yes"). A LIVE box never acts
+# on it: trade reads as log there and the Service mode line says so. A refused value reads log and is named.
+REENTRY_GATE_ENV_REFUSED = ""
+_rg_raw = os.environ.get("OT_REENTRY_GATE", "").strip().lower()
+if _rg_raw in ("off", "log", "trade"):
+    REENTRY_GATE_MODE = _rg_raw
+elif not _rg_raw:
+    REENTRY_GATE_MODE = "trade"
+else:
+    REENTRY_GATE_MODE = "log"
+    REENTRY_GATE_ENV_REFUSED = _rg_raw
 RESTING_STOP_WAIT_S = 120.0
 RESTING_STOP_EMERGENCY_FRAC = 0.05
 BRK_NOPROG_STALL_BARS = 2      # consecutive closed 1m bars without a new favourable extreme

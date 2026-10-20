@@ -1,5 +1,9 @@
 """
-main.py  v4.112
+main.py  v4.113
+v4.113  2026-10-19  OTV4TEST r306 (RENT.2) - _execute_entry_signal: after COMMIT.2 and before the order, a directional
+      entry within 20 s of a same-side PREMIUM exit (any strategy, trades.db) is not placed on a paper box
+      (analysis/reentry.py; OT_REENTRY_GATE, unset = trade); the Service mode line names " · reentry_gate=<mode>".
+      The operator, 2026-10-19 20:17 ET: "Yes".
 v4.112  2026-10-19  OTV4TEST r304 (HUNT.12) - _attempt_hunt hands the break back (_release_unfilled_hunt) when its fire
       opened nothing: no open Hunt and no trades.db row for the break after _execute_entry_signal (the commit gate, a
       zero size, a failed order). An unreadable book keeps it spent (fails closed). The operator, 2026-10-19: "1. Yes".
@@ -1387,6 +1391,7 @@ from config import (
     RESTING_STOP_MODE, RESTING_STOP_ENV_REFUSED,                    # r266 (STOP.1)
     COMMIT_GATE_MODE, COMMIT_GATE_ENV_REFUSED,                      # r272 (COMMIT.2)
     CAUTION_SIZE_MODE, CAUTION_SIZE_ENV_REFUSED,                    # r272 (COMMIT.3)
+    REENTRY_GATE_MODE, REENTRY_GATE_ENV_REFUSED,                    # r306 (RENT.2)
     NOISE_FLOOR_BAR_MULT, NOISE_FLOOR_LOOKBACK_BARS, NOISE_FLOOR_MIN_BARS,
     PIN_PROXIMITY_ACTIVE, PIN_PROXIMITY_MIN_FRAC,
     REASSESS_MINUTES, INSTRUMENT, INSTRUMENT_UNSET, INSTRUMENT_LISTED, SessionConfig, DIRECTIONAL_ONLY,
@@ -5454,6 +5459,11 @@ def _banner_dials() -> str:
         brk += " (LIVE: refused - logs only)"
     if COMMIT_GATE_ENV_REFUSED:
         brk += f" (OT_COMMIT_GATE={COMMIT_GATE_ENV_REFUSED!r} REFUSED)"
+    brk += f" · reentry_gate={REENTRY_GATE_MODE}"                          # r306 (RENT.2)
+    if REENTRY_GATE_MODE == "trade" and not PAPER_TRADING:
+        brk += " (LIVE: refused - logs only)"
+    if REENTRY_GATE_ENV_REFUSED:
+        brk += f" (OT_REENTRY_GATE={REENTRY_GATE_ENV_REFUSED!r} REFUSED)"
     brk += f" · caution={CAUTION_SIZE_MODE}"                               # r272 (COMMIT.3)
     if CAUTION_SIZE_ENV_REFUSED:
         brk += f" (OT_CAUTION_SIZE={CAUTION_SIZE_ENV_REFUSED!r} REFUSED)"
@@ -5769,6 +5779,19 @@ def _execute_entry_signal(signal, ctx, ms, state, _sigj=None, *, additive: bool 
         if _sigj is not None:
             try:
                 _sigj.journal("disposition", outcome="gate_block:commit_abandoned",
+                              signal=_sigj.signal_ctx(signal))
+            except Exception:                                  # noqa: BLE001
+                pass
+        return
+    # ── r306 (RENT.2) — NOT BACK IN WITHIN 20 s OF A SAME-SIDE PREMIUM EXIT ─────────────────────────────────────
+    # The operator's 10-12 rule ("a good place to get out cannot be a good place to get in") for the one exit that
+    # read no market: within 20 s of a premium exit on this side the re-entry is the same trade bought back across
+    # the spread (A7 study, /var/tmp/a7_study). Recorded with the would-be order; a market exit never gates.
+    from analysis import reentry as _rentry
+    if _rentry.gate(signal, ctx, mode=REENTRY_GATE_MODE, paper=PAPER_TRADING, contracts=sizing.contracts):
+        if _sigj is not None:
+            try:
+                _sigj.journal("disposition", outcome="gate_block:reentry_after_premium_exit",
                               signal=_sigj.signal_ctx(signal))
             except Exception:                                  # noqa: BLE001
                 pass
