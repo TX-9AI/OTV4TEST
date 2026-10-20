@@ -1,5 +1,8 @@
 """
-main.py  v4.113
+main.py  v4.114
+v4.114  2026-10-20  OTV4TEST r309 (B4, MIRROR OF otv4 r495 81cc63c, WA 38.2) - a LIVE start cancels this instrument's
+      untracked working orders (order_guard.boot_sweep) BEFORE the broker reconcile, so a part-filled leftover is
+      adopted by the same start; entries stay blocked until one sweep comes back clean. Hunk verbatim from 81cc63c.
 v4.113  2026-10-19  OTV4TEST r306 (RENT.2) - _execute_entry_signal: after COMMIT.2 and before the order, a directional
       entry within 20 s of a same-side PREMIUM exit (any strategy, trades.db) is not placed on a paper box
       (analysis/reentry.py; OT_REENTRY_GATE, unset = trade); the Service mode line names " · reentry_gate=<mode>".
@@ -7062,6 +7065,13 @@ def _recover_open_position(state: BotState, restart_type: str = ""):
     # truth for what's actually open. (Paper has no broker to query; and even on
     # live this stays OFF until OT_BROKER_RECONCILE=True, so it can't fire before
     # get_open_option_positions() has been verified on a live box.)
+    # r495 / B4 — a working order left by the previous process is invisible to it (order_guard is
+    # in memory; B1 adopts positions, not orders). Cancel this instrument's untracked ones FIRST,
+    # so a part-fill is adopted by the reconcile below; a failed sweep blocks entries, never exits.
+    if not state.paper_trading:
+        from execution import order_guard as _guard
+        _guard.boot_sweep()
+
     if not state.paper_trading and BROKER_RECONCILE_ENABLED:
         live = _reconcile_with_broker(state, live, restart_type, instrument)
 

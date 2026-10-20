@@ -1,5 +1,12 @@
 """
-strategy/condor_roll.py  v4.11
+strategy/condor_roll.py  v4.12
+v4.12 2026-10-20  OTV4TEST r309 (B4, MIRROR OF otv4 r495 81cc63c, WA 38.2) — the roll and the tent ask
+      order_guard.clear_to_post BEFORE their first leg on LIVE (found by this tree's r495 critique,
+      MSG-QQQ-1020-18): both post an OPEN (the rolled vertical; the hedge) and neither passed B2's guard
+      or B4's no-entry-before-a-clean-sweep. Whole adjustment or none: a refused roll or tent touches
+      NOTHING and retries next tick (operator 10-20: "Hold, retry"). The condor's stops still run: exits
+      never pass through the guard. Paper unchanged. _guard_clear and both call sites verbatim from 81cc63c;
+      the tent stays uncalled in this tree (v4.8 r11) and is guarded anyway.
 v4.11 2026-10-04  OTV4TEST r242 (LIVE.1 B0, MIRROR OF otv4 r463 c912ce7, WA 38.2) — every Account call goes through tasty_client.sdk_result: on tastytrade 13.x the Account methods are coroutines and a bare call placed and closed NOTHING live (paper never calls them). Hunks applied verbatim from c912ce7.
 v4.10 2026-10-03  OTV4TEST r230 (PREM.5) — ORCS LEGS ARE ROLLED AND TENTED LIKE ANY CONDOR'S. The operator, 2026-10-03 21:21 ET: "On rolling/defending the ORCS, adopt the condor logic verbatim." Both leg reads take every is_condor_leg record again (v4.9's skip is removed).
 v4.9  2026-10-03  OTV4TEST r204 (PREM.2) — ORCS LEGS ARE NEVER ROLLED OR TENTED. Both leg reads skip strategy
@@ -352,6 +359,24 @@ def check_and_execute_roll(pos_mgr, chain, current_price: float, state, df_1m=No
     return _execute_roll(pos_mgr, tested, untested, plan, state, chain)
 
 
+def _guard_clear(state, what: str) -> bool:
+    """r495 / B4 — may a LIVE adjustment that will post an OPEN start at all? Asked before the
+    first leg so it is the whole adjustment or none. Paper: always."""
+    if state.paper_trading:
+        return True
+    try:
+        from config import INSTRUMENT
+        from data.tasty_client import get_session, get_account
+        from execution import order_guard as _guard
+        ok, why = _guard.clear_to_post(f"{INSTRUMENT}|open|condor_{what}",
+                                       get_session(), get_account())
+    except Exception as exc:                                    # noqa: BLE001
+        ok, why = False, f"guard unavailable ({type(exc).__name__})"
+    if not ok:
+        logger.warning("[guard] condor %s not started: %s", what, why)
+    return ok
+
+
 def _execute_roll(pos_mgr, tested: dict, untested: dict,
                   plan: RollPlan, state, chain=None) -> bool:
     """Close the old untested vertical, open the rolled vertical, and flag the
@@ -364,6 +389,8 @@ def _execute_roll(pos_mgr, tested: dict, untested: dict,
     tl        = get_trade_logger()
     mode      = "PAPER" if state.paper_trading else "LIVE"
     contracts = plan.contracts
+    if not _guard_clear(state, "roll"):                         # r495 B4: before step 1
+        return False
 
     try:
         # ── 1. Close the OLD untested vertical (buy it back) ──────────────────
@@ -795,6 +822,8 @@ def _execute_tent(pos_mgr, winner: dict, keep: dict, hedge, hedge_ask: float,
     tl   = get_trade_logger()
     mode = "PAPER" if state.paper_trading else "LIVE"
     qty  = int(keep.get("contracts", 1))
+    if not _guard_clear(state, "tent"):                         # r495 B4: before step 1
+        return False                                            # HOLD: touch nothing, retry next tick
 
     # ── 1. take the profitable side off ─────────────────────────────────────
     w_mark = _leg_value(winner, chain)
