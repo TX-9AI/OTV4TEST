@@ -959,7 +959,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `tests/check_foreign_symbol_board.py`
 - **calls:** `data/candle_feed.py`, `data/derived_store.py`, `query.py`, `strategy/plan.py`, `tools/manifold_health.py`
-- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/ENV.md`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/ENV.md`, `tools/land.sh`
 
 ### `tests/check_fork_closed_bars.py`
 - **calls:** `analysis/__init__.py`, `analysis/pitchfork.py`, `data/derived_store.py`, `derived/forks.py`

@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-tests/check_foreign_symbol_board.py  v1.0
+tests/check_foreign_symbol_board.py  v1.1
+v1.1  2026-10-20  OTV4TEST r307 (GATE.4) - F7 PINS ITS OWN PLAN STATES FILE. Since r303 the plans panel skips every plan
+      data/plan_states.json names dormant, and F7 read the LIVE file (the bot writes it at start; VOLT is dormant in it),
+      so its stale-VOLT control row vanished: RED at the 10-20 08:00 sweep on QQQ-TEST and SPX-TEST (STALE rows: []),
+      green in every worktree, which has no such file. F7 now points OT_PLAN_STATES_FILE at an absent file in its own
+      temp dir - the panel's no-states path, which judges every heartbeat - and restores the env after.
 A SYMBOL THIS BOX NO LONGER FEEDS NEVER JUDGES IT, AND A CASH INDEX HAS NO TAPE WHOEVER ASKS (BOX.18).
 
 v1.0  2026-10-05  OTV4TEST r252 - found on SPX-TEST, 10-05 09:37 ET, on the operator's own board
@@ -137,8 +142,16 @@ def main():
                             " VALUES (?,?,?,?,?)", (sym, plan, t_now - age, 6, "IDLE"))
         ds.conn.commit()
         buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            Q.show_decisions(ds.conn)
+        _prev_ps = os.environ.get("OT_PLAN_STATES_FILE")
+        os.environ["OT_PLAN_STATES_FILE"] = os.path.join(d2, "no_plan_states.json")   # r307: never the live file
+        try:
+            with contextlib.redirect_stdout(buf):
+                Q.show_decisions(ds.conn)
+        finally:
+            if _prev_ps is None:
+                os.environ.pop("OT_PLAN_STATES_FILE", None)
+            else:
+                os.environ["OT_PLAN_STATES_FILE"] = _prev_ps
         out = buf.getvalue()
         stale = [ln.split()[1] for ln in out.splitlines() if "STALE" in ln and ln.strip().startswith("!!")]
         check("F7 the plans panel lists no AAL heartbeat as STALE; the stale SPX one still shows",

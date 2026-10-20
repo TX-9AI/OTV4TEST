@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_boot_sweep.py  v1.6
+tests/check_boot_sweep.py  v1.7
+v1.7  2026-10-20  OTV4TEST r307 (GATE.4) — B3/B3b REQUIRE THE PLAN STATES FILE IN SCRATCH TOO (check_foreign_symbol_board F7
+      read the live data/plan_states.json at the 10-20 08:00 sweep).
 v1.6  2026-10-18  OTV4TEST r292 (GATE.1) — B3/B3b REQUIRE THE FEED STORE, THE RESTING-STOP STATE FILE AND THE WAREHOUSE
       STATE DIR IN SCRATCH TOO (audit 10-18 B4: 42 checkers read the live 2.5 GB feed_store.db under the sweep).
 v1.5  2026-10-15  OTV4TEST r287 (CFDIR.1) — B3/B3b REQUIRE THE COUNTERFACTUAL LOGS IN SCRATCH TOO.
@@ -133,7 +135,7 @@ check("B3 every checker runs against SCRATCH stores",
       and ("OT_RESTING_DB" in _src) and ("OT_SIGNAL_JOURNAL_DIR" in _src)
       and ("OT_LOG_FILE" in _src) and ("OT_COUNTERFACTUAL_DIR" in _src)
       and ("OT_FEED_DB" in _src) and ("OT_RESTING_STOP_STATE" in _src)        # r292 (GATE.1)
-      and ("OT_WAREHOUSE_STATE" in _src)
+      and ("OT_WAREHOUSE_STATE" in _src) and ("OT_PLAN_STATES_FILE" in _src)     # r307 (GATE.4)
       and ("mkdtemp" in _src or "TemporaryDirectory" in _src),
       "checkers must never see the live trades/derived/resting stores")
 
@@ -167,7 +169,8 @@ def _b3b():
         _m.subprocess.run = _orig
     env = seen.get("env") or {}
     want = ("OT_TRADES_DB", "OT_DERIVED_DB", "OT_RESTING_DB", "OT_SIGNAL_JOURNAL_DIR", "OT_LOG_FILE",
-            "OT_COUNTERFACTUAL_DIR", "OT_FEED_DB", "OT_RESTING_STOP_STATE", "OT_WAREHOUSE_STATE")   # r292
+            "OT_COUNTERFACTUAL_DIR", "OT_FEED_DB", "OT_RESTING_STOP_STATE", "OT_WAREHOUSE_STATE",   # r292
+            "OT_PLAN_STATES_FILE")                                                   # r307 (GATE.4)
     paths = {k: env.get(k) for k in want}
     parents = {os.path.dirname(v) for v in paths.values() if v}
     ok = (all(paths.values()) and len(parents) == 1
@@ -179,7 +182,7 @@ try:
     _ok3b, _paths3b = _b3b()
 except Exception as _e3b:                                       # noqa: BLE001
     _ok3b, _paths3b = False, f"{type(_e3b).__name__}: {_e3b}"
-check("B3b DRIVEN: run_one hands a checker ONLY scratch stores (trades, derived, resting, journal, log, cf, feed, rest-state, warehouse-state)",
+check("B3b DRIVEN: run_one hands a checker ONLY scratch stores (trades, derived, resting, journal, log, cf, feed, rest-state, warehouse-state, plan-states)",
       _ok3b, str(_paths3b))
 
 

@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""tools/boot_sweep.py — v1.7
+"""tools/boot_sweep.py — v1.8
+v1.8 (2026-10-20) — OTV4TEST r307 (GATE.4). OT_PLAN_STATES_FILE IS SCRATCH: r303's plans panel reads data/plan_states.json
+(the bot writes it at start; VOLT is dormant in it), so check_foreign_symbol_board F7's stale-VOLT control row vanished
+and the 10-20 08:00 sweep went RED on QQQ-TEST and SPX-TEST alike - green in every worktree, which has no such file. A
+checker that drives main's start would also have rewritten the live file. check_boot_sweep B3/B3b.
+
 v1.7 (2026-10-18) — OTV4TEST r292 (GATE.1). THREE MORE STORES ARE SCRATCH: OT_FEED_DB (the live feed_store.db -
 42 checkers import modules whose r284/r285/r288 paths resolve feed_db_path() at call time, so under the sweep they READ
 the live 2.5 GB tape and a checker's verdict depended on live retention), OT_RESTING_STOP_STATE (a checker driving the
@@ -148,6 +153,7 @@ def run_one(name: str) -> bool:
     env["OT_FEED_DB"] = os.path.join(d, "feed_store.db")              # r292 (GATE.1): the 2.5 GB live tape
     env["OT_RESTING_STOP_STATE"] = os.path.join(d, "resting_stop_state.json")   # r292: a rest survives a restart
     env["OT_WAREHOUSE_STATE"] = os.path.join(d, "warehouse_state")    # r292: the push/purge ledgers
+    env["OT_PLAN_STATES_FILE"] = os.path.join(d, "plan_states.json")  # r307 (GATE.4): the live bot's plan states
     env["OT_SWEEP_NESTED"] = "1"     # r257: a checker that drives this tool gets a refusal, not a sweep
     env.setdefault("OT_INSTRUMENT", "QQQ")   # r146: an EXPLICIT fixture symbol; config no longer guesses one
     try:

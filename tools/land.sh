@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# tools/land.sh — v1.20
+# tools/land.sh — v1.21
+# v1.21 (2026-10-20) — OTV4TEST r307 (GATE.4). OT_PLAN_STATES_FILE UNDER $_scratch on every CHECK: r303's plans panel
+#   (query.show_decisions) reads data/plan_states.json, which the bot writes at start, so a checker's verdict depended on
+#   the live bot's plan states (check_foreign_symbol_board F7 RED at the 10-20 08:00 sweep on both boxes). check_land_tooling T6.
 # v1.20 (2026-10-18) — OTV4TEST r292 (GATE.1). THREE MORE STORES UNDER $_scratch on every CHECK: OT_FEED_DB (the live
 #   feed_store.db was READ by 42 checkers through feed_db_path() at call time), OT_RESTING_STOP_STATE and
 #   OT_WAREHOUSE_STATE. Found by the 2026-10-18 audit (B4). check_land_tooling T6.
@@ -545,7 +548,7 @@ land_one() {
     # with the trades and derived stores pointed at scratch files, whatever it does.
     # r109 — AND THE RESTING-ORDER STORE, the third one r13 missed (v1.15 above).
     _scratch="$(mktemp -d /tmp/land-check.XXXXXX)"
-    if ( cd "$repo" && env -u LAND_ARCHIVE -u LAND_STAGE OT_TRADES_DB="$_scratch/trades.db" OT_DERIVED_DB="$_scratch/derived_store.db" OT_RESTING_DB="$_scratch/resting_orders.db" OT_SIGNAL_JOURNAL_DIR="$_scratch/signal_journal" OT_LOG_FILE="$_scratch/bot.log" OT_COUNTERFACTUAL_DIR="$_scratch/counterfactual" OT_FEED_DB="$_scratch/feed_store.db" OT_RESTING_STOP_STATE="$_scratch/resting_stop_state.json" OT_WAREHOUSE_STATE="$_scratch/warehouse_state" OT_INSTRUMENT="${OT_INSTRUMENT:-QQQ}" python3 "$chk" ) >/dev/null 2>&1; then
+    if ( cd "$repo" && env -u LAND_ARCHIVE -u LAND_STAGE OT_TRADES_DB="$_scratch/trades.db" OT_DERIVED_DB="$_scratch/derived_store.db" OT_RESTING_DB="$_scratch/resting_orders.db" OT_SIGNAL_JOURNAL_DIR="$_scratch/signal_journal" OT_LOG_FILE="$_scratch/bot.log" OT_COUNTERFACTUAL_DIR="$_scratch/counterfactual" OT_FEED_DB="$_scratch/feed_store.db" OT_RESTING_STOP_STATE="$_scratch/resting_stop_state.json" OT_WAREHOUSE_STATE="$_scratch/warehouse_state" OT_PLAN_STATES_FILE="$_scratch/plan_states.json" OT_INSTRUMENT="${OT_INSTRUMENT:-QQQ}" python3 "$chk" ) >/dev/null 2>&1; then
       pb_clear
       echo "  check: $chk PASS"
     else

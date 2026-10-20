@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-tests/check_land_tooling.py  v1.5
+tests/check_land_tooling.py  v1.6
+v1.6  2026-10-20  OTV4TEST r307 (GATE.4) — T6 also requires OT_PLAN_STATES_FILE under $_scratch on every CHECK line.
 v1.5  2026-10-18  OTV4TEST r292 (GATE.1) — T6 also requires OT_FEED_DB, OT_RESTING_STOP_STATE and OT_WAREHOUSE_STATE under
       $_scratch on every CHECK line (audit 10-18 B4).
 v1.4  2026-10-15  OTV4TEST r287 (CFDIR.1) — T6 also requires OT_COUNTERFACTUAL_DIR under $_scratch on every CHECK line.
@@ -122,9 +123,10 @@ def main():
              'OT_RESTING_DB="$_scratch/', 'OT_SIGNAL_JOURNAL_DIR="$_scratch/',
              'OT_LOG_FILE="$_scratch/', 'OT_COUNTERFACTUAL_DIR="$_scratch/',    # r194, r287
              'OT_FEED_DB="$_scratch/', 'OT_RESTING_STOP_STATE="$_scratch/',
-             'OT_WAREHOUSE_STATE="$_scratch/')                                  # r292 (GATE.1)
+             'OT_WAREHOUSE_STATE="$_scratch/',                                  # r292 (GATE.1)
+             'OT_PLAN_STATES_FILE="$_scratch/')                                 # r307 (GATE.4)
     _bad = [ln.strip()[:90] for ln in _runs if not all(n in ln for n in _need)]
-    check("T6 every CHECK invocation isolates the trades, derived, resting stores, the journal, the log, the counterfactual logs, the feed store, the resting-stop state and the warehouse state",
+    check("T6 every CHECK invocation isolates the trades, derived, resting stores, the journal, the log, the counterfactual logs, the feed store, the resting-stop state, the warehouse state and the plan states",
           bool(_runs) and not _bad,
           f"{len(_runs)} invocation line(s)" + (f"; missing on: {_bad}" if _bad else ""))
 
