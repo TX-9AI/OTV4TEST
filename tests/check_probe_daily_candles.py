@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-tests/check_probe_daily_candles.py  v1.0
+tests/check_probe_daily_candles.py  v1.1
+v1.1  2026-10-21  OTV4TEST r312 (PRB.5) — D7: A ZERO BAR IS DROPPED. r311's first real run (19:28 ET) wrote an all-zero
+      row on the start date into BOTH files (QQQ, SPX); SPX's study then divided by it. The fixture never sent one.
 v1.0  2026-10-21  OTV4TEST r311 (PRB.4) — THE DAILY-CANDLE PROBE ONLY READS, AND WRITES ONE CSV OF ITS OWN.
 
   The operator, 2026-10-21 19:10 ET: "the daily candle is a yes" (a read-only probe for longer 1D history - the box
@@ -15,6 +17,8 @@ v1.0  2026-10-21  OTV4TEST r311 (PRB.4) — THE DAILY-CANDLE PROBE ONLY READS, A
       daily bar is stamped 00:00 UTC of its session), sorted, with NaN / None / other-interval events dropped; exit 0
   D5  DRIVEN: nothing served -> exit 1 and NO file written (a partial history must not look like a short one)
   D6  DRIVEN: the file lands under OUT_DIR and nowhere else (the temp file is renamed, not left behind)
+  D7  DRIVEN: a bar with any price <= 0 (the feed's all-zero start bar; a zero low) is dropped - a zero VOLUME is not
+      (SPX, an index, reports volume 0 on every bar)
 No network. Run: python3 tests/check_probe_daily_candles.py
 """
 import ast
@@ -127,6 +131,11 @@ def main():
         _c("QQQ", _ms(2024, 1, 5), None, 1.0, 1.0, 1.0),                    # no open: dropped
         _c("QQQ", _ms(2024, 1, 2), 1.0, 1.0, 1.0, 1.0, iv="h"),              # another interval: dropped
     ]
+    zfeed = [
+        _c("SPX", _ms(2021, 10, 21), 0.0, 0.0, 0.0, 0.0, 0.0),             # the feed's start placeholder
+        _c("SPX", _ms(2021, 10, 22), 4546.12, 4559.67, 4524.0, 4544.9, 0.0),  # real, volume 0 (an index)
+        _c("SPX", _ms(2021, 10, 25), 4553.69, 4572.62, 0.0, 4566.48, 0.0),   # a zero low: dropped
+    ]
     with tempfile.TemporaryDirectory() as td:
         rc, out, asked = _drive(m, feed, ["3", "QQQ"], td)
         # D3 - the subscription
@@ -150,6 +159,14 @@ def main():
         rc, out, _ = _drive(m, [], ["2", "QQQ"], td)
         check("D5 DRIVEN: nothing served -> exit 1 and no file written", rc == 1 and os.listdir(td) == [],
               f"rc={rc} files={os.listdir(td)} out={out[-200:]!r}")
+
+    with tempfile.TemporaryDirectory() as td:
+        rc, out, _ = _drive(m, zfeed, ["1", "SPX"], td)
+        path = os.path.join(td, "SPX_1d_rth.csv")
+        rows = open(path).read().splitlines() if os.path.exists(path) else []
+        check("D7 DRIVEN: a bar with any price <= 0 is dropped, a zero volume is kept",
+              rc == 0 and rows == ["date,open,high,low,close,volume", "2021-10-22,4546.12,4559.67,4524.0,4544.9,0.0"],
+              f"rc={rc} rows={rows}")
 
     if FAILED:
         print(f"RED — {len(FAILED)} failed: {', '.join(FAILED)}")

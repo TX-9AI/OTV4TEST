@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-"""tools/probe_daily_candles.py — v1.0
+"""tools/probe_daily_candles.py — v1.1
 PRB.4: HOW FAR BACK WILL TASTYTRADE SERVE DAILY CANDLES, AND WHAT ARE THEY?
 
+v1.1 (2026-10-21) — OTV4TEST r312 (PRB.5) — A BAR WITH ANY PRICE <= 0 IS DROPPED. r311's first run (19:28 ET) wrote the
+      feed's all-zero start bar as the first row of BOTH files; 0.0 is not NaN, so v1.0 kept it, and a study divided
+      by it. A zero VOLUME is kept: SPX, an index, reports volume 0 on every bar. check_probe_daily_candles D7.
 v1.0 (2026-10-21) — OTV4TEST r311 (PRB.4). The operator, 2026-10-21 19:10 ET: "the daily candle is a yes".
       His gap / prior-day-extreme thesis ("each new day wants to take out a previous day's extreme") needs years
       of 1D history; this box holds QQQ 1d only from 08-10 and the warehouse 1m only from 07-08.
@@ -88,7 +91,7 @@ async def main() -> int:
             es = getattr(c, "event_symbol", "") or ""
             sym = es.split("{", 1)[0]
             vals = [_num(getattr(c, k, None)) for k in ("open", "high", "low", "close")]
-            if sym not in bars or not _is_daily(es) or not c.time or any(v is None for v in vals):
+            if sym not in bars or not _is_daily(es) or not c.time or any(v is None or v <= 0 for v in vals):
                 continue
             d = datetime.fromtimestamp(int(c.time) / 1000, timezone.utc).date().isoformat()
             bars[sym][d] = (*vals, _num(getattr(c, "volume", None)) or 0.0)
