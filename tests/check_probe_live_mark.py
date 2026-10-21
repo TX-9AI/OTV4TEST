@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_probe_live_mark.py  v1.0
+tests/check_probe_live_mark.py  v1.1
+v1.1  2026-10-20  OTV4TEST r310 (F4.2 mirror of otv4 r496) — _get_option_mark now prices through ONE
+      get_market_data_by_type(options=[...]) call; the fake broker answers it (as otv4 r496's
+      check_live_mark_fallback v1.1 did) and the spy counts it. Every expected value unchanged.
 v1.0  2026-10-20  OTV4TEST r308 (PRB.3) — THE LIVE-MARK PROBE ONLY READS, AND IT ASKS THE BOT'S OWN FUNCTION.
 
   The operator, 2026-10-20 10:53 ET: "Concur" (a read-only LIVE.1 F4 probe, run after the close).
@@ -11,7 +14,7 @@ v1.0  2026-10-20  OTV4TEST r308 (PRB.3) — THE LIVE-MARK PROBE ONLY READS, AND 
       _get_option_mark of its own (a copy would prove the copy, not the bot)
   L3  it is on run_with_bot_env's PROBES list (so it runs only committed and unedited)
   L4  DRIVEN, offline: main() over a fake chain and a fake REST quote prices all six contracts at the mid, through
-      the real _get_option_mark (a spy on tastytrade.market_data.get_market_data sees every call), and exits 0
+      the real _get_option_mark (a spy on get_market_data and get_market_data_by_type sees every call), and exits 0
   L5  DRIVEN: a REST call that raises -> every contract reads None, the RESULT line says 0 of 6, exit 1
   L6  DRIVEN: on SPX only SPXW contracts are probed (his 10-04 ruling: never the AM expiry)
 No network. Run: python3 tests/check_probe_live_mark.py
@@ -45,7 +48,8 @@ def _load():
 
 
 def _drive(m, sym, md_fn, roots=("QQQ",)):
-    """Run the real main() over a fake chain; md_fn answers tastytrade.market_data.get_market_data."""
+    """Run the real main() over a fake chain; md_fn answers tastytrade.market_data.get_market_data
+    and (r310) get_market_data_by_type, one row per asked symbol."""
     import tastytrade.market_data as tmd
     from tastytrade.instruments import OptionType
     calls = []
@@ -53,14 +57,22 @@ def _drive(m, sym, md_fn, roots=("QQQ",)):
     def spy(session, symbol, itype):
         calls.append(symbol)
         return md_fn(symbol)
+
+    def spy_batch(session, options=None, **kw):             # r310: the bot's batch call
+        rows = []
+        for symbol in options or []:
+            calls.append(symbol)
+            md = md_fn(symbol)
+            rows.append(SimpleNamespace(symbol=symbol, **vars(md)))
+        return rows
     opts = []
     for root in roots:
         for k, kind in enumerate((OptionType.PUT, OptionType.CALL)):
             for i in range(7):
                 opts.append(SimpleNamespace(symbol=f"{root}_{kind.value}_{i}", option_type=kind,
                                             strike_price=100 + i, root_symbol=root))
-    _orig = tmd.get_market_data
-    tmd.get_market_data = spy
+    _orig, _orig_b = tmd.get_market_data, tmd.get_market_data_by_type
+    tmd.get_market_data, tmd.get_market_data_by_type = spy, spy_batch
     saved = (m.SYM, m.get_client, m.get_option_chain, m.get_market_data, m.sdk_result)
     m.SYM, m.get_client = sym, (lambda: SimpleNamespace())
     m.get_option_chain = lambda client, s: {date.today(): opts}
@@ -74,7 +86,7 @@ def _drive(m, sym, md_fn, roots=("QQQ",)):
         with contextlib.redirect_stdout(buf):
             rc = m.main()
     finally:
-        tmd.get_market_data = _orig
+        tmd.get_market_data, tmd.get_market_data_by_type = _orig, _orig_b
         pmod.sdk_result = _sr
         m.SYM, m.get_client, m.get_option_chain, m.get_market_data, m.sdk_result = saved
     return rc, buf.getvalue(), calls
