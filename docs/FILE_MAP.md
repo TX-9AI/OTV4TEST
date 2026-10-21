@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-473 Python modules across 12 local packages.
+475 Python modules across 12 local packages.
 
-**Reached by:** 134 imported · 27 declared entry points · 245 referenced from a script, unit or doc but never imported · **67 by nothing here**.
+**Reached by:** 134 imported · 27 declared entry points · 247 referenced from a script, unit or doc but never imported · **67 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -42,7 +42,7 @@ execution.exit_engine); every such edge is listed below like any other.
 - `analysis/market_state.py` - the structural state assembly.
   **Carries the vocabulary, classifies nothing.**
 
-**Where the evidence lives:** `tests/` holds 277 standing
+**Where the evidence lives:** `tests/` holds 278 standing
 checks (`check_*.py`, all run by `tools/boot_sweep.py` at boot)
 plus the studies that produced every threshold in
 `docs/TRADES.md`. **A number in a strategy file should be
@@ -64,8 +64,8 @@ Change these with the most care; a break here reaches everything downstream.
 | `execution/__init__.py` | 34 | check_admission_wired.py, check_atp_pin_floor.py, check_boot_order_sweep.py, check_breakout_exit_line.py |
 | `execution/position_manager.py` | 33 | check_admission.py, check_admission_wired.py, check_atp_pin_floor.py, check_breakout.py |
 | `main.py` | 33 | check_admission_wired.py, check_atm_iv_stored.py, check_atp_butterfly.py, check_buying_power.py |
+| `data/tasty_client.py` | 27 | buying_power.py, candle_feed.py, check_boot_order_sweep.py, check_buying_power.py |
 | `derived/__init__.py` | 27 | atp_butterfly_plan.py, check_anchors.py, check_atp_butterfly.py, check_atp_pin_floor.py |
-| `data/tasty_client.py` | 26 | buying_power.py, candle_feed.py, check_boot_order_sweep.py, check_buying_power.py |
 
 ## Every module
 
@@ -227,7 +227,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `data/tasty_client.py`
 - **calls:** `config.py`
-- **called by:** `data/candle_feed.py`, `data/market_data.py`, `data/open_interest.py`, `data/options_chain.py`, `execution/buying_power.py`, `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/order_confirm.py`, `execution/order_guard.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `main.py`, `strategy/condor_roll.py`, `tests/check_boot_order_sweep.py`, `tests/check_buying_power.py`, `tests/check_oi_shared_loop.py`, `tests/check_order_guard.py`, `tests/check_reconcile_strict.py`, `tests/check_sdk_async.py`, `tests/check_standing_offer.py`, `tools/emergency_watchdog.py`, `tools/feed_capabilities.py`, `tools/probe_aux_streams.py`, `tools/probe_candle_depth.py`, `tools/probe_live_mark.py`, `tools/probe_order_dryrun.py`
+- **called by:** `data/candle_feed.py`, `data/market_data.py`, `data/open_interest.py`, `data/options_chain.py`, `execution/buying_power.py`, `execution/entry_engine.py`, `execution/exit_engine.py`, `execution/order_confirm.py`, `execution/order_guard.py`, `execution/position_manager.py`, `execution/resting_orders.py`, `main.py`, `strategy/condor_roll.py`, `tests/check_boot_order_sweep.py`, `tests/check_buying_power.py`, `tests/check_oi_shared_loop.py`, `tests/check_order_guard.py`, `tests/check_reconcile_strict.py`, `tests/check_sdk_async.py`, `tests/check_standing_offer.py`, `tools/emergency_watchdog.py`, `tools/feed_capabilities.py`, `tools/probe_aux_streams.py`, `tools/probe_candle_depth.py`, `tools/probe_daily_candles.py`, `tools/probe_live_mark.py`, `tools/probe_order_dryrun.py`
 
 ### `database/__init__.py`
 - **calls:** (none)
@@ -1349,6 +1349,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** `database/__init__.py`, `database/trade_logger.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
 
+### `tests/check_probe_daily_candles.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
 ### `tests/check_probe_dryrun.py`
 - **calls:** (none)
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`
@@ -1856,6 +1860,10 @@ Change these with the most care; a break here reaches everything downstream.
 ### `tools/probe_candle_depth.py`
 - **calls:** `data/tasty_client.py`
 - **called by:** (entry point)
+
+### `tools/probe_daily_candles.py`
+- **calls:** `data/tasty_client.py`
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/ENV.md`
 
 ### `tools/probe_live_mark.py`
 - **calls:** `data/tasty_client.py`, `execution/position_manager.py`

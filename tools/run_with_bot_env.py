@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""tools/run_with_bot_env.py — v1.2
+"""tools/run_with_bot_env.py — v1.3
 RUN ONE APPROVED, READ-ONLY PROBE WITH THE BOT'S BROKER CREDENTIALS, AND NOTHING ELSE.
 
+v1.3 (2026-10-21) — OTV4TEST r311 (PRB.4) — probe_daily_candles.py joins PROBES (the operator, 2026-10-21 19:10 ET:
+      "the daily candle is a yes"); tests/check_probe_daily_candles.py proves it only reads and writes one CSV.
 v1.2 (2026-10-20) — OTV4TEST r308 (PRB.3) — probe_live_mark.py joins PROBES (the operator, 2026-10-20 10:53 ET: "Concur"
       to a read-only LIVE.1 F4 probe); tests/check_probe_live_mark.py proves it can only read.
 v1.1 (2026-10-04) — OTV4TEST r239 (PRB.2) — probe_order_dryrun.py joins PROBES (the operator: "Yes, to the dry
@@ -35,7 +37,7 @@ Usage (the operator's allow rule names exactly this, with ANY arguments):
     /home/ubuntu/options-trader/venv/bin/python \\
         /home/ubuntu/options-trader/tools/run_with_bot_env.py <probe> [args]
     probes: feed_capabilities.py  probe_aux_streams.py  probe_candle_depth.py  probe_order_dryrun.py
-            probe_live_mark.py
+            probe_live_mark.py  probe_daily_candles.py
 """
 from __future__ import annotations
 
@@ -53,6 +55,7 @@ PROBES = {
     "probe_candle_depth.py": "tools/probe_candle_depth.py",
     "probe_order_dryrun.py": "tools/probe_order_dryrun.py",   # r239 - dry_run=True only (check_probe_dryrun)
     "probe_live_mark.py": "tools/probe_live_mark.py",         # r308 - read only (check_probe_live_mark)
+    "probe_daily_candles.py": "tools/probe_daily_candles.py", # r311 - read only, one CSV (check_probe_daily_candles)
 }
 KEEP = re.compile(r"^(TT_[A-Z_]+|OT_INSTRUMENT|OT_FEED_DB)$")
 
