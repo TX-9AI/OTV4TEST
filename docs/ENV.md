@@ -218,20 +218,20 @@ Unit `Environment=` lines set these; NEVER print a unit's Environment block to r
 | `OT_AGENT_WATCH_STATE` | (none), (required) | `tests/check_agent_watch.py:195`, `tests/check_breakout_exit_line.py:110`, `tools/agent_watch.py:71` |
 | `OT_BOT_LOG` | (none), (required) | `tests/check_breakout_exit_line.py:108`, `tools/agent_watch.py:68` |
 | `OT_BOT_SERVICE` | 'optionsbot' | `tools/emergency_watchdog.py:92` |
-| `OT_BRIEF` | (none) | `tools/claude_boot.py:195` |
-| `OT_CLAUDE_BOOT_LOG` | (none), (required), (set here) | `tests/check_claude_boot.py:138`, `tests/check_claude_boot.py:763`, `tools/claude_boot.py:356` |
-| `OT_CLAUDE_FIRST_TURN_S` | '20' | `tools/claude_boot.py:351` |
-| `OT_CLAUDE_PROJECTS_DIR` | (none), (set here) | `tests/check_claude_boot.py:136`, `tools/claude_boot.py:365` |
-| `OT_CLAUDE_RELAUNCH_AFTER_S` | '660' | `tools/claude_boot.py:353` |
-| `OT_CLAUDE_RETRY_MAX` | '2' | `tools/claude_boot.py:355` |
-| `OT_CLAUDE_RETRY_POLL_S` | '30' | `tools/claude_boot.py:352` |
-| `OT_CLAUDE_RETRY_WINDOW_S` | '1800' | `tools/claude_boot.py:354` |
-| `OT_CLAUDE_SCRATCH_ROOT` | (none) | `tools/claude_boot.py:844` |
-| `OT_CLAUDE_SETTLE_S` | '12' | `tools/claude_boot.py:261` |
-| `OT_FIRST_BOOT_MARKER` | (none) | `tools/claude_boot.py:211` |
+| `OT_BRIEF` | (none) | `tools/claude_boot.py:221` |
+| `OT_CLAUDE_BOOT_LOG` | (none), (required), (set here) | `tests/check_claude_boot.py:138`, `tests/check_claude_boot.py:763`, `tools/claude_boot.py:382` |
+| `OT_CLAUDE_FIRST_TURN_S` | '20' | `tools/claude_boot.py:377` |
+| `OT_CLAUDE_PROJECTS_DIR` | (none), (set here) | `tests/check_claude_boot.py:136`, `tools/claude_boot.py:391` |
+| `OT_CLAUDE_RELAUNCH_AFTER_S` | '660' | `tools/claude_boot.py:379` |
+| `OT_CLAUDE_RETRY_MAX` | '2' | `tools/claude_boot.py:381` |
+| `OT_CLAUDE_RETRY_POLL_S` | '30' | `tools/claude_boot.py:378` |
+| `OT_CLAUDE_RETRY_WINDOW_S` | '1800' | `tools/claude_boot.py:380` |
+| `OT_CLAUDE_SCRATCH_ROOT` | (none) | `tools/claude_boot.py:876` |
+| `OT_CLAUDE_SETTLE_S` | '12' | `tools/claude_boot.py:287` |
+| `OT_FIRST_BOOT_MARKER` | (none) | `tools/claude_boot.py:237` |
 | `OT_HEARTBEAT_FILE` | (required) | `tests/check_exit_deadline.py:150` |
 | `OT_MAP_STORE_ROOT` | (none) | `tests/check_map_accuracy.py:241` |
-| `OT_RC_NAME` | (none) | `tools/claude_boot.py:181` |
+| `OT_RC_NAME` | (none) | `tools/claude_boot.py:189` |
 | `OT_REBUILD_TOOL` | (none) | `tests/check_rebuild_1m.py:96` |
 | `OT_RELAXED_ENTRY` | (none), (set here) | `tests/check_atp_butterfly.py:124`, `tests/check_atp_pin_floor.py:74`, `tests/check_bfly_vwap_band.py:149`, `tests/check_butterfly_legs.py:109`, `tests/check_criteria.py:43`, `tests/check_entry_windows.py:274`, `tests/check_entry_windows.py:281`, `tests/check_entry_windows.py:298`, `tests/check_plan_prepares.py:273`, `tests/check_plan_prepares.py:537`, `tests/check_plan_prepares.py:591`, `tests/check_plan_prepares.py:598`, `tests/check_plan_prepares.py:777`, `tests/check_plan_prepares.py:874`, `tests/check_plan_prepares.py:884`, `tests/check_plan_prepares.py:894`, `tests/check_plan_wiring.py:147`, `tests/check_plan_wiring.py:169`, `tests/check_plan_wiring.py:190`, `tests/check_runaway_plan.py:155`, `tests/check_runaway_plan.py:430`, `tests/check_signal_numeric_tail.py:126`, `tests/check_signal_numeric_tail.py:130` |
 | `OT_RESTING_DB` | (required), (set here) | `tests/check_breakout_new_extreme.py:91`, `tests/check_brk_delta_floor.py:36`, `tests/check_brk_noprog.py:39`, `tests/check_brk_stop5m.py:50`, `tests/check_cap_page_once.py:61`, `tests/check_db_handles.py:53`, `tests/check_expiry_settlement.py:55`, `tests/check_loss_cap_rearm.py:68`, `tests/check_no_zero_price.py:49`, `tests/check_offer_fill_price.py:56`, `tests/check_park.py:71`, `tests/check_standing_offer.py:57` |

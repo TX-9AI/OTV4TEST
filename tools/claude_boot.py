@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
-"""tools/claude_boot.py — v1.7
+"""tools/claude_boot.py — v1.8
 RAISE AN AGENT SESSION AT BOOT, AND PROVE IT IS ACTUALLY RUNNING.
 
+v1.8 (2026-10-23) — OTV4TEST r314 (MENU.2). THE SESSION NAME IS THE BOX'S, NEVER QQQ-TEST'S BY DEFAULT.
+      OT_RC_NAME lives only in this unit, so a raise from an SSH shell fell back to "qqq-test" and SPX-TEST
+      came up under QQQ-TEST's name (2026-10-23, after an expired login; the operator fixed it with /rename).
+      rc_name(): OT_RC_NAME when set (the unit, unchanged), else "✨<INSTRUMENT>-TEST" from
+      utils.instrument.box_instrument() (the bot unit's OT_INSTRUMENT, one key, nothing printed), else
+      "✨UNSET-TEST" - a named absence, never a guessed box. `--rc-name` prints it, for devtools.sh.
+      The operator, 2026-10-23 11:10 ET: "Yes to both" (r313's menu item, and this fix).
 v1.7 (2026-10-04) — OTV4TEST r235 — THE PURGE SAYS ZERO. It printed only when it archived something, so a
       purge that ran and found nothing stale looked like one that never ran (SPX-TEST's agent, 2026-10-04,
       §0.5). It now prints "scratch purge: archived N stale scratch dir(s)" every time it runs, 0 included.
@@ -178,7 +185,26 @@ def claude_bin() -> str:
         if os.path.isfile(cand) and os.access(cand, os.X_OK):
             return cand
     return ""
-RC_NAME = os.environ.get("OT_RC_NAME") or "qqq-test"
+# r314 — the unit's own name when it sets one; rc_name() derives it otherwise.
+RC_NAME = (os.environ.get("OT_RC_NAME") or "").strip()
+
+
+def rc_name() -> str:
+    """The Remote Control name: OT_RC_NAME, else "✨<INSTRUMENT>-TEST" from the
+    box's own instrument, else "✨UNSET-TEST". Never "qqq-test" on a box that
+    is not QQQ-TEST (r314)."""
+    if RC_NAME:
+        return RC_NAME
+    try:
+        from utils.instrument import box_instrument, UNSET
+        inst = (box_instrument() or UNSET).strip().upper()
+    except Exception:                                           # noqa: BLE001
+        inst = "UNSET"
+    if not inst.replace("_", "").isalnum():
+        inst = "UNSET"
+    return "✨%s-TEST" % inst
+
+
 # 🔴 r70 / AUTH.1 — LAUNCH ON THE SUBSCRIPTION, NEVER ON API CREDITS.
 # Operator's instruction. Measured 2026-09-20: no key is set anywhere on this
 # box and `~/.claude.json` authenticates through `oauthAccount` — so today it
@@ -439,7 +465,7 @@ def _handoff_cmd(binp: str, brief: str) -> str:
     # contains double quotes, and expanding it through another shell layer ends
     # the argument at the first one and hands Claude a truncated brief.
     return ("%s %s --remote-control %s \"$(cat %s)\"; exec bash"
-            % (ENV_STRIP, binp, _sh_quote(RC_NAME), _sh_quote(brief)))
+            % (ENV_STRIP, binp, _sh_quote(rc_name()), _sh_quote(brief)))
 
 
 def _et_hm() -> str:
@@ -765,7 +791,7 @@ def bring_up(dry: bool = False) -> tuple[bool, str]:
     # strictly better than silence (§0.5).
     _kill()
     _raise("%s %s --remote-control %s --continue; exec bash"
-           % (ENV_STRIP, binp, _sh_quote(RC_NAME)))
+           % (ENV_STRIP, binp, _sh_quote(rc_name())))
     if _settle():
         return True, ("up (continue — FALLBACK, brief missing)"
                       if not os.path.exists(BRIEF) else
@@ -790,7 +816,13 @@ def main(argv=None) -> int:
                     help="r170: the detached first-turn watcher (spawned by bring_up)")
     ap.add_argument("--since", type=float, default=None,
                     help="with --retry: epoch of the raise whose first turn failed")
+    ap.add_argument("--rc-name", action="store_true",
+                    help="r314: print the Remote Control name this box raises under; raise nothing")
     a = ap.parse_args(argv)
+
+    if a.rc_name:
+        print(rc_name())
+        return 0
 
     if a.status_only:
         ok = agent_alive()

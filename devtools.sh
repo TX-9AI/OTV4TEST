@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# devtools.sh  v3.10  — OTV4TEST box menu
+# devtools.sh  v3.11  — OTV4TEST box menu
+# v3.11 2026-10-23  OTV4TEST r314 (MENU.2) — HAND OFF / RESUME / RESUME [other]
+#       RAISE UNDER THE BOX'S OWN NAME. All three passed `--remote-control
+#       qqq-test`, so on SPX-TEST they raised under QQQ-TEST's name (2026-10-23,
+#       fixed that morning by hand with /rename). The name now comes from
+#       `tools/claude_boot.py --rc-name` (OT_RC_NAME, else ✨<INSTRUMENT>-TEST),
+#       read BEFORE anything is purged or killed; no name -> refused. The
+#       operator, 11:10 ET: "Yes to both".
 # v3.10 2026-10-23  OTV4TEST r313 (MENU.1) — CLAUDE CODE gains RESTART: a fresh
 #       session raised by the boot unit (`sudo systemctl restart
 #       optbot-claude-boot`), so it carries the unit's OT_RC_NAME, its brief and
@@ -504,6 +511,20 @@ _claude_kill_all_tmux() {
   fi
 }
 
+# r314 — THE BOX'S OWN REMOTE CONTROL NAME, from the one place that resolves it.
+# A quote or space in it would break the tmux command, so either refuses.
+_claude_rc_name() {
+  local n; n="$("$PY" "$REPO/tools/claude_boot.py" --rc-name)" || return 1
+  case "$n" in ""|*"'"*|*" "*|*'"'*) return 1 ;; esac
+  printf '%s' "$n"
+}
+
+_claude_rc_or_refuse() {  # sets RC_NAME_NOW, or says why not
+  RC_NAME_NOW="$(_claude_rc_name)" && return 0
+  echo "  REFUSED: no Remote Control name (tools/claude_boot.py --rc-name)."
+  pause; return 1
+}
+
 mi_claude_handoff() {
   _claude_guard || return
   if [ ! -f "$CLAUDE_BOOTSTRAP" ]; then
@@ -513,6 +534,8 @@ mi_claude_handoff() {
   echo "  HAND OFF: a FRESH Claude thread, bootstrapped from docs/HANDOFF.md."
   echo "  This kills this menu and EVERY tmux session on the box."
   confirm "proceed?" || { pause; return; }
+  _claude_rc_or_refuse || return
+  echo "  session name: $RC_NAME_NOW"
   # ⚠️ ORDER IS THE OPERATOR'S AND THE REASON IS NOT COSMETIC: PURGE FIRST,
   # THEN KILL. If tmpfs is already full, the tmux kill itself may not spawn —
   # every process needs a temp file for its shell snapshot, which is the exact
@@ -534,11 +557,11 @@ mi_claude_handoff() {
   fi
   if [ -f "$CLAUDE_BOOTSTRAP" ]; then
     exec tmux new-session -s "$CLAUDE_TMUX" \
-      "cd '$REPO' && $CLAUDE_ENV claude --remote-control qqq-test \"\$(cat '$CLAUDE_BOOTSTRAP')\$([ -f '$CLAUDE_NOW' ] && printf '%s' '
+      "cd '$REPO' && $CLAUDE_ENV claude --remote-control '$RC_NAME_NOW' \"\$(cat '$CLAUDE_BOOTSTRAP')\$([ -f '$CLAUDE_NOW' ] && printf '%s' '
 
 Also read docs/HANDOFF_NOW.md first — a one-time note for this handoff: where things stand, what to read on Monday, and the open items. Delete it once you have read it.')\"; exec bash"
   else
-    exec tmux new-session -s "$CLAUDE_TMUX" "cd '$REPO' && $CLAUDE_ENV claude --remote-control qqq-test; exec bash"
+    exec tmux new-session -s "$CLAUDE_TMUX" "cd '$REPO' && $CLAUDE_ENV claude --remote-control '$RC_NAME_NOW'; exec bash"
   fi
 }
 
@@ -557,10 +580,12 @@ mi_claude_resume() {
   echo "  RESUME: continue the LAST Claude thread on this box."
   echo "  This kills this menu and EVERY tmux session."
   confirm "proceed?" || { pause; return; }
+  _claude_rc_or_refuse || return
+  echo "  session name: $RC_NAME_NOW"
   _claude_purge_scratch
   _claude_kill_all_tmux
   cd "$REPO" || exit 1
-  exec tmux new-session -s "$CLAUDE_TMUX" "$CLAUDE_ENV claude --remote-control qqq-test --continue; exec bash"
+  exec tmux new-session -s "$CLAUDE_TMUX" "$CLAUDE_ENV claude --remote-control '$RC_NAME_NOW' --continue; exec bash"
 }
 
 mi_claude_resume_pick() {
@@ -568,10 +593,12 @@ mi_claude_resume_pick() {
   echo "  RESUME [other]: Claude's own thread picker."
   echo "  This kills this menu and EVERY tmux session."
   confirm "proceed?" || { pause; return; }
+  _claude_rc_or_refuse || return
+  echo "  session name: $RC_NAME_NOW"
   _claude_purge_scratch
   _claude_kill_all_tmux
   cd "$REPO" || exit 1
-  exec tmux new-session -s "$CLAUDE_TMUX" "$CLAUDE_ENV claude --remote-control qqq-test --resume; exec bash"
+  exec tmux new-session -s "$CLAUDE_TMUX" "$CLAUDE_ENV claude --remote-control '$RC_NAME_NOW' --resume; exec bash"
 }
 
 mi_claude_restart_boot() {

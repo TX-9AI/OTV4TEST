@@ -4,9 +4,9 @@
 Do not edit by hand: the generator runs inside the land command and
 the canary fails on drift (WORKING_AGREEMENT 33).
 
-476 Python modules across 12 local packages.
+477 Python modules across 12 local packages.
 
-**Reached by:** 134 imported · 27 declared entry points · 248 referenced from a script, unit or doc but never imported · **67 by nothing here**.
+**Reached by:** 134 imported · 27 declared entry points · 249 referenced from a script, unit or doc but never imported · **67 by nothing here**.
 
 ⚠️ The last group is a REVIEW LIST, not a delete list. A
 `land.spec CHECK` line ships inside a tarball and is never
@@ -42,7 +42,7 @@ execution.exit_engine); every such edge is listed below like any other.
 - `analysis/market_state.py` - the structural state assembly.
   **Carries the vocabulary, classifies nothing.**
 
-**Where the evidence lives:** `tests/` holds 279 standing
+**Where the evidence lives:** `tests/` holds 280 standing
 checks (`check_*.py`, all run by `tools/boot_sweep.py` at boot)
 plus the studies that produced every threshold in
 `docs/TRADES.md`. **A number in a strategy file should be
@@ -1401,6 +1401,10 @@ Change these with the most care; a break here reaches everything downstream.
 - **calls:** `data/derived_store.py`, `derived/levels.py`
 - **called by:** (not imported) — referenced in `docs/ENV.md`
 
+### `tests/check_rc_name.py`
+- **calls:** (none)
+- **called by:** (not imported) — referenced in `docs/BACKLOG.md`
+
 ### `tests/check_rebuild_1m.py`
 - **calls:** `data/candle_feed.py`, `utils/__init__.py`, `utils/instrument.py`
 - **called by:** (not imported) — referenced in `docs/BACKLOG.md`, `docs/ENV.md`
@@ -1818,7 +1822,7 @@ Change these with the most care; a break here reaches everything downstream.
 - **called by:** (entry point)
 
 ### `tools/claude_boot.py`
-- **calls:** `utils/agent_status.py`
+- **calls:** `utils/agent_status.py`, `utils/instrument.py`
 - **called by:** (entry point)
 
 ### `tools/debug_status.py`
@@ -1923,7 +1927,7 @@ Change these with the most care; a break here reaches everything downstream.
 
 ### `utils/instrument.py`
 - **calls:** (none)
-- **called by:** `analysis/get_orb_range.py`, `tests/check_instrument_unset.py`, `tests/check_level_tape.py`, `tests/check_rebuild_1m.py`, `tests/check_seed_candles.py`, `tools/eod_summary.py`, `tools/manifold_health.py`, `tools/open_scan.py`, `tools/rebuild_1m_from_last_trade.py`, `tools/seed_candles_from_warehouse.py`, `warehouse/self_close.py`
+- **called by:** `analysis/get_orb_range.py`, `tests/check_instrument_unset.py`, `tests/check_level_tape.py`, `tests/check_rebuild_1m.py`, `tests/check_seed_candles.py`, `tools/claude_boot.py`, `tools/eod_summary.py`, `tools/manifold_health.py`, `tools/open_scan.py`, `tools/rebuild_1m_from_last_trade.py`, `tools/seed_candles_from_warehouse.py`, `warehouse/self_close.py`
 
 ### `utils/market_calendar.py`
 - **calls:** (none)
