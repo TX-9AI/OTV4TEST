@@ -1,5 +1,17 @@
 """
-analysis/entry_snapshot.py  v4.2
+analysis/entry_snapshot.py  v4.3
+v4.3  2026-10-23  OTV4TEST r315 (SMA.2) — THE 50 SMA ON EVERY FRAME, IN ATR UNITS, AT EVERY ENTRY. The operator,
+      2026-10-23 13:04 ET: "distance from the 50 SMA upon entry and if our success rate correlates to either winning the
+      trade or getting the direction right ... Be creative"; the scope he passed on 13:06 ET: "distance to the 50 SMA in
+      ATR units and percent ... on each live frame (5m, 15m, 1h, 1d), signed by trade direction ... plus SMA slope and
+      cross-frame agreement"; 13:08 ET: "yes to all". New payload key "sma50_mtf": {"rth": {...}, "ext": {...}}, each
+      {"5m","15m","1h","1d": frame, "agree": n_with, "of": n_read}. A frame: sma (last 50 CLOSED bars' closes), dist
+      (price - sma, signed by direction: + = extended the trade's way), pct (dist / sma x 100), atr (mean true range of
+      the last 14 closed bars), d_atr (dist / atr), slope_atr ((sma now - sma 5 bars back) / 5 / atr, signed by
+      direction: + = the SMA rising the trade's way), side ("with"/"against"); a frame without 50 closed bars carries
+      sma None and "why". 5m/15m/1h are built from the store's 1m bars (r183's one method, so a warehouse backfill can
+      build the same objects); 1d is the store's own daily bar, the session's in-progress bar excluded. "sma50_5m"
+      is UNCHANGED. SCHEMA_VERSION 2 -> 3. RECORD ONLY: nothing reads it to decide anything; build() still never raises.
 v4.2  2026-10-03  OTV4TEST r218 (PATH.1) — _feed_db delegates to utils.paths.feed_db_path (was a hard-coded ~/options-trader default). Same path on the box.
 Captures the decision-time context of an entry.
 
@@ -109,7 +121,7 @@ from utils.time_utils import ts_for_db
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 2                  # r183: + "sma50_5m"
+SCHEMA_VERSION = 3                  # r183: + "sma50_5m"; r315: + "sma50_mtf"
 
 # One DEBUG line per site per process. A capture failure must not spam a session
 # (that is how three dead timeframes went unnoticed) and must not be invisible
@@ -243,6 +255,8 @@ def build(ctx: Dict[str, Any], direction: str) -> Dict[str, Any]:
         payload["anchor"] = anchor
         # r183 (SMA.1): record only. Its own failure is recorded inside its key.
         payload["sma50_5m"] = sma50_context(time.time(), price, direction)
+        # r315 (SMA.2): record only, every frame. Its own failure is recorded inside its key.
+        payload["sma50_mtf"] = sma50_mtf_context(time.time(), price, direction)
 
     except Exception as exc:                                 # noqa: BLE001
         if _first("build"):
@@ -330,6 +344,105 @@ def sma50_context(t_epoch: float, price: float, direction: str,
     except Exception as exc:                                   # noqa: BLE001
         if _first("sma50"):
             logger.debug("entry_snapshot sma50 failed (%s: %s)", type(exc).__name__, exc)
+        return {"err": f"{type(exc).__name__}: {exc}"}
+
+
+# ── r315 (SMA.2) — the 50 SMA on 5m / 15m / 1h / 1d, in points, percent and ATR units ──
+MTF_FRAMES = (("5m", 300), ("15m", 900), ("1h", 3600))
+ATR_LEN = 14
+SLOPE_BARS = 5
+_MTF_LOOKBACK_S = 21 * 86400        # 55 RTH hours is ~9 sessions; 3 weeks covers weekends + a holiday
+
+
+def _bars_1m_hlc(conn, symbol: str, t_epoch: float, lookback_s: int = _MTF_LOOKBACK_S):
+    return conn.execute(
+        "SELECT ts_epoch_ms/1000, open, high, low, close FROM candles WHERE symbol=? AND interval='1m' "
+        "AND ts_epoch_ms BETWEEN ? AND ? ORDER BY ts_epoch_ms",
+        (symbol, int((t_epoch - lookback_s) * 1000), int(t_epoch * 1000))).fetchall()
+
+
+def _agg(rows, span: int, t_epoch: float):
+    """[(start, o, h, l, c)] bars of `span` seconds from 1m rows, epoch-aligned, only bars CLOSED by t_epoch."""
+    out: list = []
+    for ts, o, h, l, c in rows:
+        k = int(ts) - int(ts) % span
+        if out and out[-1][0] == k:
+            b = out[-1]
+            b[2] = max(b[2], h)
+            b[3] = min(b[3], l)
+            b[4] = c
+        else:
+            out.append([k, o, h, l, c])
+    return [b for b in out if b[0] + span <= t_epoch]
+
+
+def _bars_1d(conn, symbol: str, t_epoch: float):
+    """The store's daily bars (stamped 00:00 UTC of their session) that CLOSED before t_epoch's session."""
+    rows = conn.execute(
+        "SELECT ts_epoch_ms/1000, open, high, low, close FROM candles WHERE symbol=? AND interval='1d' "
+        "AND ts_epoch_ms <= ? ORDER BY ts_epoch_ms", (symbol, int(t_epoch * 1000))).fetchall()
+    return [list(r) for r in rows if int(r[0]) + 86400 <= t_epoch]
+
+
+def _frame_read(bars, price: float, sign: int) -> Dict[str, Any]:
+    if len(bars) < SMA_LEN:
+        return {"sma": None, "why": f"{len(bars)} closed bars (need {SMA_LEN})"}
+    closes = [b[4] for b in bars]
+    sma = sum(closes[-SMA_LEN:]) / SMA_LEN
+    out: Dict[str, Any] = {"sma": round(sma, 4)}
+    trs = []
+    for i in range(max(1, len(bars) - ATR_LEN), len(bars)):
+        h, l, pc = bars[i][2], bars[i][3], bars[i - 1][4]
+        trs.append(max(h - l, abs(h - pc), abs(l - pc)))
+    atr = sum(trs) / len(trs) if trs else None
+    out["atr"] = round(atr, 4) if atr else None
+    if price and sign:
+        dist = (price - sma) * sign
+        out["dist"] = round(dist, 4)
+        out["pct"] = round(dist / sma * 100.0, 4)
+        out["d_atr"] = round(dist / atr, 3) if atr else None
+        out["side"] = "with" if dist > 0 else "against"
+        if len(closes) >= SMA_LEN + SLOPE_BARS and atr:
+            prev = sum(closes[-SMA_LEN - SLOPE_BARS:-SLOPE_BARS]) / SMA_LEN
+            out["slope_atr"] = round((sma - prev) / SLOPE_BARS / atr * sign, 4)
+        else:
+            out["slope_atr"] = None
+    return out
+
+
+def _mtf_one(conn, symbol: str, t_epoch: float, price: float, direction: str) -> Dict[str, Any]:
+    sign = 1 if direction == "long" else -1 if direction == "short" else 0
+    rows = _bars_1m_hlc(conn, symbol, t_epoch)
+    out: Dict[str, Any] = {}
+    for name, span in MTF_FRAMES:
+        out[name] = _frame_read(_agg(rows, span, t_epoch), price, sign)
+    out["1d"] = _frame_read(_bars_1d(conn, symbol, t_epoch), price, sign)
+    read = [f for f in (out[n] for n in ("5m", "15m", "1h", "1d")) if f.get("side")]
+    out["agree"] = sum(1 for f in read if f["side"] == "with")
+    out["of"] = len(read)
+    return out
+
+
+def sma50_mtf_context(t_epoch: float, price: float, direction: str,
+                      db_path: Optional[str] = None, symbol: Optional[str] = None) -> Dict[str, Any]:
+    """{"rth": {...}, "ext": {...}} or {"err": ...}. NEVER raises; read-only."""
+    try:
+        import sqlite3                                         # noqa: PLC0415
+        if symbol is None:
+            import config                                      # noqa: PLC0415
+            symbol = str(getattr(config, "INSTRUMENT", "") or "")
+        if not symbol:
+            return {"err": "no instrument"}
+        conn = sqlite3.connect(f"file:{db_path or _feed_db()}?mode=ro", uri=True, timeout=5)
+        try:
+            d = (direction or "").lower()
+            return {"rth": _mtf_one(conn, symbol, t_epoch, price, d),
+                    "ext": _mtf_one(conn, symbol + "_EXT", t_epoch, price, d)}
+        finally:
+            conn.close()
+    except Exception as exc:                                   # noqa: BLE001
+        if _first("sma50_mtf"):
+            logger.debug("entry_snapshot sma50_mtf failed (%s: %s)", type(exc).__name__, exc)
         return {"err": f"{type(exc).__name__}: {exc}"}
 
 

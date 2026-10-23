@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-tests/check_sma50_record.py  v1.0
+tests/check_sma50_record.py  v1.1
 
 Every trade's entry snapshot records the 5-minute 50 SMA (regular hours and
 extended), the entry's side of it, and the session's opening-candle cross; the
 backfill tool adds the same key to past rows and nothing else.
 
+v1.1  2026-10-23  OTV4TEST r315 (SMA.2) — S6 expects schema v 3: r315 adds "sma50_mtf" beside an
+      UNCHANGED "sma50_5m" (check_sma50_mtf M1). The assertion moved with the schema; nothing else did.
 v1.0  2026-09-30  OTV4TEST r183 (SMA.1). The operator, 2026-09-30: "I want it
       in the trades log", then "yes" to recording it, backfilling and testing.
 
@@ -21,7 +23,7 @@ built with the live logger's own schema (database.trade_logger.TradeLogger).
   S4  the 09:30 candle opened under the prior-50 SMA and closed over it -> "above";
       one that stayed over it -> "none"; an entry before 09:35 -> null
   S5  the extended-hours series is read from <SYMBOL>_EXT, separately
-  S6  build() carries "sma50_5m" and v 2; a missing feed store puts "err" INSIDE
+  S6  build() carries "sma50_5m" and v 3 (r315); a missing feed store puts "err" INSIDE
       the key and never raises or sets the payload's own err
   S7  backfill dry run writes nothing
   S8  backfill --apply adds the key to rows lacking it, keeps every other key,
@@ -183,11 +185,11 @@ def _s6():
     os.unlink(FEED)
     p2 = es.build({"price": 101.0}, "long")
     _R["s6"] = (p1.get("v"), "sma50_5m" in p1, p2.get("sma50_5m"), p2.get("err"))
-    return (p1.get("v") == 2 and "sma50_5m" in p1 and "err" in (p2.get("sma50_5m") or {})
+    return (p1.get("v") == 3 and "sma50_5m" in p1 and "err" in (p2.get("sma50_5m") or {})
             and "err" not in p2)
 
 
-guard("S6 build() carries sma50_5m and v 2; a missing store puts err INSIDE the key only", _s6,
+guard("S6 build() carries sma50_5m and v 3; a missing store puts err INSIDE the key only", _s6,
       lambda: str(_R.get("s6")))
 
 # ── the backfill ──────────────────────────────────────────────────────────────
