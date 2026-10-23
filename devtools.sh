@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 # ==========================================================================
-# devtools.sh  v3.9  — OTV4TEST box menu
+# devtools.sh  v3.10  — OTV4TEST box menu
+# v3.10 2026-10-23  OTV4TEST r313 (MENU.1) — CLAUDE CODE gains RESTART: a fresh
+#       session raised by the boot unit (`sudo systemctl restart
+#       optbot-claude-boot`), so it carries the unit's OT_RC_NAME, its brief and
+#       claude_boot.py's first-turn check. The operator, 2026-10-23 10:04 ET:
+#       "Make the sudo systemctl restart optbot-claude-boot a devtools menu item
+#       in the Claude section". WHY: that morning SPX-TEST's 08:05 boot hit an
+#       expired login; the hand raise from an SSH shell had no OT_RC_NAME (it
+#       lives only in the unit) and came up under QQQ-TEST's default name.
+#       It ENDS the tmux session first, because bring_up() returns "already
+#       running" over any live claude in it and a bare restart raises nothing.
+#       Appended last in CLAUDE CODE; GIT & LAND items move down one.
 # v3.9  2026-09-24  OTV4TEST r130 — R SUITE gains OPEN SCAN: today's two reports
 #       from tools/open_scan.py (09:35 ready, 09:45 live), and a RUN NOW for
 #       either phase. Read-only. Operator: "the scan you just ran should be done
@@ -115,6 +126,7 @@ PY="$REPO/venv/bin/python"
 export PYTHONPATH="$REPO"
 BOT="optionsbot"          # systemd unit (setup_ec2.sh SERVICE_NAME)
 FEED="candle-feed"        # systemd unit (single DXFeed producer)
+CLAUDE_UNIT="optbot-claude-boot"  # systemd unit (tools/claude_boot.py, BOX.11)
 BOTLOG="$REPO/bot.log"    # ExecStartPre touches this in the unit
 DERIVED_DB="${OT_DERIVED_DB:-$REPO/data/derived_store.db}"
 FEED_DB="$REPO/data/feed_store.db"
@@ -562,6 +574,44 @@ mi_claude_resume_pick() {
   exec tmux new-session -s "$CLAUDE_TMUX" "$CLAUDE_ENV claude --remote-control qqq-test --resume; exec bash"
 }
 
+mi_claude_restart_boot() {
+  # r313 — THE SAME RAISE AS THE 08:00 BOOT, ON DEMAND. A raise typed in an SSH
+  # shell has no OT_RC_NAME (only the unit sets it) and falls back to
+  # claude_boot.py's default name; the unit carries the box's own name, brief
+  # and first-turn check. It does NOT exec: the menu comes back.
+  _claude_guard || return
+  if [ -n "${TMUX:-}" ] && [ "$(tmux display-message -p '#S' 2>/dev/null)" = "$CLAUDE_TMUX" ]; then
+    echo "  REFUSED: this menu is running INSIDE tmux '$CLAUDE_TMUX'."
+    echo "  ending that session would end this menu before the restart."
+    pause; return
+  fi
+  echo "  RESTART: a fresh Claude session raised by $CLAUDE_UNIT,"
+  echo "  as at boot (its name, its brief, first turn checked)."
+  echo "  This ENDS tmux session '$CLAUDE_TMUX'; other tmux sessions stay."
+  confirm "proceed?" || { pause; return; }
+  # ⚠️ END THE SESSION FIRST. bring_up() returns "already running" over ANY
+  # live claude in it, and a session raised from a shell is outside the unit's
+  # cgroup, so the unit's stop does not end it: a bare restart raises nothing.
+  if command -v tmux >/dev/null 2>&1 && tmux has-session -t "$CLAUDE_TMUX" 2>/dev/null; then
+    tmux kill-session -t "$CLAUDE_TMUX"
+    echo "  ended tmux session '$CLAUDE_TMUX'"
+  else
+    echo "  no tmux session '$CLAUDE_TMUX' was running"
+  fi
+  echo "  restarting $CLAUDE_UNIT (up to 45 s; it waits for the first turn)"
+  local rc
+  sudo systemctl restart "$CLAUDE_UNIT"; rc=$?
+  if [ "$rc" = "0" ]; then
+    echo "  $CLAUDE_UNIT -> $(svc "$CLAUDE_UNIT")"
+  else
+    echo "  🔴 restart FAILED (rc $rc): $CLAUDE_UNIT -> $(svc "$CLAUDE_UNIT")"
+  fi
+  echo "  claude_boot.log, last 2 lines:"
+  tail -n 2 "$REPO/logs/claude_boot.log" 2>&1 | sed 's/^/    /'
+  echo "  REATTACH (above) to watch it start."
+  pause
+}
+
 # ── THE MENU IS DATA — numbers are assigned at render time ─────────────────
 MENU=(
   "SECTION|STATUS (this box)"
@@ -623,6 +673,7 @@ MENU=(
   "ITEM|REATTACH -> the running Claude session|mi_claude_reattach"
   "ITEM|RESUME   -> the last Claude thread|mi_claude_resume"
   "ITEM|RESUME [other] -> pick a Claude thread|mi_claude_resume_pick"
+  "ITEM|RESTART  -> fresh session via boot unit|mi_claude_restart_boot"
 
   "SECTION|GIT & LAND (this box - OTV4TEST only)"
   "ITEM|show commit / status / last ledger row|git_state"
