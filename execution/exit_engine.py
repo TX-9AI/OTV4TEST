@@ -1,5 +1,11 @@
 """
-execution/exit_engine.py  v4.44
+execution/exit_engine.py  v4.45
+v4.45 2026-10-24  OTV4TEST r317 (STALE.1, D1) — NO HANDOFF EXIT WHEN THE ENTRY TIME IS UNKNOWN. _entry_epoch() returns 0.0
+      for a record whose entry_time is missing or unreadable, and _rejected_handoff() then asked latest_rejection(sym,
+      0.0): ANY REJECTED ever written (any day, or a seeded row) could close a live ORB/Runaway/Hunt. Found by
+      1-REPORTER's staleness inventory (MSG-1REP-1024-35), verified here; the operator, 2026-10-24 16:04 ET: "Yes to
+      all, on the latent question". Now an unknown entry time hands off nothing and says so once per trade.
+      tests/check_handoff_entry_time.py.
 v4.44 2026-10-18  OTV4TEST r295 (LIVE.2) — the live close's broker poll touches the heartbeat on every iteration
       (utils.heartbeat.touch); with LIVE_FILL_DEADLINE_SECONDS at 8 (config v4.69) a five-position ladder is ~70 s
       and never silent, where 5 x 36 s was >180 s = the watchdog's SIGKILL at ~15:53. Audit 2026-10-18 C2.
@@ -1119,6 +1125,8 @@ def _gain_floor(entry: float, peak: float, lock: float) -> float:
 
 
 
+_HANDOFF_NO_ENTRY_SAID: set = set()          # r317 (STALE.1): trade_ids already warned about
+
 class ExitEngine:
     """Evaluates every open options trade on each tick."""
 
@@ -1927,7 +1935,16 @@ class ExitEngine:
             import config as _cfg
             sym = str(getattr(_cfg, "INSTRUMENT", "") or "")   # the level engine's symbol
             kind = "resistance" if direction == "long" else "support"
-            r = store.latest_rejection(sym, self._entry_epoch(record), kind=kind)
+            # 🔴 r317 (STALE.1, D1) — "since entry" needs an entry. 0.0 would ask for EVERY rejection ever written.
+            since = self._entry_epoch(record)
+            if since <= 0:
+                _tid = record.get("trade_id")
+                if _tid not in _HANDOFF_NO_ENTRY_SAID:
+                    _HANDOFF_NO_ENTRY_SAID.add(_tid)
+                    logger.warning("[exit] %s: entry_time %r unreadable - no rejected-pool handoff for this "
+                                   "trade (STALE.1)", _tid, record.get("entry_time"))
+                return ""
+            r = store.latest_rejection(sym, since, kind=kind)
             if not r:
                 return ""
             entry = float(record.get("underlying_entry") or 0.0)
