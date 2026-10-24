@@ -1,5 +1,12 @@
 """
-strategy/liquidity_hunt.py  v1.13
+strategy/liquidity_hunt.py  v1.14
+v1.14 2026-10-24  OTV4TEST r316 (HUNT.13) — NO HUNT ON A SIDE AFTER A LOSING BREAKOUT ON THAT SIDE, FOR THE REST OF THE DAY.
+      The operator, 2026-10-24 13:45 ET: "on a losing breakout trade, forbid a liquidity hunt on the same side for the
+      day"; 13:56 ET: "if a breakout on one side fails, don't allow a hunt to fire on that side for the rest of the
+      day" ... "effective Monday". breakout_failed_today() reads trades.db (DEC.1): a CLOSED Breakout row today on that
+      side (option_side, call = long) with pnl_usd < 0; unreadable HOLDS. OT_HUNT_AFTER_BRK=trade|log|off (unset =
+      trade); every hold and would-be hold is written to data/counterfactual/hunt_after_breakout.jsonl. Evidence
+      (QQQ-TEST 09-09..10-23): 2 Hunts after a losing same-side Breakout, both lost (-489); SOFI none. Thin.
 v1.13 2026-10-19  OTV4TEST r304 (HUNT.12) — release_break(direction, boundary): main.py hands a break BACK when its fire
       opened nothing (QQQ 10-19 10:13: the A2 long from 718.36 was BLOCKED by COMMIT.2, yet the fire had already put the
       break in FINISHED, so the plan held "this break already had its hunt" and only the late A1 at 720.49 - past its own
@@ -183,6 +190,75 @@ def break_finished_in_book(direction: str, boundary, session_date=None):
     return False
 
 
+def breakout_failed_today(direction: str, session_date=None):
+    """r316 (HUNT.13) - the LOSING Breakout that closes this side to the Hunt today. NEVER raises.
+
+      (trade_id, pnl_usd) - a CLOSED Breakout on `direction` today with pnl_usd < 0 (the first such)
+      None                - none has: the Hunt may trade
+      "unreadable"        - the book could not be read; the caller HOLDS (fails closed)
+
+    The side is option_side (call = long, put = short), direction the fallback, as side_entries_today; rows are
+    the current mode's (paper or live) only.
+    """
+    from datetime import datetime, timedelta
+    try:
+        from zoneinfo import ZoneInfo
+        _et, _utc = ZoneInfo("America/New_York"), ZoneInfo("UTC")
+        day = session_date or datetime.now(_et).date()
+        lo = (datetime.combine(day, datetime.min.time(), _et)
+              - timedelta(hours=1)).astimezone(_utc).isoformat()
+        from database.trade_logger import get_trade_logger
+        tl = get_trade_logger()
+        conn = tl._connect()
+        try:
+            rows = conn.execute(
+                "SELECT trade_id, entry_time, option_side, direction, pnl_usd FROM trades "
+                "WHERE strategy='Breakout' AND status='closed' AND entry_time >= ? "
+                "AND COALESCE(paper_trade,1)=? ORDER BY exit_time",
+                (lo, int(getattr(tl, "_mode_flag", 1)))).fetchall()
+        finally:
+            conn.close()
+    except Exception as exc:                                    # noqa: BLE001
+        logger.warning("[hunt] Breakout history unreadable from trades.db (%s) - holding", exc)
+        return "unreadable"
+    for tid, et_, side, dirn, pnl in rows:
+        sd = str(side or "").lower()
+        d = "long" if sd.startswith("c") else ("short" if sd.startswith("p") else str(dirn or "").lower())
+        if d != direction:
+            continue
+        try:
+            if datetime.fromisoformat(str(et_)).astimezone(_et).date() != day:
+                continue
+            if pnl is not None and float(pnl) < 0:
+                return (str(tid), float(pnl))
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+_HAB_SAID: set = set()
+
+
+def _record_hunt_after_breakout(row: dict) -> None:
+    """r316 (HUNT.13) COUNTERFACTUAL: once per (symbol, direction, boundary, entry) per process, the Hunt a losing
+    same-side Breakout held (or, in log mode, would have held), to data/counterfactual/hunt_after_breakout.jsonl.
+    Never raises; a failed write is logged."""
+    key = (row.get("symbol"), row.get("direction"), row.get("boundary"), row.get("entry"))
+    if key in _HAB_SAID:
+        return
+    _HAB_SAID.add(key)
+    try:
+        import json, os, time
+        d = os.environ.get("OT_COUNTERFACTUAL_DIR") or os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "counterfactual")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "hunt_after_breakout.jsonl"), "a") as fh:
+            fh.write(json.dumps({"ts_epoch": time.time(), "rule": "hunt_after_breakout",
+                                 "mode": getattr(config, "HUNT_AFTER_BRK_MODE", "trade"), **row}) + "\n")
+    except Exception as exc:                                    # noqa: BLE001
+        logger.warning("[hunt] after-breakout counterfactual row NOT written: %s", exc)
+
+
 def _record_hunt_rearm(row: dict) -> None:
     """HUNT.9 COUNTERFACTUAL: the A2 a return to the range would have fired, NOT traded, to
     data/counterfactual/hunt_rearm.jsonl. Never raises; a failed write is logged, never fatal."""
@@ -235,7 +311,7 @@ class LiquidityHunt:
                    "board_above",
                    "board_below", "fork_built", "nearest_above", "nearest_below",
                    "above_em", "below_em", "em_platform", "bias", "break_state", "fake_seen", "fake_failed",
-                   "entry", "break_finished", "runway", "considered", "spread_rejected",
+                   "entry", "break_finished", "breakout_failed", "runway", "considered", "spread_rejected",
                    "contract", "leverage", "debit", "stop_premium")
 
     def __init__(self):
@@ -438,6 +514,30 @@ class LiquidityHunt:
                 return prep
             t.hold(f"{head}. {entry} armed but this break already had its hunt — one per break")
             return prep
+        # 🔴 r316 (HUNT.13) — A LOSING BREAKOUT ON THIS SIDE CLOSES IT TO THE HUNT FOR THE DAY. The operator,
+        # 2026-10-24 13:56 ET: "if a breakout on one side fails, don't allow a hunt to fire on that side for
+        # the rest of the day". trades.db decides; an unreadable book HOLDS.
+        _hab = getattr(config, "HUNT_AFTER_BRK_MODE", "trade")
+        if _hab != "off":
+            _bf = breakout_failed_today(bias)
+            t.check("breakout_failed", None if _bf == "unreadable" else (1.0 if _bf else 0.0),
+                    _bf is None or _hab == "log")
+            if _bf == "unreadable":
+                if _hab == "trade":
+                    t.hold(f"{head}. {entry} {bias} at {_n(boundary)} — trades.db is UNREADABLE, so a losing "
+                           f"{bias} Breakout today cannot be ruled out; holding (HUNT.13)")
+                    return prep
+            elif _bf:
+                if not _obs:
+                    _record_hunt_after_breakout({"symbol": _symbol_of(), "direction": bias, "entry": entry,
+                                                 "boundary": round(boundary, 2), "signal_bar": bar_ts,
+                                                 "price_now": price_now, "target": target,
+                                                 "breakout_trade": _bf[0], "breakout_pnl": _bf[1],
+                                                 "held": _hab == "trade"})
+                if _hab == "trade":
+                    t.hold(f"{head}. {entry} {bias} at {_n(boundary)} — the {bias} Breakout {_bf[0]} lost "
+                           f"${_bf[1]:,.2f} today; no {bias} Hunt for the rest of the day (HUNT.13)")
+                    return prep
         t.anchor(trigger=boundary, invalidation=boundary)
         runway = abs(target - price_now)
         prep.runway = runway

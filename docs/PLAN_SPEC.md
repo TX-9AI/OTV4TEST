@@ -1,5 +1,7 @@
 # PLAN_SPEC.md — every strategy declares its intent BEFORE the trigger
 
+**v1.41 · 2026-10-24 · OTV4TEST r316 — BRK.15 / HUNT.13 / RENT.3: a Breakout side re-arms on every return to the range (the new-extreme re-fire rule dropped); no Hunt on a side after a losing Breakout on it that day; the 20 s re-entry gate records only (§43).**
+
 **v1.40 · 2026-10-19 · OTV4TEST r303 — PSTATE.1: every plan is ACTIVE, LOG or DORMANT (§42); a dormant plan writes nothing, ORCS's included (§41.13 amended).**
 
 **v1.39 · 2026-10-04 · OTV4TEST r249 — PREM.6: ORCS IS RETIRED by ruling (§41.13); the plan keeps recording.**
@@ -1646,3 +1648,40 @@ conditional gated"; 08:45 ET: "That looks right to me".
 - **Explained silence:** the start logs `[plans] states — active: ... · log: ... · dormant: ...` and writes
   `data/plan_states.json`; `query.py`'s plans panel lists DORMANT and LOG ONLY plans from it instead of STALE / NOT RUNNING.
 - **Gate:** `tests/check_plan_states.py` (S1-S3 states, D1-D10 driven on scratch stores; every check but the D5 control RED on f07f7a4).
+
+---
+
+## 43. OTV4TEST r316 — THE RE-FIRE IS A RETURN TO THE RANGE; A LOSING BREAKOUT CLOSES ITS SIDE TO THE HUNT (operator 2026-10-24)
+
+**The rulings, verbatim.** 13:45 ET: *"The new session high/low rule needs to be dropped. You established that the move
+was mostly done if we waited for a new extreme. The 20 second rule also was proven unnecessary after today's reentry
+study. Question: since 'breakout' is a breakout of the 5 minute orb, we should only have 1 per day, unless it reenters
+the range, right? So the only other 'same side' entries should be runaway (which should not be blocked) and liquidity
+hunt, which I agree should not fire on a failed breakout attempt. So my proposal: on a losing breakout trade, forbid a
+liquidity hunt on the same side for the day."* 13:56 ET: *"1. For now, rearm it on every reentry. 2. No more 20 second
+blocks—it's arbitrary & conflicts with today's studies. 3. Yes, if a breakout on one side fails, don't allow a hunt to
+fire on that side for the rest of the day. 4. That is correct. Yes, effective Monday"*.
+
+**43.1 Breakout — `fresh_break` replaces `new_extreme` (FOUNDATIONAL).** The break trigger is a state (the last closed
+1m bar beyond the edge), so the side needs a latch. It fires only when the signal bar is the FIRST close beyond the edge
+since 09:35 or since the side's latest close back inside (strictly: a close AT the edge is inside). Every return re-arms
+it. A break the gates refused spends the break until a close back inside, which keeps r282's lesson without the
+session extreme. r142 stays: a bar that started before the side's latest entry already fired it. Facts are read from
+trades.db and the feed store; unreadable is a refusal. `OT_BRK_REFIRE=extreme` restores r131/r282 unchanged.
+BRK.12's record-only re-arm row is superseded while `rearm` decides (the Service line reads `rearm=brk:superseded`).
+
+**43.2 Liquidity Hunt — no Hunt on a side after a losing Breakout on that side, for the day.** "Fails" is a Breakout
+on that side that CLOSED today with pnl_usd < 0 (an open loser has not failed yet). The Hunt HOLDS, named HUNT.13;
+an unreadable book holds. `OT_HUNT_AFTER_BRK` trade|log|off (unset = trade).
+
+**43.3 The 20 s re-entry gate records only.** `OT_REENTRY_GATE` unset = log (r306's unset = trade is the rollback).
+Recorded: QQQ-TEST had told the operator that the 10-24 studies began at 60 s and did not measure the first 20 s
+(r306's own evidence: blocked re-entries -9,313 / -2,344 / -1,270); he ruled on that.
+
+**43.4 Runaway.** Nothing blocks a Runaway because of another strategy's same-side entry (r306 was the only rule that
+did). Its own limits (one per break, any exit; r179/r281) are unchanged.
+
+**43.5 Counterfactuals (the operator, 2026-10-10: the evidence of what would have happened had we NOT made the
+adjustment).** data/counterfactual/breakout_refire.jsonl (every signal bar where the two re-fire rules disagree, both
+verdicts, which decided, whether it fired), hunt_after_breakout.jsonl (every held or would-be-held Hunt with the losing
+Breakout), reentry_gate.jsonl (r306's would-be blocks, unchanged). Scored on Saturdays.

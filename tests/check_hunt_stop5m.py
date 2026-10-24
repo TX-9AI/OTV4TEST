@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-tests/check_hunt_stop5m.py  v1.2
+tests/check_hunt_stop5m.py  v1.3
+v1.3  2026-10-24  OTV4TEST r316 (BRK.15) — H8b RE-POINTED, NOT DROPPED (section 38.4): BRK.12's re-arm row shows its mode
+      only under OT_BRK_REFIRE=extreme (the rollback); under the default rearm the line reads "rearm=brk:superseded".
+      H8b now asks both: the old properties with BRK_REFIRE_MODE=extreme, and "superseded" under rearm.
 v1.2  2026-10-18  OTV4TEST r293 (DIAL.2) — H8b: the Service line (main._banner_dials) names hunt_stop and rearm and prints
       a refused OT_HUNT_STOP5M / OT_HUNT_REARM by value; config recorded the refusal and nothing read it (audit 10-18 G2).
       OT_LOG_FILE joins this checker's own scratch env (it imports main now).
@@ -195,8 +198,13 @@ def main():
     def _h8b():
         import main as _MN
         _saved = {k: getattr(config, k) for k in ("HUNT_STOP5M_MODE", "HUNT_STOP5M_ENV_REFUSED",
-                                                   "BRK_REARM_MODE", "HUNT_REARM_ENV_REFUSED")}
+                                                   "BRK_REARM_MODE", "HUNT_REARM_ENV_REFUSED", "BRK_REFIRE_MODE")}
         try:
+            config.BRK_REFIRE_MODE = "rearm"                                  # r316: the default
+            config.HUNT_STOP5M_MODE, config.HUNT_STOP5M_ENV_REFUSED = "trade", ""
+            config.BRK_REARM_MODE, config.HUNT_REARM_ENV_REFUSED = "log", ""
+            sup = _MN._banner_dials()
+            config.BRK_REFIRE_MODE = "extreme"                                # the rollback shows BRK.12's mode
             config.HUNT_STOP5M_MODE, config.HUNT_STOP5M_ENV_REFUSED = "trade", ""
             config.BRK_REARM_MODE, config.HUNT_REARM_ENV_REFUSED = "log", ""
             clean = _MN._banner_dials()
@@ -206,7 +214,8 @@ def main():
         finally:
             for k, v in _saved.items():
                 setattr(config, k, v)
-        ok = (" · hunt_stop=5m(trade)" in clean and " · rearm=brk:log/hunt:" in clean and "REFUSED" not in clean.split("hunt_stop=")[1]
+        ok = (" · rearm=brk:superseded/hunt:" in sup
+              and " · hunt_stop=5m(trade)" in clean and " · rearm=brk:log/hunt:" in clean and "REFUSED" not in clean.split("hunt_stop=")[1]
               and " · hunt_stop=1m(log) (OT_HUNT_STOP5M='1' REFUSED)" in typo
               and " · rearm=brk:off/hunt:" in typo and "(OT_HUNT_REARM='yes' REFUSED)" in typo)
         return ok, f"clean={clean[-160:]!r} typo={typo[-200:]!r}"

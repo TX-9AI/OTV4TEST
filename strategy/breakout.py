@@ -1,7 +1,12 @@
 """
-strategy/breakout.py  v1.7
+strategy/breakout.py  v1.8
 THE SPECIFICATION. The plan searches; this declares what it must find.
 
+v1.8  2026-10-24  OTV4TEST r316 (BRK.15) — `FRESH_BREAK`, THE RE-FIRE RULE THAT REPLACES `NEW_EXTREME` (FOUNDATIONAL). The
+      operator, 2026-10-24 13:45 ET: "The new session high/low rule needs to be dropped. You established that the move
+      was mostly done if we waited for a new extreme"; 13:56 ET: "For now, rearm it on every reentry". A side fires on
+      the FIRST 1m close beyond its edge since 09:35 or since its latest close back inside; NEW_EXTREME stays declared
+      for OT_BRK_REFIRE=extreme (the rollback) and is recorded beside every disagreement.
 v1.7  2026-10-03  OTV4TEST r193 (CFG.1) — its config dials are read as config.NAME with NO literal fallback; config v4.48 now defines them (they were getattr defaults on names config never had). Values unchanged.
 v1.6  2026-09-26  OTV4TEST r148 (WIN.1) — reads its entry window from config with NO literal fallback (one table, config.ENTRY_WINDOWS); a missing name now fails at import instead of silently defaulting. Value unchanged. BREAKOUT_LATEST_ET never existed in config; the 11:30 lived here.
 v1.5  2026-09-24  OTV4TEST r131 — `NEW_EXTREME`, THE RE-FIRE RULE, declared
@@ -118,7 +123,8 @@ GATES = {
     "FITTED_R_FLOOR":       "SELECTION",     # dial: "any" (the ORB has no R floor)
     "FITTED_RANGE_CLEAN_MAX": "SELECTION",   # dial: "any" — the ORB has no such rule
     "RESEARCH_UNTIL":       "FOUNDATIONAL",  # the acceptance-ALL window's expiry
-    "NEW_EXTREME":          "FOUNDATIONAL",  # r131: a re-fire on a side needs a new session extreme
+    "NEW_EXTREME":          "FOUNDATIONAL",  # r131: a re-fire on a side needs a new session extreme (OT_BRK_REFIRE=extreme)
+    "FRESH_BREAK":          "FOUNDATIONAL",  # r316: a side fires on the first close beyond the edge since it was inside
 }
 
 # ── r131 — THE RE-FIRE RULE. Operator, 2026-09-24: *"A new reclaimed level has
@@ -130,6 +136,14 @@ GATES = {
 # trades.db (DEC.1). No tolerance and no threshold, so nothing to relax: this
 # constant is only the gate's NAME, the one `breakout_plan` refuses under.
 NEW_EXTREME = "new_extreme"
+
+# ── r316 (BRK.15) — THE RE-FIRE RULE, SINCE 2026-10-24. The operator: *"The new session high/low rule needs to
+# be dropped"*; *"For now, rearm it on every reentry"*. The break trigger is a STATE (the last closed bar beyond
+# the edge), so it needs a latch: a side fires only when the signal bar is the FIRST 1m close beyond the edge
+# since 09:35 or since the side's latest close back inside it. A break the gates refused still spends that
+# break (r282's lesson, kept): only a close back inside re-arms. Read from the feed store (DEC.1), failing
+# closed. Like NEW_EXTREME this is only the gate's NAME; there is no number to relax.
+FRESH_BREAK = "fresh_break"
 
 # ── the window (admission also carries it; this is the strategy's own claim) ──
 EARLIEST_ET = str(config.BREAKOUT_EARLIEST_ET)   # r148: the name now exists; no literal fallback
@@ -367,6 +381,7 @@ class Breakout:
         "pool_price", "pool_name", "pool_dist_r", "reach_measured", "reach_pool",
         "verdict", "defer_to", "persist_ok",
         NEW_EXTREME, "side_fired_today", "session_extreme",     # r131
+        FRESH_BREAK, "break_run_from",                           # r316 (BRK.15)
     )
 
     # ⚠️ RECORDED, NEVER GATED. `vol_multiple` is here so the study that

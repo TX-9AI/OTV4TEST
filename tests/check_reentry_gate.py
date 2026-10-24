@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""tests/check_reentry_gate.py — v1.0
+"""tests/check_reentry_gate.py — v1.1
+v1.1  2026-10-24  OTV4TEST r316 (RENT.3) — S1 RE-POINTED, NOT DROPPED (section 38.4): unset is now log (the operator,
+      2026-10-24 13:56 ET: "No more 20 second blocks"); trade is kept as the rollback and asserted.
 NO RE-ENTRY WITHIN 20 s OF A SAME-SIDE PREMIUM EXIT (RENT.2, OTV4TEST r306).
 
 v1.0  2026-10-19  OTV4TEST r306 — the operator, 2026-10-12 10:34 ET: "A good place to get out cannot be a good place
@@ -257,8 +259,9 @@ def _cfg(env):
     return out.stdout.strip().splitlines()[-1] if out.stdout.strip() else out.stderr[-200:]
 
 
-guard("S1 OT_REENTRY_GATE: unset -> trade; log kept; off kept; bogus -> log, named",
-      lambda: (_cfg({}).split()[0] == "trade" and _cfg({"OT_REENTRY_GATE": "log"}).split()[0] == "log"
+guard("S1 OT_REENTRY_GATE: unset -> log (r316); trade kept (the rollback); log kept; off kept; bogus -> log, named",
+      lambda: (_cfg({}).split()[0] == "log" and _cfg({"OT_REENTRY_GATE": "trade"}).split()[0] == "trade"
+               and _cfg({"OT_REENTRY_GATE": "log"}).split()[0] == "log"
                and _cfg({"OT_REENTRY_GATE": "off"}).split()[0] == "off"
                and _cfg({"OT_REENTRY_GATE": "bogus"}).split() == ["log", "'bogus'"]),
       lambda: _cfg({"OT_REENTRY_GATE": "bogus"}))

@@ -1,5 +1,14 @@
 """
-strategy/breakout_plan.py  v1.17
+strategy/breakout_plan.py  v1.18
+v1.18 2026-10-24  OTV4TEST r316 (BRK.15) — A SIDE RE-ARMS ON EVERY RETURN TO THE RANGE; THE NEW-EXTREME RULE IS DROPPED.
+      The operator, 2026-10-24 13:45 ET: "The new session high/low rule needs to be dropped. You established that the
+      move was mostly done if we waited for a new extreme"; 13:56 ET: "For now, rearm it on every reentry" ... "Yes,
+      effective Monday". _refire() replaces the _new_extreme() call: the signal bar must be the FIRST RTH 1m close
+      beyond the edge since 09:35 or since the latest close back inside it (break_run_start(), feed store, fails
+      closed). r142's latch (no bar that already fired) is kept; r282's lesson holds by construction (a refused break
+      spends the break until a close back inside). COUNTERFACTUAL: wherever r131's verdict differs, both are written to
+      data/counterfactual/breakout_refire.jsonl. OT_BRK_REFIRE=extreme runs _new_extreme() unchanged (rollback) and
+      records the re-arm verdict instead. tests/check_breakout_rearm.py.
 v1.17 2026-10-18  OTV4TEST r299 (BRK.14) — AN UNREADABLE LEVEL BOARD IS NOT A CLEAN RANGE. _board() returned {} on any
       failure (logged at debug, invisible), range_clean then counted 0 levels inside and room_to_run read "open air":
       harmless while ACCEPTANCE=any (to BRK_RESEARCH_UNTIL), two informers silently disabled by a store hiccup after
@@ -443,6 +452,75 @@ def range_rearm(symbol: str, day, before_ms: int, direction: str, edge):
     return (fb, ret) if (fb is not None and ret is not None) else None
 
 
+def break_run_start(symbol: str, day, before_ms: int, direction: str, edge):
+    """r316 (BRK.15) - is the signal bar a FRESH break? Reads today's RTH 1m closes from the opening range's close
+    (09:35) up to, not including, `before_ms` (the signal bar's start) and returns:
+
+      None   - the latest of those closes is NOT beyond `edge` (or there are none): the signal bar is the first
+               close beyond it since the side was inside - a fresh break, the side may fire;
+      int    - the ts_ms of the first close of the UNBROKEN run beyond `edge` that the signal bar continues: the
+               break already happened and price has not closed back inside since - not a fresh break;
+      str    - why the tape could not be read; the caller FAILS CLOSED.
+
+    "Beyond" is strict (a close AT the edge is inside), as r131 and range_rearm(). NEVER raises.
+    🔑 The operator, 2026-10-24 13:56 ET: "For now, rearm it on every reentry" - every close back inside re-arms.
+    """
+    from datetime import datetime
+    try:
+        import sqlite3
+        from zoneinfo import ZoneInfo
+        from data.candle_feed import feed_db_path
+        try:
+            from config import ORB_WINDOW_MINUTES as _orbm
+        except Exception:                                       # noqa: BLE001
+            _orbm = 5
+        open_ms = int(datetime(day.year, day.month, day.day, 9, 30,
+                               tzinfo=ZoneInfo(_ET_ZONE)).timestamp() * 1000) + int(_orbm) * 60_000
+        e = float(edge)
+        conn = sqlite3.connect(f"file:{feed_db_path()}?mode=ro", uri=True, timeout=5.0)
+        try:
+            rows = conn.execute(
+                "SELECT ts_epoch_ms, close FROM candles WHERE symbol=? AND interval='1m' "
+                "AND ts_epoch_ms >= ? AND ts_epoch_ms < ? AND close > 0 ORDER BY ts_epoch_ms",
+                (symbol, open_ms, int(before_ms))).fetchall()
+        finally:
+            conn.close()
+    except Exception as exc:                                    # noqa: BLE001
+        return f"session tape unreadable ({type(exc).__name__}: {exc})"
+    run = None
+    for ts, close in rows:
+        beyond = (float(close) > e) if direction == "long" else (float(close) < e)
+        if beyond:
+            if run is None:
+                run = int(ts)
+        else:
+            run = None                                          # a close back inside re-arms the side
+    return run
+
+
+_REFIRE_SAID: set = set()
+
+
+def _record_refire(row: dict) -> None:
+    """r316 (BRK.15) COUNTERFACTUAL: once per (symbol, side, signal bar) per process, a signal bar where the re-arm
+    rule and r131's new-extreme rule DISAGREE, both verdicts and which one decided, to
+    data/counterfactual/breakout_refire.jsonl. Never raises; a failed write is logged."""
+    key = (row.get("symbol"), row.get("direction"), row.get("signal_bar_ms"))
+    if key in _REFIRE_SAID:
+        return
+    _REFIRE_SAID.add(key)
+    try:
+        import json, os, time
+        d = os.environ.get("OT_COUNTERFACTUAL_DIR") or os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "counterfactual")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "breakout_refire.jsonl"), "a") as fh:
+            fh.write(json.dumps({"ts_epoch": time.time(), "rule": "breakout_refire",
+                                 "mode": getattr(config, "BRK_REFIRE_MODE", "rearm"), **row}) + "\n")
+    except Exception as exc:                                    # noqa: BLE001
+        logger.warning("[breakout] re-fire counterfactual row NOT written: %s", exc)
+
+
 _REARM_SAID: set = set()
 
 
@@ -772,13 +850,21 @@ class BreakoutPlan:
         if prep.unmet:
             return self._route(prep, t, B)
 
-        # ══ r131 — A RE-FIRE ON A SIDE NEEDS A NEW SESSION EXTREME ══════════
+        # ══ r316 (BRK.15) — A SIDE FIRES ON A FRESH BREAK; EVERY RETURN TO THE RANGE RE-ARMS IT ═══
+        # The operator, 2026-10-24: *"The new session high/low rule needs to be dropped"*; *"For now, rearm
+        # it on every reentry"*. OT_BRK_REFIRE=extreme restores r131 (the block below it, unchanged).
+        if getattr(config, "BRK_REFIRE_MODE", "rearm") == "extreme":
+            if not self._new_extreme(t, B, direction, df_1m, bc, symbol, edge=prep.edge):
+                self._refire_shadow(direction, df_1m, bc, symbol, prep.edge, decided=False)
+                return prep
+            self._refire_shadow(direction, df_1m, bc, symbol, prep.edge, decided=True)
+        elif not self._refire(t, B, direction, df_1m, bc, symbol, edge=prep.edge):
+            return prep
+        # ══ r131 — A RE-FIRE ON A SIDE NEEDS A NEW SESSION EXTREME (OT_BRK_REFIRE=extreme only, since r316) ══
         # Operator, 2026-09-24: *"A new reclaimed level has to happen before it
         # can fire again? A new high for a long, a new low for a short."* The
         # FIRST entry per side keeps the break trigger above untouched; every
         # later one must CLOSE beyond every prior RTH bar's extreme.
-        if not self._new_extreme(t, B, direction, df_1m, bc, symbol, edge=prep.edge):
-            return prep
 
         # ── the structural bars: a contract, an R that clears the floor ────
         from strategy.orb_plan import select_contract
@@ -833,6 +919,94 @@ class BreakoutPlan:
         return prep
 
     # ── r131: the re-fire gate ─────────────────────────────────────────────
+    def _refire(self, t, B, direction, df_1m, bc, symbol, edge=None) -> bool:
+        """r316 (BRK.15) - True when this side may fire: the signal bar is a FRESH break (the first 1m close
+        beyond the edge since 09:35 or since the side's latest close back inside it) and it is not a bar that
+        already fired. Refuses at `B.FRESH_BREAK` otherwise. r131's new-extreme verdict is computed beside it,
+        decides nothing, and is written to breakout_refire.jsonl wherever the two disagree.
+
+        ⚠️ EVERY FACT IT DECIDES ON IS READ FROM A BOOK (DEC.1): the side's entries from trades.db, the
+        session's closes from the feed store. Either unreadable FAILS CLOSED.
+        """
+        gate = B.FRESH_BREAK
+        sig_ts = _bar_stamp(df_1m, -2)
+        if sig_ts is None or edge is None:
+            t.refuse(gate, "the signal bar carries no timestamp or the side no edge, so the session's "
+                           "closes cannot be bounded - failing closed")
+            return False
+        day = sig_ts.date()
+        ents = side_entries_today(direction, day)
+        t.check("side_fired_today", None if ents is None else float(len(ents)), None)
+        if ents is None:
+            t.refuse(gate, f"cannot tell whether {direction} already fired on this bar - "
+                           f"trades.db unreadable, failing closed")
+            return False
+        # 🔴 r142, KEPT: a bar that started before the side's latest entry already fired it.
+        if ents:
+            _last = ents[-1]
+            if sig_ts < _last.replace(second=0, microsecond=0):
+                t.refuse(gate, f"no bar has closed since the last {direction} entry at "
+                               f"{_last.strftime('%H:%M:%S')} - the signal bar "
+                               f"{sig_ts.strftime('%H:%M')} already fired it")
+                return False
+        sym = symbol or self._symbol()
+        sig_ms = int(sig_ts.timestamp() * 1000)
+        run = break_run_start(sym, day, sig_ms, direction, edge)
+        if isinstance(run, str):
+            t.check("break_run_from", None, None)
+            t.refuse(gate, f"{run} - cannot tell whether this {direction} break is fresh, failing closed")
+            return False
+        ok = run is None
+        if ok:
+            t.check(gate, bc, True, note=f"a fresh {direction} break: the first close beyond "
+                                         f"{float(edge):.2f} since the side was inside")
+        else:
+            from datetime import datetime as _dt
+            from zoneinfo import ZoneInfo as _Z
+            _rt = _dt.fromtimestamp(run / 1000, _Z(_ET_ZONE)).strftime("%H:%M")
+            t.check("break_run_from", float(run), None)
+            t.check(gate, bc, False)
+            t.refuse(gate, f"the {direction} break began at {_rt} and has not closed back inside "
+                           f"{float(edge):.2f} since - a close back inside re-arms the side")
+        self._refire_shadow(direction, df_1m, bc, symbol, edge, decided=ok, rearm=(ok, run),
+                            fired=len(ents))
+        return ok
+
+    def _refire_shadow(self, direction, df_1m, bc, symbol, edge, *, decided, rearm=None, fired=None) -> None:
+        """r316 (BRK.15) - the OTHER rule's verdict on this signal bar, written to breakout_refire.jsonl when it
+        disagrees with the one that decided. NEVER raises and touches no tick record."""
+        try:
+            sig_ts = _bar_stamp(df_1m, -2)
+            if sig_ts is None or edge is None or bc is None:
+                return
+            day, sym, sig_ms = sig_ts.date(), (symbol or self._symbol()), int(sig_ts.timestamp() * 1000)
+            if fired is None:
+                ents = side_entries_today(direction, day)
+                fired = None if ents is None else len(ents)
+            if rearm is None:
+                run = break_run_start(sym, day, sig_ms, direction, edge)
+                rearm = (None if isinstance(run, str) else run is None, None if isinstance(run, str) else run)
+            # r131's verdict, as _new_extreme() would reach it, without its tick record
+            ext_ok, level = None, None
+            first = fired == 0 and first_break_before(sym, day, sig_ms, direction, edge) is None
+            if first:
+                ext_ok = True
+            else:
+                ext = session_extreme(sym, day, sig_ms, direction)
+                if not isinstance(ext, str):
+                    level = ext[0]
+                    ext_ok = bool(bc > level if direction == "long" else bc < level)
+            mode = getattr(config, "BRK_REFIRE_MODE", "rearm")
+            if rearm[0] is None or ext_ok is None or rearm[0] == ext_ok:
+                return
+            _record_refire({"symbol": sym, "direction": direction, "signal_bar_ms": sig_ms,
+                            "edge": float(edge), "break_close": float(bc),
+                            "rearm_ok": rearm[0], "break_run_from_ms": rearm[1],
+                            "new_extreme_ok": ext_ok, "session_extreme": level,
+                            "fired_on_side": fired, "decided_by": mode, "fired": bool(decided)})
+        except Exception as exc:                                # noqa: BLE001
+            logger.debug("[breakout] re-fire shadow not computed: %s", exc)
+
     def _new_extreme(self, t, B, direction, df_1m, bc, symbol, edge=None) -> bool:
         """True when this side may fire. Refuses at `B.NEW_EXTREME` otherwise.
 

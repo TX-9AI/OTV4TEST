@@ -77,6 +77,15 @@ the recording off. **The floor watch (r280, EXIT.5) WAKES THE TICK:** a Breakout
 old) is at or below its enforced premium stop ends the 15 s wait and the tick runs at once; the tick still decides (the
 resting stop included). Nothing here exits or orders. `OT_FLOOR_WATCH=trade|log|off`, unset = trade.
 
+**The re-fire, the Hunt after a losing Breakout, and the 20 s gate (r316, BRK.15 / HUNT.13 / RENT.3; the operator,
+2026-10-24 13:45 and 13:56 ET, "Yes, effective Monday").** A Breakout side fires on a FRESH break: the first 1m close
+beyond its edge since 09:35 or since its latest close back inside - every return to the range re-arms it, and the new
+session extreme is no longer asked (`OT_BRK_REFIRE`, unset = rearm; `extreme` restores r131). No Liquidity Hunt fires on a
+side for the rest of the day once a Breakout on that side has CLOSED at a loss (`OT_HUNT_AFTER_BRK` trade|log|off, unset =
+trade). The 20 s same-side re-entry gate records and never blocks (`OT_REENTRY_GATE`, unset = log; `trade` restores r306).
+Nothing blocks a Runaway because of another strategy's same-side entry. Each old rule's verdict is recorded beside the new
+one in data/counterfactual/ (breakout_refire, hunt_after_breakout, reentry_gate).
+
 **The commitment state (r272, COMMIT.1/2/3).** Every closed 1m bar each side is COMMITTED, NEUTRAL or ABANDONED
 (analysis/commitment.py). A directional entry whose side is ABANDONED is not placed (`OT_COMMIT_GATE`, unset = trade on
 paper; a live box only logs); the caution size after the session's first directional loss is logged, never applied
@@ -681,7 +690,8 @@ the edge.
 |---|---|---|
 | `entry_window` | inside the window; an unreadable clock is no trade (r220) | FOUNDATIONAL |
 | `break_close` | the last CLOSED 1m bar closed above the range high (long) or below the low (short) - bodies decide, wicks test | FOUNDATIONAL |
-| `new_extreme` | the first entry per side per session needs only the break. Every later entry on that side needs a 1m close beyond every prior RTH bar's high (long) / low (short) since 09:30 (r131). Read from trades.db and the feed store; unreadable is a refusal | FOUNDATIONAL, no knob |
+| `fresh_break` | since r316 (BRK.15, the operator 2026-10-24: "The new session high/low rule needs to be dropped"; "For now, rearm it on every reentry"): the signal bar must be the FIRST 1m close beyond the edge since 09:35 or since the side's latest close back INSIDE the edge - every return to the range re-arms the side, and a break the gates refused still spends it until a close back inside. The bar that already fired is refused (r142). Read from trades.db and the feed store; unreadable is a refusal. r131's verdict is written beside every disagreement to data/counterfactual/breakout_refire.jsonl | FOUNDATIONAL |
+| `new_extreme` | ROLLBACK ONLY (`OT_BRK_REFIRE=extreme`): the first entry per side per session needs only the break. Every later entry on that side needs a 1m close beyond every prior RTH bar's high (long) / low (short) since 09:30 (r131). Read from trades.db and the feed store; unreadable is a refusal | FOUNDATIONAL, no knob |
 | `orb_range`, `range_clean`, `flow_commit`, `gamma_regime`, `depth_thin`, `room_to_run`, `r` | the informers: range width, no live level inside the range, aggressor imbalance with the break, a non-pinning regime, thinning depth ahead, open air or a pool at least 1R away, R at or above the floor | **accept "any" until `OT_BRK_RESEARCH_UNTIL` (2026-10-30)** - recorded on every row, refusing nothing. ⚠️ Except an ABSENT flow reading, which `flow_commit` has always refused. **On a cash index (SPX, r251 BRK.6) `flow_commit` and `depth_thin` are n/a - "no tape" / "no book" - and MET, before and after 10-30** (the operator, 2026-10-05: "we have to get SPX Trading those breakouts") |
 | `contract`, `premium` | a listed strike at the reach with a live quote above `QUOTE_FLOOR` | FEASIBILITY |
 

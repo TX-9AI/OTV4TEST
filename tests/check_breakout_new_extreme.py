@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-tests/check_breakout_new_extreme.py  v1.6
+tests/check_breakout_new_extreme.py  v1.7
+v1.7  2026-10-24  OTV4TEST r316 (BRK.15) — RE-POINTED, NOT DROPPED (section 38.4): r131 is no longer the default. The
+      operator, 2026-10-24 13:45 ET: "The new session high/low rule needs to be dropped"; OT_BRK_REFIRE=extreme is the
+      rollback that restores it, so this checker sets that for its own process and still pins every N property of
+      the rule the rollback must restore. The default re-arm rule is tests/check_breakout_rearm.py. No check changed.
 v1.6  2026-10-18  OTV4TEST r299 (BRK.14) — N12a-c: an unreadable level board reads None on range_clean / room_to_run
       (not "0 inside" / "open air"), is said once, still fires inside the research window, and REFUSES both once the
       dials carry numbers (audit 10-18 D3). N12a and N12c RED on 42906b9.
@@ -92,6 +96,7 @@ os.environ["OT_RESTING_DB"] = os.path.join(SCRATCH, "resting.db")
 os.environ["OT_FEED_DB"] = os.path.join(SCRATCH, "feed.db")
 os.environ["OT_BRK_RESEARCH_UNTIL"] = "2099-12-31"      # informers: accept any
 os.environ["OT_COUNTERFACTUAL_DIR"] = os.path.join(SCRATCH, "cf")   # BRK.12: never the LIVE data/counterfactual
+os.environ["OT_BRK_REFIRE"] = "extreme"                 # r316: the rollback is what this file pins (and its N5 child)
 FAILED, RAN = [], []
 ET = "America/New_York"
 

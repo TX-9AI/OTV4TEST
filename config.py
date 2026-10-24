@@ -1,5 +1,10 @@
 """
-config.py  v4.70
+config.py  v4.71
+v4.71  2026-10-24  OTV4TEST r316 (BRK.15 + HUNT.13 + RENT.3) - OT_BRK_REFIRE rearm|extreme (UNSET = rearm: a Breakout side
+      re-arms on EVERY 1m close back inside its edge; extreme = r131's new session extreme, the old rule); OT_HUNT_AFTER_BRK
+      trade|log|off (UNSET = trade: no Hunt on a side after a LOSING Breakout on that side that day); OT_REENTRY_GATE
+      UNSET = log (was trade: the 20 s gate records, never blocks). The operator, 2026-10-24 13:45/13:56 ET. A refused
+      value reads the default and is named.
 v4.70  2026-10-19  OTV4TEST r306 (RENT.2) - OT_REENTRY_GATE off|log|trade (unset = trade; LIVE reads log; a bogus value
       reads log and is named): REENTRY_GATE_MODE / REENTRY_GATE_ENV_REFUSED for analysis/reentry.py's 20 s gate after a
       same-side PREMIUM exit. The operator, 2026-10-19 20:17 ET: "Yes".
@@ -929,6 +934,34 @@ else:
     BRK_REARM_MODE = "log"
     if _br_raw:
         BRK_REARM_ENV_REFUSED = _br_raw
+# ── r316 BRK.15 — A BREAKOUT SIDE RE-ARMS ON EVERY RETURN TO THE RANGE ───────
+# rearm | extreme. UNSET = rearm (the operator, 2026-10-24 13:45 ET: "The new session high/low rule needs to be
+# dropped. You established that the move was mostly done if we waited for a new extreme"; 13:56 ET: "For now, rearm
+# it on every reentry"). rearm: a Breakout fires only on a FRESH break - the first 1m close beyond the edge since
+# 09:35 or since the latest close back inside it; the old new-extreme verdict is written beside it to
+# data/counterfactual/breakout_refire.jsonl wherever the two disagree. extreme: r131/r282's rule decides (rollback)
+# and the re-arm verdict is the one recorded. A refused value reads rearm and is named.
+BRK_REFIRE_ENV_REFUSED = ""
+_bf_raw = os.environ.get("OT_BRK_REFIRE", "").strip().lower()
+if _bf_raw in ("rearm", "extreme"):
+    BRK_REFIRE_MODE = _bf_raw
+else:
+    BRK_REFIRE_MODE = "rearm"
+    if _bf_raw:
+        BRK_REFIRE_ENV_REFUSED = _bf_raw
+# ── r316 HUNT.13 — NO HUNT ON A SIDE AFTER A LOSING BREAKOUT ON THAT SIDE ─────
+# trade | log | off. UNSET = trade (the operator, 2026-10-24 13:45 ET: "on a losing breakout trade, forbid a liquidity
+# hunt on the same side for the day"; 13:56 ET: "if a breakout on one side fails, don't allow a hunt to fire on that
+# side for the rest of the day"). trade: the Hunt HOLDS, named; log: it fires and the would-be hold is written; off:
+# not evaluated. Every hold or would-be hold is written to data/counterfactual/hunt_after_breakout.jsonl.
+HUNT_AFTER_BRK_ENV_REFUSED = ""
+_hb_raw = os.environ.get("OT_HUNT_AFTER_BRK", "").strip().lower()
+if _hb_raw in ("trade", "log", "off"):
+    HUNT_AFTER_BRK_MODE = _hb_raw
+else:
+    HUNT_AFTER_BRK_MODE = "trade"
+    if _hb_raw:
+        HUNT_AFTER_BRK_ENV_REFUSED = _hb_raw
 HUNT_REARM_ENV_REFUSED = ""
 _hr_raw = os.environ.get("OT_HUNT_REARM", "").strip().lower()
 if _hr_raw in ("off", "log"):
@@ -1026,14 +1059,16 @@ else:
     if _cz_raw:
         CAUTION_SIZE_ENV_REFUSED = _cz_raw
 # ── r306 (RENT.2) — NO RE-ENTRY WITHIN 20 s OF A SAME-SIDE PREMIUM EXIT (analysis/reentry.py) ───
-# OT_REENTRY_GATE off | log | trade. UNSET = trade (the operator, 2026-10-19 20:17 ET: "Yes"). A LIVE box never acts
-# on it: trade reads as log there and the Service mode line says so. A refused value reads log and is named.
+# OT_REENTRY_GATE off | log | trade. UNSET = log since r316 (RENT.3; the operator, 2026-10-24 13:56 ET: "No more 20 second
+# blocks - it's arbitrary & conflicts with today's studies"); r306's unset = trade (2026-10-19 20:17 ET "Yes") is the
+# rollback, OT_REENTRY_GATE=trade. log writes the would-be block and never blocks. A LIVE box never acts on it: trade
+# reads as log there and the Service mode line says so. A refused value reads log and is named.
 REENTRY_GATE_ENV_REFUSED = ""
 _rg_raw = os.environ.get("OT_REENTRY_GATE", "").strip().lower()
 if _rg_raw in ("off", "log", "trade"):
     REENTRY_GATE_MODE = _rg_raw
 elif not _rg_raw:
-    REENTRY_GATE_MODE = "trade"
+    REENTRY_GATE_MODE = "log"                                  # r316 (RENT.3): was "trade"
 else:
     REENTRY_GATE_MODE = "log"
     REENTRY_GATE_ENV_REFUSED = _rg_raw

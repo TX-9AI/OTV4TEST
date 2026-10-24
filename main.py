@@ -1,5 +1,9 @@
 """
-main.py  v4.114
+main.py  v4.115
+v4.115  2026-10-24  OTV4TEST r316 (BRK.15 + HUNT.13 + RENT.3) - the Service mode line names " · brk_refire=<rearm|extreme>"
+      and " · hunt_after_brk=<trade|log|off>" (each with its REFUSED value), and BRK.12's re-arm record reads
+      "brk:superseded" while brk_refire=rearm (the re-arm is the rule now, so nothing records it as a shadow).
+      OT_REENTRY_GATE unset is log since r316: the 20 s gate records and never blocks. The operator, 2026-10-24.
 v4.114  2026-10-20  OTV4TEST r309 (B4, MIRROR OF otv4 r495 81cc63c, WA 38.2) - a LIVE start cancels this instrument's
       untracked working orders (order_guard.boot_sweep) BEFORE the broker reconcile, so a part-filled leftover is
       adopted by the same start; entries stay blocked until one sweep comes back clean. Hunk verbatim from 81cc63c.
@@ -5443,11 +5447,20 @@ def _banner_dials() -> str:
     # r293 (DIAL.2) — the three dials whose refusal was recorded by config and read by NOTHING: a typo on
     # OT_HUNT_STOP5M moved every Hunt back to the 1m boundary with no line anywhere (audit 10-18 G2).
     from config import (HUNT_STOP5M_MODE, HUNT_STOP5M_ENV_REFUSED, BRK_REARM_MODE, BRK_REARM_ENV_REFUSED,
-                        HUNT_REARM_MODE, HUNT_REARM_ENV_REFUSED)
+                        HUNT_REARM_MODE, HUNT_REARM_ENV_REFUSED,
+                        BRK_REFIRE_MODE, BRK_REFIRE_ENV_REFUSED,                  # r316 (BRK.15)
+                        HUNT_AFTER_BRK_MODE, HUNT_AFTER_BRK_ENV_REFUSED)          # r316 (HUNT.13)
+    brk += f" · brk_refire={BRK_REFIRE_MODE}"                              # r316 (BRK.15)
+    if BRK_REFIRE_ENV_REFUSED:
+        brk += f" (OT_BRK_REFIRE={BRK_REFIRE_ENV_REFUSED!r} REFUSED)"
+    brk += f" · hunt_after_brk={HUNT_AFTER_BRK_MODE}"                       # r316 (HUNT.13)
+    if HUNT_AFTER_BRK_ENV_REFUSED:
+        brk += f" (OT_HUNT_AFTER_BRK={HUNT_AFTER_BRK_ENV_REFUSED!r} REFUSED)"
     brk += f" · hunt_stop={'5m' if HUNT_STOP5M_MODE == 'trade' else '1m'}({HUNT_STOP5M_MODE})"   # r285 (HUNT.8)
     if HUNT_STOP5M_ENV_REFUSED:
         brk += f" (OT_HUNT_STOP5M={HUNT_STOP5M_ENV_REFUSED!r} REFUSED)"
-    brk += f" · rearm=brk:{BRK_REARM_MODE}/hunt:{HUNT_REARM_MODE}"         # r286 (BRK.12 / HUNT.9)
+    _brk_ra = "superseded" if BRK_REFIRE_MODE == "rearm" else BRK_REARM_MODE   # r316: the re-arm IS the rule
+    brk += f" · rearm=brk:{_brk_ra}/hunt:{HUNT_REARM_MODE}"                # r286 (BRK.12 / HUNT.9)
     if BRK_REARM_ENV_REFUSED:
         brk += f" (OT_BRK_REARM={BRK_REARM_ENV_REFUSED!r} REFUSED)"
     if HUNT_REARM_ENV_REFUSED:
